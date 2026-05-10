@@ -42,7 +42,8 @@ impl ParseDiagnostic {
 
 pub fn collect_diagnostics(root: Node, source: &str) -> Vec<ParseDiagnostic> {
     let mut diagnostics = Vec::new();
-    collect_from_node(root, source, &mut diagnostics);
+    collect_tree_errors(root, source, &mut diagnostics);
+    collect_late_local_vars(root, source, &mut diagnostics);
     diagnostics
 }
 
@@ -52,18 +53,53 @@ pub fn format_tree(root: Node) -> String {
     output
 }
 
-fn collect_from_node(node: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>) {
+fn collect_tree_errors(node: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>) {
     if node.is_error() || node.is_missing() {
-        diagnostics.push(diagnostic_for_node(node, source));
+        diagnostics.push(tree_error_diagnostic(node, source));
     }
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_from_node(child, source, diagnostics);
+        collect_tree_errors(child, source, diagnostics);
     }
 }
 
-fn diagnostic_for_node(node: Node, source: &str) -> ParseDiagnostic {
+fn collect_late_local_vars(node: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>) {
+    if node.kind() == "func_block" {
+        collect_late_local_vars_in_block(node, source, diagnostics);
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_late_local_vars(child, source, diagnostics);
+    }
+}
+
+fn collect_late_local_vars_in_block(
+    block: Node,
+    source: &str,
+    diagnostics: &mut Vec<ParseDiagnostic>,
+) {
+    let mut saw_code_statement = false;
+    let mut cursor = block.walk();
+
+    for child in block.children(&mut cursor) {
+        if !child.is_named() || matches!(child.kind(), "comment" | "nop") {
+            continue;
+        }
+
+        if child.kind() == "local_var_decl_stmt" {
+            if saw_code_statement {
+                diagnostics.push(late_local_var_diagnostic(child, source));
+            }
+            continue;
+        }
+
+        saw_code_statement = true;
+    }
+}
+
+fn tree_error_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
     let kind = node.kind().to_string();
     let message = if node.is_missing() {
         format!("missing {}", node.kind())
@@ -74,6 +110,17 @@ fn diagnostic_for_node(node: Node, source: &str) -> ParseDiagnostic {
     ParseDiagnostic {
         kind,
         message,
+        start: node.start_position(),
+        end: node.end_position(),
+        byte_range: node.start_byte()..node.end_byte(),
+        snippet: line_snippet(source, node.start_position().row),
+    }
+}
+
+fn late_local_var_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
+    ParseDiagnostic {
+        kind: "late_local_var_decl".to_string(),
+        message: "local variable declarations must precede executable statements".to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),
@@ -113,5 +160,39 @@ fn format_node(node: Node, depth: usize, output: &mut String) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         format_node(child, depth + 1, output);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::collect_diagnostics;
+
+    fn parse(source: &str) -> tree_sitter::Tree {
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_witcherscript::language())
+            .expect("failed to load WitcherScript grammar");
+        parser.parse(source, None).expect("failed to parse source")
+    }
+
+    #[test]
+    fn accepts_local_vars_before_statements() {
+        let source = "function Ok() {\n var a : int;\n // comment\n a = 1;\n}\n";
+        let tree = parse(source);
+
+        let diagnostics = collect_diagnostics(tree.root_node(), source);
+
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn reports_local_vars_after_statements() {
+        let source = "function Bad() {\n a = 1;\n // comment\n var b : int;\n}\n";
+        let tree = parse(source);
+
+        let diagnostics = collect_diagnostics(tree.root_node(), source);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].kind, "late_local_var_decl");
     }
 }

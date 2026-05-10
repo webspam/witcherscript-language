@@ -1,9 +1,9 @@
 # WitcherScript Parser Prototype
 
-Small Rust CLI for parsing WitcherScript (`.ws`) files with Tree-sitter.
+Small Rust CLI for parsing and validating WitcherScript (`.ws`) files with Tree-sitter.
 
 This is a syntax validator and parse-tree inspection tool. It is not a formatter, and it
-does not add semantic checks beyond Tree-sitter parse errors.
+does not build a lossy semantic AST.
 
 ## Usage
 
@@ -26,14 +26,19 @@ recursively for `.ws` files.
 
 Exit codes:
 
-- `0`: all parsed files have no Tree-sitter syntax errors.
-- `1`: one or more files parsed with syntax diagnostics.
+- `0`: all parsed files have no diagnostics.
+- `1`: one or more files parsed with syntax or validation diagnostics.
 - `2`: CLI, IO, setup, or parser initialisation error.
 
 ## Diagnostics
 
 Diagnostics include the file path, start line/column, end line/column, byte range, node
 kind, and a source-line snippet when available.
+
+Current validation rules:
+
+- Local `var` declarations must precede executable statements within each function block.
+  Blank lines, comments, and bare semicolons do not count as executable statements.
 
 `--dump-tree` prints a concrete syntax tree with node kinds plus line/column and byte
 ranges. This keeps comments, token positions, and concrete structure visible for future
@@ -51,12 +56,14 @@ Result: all 32 `.ws` files under `src/` and `debug/` parsed cleanly with
 `tree-sitter-witcherscript` tag `v0.13.0` from
 `https://github.com/webspam/tree-sitter-witcherscript`.
 
-No failing constructs were found in the local corpus during this pass.
+No syntax or local variable ordering failures were found in the local corpus during this
+pass.
 
 ## Caveats
 
-- This tool reports Tree-sitter parse errors only. It does not reject every construct that
-  the WitcherScript compiler or this repo's style rules may reject.
+- This tool reports Tree-sitter parse errors plus a small set of explicit validation rules.
+  It does not reject every construct that the WitcherScript compiler or this repo's style
+  rules may reject.
 - The current grammar accepts ternary expressions, even though this project treats
   ternaries as invalid WitcherScript. That is deliberately documented rather than patched
   in this prototype.
