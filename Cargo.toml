@@ -1,0 +1,12 @@
+[package]
+name = "witcherscript-parser"
+version = "0.1.0"
+edition = "2021"
+description = "Prototype WitcherScript parser and syntax validator for Light Rewrite"
+publish = false
+
+[dependencies]
+clap = { version = "4.5.51", features = ["derive"] }
+tree-sitter = "=0.22.6"
+tree-sitter-witcherscript = { git = "https://github.com/webspam/tree-sitter-witcherscript.git", tag = "v0.13.0" }
+walkdir = "2.5.0"
