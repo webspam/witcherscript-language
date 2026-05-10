@@ -10,3 +10,12 @@ clap = { version = "4.5.51", features = ["derive"] }
 tree-sitter = "=0.22.6"
 tree-sitter-witcherscript = { git = "https://github.com/webspam/tree-sitter-witcherscript.git", tag = "v0.13.0" }
 walkdir = "2.5.0"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true
+# Highest size optimisation without impacting speed
+opt-level = 3
+# Removes panic unwinding logic — smaller binary, but no Drop on panic, no std::panic::catch_unwind
+panic = "abort"
