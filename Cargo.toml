@@ -6,7 +6,15 @@ description = "Prototype WitcherScript parser and syntax validator for Light Rew
 publish = false
 
 [dependencies]
-clap = { version = "4.5.51", features = ["derive"] }
+# default-features = false drops colour, suggestions, env, wrap_help, unicode — smaller binary and fewer deps
+clap = { version = "4.5.51", default-features = false, features = [
+    "std",
+    "derive",
+    "help",
+    "usage",
+    "error-context",
+    "cargo",
+] }
 tree-sitter = "=0.22.6"
 tree-sitter-witcherscript = { git = "https://github.com/webspam/tree-sitter-witcherscript.git", tag = "v0.13.0" }
 walkdir = "2.5.0"
