@@ -1,13 +1,11 @@
-mod diagnostics;
-
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::Parser as ClapParser;
-use diagnostics::{collect_diagnostics, format_tree};
 use tree_sitter::Parser as TreeSitterParser;
 use walkdir::WalkDir;
+use witcherscript_parser::diagnostics::{collect_diagnostics, format_tree};
 
 #[derive(Debug, ClapParser)]
 #[command(author, version, about)]

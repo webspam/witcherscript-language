@@ -44,6 +44,12 @@ Current validation rules:
 ranges. This keeps comments, token positions, and concrete structure visible for future
 formatter experiments without introducing a lossy AST layer.
 
+## Tests
+
+Parser fixtures live under `tests/fixtures/valid` and `tests/fixtures/invalid`. Add `.ws`
+files there when covering larger WitcherScript examples; the unit tests discover those
+files automatically.
+
 ## Current Validation Result
 
 Validated against the local Light Rewrite corpus:
