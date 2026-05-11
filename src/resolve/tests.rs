@@ -792,6 +792,80 @@ fn resolves_chained_call_method() {
     assert_eq!(container.name, "Nest");
 }
 
+#[test]
+fn completion_after_dot_returns_public_members() {
+    let source = concat!(
+        "class CPlayer {\n",
+        "  public function GetHealth() : int {}\n",
+        "  private var mHp : int;\n",
+        "}\n",
+        "function Test() {\n",
+        "  var p : CPlayer;\n",
+        "  p.\n",
+        "}\n",
+    );
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+
+    // position is at the character after '.' on line 6
+    let members = super::completion_members(
+        "file:///test.ws",
+        &doc,
+        &SymbolDb::new(&index, &WorkspaceIndex::default()),
+        SourcePosition {
+            line: 6,
+            character: 4,
+        },
+    );
+
+    let names: Vec<&str> = members.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        names.contains(&"GetHealth"),
+        "public method should be in completions"
+    );
+    assert!(
+        !names.contains(&"mHp"),
+        "private field should not be in completions"
+    );
+}
+
+#[test]
+fn completion_includes_inherited_members() {
+    let source_a = concat!(
+        "class A extends B {\n",
+        "  public function Own() {}\n",
+        "}\n",
+        "function Test() {\n",
+        "  var a : A;\n",
+        "  a.\n",
+        "}\n",
+    );
+    let source_b = "class B {\n  public function Inherited() {}\n}\n";
+    let doc_a = parse_document(source_a).expect("parse should succeed");
+    let doc_b = parse_document(source_b).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///a.ws", &doc_a);
+    index.update_document("file:///b.ws", &doc_b);
+
+    let members = super::completion_members(
+        "file:///a.ws",
+        &doc_a,
+        &SymbolDb::new(&index, &WorkspaceIndex::default()),
+        SourcePosition {
+            line: 5,
+            character: 4,
+        },
+    );
+
+    let names: Vec<&str> = members.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(names.contains(&"Own"), "own method should appear");
+    assert!(
+        names.contains(&"Inherited"),
+        "inherited method should appear"
+    );
+}
+
 fn make_env(name: &str, type_name: &str) -> ScriptEnvironment {
     use crate::line_index::SourceRange;
     use crate::script_env::ScriptGlobal;

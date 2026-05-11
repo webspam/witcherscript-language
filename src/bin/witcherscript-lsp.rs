@@ -10,16 +10,17 @@ use serde_json::Value;
 use tokio::sync::{mpsc, Mutex};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
+    CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
     ConfigurationItem, Diagnostic, DiagnosticSeverity, DidChangeConfigurationParams,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverContents, HoverParams, InitializeParams, InitializeResult,
-    InitializedParams, Location, MarkupContent, MarkupKind, MessageType, OneOf, Position, Range,
-    ReferenceParams, RenameParams, SemanticToken, SemanticTokens, SemanticTokensFullOptions,
-    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit, WorkspaceFoldersServerCapabilities,
-    WorkspaceServerCapabilities,
+    DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
+    InitializeParams, InitializeResult, InitializedParams, Location, MarkupContent, MarkupKind,
+    MessageType, OneOf, Position, Range, ReferenceParams, RenameParams, SemanticToken,
+    SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
+    WorkspaceEdit, WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use tracing::field::{Field, Visit};
@@ -31,7 +32,8 @@ use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_file};
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{
-    find_references, hover_text, resolve_definition, Definition, SymbolDb, WorkspaceIndex,
+    completion_members, find_references, hover_text, resolve_definition, Definition, SymbolDb,
+    WorkspaceIndex,
 };
 use witcherscript_parser::script_env::{parse_script_environment, ScriptEnvironment};
 use witcherscript_parser::semantic_tokens::{
@@ -212,6 +214,10 @@ impl LanguageServer for Backend {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::FULL,
                 )),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(vec![".".to_string()]),
+                    ..CompletionOptions::default()
+                }),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Left(true)),
@@ -519,6 +525,27 @@ impl LanguageServer for Backend {
             ..WorkspaceEdit::default()
         }))
     }
+
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let documents = self.documents.lock().await;
+        let Some(document) = documents.get(&uri) else {
+            return Ok(None);
+        };
+        let workspace = self.workspace_index.lock().await;
+        let base = self.base_scripts_index.lock().await;
+        let script_env = self.script_env.lock().await;
+        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
+
+        let members = completion_members(uri.as_str(), document, &db, source_position(position));
+        if members.is_empty() {
+            return Ok(None);
+        }
+
+        let items: Vec<CompletionItem> = members.iter().map(completion_item).collect();
+        Ok(Some(CompletionResponse::Array(items)))
+    }
 }
 
 impl Backend {
@@ -798,6 +825,30 @@ fn source_position(position: Position) -> SourcePosition {
     }
 }
 
+fn completion_item(definition: &Definition) -> CompletionItem {
+    let symbol = &definition.symbol;
+    let kind = Some(match symbol.kind {
+        SymbolKind::Method | SymbolKind::Event => CompletionItemKind::METHOD,
+        SymbolKind::Field => CompletionItemKind::FIELD,
+        SymbolKind::Function => CompletionItemKind::FUNCTION,
+        _ => CompletionItemKind::TEXT,
+    });
+    let detail = symbol
+        .signature
+        .clone()
+        .or_else(|| symbol.type_annotation.clone());
+    CompletionItem {
+        label: symbol.name.clone(),
+        kind,
+        detail,
+        documentation: Some(Documentation::MarkupContent(MarkupContent {
+            kind: MarkupKind::Markdown,
+            value: hover_markdown(definition),
+        })),
+        ..CompletionItem::default()
+    }
+}
+
 fn hover_markdown(definition: &Definition) -> String {
     let mut markdown = format!("```witcherscript\n{}\n```", hover_text(definition));
     markdown.push_str(&format!(
@@ -883,7 +934,9 @@ mod tests {
     use witcherscript_parser::line_index::SourcePosition;
     use witcherscript_parser::resolve::{resolve_definition, SymbolDb, WorkspaceIndex};
 
-    use super::{document_symbols, hover_markdown, lsp_diagnostics, read_script_file};
+    use super::{
+        completion_item, document_symbols, hover_markdown, lsp_diagnostics, read_script_file,
+    };
 
     fn encode_utf16le(s: &str) -> Vec<u8> {
         let mut bytes = vec![0xFF, 0xFE]; // BOM
@@ -1133,6 +1186,40 @@ mod tests {
         );
         assert!(text.contains("ignore"), "field hover should include name");
         assert!(text.contains("bool"), "field hover should include type");
+    }
+
+    #[test]
+    fn completion_item_method_has_method_kind() {
+        use tower_lsp::lsp_types::CompletionItemKind;
+        use witcherscript_parser::resolve::{completion_members, SymbolDb, WorkspaceIndex};
+
+        let source = concat!(
+            "class CExample {\n",
+            "  public function DoThing() {}\n",
+            "}\n",
+            "function Test() {\n",
+            "  var e : CExample;\n",
+            "  e.\n",
+            "}\n",
+        );
+        let document = parse_document(source).expect("document should parse");
+        let mut workspace = WorkspaceIndex::default();
+        workspace.update_document("file:///example.ws", &document);
+
+        let members = completion_members(
+            "file:///example.ws",
+            &document,
+            &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
+            SourcePosition {
+                line: 5,
+                character: 4,
+            },
+        );
+
+        assert!(!members.is_empty(), "should have completion members");
+        let item = completion_item(&members[0]);
+        assert_eq!(item.label, "DoThing");
+        assert_eq!(item.kind, Some(CompletionItemKind::METHOD));
     }
 
     #[test]

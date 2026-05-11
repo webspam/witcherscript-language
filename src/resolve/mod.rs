@@ -64,6 +64,19 @@ impl<'a> SymbolDb<'a> {
             .find_member(container, name, min_access)
             .or_else(|| self.base.find_member(container, name, min_access))
     }
+
+    pub fn members_of(&self, container: &str, min_access: AccessLevel) -> Vec<Definition> {
+        let mut seen: HashMap<String, Definition> = HashMap::new();
+        for def in self
+            .workspace
+            .members_of(container, min_access)
+            .into_iter()
+            .chain(self.base.members_of(container, min_access))
+        {
+            seen.entry(def.symbol.name.clone()).or_insert(def);
+        }
+        seen.into_values().collect()
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -194,6 +207,40 @@ impl WorkspaceIndex {
         min_access: AccessLevel,
     ) -> Option<Definition> {
         self.find_member_in_chain(container_name, name, 0, min_access)
+    }
+
+    pub fn members_of(&self, container_name: &str, min_access: AccessLevel) -> Vec<Definition> {
+        self.members_of_chain(container_name, 0, min_access)
+    }
+
+    fn members_of_chain(
+        &self,
+        container_name: &str,
+        depth: usize,
+        min_access: AccessLevel,
+    ) -> Vec<Definition> {
+        if depth > 32 {
+            return vec![];
+        }
+        let mut result: Vec<Definition> = self
+            .member_by_type
+            .get(container_name)
+            .map(|m| {
+                m.values()
+                    .filter(|d| d.symbol.access >= min_access)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Some(superclass) = self.superclass_by_name.get(container_name).cloned() {
+            let deeper_min = min_access.max(AccessLevel::Protected);
+            for def in self.members_of_chain(&superclass, depth + 1, deeper_min) {
+                if !result.iter().any(|d| d.symbol.name == def.symbol.name) {
+                    result.push(def);
+                }
+            }
+        }
+        result
     }
 
     fn find_member_in_chain(
@@ -816,6 +863,92 @@ fn resolve_at_definition_site(
             uri: uri.to_string(),
             symbol,
         })
+}
+
+pub fn completion_members(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Vec<Definition> {
+    completion_members_inner(uri, document, db, position).unwrap_or_default()
+}
+
+fn completion_members_inner(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Option<Vec<Definition>> {
+    let byte_offset = document
+        .line_index
+        .position_to_byte(&document.source, position)?;
+
+    let src = document.source.as_bytes();
+
+    // Skip back over ident chars (cursor may be inside a partial member name).
+    let mut scan = byte_offset;
+    while scan > 0 && is_ident_byte(src[scan - 1]) {
+        scan -= 1;
+    }
+
+    // The character immediately before the (possibly partial) member name must be '.'.
+    let dot_byte = scan.checked_sub(1)?;
+    if src.get(dot_byte) != Some(&b'.') {
+        return None;
+    }
+
+    let before_dot = dot_byte.checked_sub(1)?;
+    let root = document.tree.root_node();
+    let node = root.descendant_for_byte_range(before_dot, before_dot)?;
+    let expr = climb_to_expression(node);
+
+    let type_name = match expr.kind() {
+        "super_expr" | "super" => {
+            let current_type = current_type_symbol(document, before_dot)?;
+            current_type
+                .detail
+                .as_deref()?
+                .strip_prefix("extends ")?
+                .to_string()
+        }
+        "parent_expr" | "parent" => {
+            let current_type = current_type_symbol(document, before_dot)?;
+            current_type
+                .detail
+                .as_deref()?
+                .strip_prefix("in ")?
+                .to_string()
+        }
+        _ => infer_expr_type(uri, document, db, expr, before_dot)?,
+    };
+
+    Some(db.members_of(&type_name, AccessLevel::Public))
+}
+
+fn climb_to_expression(node: Node) -> Node {
+    const EXPR_KINDS: &[&str] = &[
+        "ident",
+        "this_expr",
+        "super_expr",
+        "parent_expr",
+        "func_call_expr",
+        "member_access_expr",
+    ];
+    let mut current = node;
+    loop {
+        if EXPR_KINDS.contains(&current.kind()) {
+            return current;
+        }
+        match current.parent() {
+            Some(p) => current = p,
+            None => return node,
+        }
+    }
+}
+
+fn is_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
 }
 
 #[allow(dead_code)]
