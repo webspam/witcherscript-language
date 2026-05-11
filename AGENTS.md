@@ -43,7 +43,7 @@ The test suite includes:
 - `tests/language_features.rs` — integration tests for symbol extraction and definition
   resolution.
 
-When adding a new grammar construct or validation rule, add or update a fixture file and
+IMPORTANT: When adding a new grammar construct or validation rule, add or update a fixture file and
 a targeted unit test.
 
 ## Committing changes
