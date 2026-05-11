@@ -1,6 +1,6 @@
 use witcherscript_parser::document::parse_document;
 use witcherscript_parser::line_index::SourcePosition;
-use witcherscript_parser::resolve::{resolve_definition, WorkspaceIndex};
+use witcherscript_parser::resolve::{resolve_definition, SymbolDb, WorkspaceIndex};
 use witcherscript_parser::symbols::SymbolKind;
 
 #[test]
@@ -39,10 +39,11 @@ fn resolves_same_file_member_access_on_this() {
     let mut workspace = WorkspaceIndex::default();
     workspace.update_document("file:///example.ws", &document.symbols);
 
+    let empty = WorkspaceIndex::default();
     let definition = resolve_definition(
         "file:///example.ws",
         &document,
-        &workspace,
+        &SymbolDb::new(&workspace, &empty),
         SourcePosition {
             line: 3,
             character: 7,
@@ -63,10 +64,11 @@ fn resolves_workspace_top_level_symbols() {
     workspace.update_document("file:///library.ws", &library.symbols);
     workspace.update_document("file:///document.ws", &document.symbols);
 
+    let empty = WorkspaceIndex::default();
     let definition = resolve_definition(
         "file:///document.ws",
         &document,
-        &workspace,
+        &SymbolDb::new(&workspace, &empty),
         SourcePosition {
             line: 1,
             character: 15,
@@ -92,9 +94,13 @@ fn resolves_top_level_symbol_from_base_index() {
         line: 1,
         character: 10,
     }; // inside "CGameplayEntity"
-    let definition = resolve_definition("file:///user/mod.ws", &user_doc, &workspace, pos)
-        .or_else(|| resolve_definition("file:///user/mod.ws", &user_doc, &base, pos))
-        .expect("symbol should resolve from base index");
+    let definition = resolve_definition(
+        "file:///user/mod.ws",
+        &user_doc,
+        &SymbolDb::new(&workspace, &base),
+        pos,
+    )
+    .expect("symbol should resolve from base index");
 
     assert_eq!(definition.symbol.name, "CGameplayEntity");
     assert_eq!(definition.uri, "file:///base/gameplay.ws");
@@ -117,9 +123,13 @@ fn workspace_index_shadows_base_index_for_same_name() {
         line: 1,
         character: 10,
     }; // inside "CGameplayEntity"
-    let definition = resolve_definition("file:///user/mod.ws", &user_doc, &workspace, pos)
-        .or_else(|| resolve_definition("file:///user/mod.ws", &user_doc, &base, pos))
-        .expect("symbol should resolve");
+    let definition = resolve_definition(
+        "file:///user/mod.ws",
+        &user_doc,
+        &SymbolDb::new(&workspace, &base),
+        pos,
+    )
+    .expect("symbol should resolve");
 
     assert_eq!(definition.uri, "file:///user/override.ws");
 }
@@ -135,8 +145,12 @@ fn returns_none_when_symbol_absent_from_both_indexes() {
         line: 1,
         character: 10,
     }; // inside "CUnknown"
-    let definition = resolve_definition("file:///user/mod.ws", &user_doc, &workspace, pos)
-        .or_else(|| resolve_definition("file:///user/mod.ws", &user_doc, &base, pos));
+    let definition = resolve_definition(
+        "file:///user/mod.ws",
+        &user_doc,
+        &SymbolDb::new(&workspace, &base),
+        pos,
+    );
 
     assert!(definition.is_none());
 }
@@ -157,8 +171,12 @@ fn class_name_used_as_receiver_does_not_resolve() {
         line: 1,
         character: 12,
     }; // inside "value" in "CBaseClass.value"
-    let result = resolve_definition("file:///user/mod.ws", &user_doc, &workspace, pos)
-        .or_else(|| resolve_definition("file:///user/mod.ws", &user_doc, &base, pos));
+    let result = resolve_definition(
+        "file:///user/mod.ws",
+        &user_doc,
+        &SymbolDb::new(&workspace, &base),
+        pos,
+    );
 
     assert!(
         result.is_none(),

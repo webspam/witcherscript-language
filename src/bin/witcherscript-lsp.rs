@@ -625,7 +625,7 @@ mod tests {
     use tower_lsp::lsp_types::SymbolKind as LspSymbolKind;
     use witcherscript_parser::document::parse_document;
     use witcherscript_parser::line_index::SourcePosition;
-    use witcherscript_parser::resolve::{resolve_definition, WorkspaceIndex};
+    use witcherscript_parser::resolve::{resolve_definition, SymbolDb, WorkspaceIndex};
 
     use super::{document_symbols, hover_markdown, lsp_diagnostics, read_script_file};
 
@@ -731,7 +731,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///example.ws",
             &document,
-            &workspace,
+            &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 2,
                 character: 2,
@@ -759,7 +759,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///fov.ws",
             &document,
-            &workspace,
+            &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 1,
                 character: 9,
@@ -785,7 +785,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///example.ws",
             &document,
-            &workspace,
+            &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 1,
                 character: 2,
@@ -811,7 +811,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///example.ws",
             &document,
-            &workspace,
+            &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 1,
                 character: 17,
@@ -840,7 +840,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///a.ws",
             &doc_a,
-            &workspace,
+            &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 2,
                 character: 3,
@@ -862,7 +862,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///example.ws",
             &document,
-            &workspace,
+            &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 1,
                 character: 25,

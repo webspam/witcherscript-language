@@ -1,7 +1,7 @@
 use tree_sitter::Node;
 
 use crate::line_index::LineIndex;
-use crate::resolve::{SymbolDb, WorkspaceIndex};
+use crate::resolve::SymbolDb;
 use crate::symbols::{DocumentSymbols, SymbolKind};
 
 pub const TOKEN_TYPES: &[&str] = &[
@@ -552,14 +552,14 @@ mod tests {
         let base_tree = parse(base_source);
         let base_index = LineIndex::new(base_source);
         let base_symbols = extract_symbols(base_tree.root_node(), base_source, &base_index);
-        let mut base = super::WorkspaceIndex::default();
+        let mut base = WorkspaceIndex::default();
         base.update_document("file:///base/CActor.ws", &base_symbols);
 
         let source = "class SomeClass {\n  var actor : CActor;\n}\n";
         let tree = parse(source);
         let index = LineIndex::new(source);
         let symbols = extract_symbols(tree.root_node(), source, &index);
-        let empty = super::WorkspaceIndex::default();
+        let empty = WorkspaceIndex::default();
         let db = SymbolDb::new(&empty, &base);
         let data = collect_semantic_tokens(tree.root_node(), source, &index, &symbols, &db);
         let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
