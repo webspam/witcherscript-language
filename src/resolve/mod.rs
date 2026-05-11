@@ -1,0 +1,705 @@
+use std::collections::HashMap;
+
+use tree_sitter::Node;
+
+use crate::document::ParsedDocument;
+use crate::line_index::{SourcePosition, SourceRange};
+use crate::script_env::ScriptEnvironment;
+use crate::symbols::{AccessLevel, DocumentSymbols, Symbol, SymbolId, SymbolKind};
+
+#[derive(Debug, Clone)]
+pub struct Definition {
+    pub uri: String,
+    pub symbol: Symbol,
+}
+
+pub struct SymbolDb<'a> {
+    workspace: &'a WorkspaceIndex,
+    base: &'a WorkspaceIndex,
+    script_env: Option<&'a ScriptEnvironment>,
+}
+
+impl<'a> SymbolDb<'a> {
+    pub fn new(workspace: &'a WorkspaceIndex, base: &'a WorkspaceIndex) -> Self {
+        Self {
+            workspace,
+            base,
+            script_env: None,
+        }
+    }
+
+    pub fn with_script_env(mut self, env: &'a ScriptEnvironment) -> Self {
+        self.script_env = Some(env);
+        self
+    }
+
+    fn find_script_global(&self, name: &str) -> Option<Definition> {
+        let g = self.script_env?.find(name)?;
+        if let Some(class_def) = self.find_top_level(&g.type_name) {
+            return Some(class_def);
+        }
+        Some(Definition {
+            uri: g.ini_uri.clone(),
+            symbol: g.symbol.clone(),
+        })
+    }
+
+    fn script_global_type(&self, name: &str) -> Option<String> {
+        self.script_env?.find(name).map(|g| g.type_name.clone())
+    }
+
+    pub fn find_top_level(&self, name: &str) -> Option<Definition> {
+        self.workspace
+            .find_top_level(name)
+            .or_else(|| self.base.find_top_level(name))
+    }
+
+    pub fn find_member(
+        &self,
+        container: &str,
+        name: &str,
+        min_access: AccessLevel,
+    ) -> Option<Definition> {
+        self.workspace
+            .find_member(container, name, min_access)
+            .or_else(|| self.base.find_member(container, name, min_access))
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct WorkspaceIndex {
+    documents: HashMap<String, Vec<Symbol>>,
+}
+
+impl WorkspaceIndex {
+    pub fn update_document(&mut self, uri: impl Into<String>, symbols: &DocumentSymbols) {
+        self.documents.insert(uri.into(), symbols.all().to_vec());
+    }
+
+    pub fn remove_document(&mut self, uri: &str) {
+        self.documents.remove(uri);
+    }
+
+    pub fn find_top_level(&self, name: &str) -> Option<Definition> {
+        self.documents.iter().find_map(|(uri, symbols)| {
+            symbols
+                .iter()
+                .find(|symbol| symbol.container.is_none() && symbol.name == name)
+                .cloned()
+                .map(|symbol| Definition {
+                    uri: uri.clone(),
+                    symbol,
+                })
+        })
+    }
+
+    pub fn find_member(
+        &self,
+        container_name: &str,
+        name: &str,
+        min_access: AccessLevel,
+    ) -> Option<Definition> {
+        self.find_member_in_chain(container_name, name, 0, min_access)
+    }
+
+    fn find_member_in_chain(
+        &self,
+        container_name: &str,
+        name: &str,
+        depth: usize,
+        min_access: AccessLevel,
+    ) -> Option<Definition> {
+        if depth > 32 {
+            return None;
+        }
+        let direct = self.documents.iter().find_map(|(uri, symbols)| {
+            let container = symbols
+                .iter()
+                .find(|symbol| symbol.name == container_name && is_type_like(symbol.kind))?;
+            symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.container == Some(container.id)
+                        && symbol.name == name
+                        && symbol.access >= min_access
+                })
+                .cloned()
+                .map(|symbol| Definition {
+                    uri: uri.clone(),
+                    symbol,
+                })
+        });
+        if direct.is_some() {
+            return direct;
+        }
+        let superclass = self.superclass_of(container_name)?;
+        let deeper_min = min_access.max(AccessLevel::Protected);
+        self.find_member_in_chain(&superclass, name, depth + 1, deeper_min)
+    }
+
+    fn superclass_of(&self, name: &str) -> Option<String> {
+        self.documents.iter().find_map(|(_, symbols)| {
+            symbols
+                .iter()
+                .find(|s| s.name == name && is_type_like(s.kind))
+                .and_then(|s| {
+                    s.detail
+                        .as_deref()
+                        .and_then(|d| d.strip_prefix("extends "))
+                        .map(|base| base.to_string())
+                })
+        })
+    }
+}
+
+pub fn resolve_definition(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Option<Definition> {
+    let byte_offset = document
+        .line_index
+        .position_to_byte(&document.source, position)?;
+
+    if let Some(def) = resolve_self_keyword(uri, document, db, byte_offset) {
+        return Some(def);
+    }
+
+    let ident = identifier_at(document.tree.root_node(), byte_offset)?;
+    let name = ident.utf8_text(document.source.as_bytes()).ok()?;
+
+    if let Some(member_access) = ident.parent().filter(|p| p.kind() == "member_access_expr") {
+        let is_receiver = first_named_child(member_access)
+            .map(|r| r.id() == ident.id())
+            .unwrap_or(false);
+        if !is_receiver {
+            return resolve_member_access(uri, document, db, ident, name);
+        }
+    }
+
+    resolve_local_or_parameter(uri, document, byte_offset, name)
+        .or_else(|| resolve_current_type_member(uri, document, db, byte_offset, name))
+        .or_else(|| resolve_document_top_level(uri, document, name))
+        .or_else(|| db.find_top_level(name))
+        .or_else(|| db.find_script_global(name))
+        .or_else(|| resolve_at_definition_site(uri, document, byte_offset, name))
+}
+
+pub fn hover_text(definition: &Definition) -> String {
+    let symbol = &definition.symbol;
+    let mut lines = Vec::new();
+
+    if !symbol.annotations.is_empty() {
+        let annotations = symbol
+            .annotations
+            .iter()
+            .map(|annotation| match &annotation.argument {
+                Some(argument) => format!("@{}({argument})", annotation.name),
+                None => format!("@{}", annotation.name),
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(annotations);
+    }
+
+    match symbol.kind {
+        SymbolKind::Method => {
+            let params_and_return = symbol
+                .signature
+                .as_deref()
+                .and_then(|sig| sig.find('(').map(|i| &sig[i..]))
+                .unwrap_or("");
+            let class_prefix = symbol
+                .container_name
+                .as_deref()
+                .map(|cn| format!("{cn}."))
+                .unwrap_or_default();
+            lines.push(format!(
+                "(method) {}{}{}",
+                class_prefix, symbol.name, params_and_return
+            ));
+        }
+        SymbolKind::Field => {
+            if let Some(sig) = &symbol.signature {
+                lines.push(format!("(field) {sig}"));
+            } else if let Some(type_annotation) = &symbol.type_annotation {
+                lines.push(format!("(field) {} : {type_annotation}", symbol.name));
+            } else {
+                lines.push(format!("(field) {}", symbol.name));
+            }
+        }
+        _ => {
+            let label = match symbol.kind {
+                SymbolKind::Class => "class",
+                SymbolKind::Struct => "struct",
+                SymbolKind::Enum => "enum",
+                SymbolKind::EnumVariant => "enum variant",
+                SymbolKind::Function => "function",
+                SymbolKind::Variable => "var",
+                SymbolKind::Parameter => "(parameter)",
+                SymbolKind::State => "state",
+                SymbolKind::Event => "event",
+                SymbolKind::Method | SymbolKind::Field => unreachable!(),
+            };
+            if let Some(signature) = &symbol.signature {
+                lines.push(signature.clone());
+            } else if let Some(type_annotation) = &symbol.type_annotation {
+                lines.push(format!("{label} {} : {type_annotation}", symbol.name));
+            } else {
+                lines.push(format!("{label} {}", symbol.name));
+            }
+            if let Some(detail) = &symbol.detail {
+                lines.push(detail.clone());
+            }
+        }
+    }
+
+    lines.join("\n")
+}
+
+fn infer_expr_type(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    node: Node,
+    context_byte: usize,
+) -> Option<String> {
+    match node.kind() {
+        "ident" => {
+            let name = node.utf8_text(document.source.as_bytes()).ok()?;
+            resolve_local_or_parameter(uri, document, context_byte, name)
+                .or_else(|| {
+                    let current_type = current_type_name(document, context_byte)?;
+                    resolve_document_member(
+                        uri,
+                        document,
+                        &current_type,
+                        name,
+                        AccessLevel::Private,
+                    )
+                    .or_else(|| db.find_member(&current_type, name, AccessLevel::Private))
+                })
+                .or_else(|| resolve_document_top_level(uri, document, name))
+                .or_else(|| db.find_top_level(name))
+                .and_then(|def| def.symbol.type_annotation)
+                .or_else(|| db.script_global_type(name))
+        }
+        "func_call_expr" => {
+            let func = node
+                .child_by_field_name("func")
+                .or_else(|| first_named_child(node))?;
+            infer_expr_type(uri, document, db, func, context_byte)
+        }
+        "member_access_expr" => {
+            let accessor = first_named_child(node)?;
+            let member = node.child_by_field_name("member").or_else(|| {
+                let mut cursor = node.walk();
+                let child = node.named_children(&mut cursor).nth(1);
+                child
+            })?;
+            if member.kind() != "ident" {
+                return None;
+            }
+            let member_name = member.utf8_text(document.source.as_bytes()).ok()?;
+            let container_type = infer_expr_type(uri, document, db, accessor, context_byte)?;
+            let def = resolve_document_member(
+                uri,
+                document,
+                &container_type,
+                member_name,
+                AccessLevel::Public,
+            )
+            .or_else(|| db.find_member(&container_type, member_name, AccessLevel::Public))?;
+            def.symbol.type_annotation
+        }
+        "this_expr" => current_type_name(document, context_byte),
+        _ => None,
+    }
+}
+
+fn resolve_member_access(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    ident: Node,
+    name: &str,
+) -> Option<Definition> {
+    let parent = ident.parent()?;
+    if parent.kind() != "member_access_expr" {
+        return None;
+    }
+
+    let receiver = first_named_child(parent)?;
+    match receiver.kind() {
+        "this_expr" => {
+            let current_type = current_type_name(document, ident.start_byte())?;
+            resolve_document_member(uri, document, &current_type, name, AccessLevel::Private)
+                .or_else(|| db.find_member(&current_type, name, AccessLevel::Private))
+        }
+        "super_expr" => {
+            let current_type = current_type_symbol(document, ident.start_byte())?;
+            let base_name = current_type.detail.as_deref()?.strip_prefix("extends ")?;
+            db.find_member(base_name, name, AccessLevel::Protected)
+        }
+        "parent_expr" => {
+            let current_type = current_type_symbol(document, ident.start_byte())?;
+            let owner_name = current_type.detail.as_deref()?.strip_prefix("in ")?;
+            db.find_member(owner_name, name, AccessLevel::Public)
+        }
+        "ident" => {
+            let receiver_name = receiver.utf8_text(document.source.as_bytes()).ok()?;
+            let type_name =
+                resolve_local_or_parameter(uri, document, ident.start_byte(), receiver_name)
+                    .or_else(|| {
+                        let current_type = current_type_name(document, ident.start_byte())?;
+                        resolve_document_member(
+                            uri,
+                            document,
+                            &current_type,
+                            receiver_name,
+                            AccessLevel::Private,
+                        )
+                        .or_else(|| {
+                            db.find_member(&current_type, receiver_name, AccessLevel::Private)
+                        })
+                    })
+                    .and_then(|def| def.symbol.type_annotation)
+                    .or_else(|| db.script_global_type(receiver_name))?;
+            resolve_document_member(uri, document, &type_name, name, AccessLevel::Public)
+                .or_else(|| db.find_member(&type_name, name, AccessLevel::Public))
+        }
+        "func_call_expr" | "member_access_expr" => {
+            let type_name = infer_expr_type(uri, document, db, receiver, ident.start_byte())?;
+            resolve_document_member(uri, document, &type_name, name, AccessLevel::Public)
+                .or_else(|| db.find_member(&type_name, name, AccessLevel::Public))
+        }
+        _ => None,
+    }
+}
+
+fn resolve_local_or_parameter(
+    uri: &str,
+    document: &ParsedDocument,
+    byte_offset: usize,
+    name: &str,
+) -> Option<Definition> {
+    let function = document.symbols.enclosing_symbol_at(
+        byte_offset,
+        &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
+    )?;
+    document
+        .symbols
+        .children_of(Some(function.id))
+        .filter(|symbol| {
+            matches!(symbol.kind, SymbolKind::Variable | SymbolKind::Parameter)
+                && symbol.name == name
+                && symbol.selection_byte_range.start <= byte_offset
+        })
+        .max_by_key(|symbol| symbol.selection_byte_range.start)
+        .cloned()
+        .map(|symbol| Definition {
+            uri: uri.to_string(),
+            symbol,
+        })
+}
+
+fn resolve_current_type_member(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_offset: usize,
+    name: &str,
+) -> Option<Definition> {
+    let current_type = current_type_name(document, byte_offset)?;
+    resolve_document_member(uri, document, &current_type, name, AccessLevel::Private)
+        .or_else(|| db.find_member(&current_type, name, AccessLevel::Private))
+}
+
+fn resolve_document_member(
+    uri: &str,
+    document: &ParsedDocument,
+    container_name: &str,
+    name: &str,
+    min_access: AccessLevel,
+) -> Option<Definition> {
+    let container = document
+        .symbols
+        .all()
+        .iter()
+        .find(|symbol| symbol.name == container_name && is_type_like(symbol.kind))?;
+    document
+        .symbols
+        .children_of(Some(container.id))
+        .find(|symbol| symbol.name == name && symbol.access >= min_access)
+        .cloned()
+        .map(|symbol| Definition {
+            uri: uri.to_string(),
+            symbol,
+        })
+}
+
+fn resolve_document_top_level(
+    uri: &str,
+    document: &ParsedDocument,
+    name: &str,
+) -> Option<Definition> {
+    document
+        .symbols
+        .children_of(None)
+        .find(|symbol| symbol.name == name)
+        .cloned()
+        .map(|symbol| Definition {
+            uri: uri.to_string(),
+            symbol,
+        })
+}
+
+fn current_type_name(document: &ParsedDocument, byte_offset: usize) -> Option<String> {
+    current_type_symbol(document, byte_offset).map(|symbol| symbol.name.clone())
+}
+
+fn current_type_symbol(document: &ParsedDocument, byte_offset: usize) -> Option<&Symbol> {
+    document.symbols.enclosing_symbol_at(
+        byte_offset,
+        &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
+    )
+}
+
+fn identifier_at(root: Node, byte_offset: usize) -> Option<Node> {
+    for offset in [byte_offset, byte_offset.saturating_sub(1)] {
+        let node = root.descendant_for_byte_range(offset, offset)?;
+        if node.kind() == "ident" {
+            return Some(node);
+        }
+        let mut current = node;
+        while let Some(parent) = current.parent() {
+            if parent.kind() == "ident" {
+                return Some(parent);
+            }
+            current = parent;
+        }
+        if offset == 0 {
+            break;
+        }
+    }
+
+    None
+}
+
+fn first_named_child(node: Node) -> Option<Node> {
+    let mut cursor = node.walk();
+    let child = node.named_children(&mut cursor).next();
+    child
+}
+
+fn is_type_like(kind: SymbolKind) -> bool {
+    matches!(
+        kind,
+        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
+    )
+}
+
+enum SearchScope {
+    AllDocuments,
+    SingleFile,
+    SingleFileRange(std::ops::Range<usize>),
+}
+
+fn definition_search_scope(
+    definition: &Definition,
+    definition_document: &ParsedDocument,
+) -> SearchScope {
+    let container_range = || {
+        definition
+            .symbol
+            .container
+            .and_then(|id| definition_document.symbols.by_id(id))
+            .map(|container| container.byte_range.clone())
+    };
+
+    match definition.symbol.kind {
+        SymbolKind::Variable | SymbolKind::Parameter => match container_range() {
+            Some(r) => SearchScope::SingleFileRange(r),
+            None => SearchScope::SingleFile,
+        },
+        SymbolKind::Method | SymbolKind::Field
+            if definition.symbol.access == AccessLevel::Private =>
+        {
+            match container_range() {
+                Some(r) => SearchScope::SingleFileRange(r),
+                None => SearchScope::SingleFile,
+            }
+        }
+        _ => SearchScope::AllDocuments,
+    }
+}
+
+pub fn find_references(
+    definition: &Definition,
+    definition_document: &ParsedDocument,
+    search_documents: &[(&str, &ParsedDocument)],
+    db: &SymbolDb,
+    include_declaration: bool,
+) -> Vec<(String, SourceRange)> {
+    let name = &definition.symbol.name;
+    let scope = definition_search_scope(definition, definition_document);
+
+    let mut results = Vec::new();
+
+    for (uri, document) in search_documents {
+        let scan_range: Option<&std::ops::Range<usize>> = match &scope {
+            SearchScope::AllDocuments => None,
+            SearchScope::SingleFile => {
+                if *uri != definition.uri.as_str() {
+                    continue;
+                }
+                None
+            }
+            SearchScope::SingleFileRange(r) => {
+                if *uri != definition.uri.as_str() {
+                    continue;
+                }
+                Some(r)
+            }
+        };
+
+        let mut byte_ranges: Vec<std::ops::Range<usize>> = Vec::new();
+        collect_ident_occurrences(
+            document.tree.root_node(),
+            document.source.as_bytes(),
+            name,
+            scan_range,
+            &mut byte_ranges,
+        );
+
+        for byte_range in byte_ranges {
+            // Semantic verification: resolve the candidate and confirm it points
+            // at the same definition (same file + same selection range).
+            let position = document
+                .line_index
+                .byte_to_position(&document.source, byte_range.start);
+            let resolved = resolve_definition(uri, document, db, position);
+            match resolved {
+                Some(ref r)
+                    if r.uri == definition.uri
+                        && r.symbol.selection_byte_range
+                            == definition.symbol.selection_byte_range => {}
+                _ => continue,
+            }
+
+            if !include_declaration
+                && *uri == definition.uri.as_str()
+                && byte_range == definition.symbol.selection_byte_range
+            {
+                continue;
+            }
+            let range = document.line_index.byte_range_to_range(
+                &document.source,
+                byte_range.start,
+                byte_range.end,
+            );
+            results.push((uri.to_string(), range));
+        }
+    }
+
+    results
+}
+
+fn collect_ident_occurrences<'tree>(
+    node: Node<'tree>,
+    source: &[u8],
+    name: &str,
+    scope: Option<&std::ops::Range<usize>>,
+    results: &mut Vec<std::ops::Range<usize>>,
+) {
+    if let Some(s) = scope {
+        if node.end_byte() <= s.start || node.start_byte() >= s.end {
+            return;
+        }
+    }
+    if node.kind() == "ident" && node.utf8_text(source).ok() == Some(name) {
+        results.push(node.start_byte()..node.end_byte());
+        return;
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_ident_occurrences(child, source, name, scope, results);
+    }
+}
+
+fn resolve_self_keyword(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_offset: usize,
+) -> Option<Definition> {
+    let root = document.tree.root_node();
+    let node = [byte_offset, byte_offset.saturating_sub(1)]
+        .into_iter()
+        .find_map(|offset| root.descendant_for_byte_range(offset, offset))?;
+
+    let parent_kind = node.parent().map(|p| p.kind());
+
+    let is_this = node.kind() == "this" || matches!(parent_kind, Some("this_expr"));
+    let is_super = node.kind() == "super" || matches!(parent_kind, Some("super_expr"));
+    let is_parent = node.kind() == "parent" || matches!(parent_kind, Some("parent_expr"));
+
+    if is_this {
+        let current_type = current_type_symbol(document, byte_offset)?;
+        return resolve_document_top_level(uri, document, &current_type.name.clone())
+            .or_else(|| db.find_top_level(&current_type.name));
+    }
+
+    if is_super {
+        let current_type = current_type_symbol(document, byte_offset)?;
+        let base_name = current_type
+            .detail
+            .as_deref()
+            .and_then(|d| d.strip_prefix("extends "))?;
+        return resolve_document_top_level(uri, document, base_name)
+            .or_else(|| db.find_top_level(base_name));
+    }
+
+    if is_parent {
+        let current_type = current_type_symbol(document, byte_offset)?;
+        let owner_name = current_type
+            .detail
+            .as_deref()
+            .and_then(|d| d.strip_prefix("in "))?;
+        return resolve_document_top_level(uri, document, owner_name)
+            .or_else(|| db.find_top_level(owner_name));
+    }
+
+    None
+}
+
+fn resolve_at_definition_site(
+    uri: &str,
+    document: &ParsedDocument,
+    byte_offset: usize,
+    name: &str,
+) -> Option<Definition> {
+    document
+        .symbols
+        .all()
+        .iter()
+        .find(|symbol| {
+            symbol.name == name
+                && symbol.selection_byte_range.start <= byte_offset
+                && byte_offset < symbol.selection_byte_range.end
+        })
+        .cloned()
+        .map(|symbol| Definition {
+            uri: uri.to_string(),
+            symbol,
+        })
+}
+
+#[allow(dead_code)]
+fn symbol_id(symbol: &Symbol) -> SymbolId {
+    symbol.id
+}
+
+#[cfg(test)]
+mod tests;
