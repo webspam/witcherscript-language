@@ -20,7 +20,7 @@ use tower_lsp::lsp_types::{
     TextDocumentSyncKind, Url, WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
-use tracing::{error, warn};
+use tracing::{debug, error, info, warn};
 use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_file};
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
@@ -61,6 +61,8 @@ impl LanguageServer for Backend {
         }
 
         let roots = workspace_roots(params);
+        let game_dir = self.base_scripts_path.lock().await.clone();
+        info!(roots = ?roots, game_dir = ?game_dir, "LSP initialize");
         *self.workspace_roots.lock().await = roots;
 
         Ok(InitializeResult {
@@ -354,11 +356,16 @@ impl Backend {
             return;
         }
 
+        info!(roots = ?roots, "indexing workspace");
+        let start = Instant::now();
+
         let Ok(files) = collect_witcherscript_files(&roots) else {
             warn!("failed to collect workspace files");
             return;
         };
 
+        let file_count = files.len();
+        let mut indexed = 0usize;
         let mut index = self.workspace_index.lock().await;
         let mut docs = self.workspace_documents.lock().await;
         for path in files {
@@ -374,9 +381,18 @@ impl Backend {
                 warn!(path = %path.display(), "failed to convert path to URI");
                 continue;
             };
+            debug!(uri = %uri, "indexed workspace file");
             index.update_document(uri.as_str(), &document);
             docs.insert(uri.to_string(), document);
+            indexed += 1;
         }
+
+        info!(
+            indexed,
+            file_count,
+            elapsed_ms = start.elapsed().as_millis(),
+            "workspace indexed"
+        );
     }
 
     /// Pull `witcherscript.gameDirectory` from the client via `workspace/configuration`.
@@ -414,6 +430,7 @@ impl Backend {
 
         let path = game_dir.join(r"content\content0\scripts");
 
+        info!(path = %path.display(), "indexing base scripts");
         self.client
             .log_message(
                 MessageType::INFO,
@@ -454,12 +471,14 @@ impl Backend {
             }
         }
 
+        let elapsed_ms = start.elapsed().as_millis();
+        info!(indexed, file_count, elapsed_ms, "base scripts indexed");
         self.client
             .log_message(
                 MessageType::INFO,
                 format!(
                     "Base scripts indexed: {indexed}/{file_count} files in {:.1}s",
-                    start.elapsed().as_secs_f32()
+                    elapsed_ms as f32 / 1000.0
                 ),
             )
             .await;
