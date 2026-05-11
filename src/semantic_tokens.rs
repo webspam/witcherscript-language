@@ -431,7 +431,10 @@ mod tests {
         let source = "function F() { if (true) { return; } }\n";
         let data = tokens_for(source);
         let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
-        assert!(!types.is_empty(), "expected some tokens for control flow source");
+        assert!(
+            !types.is_empty(),
+            "expected some tokens for control flow source"
+        );
     }
 
     #[test]

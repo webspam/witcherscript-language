@@ -471,6 +471,41 @@ fn is_type_like(kind: SymbolKind) -> bool {
     )
 }
 
+enum SearchScope {
+    AllDocuments,
+    SingleFile,
+    SingleFileRange(std::ops::Range<usize>),
+}
+
+fn definition_search_scope(
+    definition: &Definition,
+    definition_document: &ParsedDocument,
+) -> SearchScope {
+    let container_range = || {
+        definition
+            .symbol
+            .container
+            .and_then(|id| definition_document.symbols.by_id(id))
+            .map(|container| container.byte_range.clone())
+    };
+
+    match definition.symbol.kind {
+        SymbolKind::Variable | SymbolKind::Parameter => match container_range() {
+            Some(r) => SearchScope::SingleFileRange(r),
+            None => SearchScope::SingleFile,
+        },
+        SymbolKind::Method | SymbolKind::Field
+            if definition.symbol.access == AccessLevel::Private =>
+        {
+            match container_range() {
+                Some(r) => SearchScope::SingleFileRange(r),
+                None => SearchScope::SingleFile,
+            }
+        }
+        _ => SearchScope::AllDocuments,
+    }
+}
+
 pub fn find_references(
     definition: &Definition,
     definition_document: &ParsedDocument,
@@ -479,38 +514,33 @@ pub fn find_references(
     include_declaration: bool,
 ) -> Vec<(String, SourceRange)> {
     let name = &definition.symbol.name;
-
-    // Variables and parameters cannot be referenced outside their file.
-    let locals_only = matches!(
-        definition.symbol.kind,
-        SymbolKind::Variable | SymbolKind::Parameter
-    );
-
-    // For locals/parameters, restrict the text scan to the enclosing function's
-    // byte range so we skip irrelevant regions quickly before semantic verification.
-    let scan_scope: Option<std::ops::Range<usize>> = if locals_only {
-        definition
-            .symbol
-            .container
-            .and_then(|id| definition_document.symbols.by_id(id))
-            .map(|container| container.byte_range.clone())
-    } else {
-        None
-    };
+    let scope = definition_search_scope(definition, definition_document);
 
     let mut results = Vec::new();
 
     for (uri, document) in search_documents {
-        if locals_only && *uri != definition.uri.as_str() {
-            continue;
-        }
+        let scan_range: Option<&std::ops::Range<usize>> = match &scope {
+            SearchScope::AllDocuments => None,
+            SearchScope::SingleFile => {
+                if *uri != definition.uri.as_str() {
+                    continue;
+                }
+                None
+            }
+            SearchScope::SingleFileRange(r) => {
+                if *uri != definition.uri.as_str() {
+                    continue;
+                }
+                Some(r)
+            }
+        };
 
         let mut byte_ranges: Vec<std::ops::Range<usize>> = Vec::new();
         collect_ident_occurrences(
             document.tree.root_node(),
             document.source.as_bytes(),
             name,
-            scan_scope.as_ref(),
+            scan_range,
             &mut byte_ranges,
         );
 
@@ -1351,6 +1381,53 @@ mod tests {
         let container_id = definition.symbol.container.expect("method has a container");
         let container = doc.symbols.by_id(container_id).expect("container exists");
         assert_eq!(container.name, "Duck");
+    }
+
+    #[test]
+    fn find_references_for_private_member_scoped_to_defining_file() {
+        let source_a = concat!(
+            "class A {\n",
+            "  private function Secret() {}\n",
+            "  function Test() {\n",
+            "    this.Secret();\n",
+            "  }\n",
+            "}\n",
+        );
+        let source_b = "function Secret() {}\n";
+        let doc_a = parse_document(source_a).expect("parse should succeed");
+        let doc_b = parse_document(source_b).expect("parse should succeed");
+
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///a.ws", &doc_a.symbols);
+        index.update_document("file:///b.ws", &doc_b.symbols);
+        let base = WorkspaceIndex::default();
+        let db = SymbolDb::new(&index, &base);
+
+        // Resolve definition of 'Secret' at declaration site (line 1, col 20)
+        // "  private function Secret() {}" — 'S' is at col 19
+        let definition = resolve_definition(
+            "file:///a.ws",
+            &doc_a,
+            &db,
+            SourcePosition {
+                line: 1,
+                character: 20,
+            },
+        )
+        .expect("private method should resolve at definition site");
+
+        assert_eq!(definition.symbol.name, "Secret");
+        assert_eq!(definition.symbol.kind, crate::symbols::SymbolKind::Method);
+
+        let search_docs = vec![("file:///a.ws", &doc_a), ("file:///b.ws", &doc_b)];
+        let refs = super::find_references(&definition, &doc_a, &search_docs, &db, false);
+
+        // Only the call site in a.ws should appear; the top-level function in b.ws must not
+        assert_eq!(refs.len(), 1, "reference in b.ws must not be included");
+        assert!(
+            refs[0].0 == "file:///a.ws",
+            "sole reference must be in the defining file"
+        );
     }
 
     #[test]
