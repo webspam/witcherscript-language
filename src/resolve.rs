@@ -40,7 +40,19 @@ impl WorkspaceIndex {
     }
 
     pub fn find_member(&self, container_name: &str, name: &str) -> Option<Definition> {
-        self.documents.iter().find_map(|(uri, symbols)| {
+        self.find_member_in_chain(container_name, name, 0)
+    }
+
+    fn find_member_in_chain(
+        &self,
+        container_name: &str,
+        name: &str,
+        depth: usize,
+    ) -> Option<Definition> {
+        if depth > 32 {
+            return None;
+        }
+        let direct = self.documents.iter().find_map(|(uri, symbols)| {
             let container = symbols
                 .iter()
                 .find(|symbol| symbol.name == container_name && is_type_like(symbol.kind))?;
@@ -51,6 +63,25 @@ impl WorkspaceIndex {
                 .map(|symbol| Definition {
                     uri: uri.clone(),
                     symbol,
+                })
+        });
+        if direct.is_some() {
+            return direct;
+        }
+        let superclass = self.superclass_of(container_name)?;
+        self.find_member_in_chain(&superclass, name, depth + 1)
+    }
+
+    fn superclass_of(&self, name: &str) -> Option<String> {
+        self.documents.iter().find_map(|(_, symbols)| {
+            symbols
+                .iter()
+                .find(|s| s.name == name && is_type_like(s.kind))
+                .and_then(|s| {
+                    s.detail
+                        .as_deref()
+                        .and_then(|d| d.strip_prefix("extends "))
+                        .map(|base| base.to_string())
                 })
         })
     }
@@ -73,7 +104,7 @@ pub fn resolve_definition(
     }
 
     resolve_local_or_parameter(uri, document, byte_offset, name)
-        .or_else(|| resolve_current_type_member(uri, document, byte_offset, name))
+        .or_else(|| resolve_current_type_member(uri, document, workspace, byte_offset, name))
         .or_else(|| resolve_document_top_level(uri, document, name))
         .or_else(|| workspace.find_top_level(name))
         .or_else(|| resolve_at_definition_site(uri, document, byte_offset, name))
@@ -186,11 +217,13 @@ fn resolve_local_or_parameter(
 fn resolve_current_type_member(
     uri: &str,
     document: &ParsedDocument,
+    workspace: &WorkspaceIndex,
     byte_offset: usize,
     name: &str,
 ) -> Option<Definition> {
     let current_type = current_type_name(document, byte_offset)?;
     resolve_document_member(uri, document, &current_type, name)
+        .or_else(|| workspace.find_member(&current_type, name))
 }
 
 fn resolve_document_member(
@@ -593,6 +626,91 @@ mod tests {
         );
         // Should find x in Outer() only: the declaration and the assignment
         assert_eq!(refs.len(), 2, "x in Other() should not be included");
+    }
+
+    #[test]
+    fn resolves_inherited_method_via_workspace() {
+        let source_a = "class A extends B {\n function Test() {\n  Inherited();\n }\n}\n";
+        let source_b = "class B {\n function Inherited() {}\n}\n";
+        let doc_a = parse_document(source_a).expect("parse should succeed");
+        let doc_b = parse_document(source_b).expect("parse should succeed");
+
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///a.ws", &doc_a.symbols);
+        index.update_document("file:///b.ws", &doc_b.symbols);
+
+        let definition = resolve_definition(
+            "file:///a.ws",
+            &doc_a,
+            &index,
+            SourcePosition {
+                line: 2,
+                character: 3,
+            },
+        )
+        .expect("inherited method should resolve");
+
+        assert_eq!(definition.symbol.name, "Inherited");
+        assert_eq!(definition.symbol.kind, crate::symbols::SymbolKind::Method);
+    }
+
+    #[test]
+    fn class_without_explicit_extends_defaults_to_cobject() {
+        let doc = parse_document("class A {}").expect("parse should succeed");
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///a.ws", &doc.symbols);
+        // CObject is not in the index; find_member must terminate without looping.
+        assert!(index.find_member("A", "someMethod").is_none());
+    }
+
+    #[test]
+    fn resolves_inherited_method_unqualified_inside_subclass() {
+        let source_a = "class A extends B {\n function Test() {\n  Inherited();\n }\n}\n";
+        let source_b = "class B {\n function Inherited() {}\n}\n";
+        let doc_a = parse_document(source_a).expect("parse should succeed");
+        let doc_b = parse_document(source_b).expect("parse should succeed");
+
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///a.ws", &doc_a.symbols);
+        index.update_document("file:///b.ws", &doc_b.symbols);
+
+        let definition = resolve_definition(
+            "file:///a.ws",
+            &doc_a,
+            &index,
+            SourcePosition {
+                line: 2,
+                character: 3,
+            },
+        )
+        .expect("unqualified inherited method should resolve inside subclass body");
+
+        assert_eq!(definition.symbol.name, "Inherited");
+    }
+
+    #[test]
+    fn resolves_this_dot_inherited_method() {
+        let source_a = "class A extends B {\n function Test() {\n  this.Inherited();\n }\n}\n";
+        let source_b = "class B {\n function Inherited() {}\n}\n";
+        let doc_a = parse_document(source_a).expect("parse should succeed");
+        let doc_b = parse_document(source_b).expect("parse should succeed");
+
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///a.ws", &doc_a.symbols);
+        index.update_document("file:///b.ws", &doc_b.symbols);
+
+        let definition = resolve_definition(
+            "file:///a.ws",
+            &doc_a,
+            &index,
+            SourcePosition {
+                line: 2,
+                character: 8,
+            },
+        )
+        .expect("this.Inherited() should resolve to superclass method");
+
+        assert_eq!(definition.symbol.name, "Inherited");
     }
 
     #[test]
