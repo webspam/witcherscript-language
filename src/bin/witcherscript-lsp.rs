@@ -18,6 +18,7 @@ use tower_lsp::lsp_types::{
     WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
+use tracing::{error, warn};
 use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_file};
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
@@ -119,9 +120,13 @@ impl LanguageServer for Backend {
         };
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
-        let Some(definition) = resolve_definition(uri.as_str(), document, &workspace, source_position(position))
-            .or_else(|| resolve_definition(uri.as_str(), document, &base, source_position(position)))
-        else {
+        let Some(definition) = resolve_definition(
+            uri.as_str(),
+            document,
+            &workspace,
+            source_position(position),
+        )
+        .or_else(|| resolve_definition(uri.as_str(), document, &base, source_position(position))) else {
             return Ok(None);
         };
         let Ok(target_uri) = Url::parse(&definition.uri) else {
@@ -143,9 +148,13 @@ impl LanguageServer for Backend {
         };
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
-        let Some(definition) = resolve_definition(uri.as_str(), document, &workspace, source_position(position))
-            .or_else(|| resolve_definition(uri.as_str(), document, &base, source_position(position)))
-        else {
+        let Some(definition) = resolve_definition(
+            uri.as_str(),
+            document,
+            &workspace,
+            source_position(position),
+        )
+        .or_else(|| resolve_definition(uri.as_str(), document, &base, source_position(position))) else {
             return Ok(None);
         };
 
@@ -188,11 +197,12 @@ impl Backend {
                     .publish_diagnostics(uri, diagnostics, None)
                     .await;
             }
-            Err(error) => {
+            Err(err) => {
+                error!(uri = %uri, error = %err, "failed to parse document");
                 self.client
                     .log_message(
                         MessageType::ERROR,
-                        format!("failed to parse document: {error}"),
+                        format!("failed to parse document: {err}"),
                     )
                     .await;
             }
@@ -206,18 +216,22 @@ impl Backend {
         }
 
         let Ok(files) = collect_witcherscript_files(&roots) else {
+            warn!("failed to collect workspace files");
             return;
         };
 
         let mut index = self.workspace_index.lock().await;
         for path in files {
             let Ok(source) = fs::read_to_string(&path) else {
+                warn!(path = %path.display(), "failed to read workspace file");
                 continue;
             };
             let Ok(document) = parse_document(source) else {
+                warn!(path = %path.display(), "failed to parse workspace file");
                 continue;
             };
             let Ok(uri) = Url::from_file_path(&path) else {
+                warn!(path = %path.display(), "failed to convert path to URI");
                 continue;
             };
             index.update_document(uri.as_str(), &document.symbols);
@@ -232,6 +246,7 @@ impl Backend {
             section: Some("witcherscript.gameDirectory".to_string()),
         }];
         let Ok(values) = self.client.configuration(items).await else {
+            warn!("workspace/configuration request failed");
             return;
         };
         if let Some(Value::String(path_str)) = values.into_iter().next() {
@@ -261,6 +276,7 @@ impl Backend {
         let start = Instant::now();
 
         let Ok(files) = collect_witcherscript_files(&[path]) else {
+            warn!("failed to collect base script files");
             self.client
                 .log_message(MessageType::WARNING, "Failed to collect base script files")
                 .await;
@@ -435,6 +451,11 @@ fn hover_location_markdown(definition: &Definition) -> String {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .init();
+
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
     let (service, socket) = LspService::new(|client| Backend {
