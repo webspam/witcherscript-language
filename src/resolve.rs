@@ -231,6 +231,65 @@ pub fn hover_text(definition: &Definition) -> String {
     lines.join("\n")
 }
 
+fn infer_expr_type(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    node: Node,
+    context_byte: usize,
+) -> Option<String> {
+    match node.kind() {
+        "ident" => {
+            let name = node.utf8_text(document.source.as_bytes()).ok()?;
+            resolve_local_or_parameter(uri, document, context_byte, name)
+                .or_else(|| {
+                    let current_type = current_type_name(document, context_byte)?;
+                    resolve_document_member(
+                        uri,
+                        document,
+                        &current_type,
+                        name,
+                        AccessLevel::Private,
+                    )
+                    .or_else(|| db.find_member(&current_type, name, AccessLevel::Private))
+                })
+                .or_else(|| resolve_document_top_level(uri, document, name))
+                .or_else(|| db.find_top_level(name))
+                .and_then(|def| def.symbol.type_annotation)
+        }
+        "func_call_expr" => {
+            let func = node
+                .child_by_field_name("func")
+                .or_else(|| first_named_child(node))?;
+            infer_expr_type(uri, document, db, func, context_byte)
+        }
+        "member_access_expr" => {
+            let accessor = first_named_child(node)?;
+            let member = node.child_by_field_name("member").or_else(|| {
+                let mut cursor = node.walk();
+                let child = node.named_children(&mut cursor).nth(1);
+                child
+            })?;
+            if member.kind() != "ident" {
+                return None;
+            }
+            let member_name = member.utf8_text(document.source.as_bytes()).ok()?;
+            let container_type = infer_expr_type(uri, document, db, accessor, context_byte)?;
+            let def = resolve_document_member(
+                uri,
+                document,
+                &container_type,
+                member_name,
+                AccessLevel::Public,
+            )
+            .or_else(|| db.find_member(&container_type, member_name, AccessLevel::Public))?;
+            def.symbol.type_annotation
+        }
+        "this_expr" => current_type_name(document, context_byte),
+        _ => None,
+    }
+}
+
 fn resolve_member_access(
     uri: &str,
     document: &ParsedDocument,
@@ -278,6 +337,11 @@ fn resolve_member_access(
                         })
                     })
                     .and_then(|def| def.symbol.type_annotation)?;
+            resolve_document_member(uri, document, &type_name, name, AccessLevel::Public)
+                .or_else(|| db.find_member(&type_name, name, AccessLevel::Public))
+        }
+        "func_call_expr" | "member_access_expr" => {
+            let type_name = infer_expr_type(uri, document, db, receiver, ident.start_byte())?;
             resolve_document_member(uri, document, &type_name, name, AccessLevel::Public)
                 .or_else(|| db.find_member(&type_name, name, AccessLevel::Public))
         }
@@ -1254,5 +1318,75 @@ mod tests {
             definition.is_none(),
             "parent.X in a state must not resolve protected members of the owner class"
         );
+    }
+
+    #[test]
+    fn resolves_method_on_function_return_value() {
+        let source = concat!(
+            "class Duck {\n",
+            "  public function Quack() {}\n",
+            "}\n",
+            "function ReturnsDuck() : Duck {}\n",
+            "function Test() {\n",
+            "  ReturnsDuck().Quack();\n",
+            "}\n",
+        );
+        let doc = parse_document(source).expect("parse should succeed");
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &doc.symbols);
+
+        // cursor on 'Quack' — line 5, col 16
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &doc,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
+            SourcePosition {
+                line: 5,
+                character: 16,
+            },
+        )
+        .expect("Quack should resolve via return type of ReturnsDuck");
+
+        assert_eq!(definition.symbol.name, "Quack");
+        let container_id = definition.symbol.container.expect("method has a container");
+        let container = doc.symbols.by_id(container_id).expect("container exists");
+        assert_eq!(container.name, "Duck");
+    }
+
+    #[test]
+    fn resolves_chained_call_method() {
+        // ReturnsDuck().GetNest().Count() — two levels of chaining
+        let source = concat!(
+            "class Nest {\n",
+            "  public function Count() : int {}\n",
+            "}\n",
+            "class Duck {\n",
+            "  public function GetNest() : Nest {}\n",
+            "}\n",
+            "function ReturnsDuck() : Duck {}\n",
+            "function Test() {\n",
+            "  ReturnsDuck().GetNest().Count();\n",
+            "}\n",
+        );
+        let doc = parse_document(source).expect("parse should succeed");
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &doc.symbols);
+
+        // cursor on 'Count' — line 8, col 26
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &doc,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
+            SourcePosition {
+                line: 8,
+                character: 26,
+            },
+        )
+        .expect("Count should resolve via chained return types");
+
+        assert_eq!(definition.symbol.name, "Count");
+        let container_id = definition.symbol.container.expect("method has a container");
+        let container = doc.symbols.by_id(container_id).expect("container exists");
+        assert_eq!(container.name, "Nest");
     }
 }
