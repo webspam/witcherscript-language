@@ -60,8 +60,8 @@ Before committing:
 4. Stage only the files relevant to the change — avoid `git add .` when unrelated files
    are dirty.
 
-Commit message format: one imperative-mood subject line (≤72 chars), blank line, then
-optional body. Examples:
+Commit message format: one imperative-mood subject line (≤50 chars), blank line, then
+optional body. Be CONCISE. Examples:
 
 ```
 Add hover text for enum variant symbols
