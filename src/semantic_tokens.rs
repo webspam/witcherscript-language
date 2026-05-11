@@ -53,9 +53,18 @@ pub fn collect_semantic_tokens(
     line_index: &LineIndex,
     symbols: &DocumentSymbols,
     workspace: &WorkspaceIndex,
+    base: &WorkspaceIndex,
 ) -> Vec<u32> {
     let mut tokens: Vec<RawToken> = Vec::new();
-    collect(root, source, line_index, symbols, workspace, &mut tokens);
+    collect(
+        root,
+        source,
+        line_index,
+        symbols,
+        workspace,
+        base,
+        &mut tokens,
+    );
     encode(&tokens)
 }
 
@@ -65,9 +74,10 @@ fn collect(
     line_index: &LineIndex,
     symbols: &DocumentSymbols,
     workspace: &WorkspaceIndex,
+    base: &WorkspaceIndex,
     out: &mut Vec<RawToken>,
 ) {
-    if let Some(token_type) = classify(node, source, symbols, workspace) {
+    if let Some(token_type) = classify(node, source, symbols, workspace, base) {
         let range = line_index.byte_range_to_range(source, node.start_byte(), node.end_byte());
         if range.start.line == range.end.line && range.end.character > range.start.character {
             out.push(RawToken {
@@ -81,7 +91,7 @@ fn collect(
     } else if node.is_named() {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            collect(child, source, line_index, symbols, workspace, out);
+            collect(child, source, line_index, symbols, workspace, base, out);
         }
         // Anonymous nodes with no classification (punctuation etc.) are silently skipped.
     }
@@ -92,9 +102,10 @@ fn classify(
     source: &str,
     symbols: &DocumentSymbols,
     workspace: &WorkspaceIndex,
+    base: &WorkspaceIndex,
 ) -> Option<u32> {
     match node.kind() {
-        "ident" => classify_ident(node, source, symbols, workspace),
+        "ident" => classify_ident(node, source, symbols, workspace, base),
         "annotation_ident" => Some(TT_DECORATOR),
         "comment" => Some(TT_COMMENT),
         "literal_string" => Some(TT_STRING),
@@ -124,6 +135,7 @@ fn classify_ident(
     source: &str,
     symbols: &DocumentSymbols,
     workspace: &WorkspaceIndex,
+    base: &WorkspaceIndex,
 ) -> Option<u32> {
     let parent = node.parent()?;
     match parent.kind() {
@@ -137,18 +149,18 @@ fn classify_ident(
         "local_var_decl_stmt" => Some(TT_VARIABLE),
         "autobind_decl" => Some(TT_PROPERTY),
         // Type annotations and `new ClassName` — only highlight if the type resolves.
-        "type_annot" | "new_expr" => resolve_ident(node, source, symbols, workspace),
+        "type_annot" | "new_expr" => resolve_ident(node, source, symbols, workspace, base),
         // In `a.b`, both sides require resolution — never guess.
         "member_access_expr" => {
             let prev = node.prev_sibling();
             if prev.map(|n| n.kind() == ".").unwrap_or(false) {
-                resolve_member_ident(node, source, symbols, workspace)
+                resolve_member_ident(node, source, symbols, workspace, base)
             } else {
-                resolve_ident(node, source, symbols, workspace)
+                resolve_ident(node, source, symbols, workspace, base)
             }
         }
         // All other expression positions: only highlight if we can resolve the name.
-        _ => resolve_ident(node, source, symbols, workspace),
+        _ => resolve_ident(node, source, symbols, workspace, base),
     }
 }
 
@@ -157,6 +169,7 @@ fn resolve_ident(
     source: &str,
     symbols: &DocumentSymbols,
     workspace: &WorkspaceIndex,
+    base: &WorkspaceIndex,
 ) -> Option<u32> {
     let name = node.utf8_text(source.as_bytes()).ok()?;
     let byte_offset = node.start_byte();
@@ -212,8 +225,11 @@ fn resolve_ident(
         return Some(symbol_kind_to_token_type(top.kind));
     }
 
-    // Workspace symbols from other files.
-    if let Some(def) = workspace.find_top_level(name) {
+    // Workspace symbols from other files, then base scripts.
+    if let Some(def) = workspace
+        .find_top_level(name)
+        .or_else(|| base.find_top_level(name))
+    {
         return Some(symbol_kind_to_token_type(def.symbol.kind));
     }
 
@@ -225,6 +241,7 @@ fn resolve_member_ident(
     source: &str,
     symbols: &DocumentSymbols,
     workspace: &WorkspaceIndex,
+    base: &WorkspaceIndex,
 ) -> Option<u32> {
     let name = node.utf8_text(source.as_bytes()).ok()?;
     let parent = node.parent()?;
@@ -285,6 +302,7 @@ fn resolve_member_ident(
 
     workspace
         .find_member(&type_name, name)
+        .or_else(|| base.find_member(&type_name, name))
         .map(|def| symbol_kind_to_token_type(def.symbol.kind))
 }
 
@@ -366,7 +384,14 @@ mod tests {
         let tree = parse(source);
         let index = LineIndex::new(source);
         let symbols = extract_symbols(tree.root_node(), source, &index);
-        collect_semantic_tokens(tree.root_node(), source, &index, &symbols, workspace)
+        collect_semantic_tokens(
+            tree.root_node(),
+            source,
+            &index,
+            &symbols,
+            workspace,
+            &WorkspaceIndex::default(),
+        )
     }
 
     #[test]
@@ -547,6 +572,36 @@ mod tests {
         assert!(
             types.contains(&super::TT_CLASS),
             "defined type in annotation should resolve to class token, got types: {types:?}"
+        );
+    }
+
+    #[test]
+    fn type_annotation_from_base_scripts_gets_class_token() {
+        // CActor is defined only in base_scripts — the field type annotation should
+        // still resolve and produce a class token.
+        let base_source = "class CActor {}\n";
+        let base_tree = parse(base_source);
+        let base_index = LineIndex::new(base_source);
+        let base_symbols = extract_symbols(base_tree.root_node(), base_source, &base_index);
+        let mut base = super::WorkspaceIndex::default();
+        base.update_document("file:///base/CActor.ws", &base_symbols);
+
+        let source = "class SomeClass {\n  var actor : CActor;\n}\n";
+        let tree = parse(source);
+        let index = LineIndex::new(source);
+        let symbols = extract_symbols(tree.root_node(), source, &index);
+        let data = collect_semantic_tokens(
+            tree.root_node(),
+            source,
+            &index,
+            &symbols,
+            &super::WorkspaceIndex::default(),
+            &base,
+        );
+        let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+        assert!(
+            types.contains(&super::TT_CLASS),
+            "CActor from base scripts must produce a class token, got types: {types:?}"
         );
     }
 }
