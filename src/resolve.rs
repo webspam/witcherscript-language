@@ -123,19 +123,6 @@ pub fn resolve_definition(
 pub fn hover_text(definition: &Definition) -> String {
     let symbol = &definition.symbol;
     let mut lines = Vec::new();
-    let label = match symbol.kind {
-        SymbolKind::Class => "class",
-        SymbolKind::Struct => "struct",
-        SymbolKind::Enum => "enum",
-        SymbolKind::EnumVariant => "enum variant",
-        SymbolKind::Function => "function",
-        SymbolKind::Method => "method",
-        SymbolKind::Field => "field",
-        SymbolKind::Variable => "var",
-        SymbolKind::Parameter => "(parameter)",
-        SymbolKind::State => "state",
-        SymbolKind::Event => "event",
-    };
 
     if !symbol.annotations.is_empty() {
         let annotations = symbol
@@ -150,16 +137,56 @@ pub fn hover_text(definition: &Definition) -> String {
         lines.push(annotations);
     }
 
-    if let Some(signature) = &symbol.signature {
-        lines.push(signature.clone());
-    } else if let Some(type_annotation) = &symbol.type_annotation {
-        lines.push(format!("{label} {} : {type_annotation}", symbol.name));
-    } else {
-        lines.push(format!("{label} {}", symbol.name));
-    }
-
-    if let Some(detail) = &symbol.detail {
-        lines.push(detail.clone());
+    match symbol.kind {
+        SymbolKind::Method => {
+            let params_and_return = symbol
+                .signature
+                .as_deref()
+                .and_then(|sig| sig.find('(').map(|i| &sig[i..]))
+                .unwrap_or("");
+            let class_prefix = symbol
+                .container_name
+                .as_deref()
+                .map(|cn| format!("{cn}."))
+                .unwrap_or_default();
+            lines.push(format!(
+                "(method) {}{}{}",
+                class_prefix, symbol.name, params_and_return
+            ));
+        }
+        SymbolKind::Field => {
+            if let Some(sig) = &symbol.signature {
+                lines.push(format!("(field) {sig}"));
+            } else if let Some(type_annotation) = &symbol.type_annotation {
+                lines.push(format!("(field) {} : {type_annotation}", symbol.name));
+            } else {
+                lines.push(format!("(field) {}", symbol.name));
+            }
+        }
+        _ => {
+            let label = match symbol.kind {
+                SymbolKind::Class => "class",
+                SymbolKind::Struct => "struct",
+                SymbolKind::Enum => "enum",
+                SymbolKind::EnumVariant => "enum variant",
+                SymbolKind::Function => "function",
+                SymbolKind::Variable => "var",
+                SymbolKind::Parameter => "(parameter)",
+                SymbolKind::State => "state",
+                SymbolKind::Event => "event",
+                SymbolKind::Method | SymbolKind::Field => unreachable!(),
+            };
+            if let Some(signature) = &symbol.signature {
+                lines.push(signature.clone());
+            } else if let Some(type_annotation) = &symbol.type_annotation {
+                lines.push(format!("{label} {} : {type_annotation}", symbol.name));
+            } else {
+                lines.push(format!("{label} {}", symbol.name));
+            }
+            if let Some(detail) = &symbol.detail {
+                lines.push(detail.clone());
+            }
+        }
     }
 
     lines.join("\n")

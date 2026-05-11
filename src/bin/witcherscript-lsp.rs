@@ -753,4 +753,82 @@ mod tests {
             "```witcherscript\n(parameter) spawnData : SEntitySpawnData\n```\n\nDefined in [example.ws:1](file:///example.ws#L1)"
         );
     }
+
+    #[test]
+    fn formats_method_hover_with_owning_class_prefix() {
+        let source = "class CExample {\n public function DoThing(x : int) : bool {}\n}\n";
+        let document = parse_document(source).expect("document should parse");
+        let mut workspace = WorkspaceIndex::default();
+        workspace.update_document("file:///example.ws", &document.symbols);
+
+        let definition = resolve_definition(
+            "file:///example.ws",
+            &document,
+            &workspace,
+            SourcePosition {
+                line: 1,
+                character: 17,
+            },
+        )
+        .expect("method should resolve");
+
+        let markdown = hover_markdown(&definition);
+
+        assert_eq!(
+            markdown,
+            "```witcherscript\n(method) CExample.DoThing(x : int) : bool\n```\n\nDefined in [example.ws:2](file:///example.ws#L2)"
+        );
+    }
+
+    #[test]
+    fn formats_inherited_method_hover_with_superclass_name() {
+        let source_a = "class A extends B {\n function Test() {\n  Inherited();\n }\n}\n";
+        let source_b = "class B {\n public function Inherited() : int {}\n}\n";
+        let doc_a = parse_document(source_a).expect("document should parse");
+        let doc_b = parse_document(source_b).expect("document should parse");
+        let mut workspace = WorkspaceIndex::default();
+        workspace.update_document("file:///a.ws", &doc_a.symbols);
+        workspace.update_document("file:///b.ws", &doc_b.symbols);
+
+        let definition = resolve_definition(
+            "file:///a.ws",
+            &doc_a,
+            &workspace,
+            SourcePosition {
+                line: 2,
+                character: 3,
+            },
+        )
+        .expect("inherited method should resolve");
+
+        let text = witcherscript_parser::resolve::hover_text(&definition);
+        assert_eq!(text, "(method) B.Inherited() : int");
+    }
+
+    #[test]
+    fn formats_field_hover_with_full_declaration() {
+        let source = "class CExample {\n protected editable var ignore : bool;\n}\n";
+        let document = parse_document(source).expect("document should parse");
+        let mut workspace = WorkspaceIndex::default();
+        workspace.update_document("file:///example.ws", &document.symbols);
+
+        let definition = resolve_definition(
+            "file:///example.ws",
+            &document,
+            &workspace,
+            SourcePosition {
+                line: 1,
+                character: 25,
+            },
+        )
+        .expect("field should resolve");
+
+        let text = witcherscript_parser::resolve::hover_text(&definition);
+        assert!(
+            text.starts_with("(field) "),
+            "field hover should start with '(field) '"
+        );
+        assert!(text.contains("ignore"), "field hover should include name");
+        assert!(text.contains("bool"), "field hover should include type");
+    }
 }

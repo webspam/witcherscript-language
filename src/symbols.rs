@@ -36,6 +36,7 @@ pub struct Symbol {
     pub byte_range: std::ops::Range<usize>,
     pub selection_byte_range: std::ops::Range<usize>,
     pub container: Option<SymbolId>,
+    pub container_name: Option<String>,
     pub type_annotation: Option<String>,
     pub signature: Option<String>,
     pub detail: Option<String>,
@@ -305,6 +306,11 @@ impl SymbolExtractor<'_> {
     ) {
         annotations.extend(self.direct_annotations(node));
         let type_annotation = direct_child_text(node, "type_annot", self.source);
+        let field_signature = if kind == SymbolKind::Field {
+            Some(node_text(node, self.source))
+        } else {
+            None
+        };
         let mut cursor = node.walk();
 
         for child in node.children(&mut cursor) {
@@ -316,7 +322,7 @@ impl SymbolExtractor<'_> {
                     annotations.clone(),
                     kind,
                     type_annotation.clone(),
-                    None,
+                    field_signature.clone(),
                     None,
                 );
             }
@@ -354,6 +360,9 @@ impl SymbolExtractor<'_> {
         signature: Option<String>,
         detail: Option<String>,
     ) -> SymbolId {
+        let container_name = container
+            .and_then(|id| self.symbols.by_id(id))
+            .map(|s| s.name.clone());
         self.symbols.push(Symbol {
             id: SymbolId(usize::MAX),
             name: node_text(name_node, self.source),
@@ -371,6 +380,7 @@ impl SymbolExtractor<'_> {
             byte_range: node.start_byte()..node.end_byte(),
             selection_byte_range: name_node.start_byte()..name_node.end_byte(),
             container,
+            container_name,
             type_annotation,
             signature,
             detail,
