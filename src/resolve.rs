@@ -243,17 +243,21 @@ fn current_type_symbol(document: &ParsedDocument, byte_offset: usize) -> Option<
 }
 
 fn identifier_at(root: Node, byte_offset: usize) -> Option<Node> {
-    let node = root.descendant_for_byte_range(byte_offset, byte_offset)?;
-    if node.kind() == "ident" {
-        return Some(node);
-    }
-
-    let mut current = node;
-    while let Some(parent) = current.parent() {
-        if parent.kind() == "ident" {
-            return Some(parent);
+    for offset in [byte_offset, byte_offset.saturating_sub(1)] {
+        let node = root.descendant_for_byte_range(offset, offset)?;
+        if node.kind() == "ident" {
+            return Some(node);
         }
-        current = parent;
+        let mut current = node;
+        while let Some(parent) = current.parent() {
+            if parent.kind() == "ident" {
+                return Some(parent);
+            }
+            current = parent;
+        }
+        if offset == 0 {
+            break;
+        }
     }
 
     None
@@ -402,6 +406,28 @@ mod tests {
 
         assert_eq!(definition.symbol.name, "Foo");
         assert_eq!(definition.symbol.kind, crate::symbols::SymbolKind::Function);
+    }
+
+    #[test]
+    fn resolves_definition_at_word_boundary() {
+        // "function Foo() {}\n"
+        //           0123
+        // character 12 is just past the final 'o' of "Foo"
+        let document = parse_document("function Foo() {}\n").expect("parse should succeed");
+        let index = WorkspaceIndex::default();
+
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &document,
+            &index,
+            SourcePosition {
+                line: 0,
+                character: 12,
+            },
+        )
+        .expect("definition should resolve when caret is one past the last letter");
+
+        assert_eq!(definition.symbol.name, "Foo");
     }
 
     #[test]
