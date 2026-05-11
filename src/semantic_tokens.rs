@@ -32,7 +32,6 @@ const TT_FUNCTION: u32 = 3;
 const TT_PARAMETER: u32 = 4;
 const TT_VARIABLE: u32 = 5;
 const TT_PROPERTY: u32 = 6;
-const TT_KEYWORD: u32 = 7;
 const TT_COMMENT: u32 = 8;
 const TT_STRING: u32 = 9;
 const TT_NUMBER: u32 = 10;
@@ -96,9 +95,7 @@ fn classify(node: Node, source: &str, symbols: &DocumentSymbols, db: &SymbolDb) 
         // CName literals ('SomeName') are compile-time symbol references, not text.
         "literal_name" => Some(TT_ENUM_MEMBER),
         "literal_int" | "literal_float" | "literal_hex" => Some(TT_NUMBER),
-        // Boolean/null/self keywords are named nodes that wrap a single anonymous keyword.
-        "literal_bool" | "literal_null" => Some(TT_KEYWORD),
-        "this_expr" | "super_expr" | "parent_expr" | "virtual_parent_expr" => Some(TT_KEYWORD),
+        // literal_bool, literal_null, this_expr etc. are omitted — TextMate constant.language wins.
         // Specifiers (public/private/editable/saved/…) are access/storage modifiers.
         "specifier" => Some(TT_MODIFIER),
         // Function-flavour keywords (entry/exec/quest/…) modify the function declaration.
@@ -295,10 +292,7 @@ fn symbol_kind_to_token_type(kind: SymbolKind) -> u32 {
 
 fn classify_anonymous_keyword(kind: &str) -> Option<u32> {
     match kind {
-        // Control flow and expression keywords.
-        "if" | "else" | "while" | "for" | "do" | "switch" | "case" | "default" | "break"
-        | "continue" | "return" | "new" | "delete" | "in" | "true" | "false" | "NULL" | "this"
-        | "super" | "parent" | "virtual_parent" => Some(TT_KEYWORD),
+        // Control flow and constant.language keywords omitted — TextMate handles all of these.
         // Declaration and modifier keywords: introduce or modify a declaration.
         "class" | "struct" | "enum" | "state" | "function" | "event" | "extends" | "var"
         | "autobind" | "defaults" | "hint" | "abstract" | "statemachine" | "latent" | "import"
@@ -437,10 +431,7 @@ mod tests {
         let source = "function F() { if (true) { return; } }\n";
         let data = tokens_for(source);
         let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
-        assert!(
-            types.contains(&super::TT_KEYWORD),
-            "expected keyword tokens for 'if'/'true'/'return', got types: {types:?}"
-        );
+        assert!(!types.is_empty(), "expected some tokens for control flow source");
     }
 
     #[test]
