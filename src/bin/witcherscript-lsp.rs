@@ -15,10 +15,11 @@ use tower_lsp::lsp_types::{
     DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverContents, HoverParams, InitializeParams, InitializeResult,
     InitializedParams, Location, MarkupContent, MarkupKind, MessageType, OneOf, Position, Range,
-    ReferenceParams, SemanticToken, SemanticTokens, SemanticTokensFullOptions,
+    ReferenceParams, RenameParams, SemanticToken, SemanticTokens, SemanticTokensFullOptions,
     SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
     SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, Url, WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
+    TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit, WorkspaceFoldersServerCapabilities,
+    WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use tracing::field::{Field, Visit};
@@ -213,6 +214,7 @@ impl LanguageServer for Backend {
                 )),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(tower_lsp::lsp_types::HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 semantic_tokens_provider: Some(
@@ -457,6 +459,65 @@ impl LanguageServer for Backend {
             .collect();
 
         Ok(Some(locations))
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let new_name = params.new_name;
+
+        let documents = self.documents.lock().await;
+        let Some(document) = documents.get(&uri) else {
+            return Ok(None);
+        };
+        let workspace = self.workspace_index.lock().await;
+        let base = self.base_scripts_index.lock().await;
+        let script_env = self.script_env.lock().await;
+        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
+
+        let Some(definition) =
+            resolve_definition(uri.as_str(), document, &db, source_position(position))
+        else {
+            return Ok(None);
+        };
+
+        let workspace_docs = self.workspace_documents.lock().await;
+        let base_docs = self.base_scripts_documents.lock().await;
+
+        let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
+        for (uri, doc) in base_docs.iter() {
+            merged.insert(uri.clone(), doc);
+        }
+        for (uri, doc) in workspace_docs.iter() {
+            merged.insert(uri.clone(), doc);
+        }
+        for (url, doc) in documents.iter() {
+            merged.insert(url.to_string(), doc);
+        }
+
+        let definition_document = merged.get(&definition.uri).copied().unwrap_or(document);
+
+        let search_docs: Vec<(&str, &ParsedDocument)> = merged
+            .iter()
+            .map(|(uri, doc)| (uri.as_str(), *doc))
+            .collect();
+
+        let refs = find_references(&definition, definition_document, &search_docs, &db, true);
+
+        let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
+        for (ref_uri, range) in refs {
+            if let Ok(url) = Url::parse(&ref_uri) {
+                changes.entry(url).or_default().push(TextEdit {
+                    range: lsp_range(range),
+                    new_text: new_name.clone(),
+                });
+            }
+        }
+
+        Ok(Some(WorkspaceEdit {
+            changes: Some(changes),
+            ..WorkspaceEdit::default()
+        }))
     }
 }
 
@@ -1072,5 +1133,37 @@ mod tests {
         );
         assert!(text.contains("ignore"), "field hover should include name");
         assert!(text.contains("bool"), "field hover should include type");
+    }
+
+    #[test]
+    fn rename_returns_edits_for_all_occurrences() {
+        use witcherscript_parser::resolve::find_references;
+
+        let source = "function Make() {\n var x : int;\n x = 1;\n x = x + 1;\n}\n";
+        let document = parse_document(source).expect("document should parse");
+        let mut workspace = WorkspaceIndex::default();
+        workspace.update_document("file:///example.ws", &document);
+        let base = WorkspaceIndex::default();
+        let db = SymbolDb::new(&workspace, &base);
+
+        let definition = resolve_definition(
+            "file:///example.ws",
+            &document,
+            &db,
+            SourcePosition {
+                line: 1,
+                character: 5,
+            },
+        )
+        .expect("local variable should resolve");
+
+        let search_docs = vec![("file:///example.ws", &document)];
+        let refs = find_references(&definition, &document, &search_docs, &db, true);
+
+        assert!(
+            refs.len() >= 4,
+            "expected at least 4 occurrences (decl + 3 uses), got {}",
+            refs.len()
+        );
     }
 }
