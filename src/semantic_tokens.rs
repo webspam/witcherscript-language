@@ -1,6 +1,8 @@
 use tree_sitter::Node;
 
 use crate::line_index::LineIndex;
+use crate::resolve::WorkspaceIndex;
+use crate::symbols::{DocumentSymbols, SymbolKind};
 
 pub const TOKEN_TYPES: &[&str] = &[
     "class",      // 0
@@ -17,6 +19,8 @@ pub const TOKEN_TYPES: &[&str] = &[
     "type",       // 11
     "decorator",  // 12 (annotation names)
     "modifier",   // 13 (access/storage specifiers and declaration keywords)
+                  // NOTE: "type" (index 11) is registered to preserve indices but is never emitted;
+                  // type-annotation idents are resolved and classified by their actual symbol kind.
 ];
 
 pub const TOKEN_MODIFIERS: &[&str] = &["declaration"];
@@ -32,7 +36,7 @@ const TT_KEYWORD: u32 = 7;
 const TT_COMMENT: u32 = 8;
 const TT_STRING: u32 = 9;
 const TT_NUMBER: u32 = 10;
-const TT_TYPE: u32 = 11;
+// index 11 ("type") is registered in TOKEN_TYPES to preserve indices but never emitted.
 const TT_DECORATOR: u32 = 12;
 const TT_MODIFIER: u32 = 13;
 
@@ -43,14 +47,27 @@ struct RawToken {
     token_type: u32,
 }
 
-pub fn collect_semantic_tokens(root: Node, source: &str, line_index: &LineIndex) -> Vec<u32> {
+pub fn collect_semantic_tokens(
+    root: Node,
+    source: &str,
+    line_index: &LineIndex,
+    symbols: &DocumentSymbols,
+    workspace: &WorkspaceIndex,
+) -> Vec<u32> {
     let mut tokens: Vec<RawToken> = Vec::new();
-    collect(root, source, line_index, &mut tokens);
+    collect(root, source, line_index, symbols, workspace, &mut tokens);
     encode(&tokens)
 }
 
-fn collect(node: Node, source: &str, line_index: &LineIndex, out: &mut Vec<RawToken>) {
-    if let Some(token_type) = classify(node) {
+fn collect(
+    node: Node,
+    source: &str,
+    line_index: &LineIndex,
+    symbols: &DocumentSymbols,
+    workspace: &WorkspaceIndex,
+    out: &mut Vec<RawToken>,
+) {
+    if let Some(token_type) = classify(node, source, symbols, workspace) {
         let range = line_index.byte_range_to_range(source, node.start_byte(), node.end_byte());
         if range.start.line == range.end.line && range.end.character > range.start.character {
             out.push(RawToken {
@@ -64,15 +81,20 @@ fn collect(node: Node, source: &str, line_index: &LineIndex, out: &mut Vec<RawTo
     } else if node.is_named() {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            collect(child, source, line_index, out);
+            collect(child, source, line_index, symbols, workspace, out);
         }
         // Anonymous nodes with no classification (punctuation etc.) are silently skipped.
     }
 }
 
-fn classify(node: Node) -> Option<u32> {
+fn classify(
+    node: Node,
+    source: &str,
+    symbols: &DocumentSymbols,
+    workspace: &WorkspaceIndex,
+) -> Option<u32> {
     match node.kind() {
-        "ident" => classify_ident(node),
+        "ident" => classify_ident(node, source, symbols, workspace),
         "annotation_ident" => Some(TT_DECORATOR),
         "comment" => Some(TT_COMMENT),
         "literal_string" => Some(TT_STRING),
@@ -97,9 +119,15 @@ fn classify(node: Node) -> Option<u32> {
     }
 }
 
-fn classify_ident(node: Node) -> Option<u32> {
+fn classify_ident(
+    node: Node,
+    source: &str,
+    symbols: &DocumentSymbols,
+    workspace: &WorkspaceIndex,
+) -> Option<u32> {
     let parent = node.parent()?;
     match parent.kind() {
+        // Declaration sites — syntactically unambiguous.
         "class_decl" | "struct_decl" | "state_decl" => Some(TT_CLASS),
         "enum_decl" => Some(TT_ENUM),
         "enum_decl_variant" => Some(TT_ENUM_MEMBER),
@@ -108,19 +136,167 @@ fn classify_ident(node: Node) -> Option<u32> {
         "member_var_decl" => Some(TT_PROPERTY),
         "local_var_decl_stmt" => Some(TT_VARIABLE),
         "autobind_decl" => Some(TT_PROPERTY),
-        "type_annot" => Some(TT_TYPE),
-        // The class name in `new ClassName` is a type reference.
-        "new_expr" => Some(TT_TYPE),
-        // In `a.b`, the member ident (after `.`) is a property reference.
+        // Type annotations and `new ClassName` — only highlight if the type resolves.
+        "type_annot" | "new_expr" => resolve_ident(node, source, symbols, workspace),
+        // In `a.b`, both sides require resolution — never guess.
         "member_access_expr" => {
             let prev = node.prev_sibling();
             if prev.map(|n| n.kind() == ".").unwrap_or(false) {
-                Some(TT_PROPERTY)
+                resolve_member_ident(node, source, symbols, workspace)
             } else {
-                None
+                resolve_ident(node, source, symbols, workspace)
             }
         }
-        _ => None,
+        // All other expression positions: only highlight if we can resolve the name.
+        _ => resolve_ident(node, source, symbols, workspace),
+    }
+}
+
+fn resolve_ident(
+    node: Node,
+    source: &str,
+    symbols: &DocumentSymbols,
+    workspace: &WorkspaceIndex,
+) -> Option<u32> {
+    let name = node.utf8_text(source.as_bytes()).ok()?;
+    let byte_offset = node.start_byte();
+
+    // Local variables and parameters in the enclosing function.
+    let enclosing_fn = symbols.enclosing_symbol_at(
+        byte_offset,
+        &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
+    );
+    if let Some(fn_sym) = enclosing_fn {
+        if let Some(local) = symbols
+            .children_of(Some(fn_sym.id))
+            .filter(|s| {
+                matches!(s.kind, SymbolKind::Variable | SymbolKind::Parameter)
+                    && s.name == name
+                    && s.selection_byte_range.start <= byte_offset
+            })
+            .max_by_key(|s| s.selection_byte_range.start)
+        {
+            return Some(symbol_kind_to_token_type(local.kind));
+        }
+    }
+
+    // Members of the enclosing class.
+    let enclosing_class = symbols.enclosing_symbol_at(
+        byte_offset,
+        &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
+    );
+    if let Some(class_sym) = enclosing_class {
+        if let Some(member) = symbols.children_of(Some(class_sym.id)).find(|s| {
+            s.name == name
+                && !matches!(
+                    s.kind,
+                    SymbolKind::Variable
+                        | SymbolKind::Parameter
+                        | SymbolKind::Function
+                        | SymbolKind::Method
+                        | SymbolKind::Event
+                )
+        }) {
+            return Some(symbol_kind_to_token_type(member.kind));
+        }
+        if let Some(method) = symbols
+            .children_of(Some(class_sym.id))
+            .find(|s| s.name == name && matches!(s.kind, SymbolKind::Method | SymbolKind::Event))
+        {
+            return Some(symbol_kind_to_token_type(method.kind));
+        }
+    }
+
+    // Document top-level symbols.
+    if let Some(top) = symbols.children_of(None).find(|s| s.name == name) {
+        return Some(symbol_kind_to_token_type(top.kind));
+    }
+
+    // Workspace symbols from other files.
+    if let Some(def) = workspace.find_top_level(name) {
+        return Some(symbol_kind_to_token_type(def.symbol.kind));
+    }
+
+    None
+}
+
+fn resolve_member_ident(
+    node: Node,
+    source: &str,
+    symbols: &DocumentSymbols,
+    workspace: &WorkspaceIndex,
+) -> Option<u32> {
+    let name = node.utf8_text(source.as_bytes()).ok()?;
+    let parent = node.parent()?;
+
+    let mut cursor = parent.walk();
+    let receiver = parent.named_children(&mut cursor).next()?;
+
+    let type_name: String = match receiver.kind() {
+        "this_expr" => symbols
+            .enclosing_symbol_at(
+                node.start_byte(),
+                &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
+            )?
+            .name
+            .clone(),
+        "super_expr" | "parent_expr" | "virtual_parent_expr" => {
+            let class_sym = symbols.enclosing_symbol_at(
+                node.start_byte(),
+                &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
+            )?;
+            class_sym
+                .detail
+                .as_deref()?
+                .strip_prefix("extends ")?
+                .to_string()
+        }
+        "ident" => {
+            let receiver_name = receiver.utf8_text(source.as_bytes()).ok()?;
+            let enclosing_fn = symbols.enclosing_symbol_at(
+                node.start_byte(),
+                &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
+            )?;
+            symbols
+                .children_of(Some(enclosing_fn.id))
+                .filter(|s| {
+                    matches!(s.kind, SymbolKind::Variable | SymbolKind::Parameter)
+                        && s.name == receiver_name
+                        && s.selection_byte_range.start <= node.start_byte()
+                })
+                .max_by_key(|s| s.selection_byte_range.start)
+                .and_then(|s| s.type_annotation.clone())?
+        }
+        _ => return None,
+    };
+
+    let container = symbols.all().iter().find(|s| {
+        s.name == type_name
+            && matches!(
+                s.kind,
+                SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
+            )
+    });
+    if let Some(c) = container {
+        if let Some(member) = symbols.children_of(Some(c.id)).find(|s| s.name == name) {
+            return Some(symbol_kind_to_token_type(member.kind));
+        }
+    }
+
+    workspace
+        .find_member(&type_name, name)
+        .map(|def| symbol_kind_to_token_type(def.symbol.kind))
+}
+
+fn symbol_kind_to_token_type(kind: SymbolKind) -> u32 {
+    match kind {
+        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State => TT_CLASS,
+        SymbolKind::Enum => TT_ENUM,
+        SymbolKind::EnumVariant => TT_ENUM_MEMBER,
+        SymbolKind::Function | SymbolKind::Method | SymbolKind::Event => TT_FUNCTION,
+        SymbolKind::Field => TT_PROPERTY,
+        SymbolKind::Variable => TT_VARIABLE,
+        SymbolKind::Parameter => TT_PARAMETER,
     }
 }
 
@@ -171,6 +347,8 @@ mod tests {
 
     use super::collect_semantic_tokens;
     use crate::line_index::LineIndex;
+    use crate::resolve::WorkspaceIndex;
+    use crate::symbols::extract_symbols;
 
     fn parse(source: &str) -> tree_sitter::Tree {
         let mut parser = Parser::new();
@@ -181,9 +359,14 @@ mod tests {
     }
 
     fn tokens_for(source: &str) -> Vec<u32> {
+        tokens_for_with_workspace(source, &WorkspaceIndex::default())
+    }
+
+    fn tokens_for_with_workspace(source: &str, workspace: &WorkspaceIndex) -> Vec<u32> {
         let tree = parse(source);
         let index = LineIndex::new(source);
-        collect_semantic_tokens(tree.root_node(), source, &index)
+        let symbols = extract_symbols(tree.root_node(), source, &index);
+        collect_semantic_tokens(tree.root_node(), source, &index, &symbols, workspace)
     }
 
     #[test]
@@ -301,13 +484,69 @@ mod tests {
     }
 
     #[test]
-    fn type_annotation_ident_is_typed() {
-        let source = "function F(x : CObject) {}\n";
+    fn variable_use_gets_variable_token() {
+        let source = "function F() { var x : int; x = 1; }\n";
         let data = tokens_for(source);
         let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
         assert!(
-            types.contains(&super::TT_TYPE),
-            "expected a type token for 'CObject', got types: {types:?}"
+            types.iter().filter(|&&t| t == super::TT_VARIABLE).count() >= 2,
+            "expected variable token for both declaration and use of 'x', got types: {types:?}"
+        );
+    }
+
+    #[test]
+    fn member_access_lhs_gets_variable_token() {
+        // Vector and its field X must be defined for the member access to resolve.
+        let source =
+            "struct Vector { var X : float; }\nfunction F() { var v : Vector; v.X = 0; }\n";
+        let data = tokens_for(source);
+        let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+        assert!(
+            types.iter().filter(|&&t| t == super::TT_VARIABLE).count() >= 2,
+            "expected variable token for declaration and use of 'v', got types: {types:?}"
+        );
+        assert!(
+            types.contains(&super::TT_PROPERTY),
+            "expected property token for resolved field 'X', got types: {types:?}"
+        );
+    }
+
+    #[test]
+    fn unresolvable_type_annotation_gets_no_token() {
+        // CObject is not defined — neither TT_CLASS nor any other token should appear for it.
+        let source_with = "class CObject {}\nfunction F(x : CObject) {}\n";
+        let source_without = "function F(x : CObject) {}\n";
+        let types_with: Vec<u32> = tokens_for(source_with)
+            .iter()
+            .skip(3)
+            .step_by(5)
+            .copied()
+            .collect();
+        let types_without: Vec<u32> = tokens_for(source_without)
+            .iter()
+            .skip(3)
+            .step_by(5)
+            .copied()
+            .collect();
+        assert!(
+            types_with.contains(&super::TT_CLASS),
+            "defined CObject should produce a class token, got: {types_with:?}"
+        );
+        assert!(
+            !types_without.contains(&super::TT_CLASS),
+            "undefined CObject must not produce a class token, got: {types_without:?}"
+        );
+    }
+
+    #[test]
+    fn resolved_type_annotation_gets_class_token() {
+        // CObject is defined — its use in a type annotation should resolve to TT_CLASS.
+        let source = "class CObject {}\nfunction F(x : CObject) {}\n";
+        let data = tokens_for(source);
+        let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+        assert!(
+            types.contains(&super::TT_CLASS),
+            "defined type in annotation should resolve to class token, got types: {types:?}"
         );
     }
 }

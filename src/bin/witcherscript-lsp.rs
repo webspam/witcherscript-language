@@ -218,10 +218,13 @@ impl LanguageServer for Backend {
         let Some(document) = documents.get(&params.text_document.uri) else {
             return Ok(None);
         };
+        let workspace = self.workspace_index.lock().await;
         let data = collect_semantic_tokens(
             document.tree.root_node(),
             &document.source,
             &document.line_index,
+            &document.symbols,
+            &workspace,
         );
         let tokens: Vec<SemanticToken> = data
             .chunks_exact(5)
