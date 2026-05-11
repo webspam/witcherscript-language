@@ -76,6 +76,7 @@ pub fn resolve_definition(
         .or_else(|| resolve_current_type_member(uri, document, byte_offset, name))
         .or_else(|| resolve_document_top_level(uri, document, name))
         .or_else(|| workspace.find_top_level(name))
+        .or_else(|| resolve_at_definition_site(uri, document, byte_offset, name))
 }
 
 pub fn hover_text(definition: &Definition) -> String {
@@ -271,6 +272,28 @@ fn is_type_like(kind: SymbolKind) -> bool {
     )
 }
 
+fn resolve_at_definition_site(
+    uri: &str,
+    document: &ParsedDocument,
+    byte_offset: usize,
+    name: &str,
+) -> Option<Definition> {
+    document
+        .symbols
+        .all()
+        .iter()
+        .find(|symbol| {
+            symbol.name == name
+                && symbol.selection_byte_range.start <= byte_offset
+                && byte_offset < symbol.selection_byte_range.end
+        })
+        .cloned()
+        .map(|symbol| Definition {
+            uri: uri.to_string(),
+            symbol,
+        })
+}
+
 #[allow(dead_code)]
 fn symbol_id(symbol: &Symbol) -> SymbolId {
     symbol.id
@@ -282,6 +305,71 @@ mod tests {
     use crate::line_index::SourcePosition;
 
     use super::{resolve_definition, WorkspaceIndex};
+
+    #[test]
+    fn resolves_definition_site_of_top_level_function() {
+        let document = parse_document("function Foo() {}\n").expect("parse should succeed");
+        let index = WorkspaceIndex::default();
+
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &document,
+            &index,
+            SourcePosition {
+                line: 0,
+                character: 9,
+            },
+        )
+        .expect("definition should resolve from its own definition site");
+
+        assert_eq!(definition.symbol.name, "Foo");
+        assert_eq!(definition.symbol.kind, crate::symbols::SymbolKind::Function);
+    }
+
+    #[test]
+    fn resolves_definition_site_of_class_method() {
+        let document = parse_document("class CExample {\n function Bar() {}\n}\n")
+            .expect("parse should succeed");
+        let index = WorkspaceIndex::default();
+
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &document,
+            &index,
+            SourcePosition {
+                line: 1,
+                character: 10,
+            },
+        )
+        .expect("definition should resolve from its own definition site");
+
+        assert_eq!(definition.symbol.name, "Bar");
+        assert_eq!(definition.symbol.kind, crate::symbols::SymbolKind::Method);
+    }
+
+    #[test]
+    fn resolves_definition_site_of_enum_variant() {
+        let document =
+            parse_document("enum EFoo {\n VALUE_A = 0\n}\n").expect("parse should succeed");
+        let index = WorkspaceIndex::default();
+
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &document,
+            &index,
+            SourcePosition {
+                line: 1,
+                character: 1,
+            },
+        )
+        .expect("definition should resolve from enum variant definition site");
+
+        assert_eq!(definition.symbol.name, "VALUE_A");
+        assert_eq!(
+            definition.symbol.kind,
+            crate::symbols::SymbolKind::EnumVariant
+        );
+    }
 
     #[test]
     fn resolves_parameter_before_top_level() {
