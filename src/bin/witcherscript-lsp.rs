@@ -247,7 +247,7 @@ impl Backend {
         let path = {
             let guard = self.base_scripts_path.lock().await;
             match guard.clone() {
-                Some(p) => p,
+                Some(p) => p.join(r"content\content0\scripts"),
                 None => return,
             }
         };
