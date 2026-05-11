@@ -250,10 +250,15 @@ fn resolve_member_access(
             resolve_document_member(uri, document, &current_type, name, AccessLevel::Private)
                 .or_else(|| db.find_member(&current_type, name, AccessLevel::Private))
         }
-        "parent_expr" | "super_expr" => {
+        "super_expr" => {
             let current_type = current_type_symbol(document, ident.start_byte())?;
             let base_name = current_type.detail.as_deref()?.strip_prefix("extends ")?;
             db.find_member(base_name, name, AccessLevel::Protected)
+        }
+        "parent_expr" => {
+            let current_type = current_type_symbol(document, ident.start_byte())?;
+            let owner_name = current_type.detail.as_deref()?.strip_prefix("in ")?;
+            db.find_member(owner_name, name, AccessLevel::Public)
         }
         "ident" => {
             let receiver_name = receiver.utf8_text(document.source.as_bytes()).ok()?;
@@ -514,8 +519,8 @@ fn resolve_self_keyword(
     let parent_kind = node.parent().map(|p| p.kind());
 
     let is_this = node.kind() == "this" || matches!(parent_kind, Some("this_expr"));
-    let is_super = matches!(node.kind(), "super" | "parent")
-        || matches!(parent_kind, Some("super_expr" | "parent_expr"));
+    let is_super = node.kind() == "super" || matches!(parent_kind, Some("super_expr"));
+    let is_parent = node.kind() == "parent" || matches!(parent_kind, Some("parent_expr"));
 
     if is_this {
         let current_type = current_type_symbol(document, byte_offset)?;
@@ -531,6 +536,16 @@ fn resolve_self_keyword(
             .and_then(|d| d.strip_prefix("extends "))?;
         return resolve_document_top_level(uri, document, base_name)
             .or_else(|| db.find_top_level(base_name));
+    }
+
+    if is_parent {
+        let current_type = current_type_symbol(document, byte_offset)?;
+        let owner_name = current_type
+            .detail
+            .as_deref()
+            .and_then(|d| d.strip_prefix("in "))?;
+        return resolve_document_top_level(uri, document, owner_name)
+            .or_else(|| db.find_top_level(owner_name));
     }
 
     None
