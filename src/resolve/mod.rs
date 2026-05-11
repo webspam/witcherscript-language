@@ -991,29 +991,30 @@ fn type_completions_inner(
         .line_index
         .position_to_byte(&document.source, position)?;
 
-    if !in_type_annotation_context(&document.source, byte_offset) {
+    let root = document.tree.root_node();
+    let in_type_annot = [byte_offset, byte_offset.saturating_sub(1)]
+        .into_iter()
+        .filter_map(|offset| root.descendant_for_byte_range(offset, offset))
+        .any(has_type_annot_ancestor);
+
+    if !in_type_annot {
         return None;
     }
 
     Some(db.all_types())
 }
 
-fn in_type_annotation_context(source: &str, byte_offset: usize) -> bool {
-    let bytes = source.as_bytes();
-    let mut pos = byte_offset;
-    // Skip the partial type name being typed.
-    while pos > 0 && is_ident_byte(bytes[pos - 1]) {
-        pos -= 1;
+fn has_type_annot_ancestor(node: Node) -> bool {
+    let mut current = node;
+    loop {
+        if current.kind() == "type_annot" {
+            return true;
+        }
+        match current.parent() {
+            Some(p) => current = p,
+            None => return false,
+        }
     }
-    // Skip whitespace.
-    while pos > 0 && matches!(bytes[pos - 1], b' ' | b'\t') {
-        pos -= 1;
-    }
-    // A bare ':' immediately preceded by whitespace or an ident char signals a type annotation.
-    // Guard against '::' (scope resolution, if the language ever uses it).
-    pos > 0
-        && bytes[pos - 1] == b':'
-        && !matches!(pos.checked_sub(2).and_then(|i| bytes.get(i)), Some(b':'))
 }
 
 #[allow(dead_code)]
