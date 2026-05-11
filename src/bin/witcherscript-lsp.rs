@@ -475,20 +475,9 @@ impl LanguageServer for Backend {
         &self,
         params: TextDocumentPositionParams,
     ) -> Result<Option<PrepareRenameResponse>> {
-        let uri = params.text_document.uri;
-        let position = params.position;
-
-        let documents = self.documents.lock().await;
-        let Some(document) = documents.get(&uri) else {
-            return Ok(None);
-        };
-        let workspace = self.workspace_index.lock().await;
-        let base = self.base_scripts_index.lock().await;
-        let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
-
-        let Some(definition) =
-            resolve_definition(uri.as_str(), document, &db, source_position(position))
+        let Some(definition) = self
+            .resolve_at(&params.text_document.uri, params.position)
+            .await
         else {
             return Ok(None);
         };
@@ -509,24 +498,16 @@ impl LanguageServer for Backend {
 
     async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri;
-        let position = params.text_document_position.position;
         let new_name = params.new_name;
 
-        let documents = self.documents.lock().await;
-        let Some(document) = documents.get(&uri) else {
-            return Ok(None);
-        };
-        let workspace = self.workspace_index.lock().await;
-        let base = self.base_scripts_index.lock().await;
-        let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
-
-        let Some(definition) =
-            resolve_definition(uri.as_str(), document, &db, source_position(position))
+        let Some(definition) = self
+            .resolve_at(&uri, params.text_document_position.position)
+            .await
         else {
             return Ok(None);
         };
 
+        let documents = self.documents.lock().await;
         let workspace_docs = self.workspace_documents.lock().await;
         let base_docs = self.base_scripts_documents.lock().await;
 
@@ -537,6 +518,11 @@ impl LanguageServer for Backend {
                 data: None,
             });
         }
+
+        let workspace = self.workspace_index.lock().await;
+        let base_index = self.base_scripts_index.lock().await;
+        let script_env = self.script_env.lock().await;
+        let db = SymbolDb::new(&workspace, &base_index).with_script_env(&script_env);
 
         let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
         for (uri, doc) in base_docs.iter() {
@@ -549,7 +535,9 @@ impl LanguageServer for Backend {
             merged.insert(url.to_string(), doc);
         }
 
-        let definition_document = merged.get(&definition.uri).copied().unwrap_or(document);
+        let Some(definition_document) = merged.get(&definition.uri).copied() else {
+            return Ok(None);
+        };
 
         let search_docs: Vec<(&str, &ParsedDocument)> = merged
             .iter()
@@ -704,6 +692,16 @@ impl Backend {
             self.log_level.store(new_level, Ordering::Relaxed);
             info!(level = %level_str, "log level updated");
         }
+    }
+
+    async fn resolve_at(&self, uri: &Url, position: Position) -> Option<Definition> {
+        let documents = self.documents.lock().await;
+        let document = documents.get(uri)?;
+        let workspace = self.workspace_index.lock().await;
+        let base = self.base_scripts_index.lock().await;
+        let script_env = self.script_env.lock().await;
+        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
+        resolve_definition(uri.as_str(), document, &db, source_position(position))
     }
 
     /// Parse all `.ws` files under `base_scripts_path` in parallel and store their
