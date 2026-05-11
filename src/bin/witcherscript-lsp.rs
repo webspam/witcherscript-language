@@ -8,7 +8,7 @@ use std::time::Instant;
 use rayon::prelude::*;
 use serde_json::Value;
 use tokio::sync::{mpsc, Mutex};
-use tower_lsp::jsonrpc::Result;
+use tower_lsp::jsonrpc::{Error, ErrorCode, Result};
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
     ConfigurationItem, Diagnostic, DiagnosticSeverity, DidChangeConfigurationParams,
@@ -489,6 +489,14 @@ impl LanguageServer for Backend {
 
         let workspace_docs = self.workspace_documents.lock().await;
         let base_docs = self.base_scripts_documents.lock().await;
+
+        if base_docs.contains_key(&definition.uri) {
+            return Err(Error {
+                code: ErrorCode::InvalidRequest,
+                message: "Cannot rename a symbol declared in a base script (read-only)".into(),
+                data: None,
+            });
+        }
 
         let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
         for (uri, doc) in base_docs.iter() {
@@ -1289,6 +1297,44 @@ mod tests {
             refs.len() >= 4,
             "expected at least 4 occurrences (decl + 3 uses), got {}",
             refs.len()
+        );
+    }
+
+    #[test]
+    fn rename_rejects_base_script_symbol() {
+        use std::collections::HashSet;
+
+        let base_source = "function BaseFunc() {}\n";
+        let base_doc = parse_document(base_source).expect("should parse");
+        let mut base_index = WorkspaceIndex::default();
+        base_index.update_document("file:///base/base.ws", &base_doc);
+
+        let caller_source = "function MyFunc() { BaseFunc(); }\n";
+        let caller_doc = parse_document(caller_source).expect("should parse");
+        let mut workspace = WorkspaceIndex::default();
+        workspace.update_document("file:///project/my.ws", &caller_doc);
+        let db = SymbolDb::new(&workspace, &base_index);
+
+        let definition = resolve_definition(
+            "file:///project/my.ws",
+            &caller_doc,
+            &db,
+            SourcePosition {
+                line: 0,
+                character: 20,
+            },
+        )
+        .expect("BaseFunc call should resolve to base definition");
+
+        assert_eq!(
+            definition.uri, "file:///base/base.ws",
+            "definition should point into the base scripts"
+        );
+
+        let base_uris: HashSet<String> = ["file:///base/base.ws".to_string()].into();
+        assert!(
+            base_uris.contains(&definition.uri),
+            "rename should be rejected: symbol is declared in a base script"
         );
     }
 }
