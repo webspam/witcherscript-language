@@ -868,9 +868,8 @@ fn completion_includes_inherited_members() {
 
 #[test]
 fn type_completions_offered_in_type_annotation() {
-    // Realistic editing scenario: cursor is inside a partial type name.
-    // The statement on the next line gives tree-sitter enough context to
-    // recover and produce a type_annot node for the partial type "CP".
+    // "var x : CP" with a complete statement on the next line gives tree-sitter
+    // enough context to recover and emit a type_annot node for the partial name.
     let source = concat!(
         "class CPlayer {}\n",
         "struct SData {}\n",
@@ -884,7 +883,6 @@ fn type_completions_offered_in_type_annotation() {
     let mut index = WorkspaceIndex::default();
     index.update_document("file:///test.ws", &doc);
 
-    // "  var x : CP" — 0-indexed: 10='C', 11='P'. character 11 is at 'P'.
     let types = super::type_completions(
         &doc,
         &SymbolDb::new(&index, &WorkspaceIndex::default()),
@@ -911,14 +909,14 @@ fn type_completions_offered_in_type_annotation() {
 
 #[test]
 fn type_completions_not_offered_inside_string_literal() {
-    // The ':' here is inside a string argument, not a type annotation.
-    // CPlayer is in the index so we can confirm it does NOT appear.
+    // The unterminated string causes an ERROR node — no type_annot ancestor exists,
+    // so completions must not fire. CPlayer is indexed to prove the guard is what
+    // suppresses it, not an empty type list.
     let source = concat!("class CPlayer {}\n", "function SomeFunc(\"test:\n",);
     let doc = parse_document(source).expect("parse should succeed");
     let mut index = WorkspaceIndex::default();
     index.update_document("file:///test.ws", &doc);
 
-    // Position just after the ':' inside the string (line 1, col 24).
     let types = super::type_completions(
         &doc,
         &SymbolDb::new(&index, &WorkspaceIndex::default()),
@@ -957,16 +955,13 @@ fn type_completions_not_offered_outside_type_context() {
 
 #[test]
 fn type_completions_offered_cursor_right_of_complete_type_name() {
-    // "var z:A;" — cursor right of 'A' (character 9 = position of ';').
-    // The previous find_map bug meant only byte_offset was checked, never byte_offset-1.
-    // CMyType is defined so all_types() is non-empty when context is detected.
+    // Regression: cursor positioned after a complete type name must still offer
+    // completions. The byte offset lands on ';'; the type name is found via the -1 fallback.
     let source = "class CMyType {}\nfunction F() {\n  var z:CMyType;\n  var w : int;\n}\n";
     let doc = parse_document(source).expect("parse");
     let mut index = WorkspaceIndex::default();
     index.update_document("file:///test.ws", &doc);
 
-    // line 2: '  var z:CMyType;' — 'CMyType' starts at char 8 (length 7), ';' at char 15.
-    // Cursor right of 'CMyType' is char 15.
     let types = super::type_completions(
         &doc,
         &SymbolDb::new(&index, &WorkspaceIndex::default()),
@@ -977,25 +972,22 @@ fn type_completions_offered_cursor_right_of_complete_type_name() {
     );
     assert!(
         !types.is_empty(),
-        "cursor right of complete type name must still offer type completions"
+        "cursor right of a complete type name must still offer completions"
     );
 }
 
 #[test]
 fn type_completions_offered_cursor_right_of_last_type_in_error_recovery() {
-    // "var z : A : B : C;" — only the final ': C' parses as type_annot; A and B are ERROR.
-    // Cursor right of 'C' (char 17 = ';') must still offer completions via byte-1 fallback.
-    // CMyType is defined so all_types() returns non-empty.
+    // "var z : A : B : CMyType;" is a syntax error — tree-sitter only produces a
+    // type_annot node for the final ": CMyType"; the earlier ": A" and ": B" become
+    // ERROR nodes. Completions must still work at and after "CMyType".
     let source =
         "class CMyType {}\nfunction F() {\n  var z : A : B : CMyType;\n  var w : int;\n}\n";
     let doc = parse_document(source).expect("parse");
     let mut index = WorkspaceIndex::default();
     index.update_document("file:///test.ws", &doc);
 
-    // line 2: '  var z : A : B : CMyType;'
-    // '  '=0-1,'v'=2,'a'=3,'r'=4,' '=5,'z'=6,' '=7,':'=8,' '=9,'A'=10,' '=11,':'=12,
-    // ' '=13,'B'=14,' '=15,':'=16,' '=17,'C'=18,'M'=19,'y'=20,'T'=21,'y'=22,'p'=23,'e'=24,';'=25
-    let types_left = super::type_completions(
+    let types_at = super::type_completions(
         &doc,
         &SymbolDb::new(&index, &WorkspaceIndex::default()),
         SourcePosition {
@@ -1004,11 +996,11 @@ fn type_completions_offered_cursor_right_of_last_type_in_error_recovery() {
         },
     );
     assert!(
-        !types_left.is_empty(),
-        "cursor at start of final type name must offer type completions"
+        !types_at.is_empty(),
+        "cursor at the start of the final type name must offer completions"
     );
 
-    let types_right = super::type_completions(
+    let types_after = super::type_completions(
         &doc,
         &SymbolDb::new(&index, &WorkspaceIndex::default()),
         SourcePosition {
@@ -1017,8 +1009,8 @@ fn type_completions_offered_cursor_right_of_last_type_in_error_recovery() {
         },
     );
     assert!(
-        !types_right.is_empty(),
-        "cursor right of 'C' must offer type completions"
+        !types_after.is_empty(),
+        "cursor right of the final type name must offer completions"
     );
 }
 
