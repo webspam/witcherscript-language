@@ -90,7 +90,7 @@ pub fn hover_text(definition: &Definition) -> String {
         SymbolKind::Method => "method",
         SymbolKind::Field => "field",
         SymbolKind::Variable => "local",
-        SymbolKind::Parameter => "parameter",
+        SymbolKind::Parameter => "(parameter)",
         SymbolKind::State => "state",
         SymbolKind::Event => "event",
     };

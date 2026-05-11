@@ -439,4 +439,30 @@ mod tests {
             "```witcherscript\n@wrapMethod(CR4Player)\nfunction OnSpawned(spawnData : SEntitySpawnData)\n```\n\nDefined in [fov.ws:2](file:///fov.ws#L2)"
         );
     }
+
+    #[test]
+    fn formats_parameter_hover_with_parenthesised_label() {
+        let source = "function Make(spawnData : SEntitySpawnData) {\n spawnData = spawnData;\n}\n";
+        let document = parse_document(source).expect("document should parse");
+        let mut workspace = WorkspaceIndex::default();
+        workspace.update_document("file:///example.ws", &document.symbols);
+
+        let definition = resolve_definition(
+            "file:///example.ws",
+            &document,
+            &workspace,
+            SourcePosition {
+                line: 1,
+                character: 2,
+            },
+        )
+        .expect("parameter should resolve");
+
+        let markdown = hover_markdown(&definition);
+
+        assert_eq!(
+            markdown,
+            "```witcherscript\n(parameter) spawnData : SEntitySpawnData\n```\n\nDefined in [example.ws:1](file:///example.ws#L1)"
+        );
+    }
 }
