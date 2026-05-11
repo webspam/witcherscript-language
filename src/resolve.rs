@@ -12,6 +12,29 @@ pub struct Definition {
     pub symbol: Symbol,
 }
 
+pub struct SymbolDb<'a> {
+    workspace: &'a WorkspaceIndex,
+    base: &'a WorkspaceIndex,
+}
+
+impl<'a> SymbolDb<'a> {
+    pub fn new(workspace: &'a WorkspaceIndex, base: &'a WorkspaceIndex) -> Self {
+        Self { workspace, base }
+    }
+
+    pub fn find_top_level(&self, name: &str) -> Option<Definition> {
+        self.workspace
+            .find_top_level(name)
+            .or_else(|| self.base.find_top_level(name))
+    }
+
+    pub fn find_member(&self, container: &str, name: &str) -> Option<Definition> {
+        self.workspace
+            .find_member(container, name)
+            .or_else(|| self.base.find_member(container, name))
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct WorkspaceIndex {
     documents: HashMap<String, Vec<Symbol>>,
@@ -90,14 +113,14 @@ impl WorkspaceIndex {
 pub fn resolve_definition(
     uri: &str,
     document: &ParsedDocument,
-    workspace: &WorkspaceIndex,
+    db: &SymbolDb,
     position: SourcePosition,
 ) -> Option<Definition> {
     let byte_offset = document
         .line_index
         .position_to_byte(&document.source, position)?;
 
-    if let Some(def) = resolve_self_keyword(uri, document, workspace, byte_offset) {
+    if let Some(def) = resolve_self_keyword(uri, document, db, byte_offset) {
         return Some(def);
     }
 
@@ -109,14 +132,14 @@ pub fn resolve_definition(
             .map(|r| r.id() == ident.id())
             .unwrap_or(false);
         if !is_receiver {
-            return resolve_member_access(uri, document, workspace, ident, name);
+            return resolve_member_access(uri, document, db, ident, name);
         }
     }
 
     resolve_local_or_parameter(uri, document, byte_offset, name)
-        .or_else(|| resolve_current_type_member(uri, document, workspace, byte_offset, name))
+        .or_else(|| resolve_current_type_member(uri, document, db, byte_offset, name))
         .or_else(|| resolve_document_top_level(uri, document, name))
-        .or_else(|| workspace.find_top_level(name))
+        .or_else(|| db.find_top_level(name))
         .or_else(|| resolve_at_definition_site(uri, document, byte_offset, name))
 }
 
@@ -195,7 +218,7 @@ pub fn hover_text(definition: &Definition) -> String {
 fn resolve_member_access(
     uri: &str,
     document: &ParsedDocument,
-    workspace: &WorkspaceIndex,
+    db: &SymbolDb,
     ident: Node,
     name: &str,
 ) -> Option<Definition> {
@@ -209,12 +232,12 @@ fn resolve_member_access(
         "this_expr" => {
             let current_type = current_type_name(document, ident.start_byte())?;
             resolve_document_member(uri, document, &current_type, name)
-                .or_else(|| workspace.find_member(&current_type, name))
+                .or_else(|| db.find_member(&current_type, name))
         }
         "parent_expr" | "super_expr" => {
             let current_type = current_type_symbol(document, ident.start_byte())?;
             let base_name = current_type.detail.as_deref()?.strip_prefix("extends ")?;
-            workspace.find_member(base_name, name)
+            db.find_member(base_name, name)
         }
         "ident" => {
             let receiver_name = receiver.utf8_text(document.source.as_bytes()).ok()?;
@@ -223,11 +246,11 @@ fn resolve_member_access(
                     .or_else(|| {
                         let current_type = current_type_name(document, ident.start_byte())?;
                         resolve_document_member(uri, document, &current_type, receiver_name)
-                            .or_else(|| workspace.find_member(&current_type, receiver_name))
+                            .or_else(|| db.find_member(&current_type, receiver_name))
                     })
                     .and_then(|def| def.symbol.type_annotation)?;
             resolve_document_member(uri, document, &type_name, name)
-                .or_else(|| workspace.find_member(&type_name, name))
+                .or_else(|| db.find_member(&type_name, name))
         }
         _ => None,
     }
@@ -262,13 +285,13 @@ fn resolve_local_or_parameter(
 fn resolve_current_type_member(
     uri: &str,
     document: &ParsedDocument,
-    workspace: &WorkspaceIndex,
+    db: &SymbolDb,
     byte_offset: usize,
     name: &str,
 ) -> Option<Definition> {
     let current_type = current_type_name(document, byte_offset)?;
     resolve_document_member(uri, document, &current_type, name)
-        .or_else(|| workspace.find_member(&current_type, name))
+        .or_else(|| db.find_member(&current_type, name))
 }
 
 fn resolve_document_member(
@@ -358,8 +381,7 @@ pub fn find_references(
     definition: &Definition,
     definition_document: &ParsedDocument,
     search_documents: &[(&str, &ParsedDocument)],
-    workspace: &WorkspaceIndex,
-    base: &WorkspaceIndex,
+    db: &SymbolDb,
     include_declaration: bool,
 ) -> Vec<(String, SourceRange)> {
     let name = &definition.symbol.name;
@@ -404,8 +426,7 @@ pub fn find_references(
             let position = document
                 .line_index
                 .byte_to_position(&document.source, byte_range.start);
-            let resolved = resolve_definition(uri, document, workspace, position)
-                .or_else(|| resolve_definition(uri, document, base, position));
+            let resolved = resolve_definition(uri, document, db, position);
             match resolved {
                 Some(ref r)
                     if r.uri == definition.uri
@@ -457,7 +478,7 @@ fn collect_ident_occurrences<'tree>(
 fn resolve_self_keyword(
     uri: &str,
     document: &ParsedDocument,
-    workspace: &WorkspaceIndex,
+    db: &SymbolDb,
     byte_offset: usize,
 ) -> Option<Definition> {
     let root = document.tree.root_node();
@@ -474,7 +495,7 @@ fn resolve_self_keyword(
     if is_this {
         let current_type = current_type_symbol(document, byte_offset)?;
         return resolve_document_top_level(uri, document, &current_type.name.clone())
-            .or_else(|| workspace.find_top_level(&current_type.name));
+            .or_else(|| db.find_top_level(&current_type.name));
     }
 
     if is_super {
@@ -484,7 +505,7 @@ fn resolve_self_keyword(
             .as_deref()
             .and_then(|d| d.strip_prefix("extends "))?;
         return resolve_document_top_level(uri, document, base_name)
-            .or_else(|| workspace.find_top_level(base_name));
+            .or_else(|| db.find_top_level(base_name));
     }
 
     None
@@ -522,7 +543,7 @@ mod tests {
     use crate::document::parse_document;
     use crate::line_index::SourcePosition;
 
-    use super::{resolve_definition, WorkspaceIndex};
+    use super::{resolve_definition, SymbolDb, WorkspaceIndex};
 
     #[test]
     fn resolves_definition_site_of_top_level_function() {
@@ -532,7 +553,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///test.ws",
             &document,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 0,
                 character: 9,
@@ -555,7 +576,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///test.ws",
             &document,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 0,
                 character: 12,
@@ -575,7 +596,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///test.ws",
             &document,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 1,
                 character: 10,
@@ -596,7 +617,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///test.ws",
             &document,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 1,
                 character: 1,
@@ -618,7 +639,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///test.ws",
             &document,
-            &WorkspaceIndex::default(),
+            &SymbolDb::new(&WorkspaceIndex::default(), &WorkspaceIndex::default()),
             SourcePosition {
                 line: 0,
                 character: 9,
@@ -633,8 +654,7 @@ mod tests {
             &definition,
             &document,
             &[("file:///test.ws", &document)],
-            &index,
-            &WorkspaceIndex::default(),
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             false,
         );
         assert_eq!(refs.len(), 2, "two call sites expected");
@@ -647,7 +667,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///test.ws",
             &document,
-            &WorkspaceIndex::default(),
+            &SymbolDb::new(&WorkspaceIndex::default(), &WorkspaceIndex::default()),
             SourcePosition {
                 line: 0,
                 character: 9,
@@ -662,16 +682,14 @@ mod tests {
             &definition,
             &document,
             &[("file:///test.ws", &document)],
-            &index,
-            &WorkspaceIndex::default(),
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             true,
         );
         let without_decl = super::find_references(
             &definition,
             &document,
             &[("file:///test.ws", &document)],
-            &index,
-            &WorkspaceIndex::default(),
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             false,
         );
         assert_eq!(with_decl.len(), 2);
@@ -686,7 +704,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///test.ws",
             &document,
-            &WorkspaceIndex::default(),
+            &SymbolDb::new(&WorkspaceIndex::default(), &WorkspaceIndex::default()),
             SourcePosition {
                 line: 2,
                 character: 1,
@@ -701,8 +719,7 @@ mod tests {
             &definition,
             &document,
             &[("file:///test.ws", &document)],
-            &index,
-            &WorkspaceIndex::default(),
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             true,
         );
         // Should find x in Outer() only: the declaration and the assignment
@@ -726,7 +743,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///test.ws",
             &doc,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 3,
                 character: 4,
@@ -754,7 +771,7 @@ mod tests {
         let result = resolve_definition(
             "file:///test.ws",
             &doc,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 2,
                 character: 9,
@@ -789,7 +806,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///test.ws",
             &doc,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 3,
                 character: 14,
@@ -821,7 +838,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///a.ws",
             &doc,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 2,
                 character: 3,
@@ -848,7 +865,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///a.ws",
             &doc_a,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 2,
                 character: 3,
@@ -874,7 +891,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///a.ws",
             &doc_a,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 2,
                 character: 3,
@@ -909,7 +926,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///a.ws",
             &doc_a,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 2,
                 character: 3,
@@ -934,7 +951,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///a.ws",
             &doc_a,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 2,
                 character: 8,
@@ -966,7 +983,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///test.ws",
             &doc,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 3,
                 character: 12,
@@ -988,7 +1005,7 @@ mod tests {
         let definition = resolve_definition(
             "file:///test.ws",
             &document,
-            &index,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
             SourcePosition {
                 line: 2,
                 character: 1,

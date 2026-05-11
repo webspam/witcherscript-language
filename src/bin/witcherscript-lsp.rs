@@ -25,7 +25,7 @@ use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_file};
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{
-    find_references, hover_text, resolve_definition, Definition, WorkspaceIndex,
+    find_references, hover_text, resolve_definition, Definition, SymbolDb, WorkspaceIndex,
 };
 use witcherscript_parser::semantic_tokens::{
     collect_semantic_tokens, TOKEN_MODIFIERS, TOKEN_TYPES,
@@ -148,13 +148,10 @@ impl LanguageServer for Backend {
         };
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
-        let Some(definition) = resolve_definition(
-            uri.as_str(),
-            document,
-            &workspace,
-            source_position(position),
-        )
-        .or_else(|| resolve_definition(uri.as_str(), document, &base, source_position(position))) else {
+        let db = SymbolDb::new(&workspace, &base);
+        let Some(definition) =
+            resolve_definition(uri.as_str(), document, &db, source_position(position))
+        else {
             return Ok(None);
         };
         let Ok(target_uri) = Url::parse(&definition.uri) else {
@@ -176,13 +173,10 @@ impl LanguageServer for Backend {
         };
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
-        let Some(definition) = resolve_definition(
-            uri.as_str(),
-            document,
-            &workspace,
-            source_position(position),
-        )
-        .or_else(|| resolve_definition(uri.as_str(), document, &base, source_position(position))) else {
+        let db = SymbolDb::new(&workspace, &base);
+        let Some(definition) =
+            resolve_definition(uri.as_str(), document, &db, source_position(position))
+        else {
             return Ok(None);
         };
 
@@ -220,13 +214,13 @@ impl LanguageServer for Backend {
         };
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
+        let db = SymbolDb::new(&workspace, &base);
         let data = collect_semantic_tokens(
             document.tree.root_node(),
             &document.source,
             &document.line_index,
             &document.symbols,
-            &workspace,
-            &base,
+            &db,
         );
         let tokens: Vec<SemanticToken> = data
             .chunks_exact(5)
@@ -255,14 +249,11 @@ impl LanguageServer for Backend {
         };
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
+        let db = SymbolDb::new(&workspace, &base);
 
-        let Some(definition) = resolve_definition(
-            uri.as_str(),
-            document,
-            &workspace,
-            source_position(position),
-        )
-        .or_else(|| resolve_definition(uri.as_str(), document, &base, source_position(position))) else {
+        let Some(definition) =
+            resolve_definition(uri.as_str(), document, &db, source_position(position))
+        else {
             return Ok(Some(Vec::new()));
         };
 
@@ -293,8 +284,7 @@ impl LanguageServer for Backend {
             &definition,
             definition_document,
             &search_docs,
-            &workspace,
-            &base,
+            &db,
             include_declaration,
         );
 

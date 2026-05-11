@@ -1,7 +1,7 @@
 use tree_sitter::Node;
 
 use crate::line_index::LineIndex;
-use crate::resolve::WorkspaceIndex;
+use crate::resolve::{SymbolDb, WorkspaceIndex};
 use crate::symbols::{DocumentSymbols, SymbolKind};
 
 pub const TOKEN_TYPES: &[&str] = &[
@@ -52,19 +52,10 @@ pub fn collect_semantic_tokens(
     source: &str,
     line_index: &LineIndex,
     symbols: &DocumentSymbols,
-    workspace: &WorkspaceIndex,
-    base: &WorkspaceIndex,
+    db: &SymbolDb,
 ) -> Vec<u32> {
     let mut tokens: Vec<RawToken> = Vec::new();
-    collect(
-        root,
-        source,
-        line_index,
-        symbols,
-        workspace,
-        base,
-        &mut tokens,
-    );
+    collect(root, source, line_index, symbols, db, &mut tokens);
     encode(&tokens)
 }
 
@@ -73,11 +64,10 @@ fn collect(
     source: &str,
     line_index: &LineIndex,
     symbols: &DocumentSymbols,
-    workspace: &WorkspaceIndex,
-    base: &WorkspaceIndex,
+    db: &SymbolDb,
     out: &mut Vec<RawToken>,
 ) {
-    if let Some(token_type) = classify(node, source, symbols, workspace, base) {
+    if let Some(token_type) = classify(node, source, symbols, db) {
         let range = line_index.byte_range_to_range(source, node.start_byte(), node.end_byte());
         if range.start.line == range.end.line && range.end.character > range.start.character {
             out.push(RawToken {
@@ -91,21 +81,15 @@ fn collect(
     } else if node.is_named() {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            collect(child, source, line_index, symbols, workspace, base, out);
+            collect(child, source, line_index, symbols, db, out);
         }
         // Anonymous nodes with no classification (punctuation etc.) are silently skipped.
     }
 }
 
-fn classify(
-    node: Node,
-    source: &str,
-    symbols: &DocumentSymbols,
-    workspace: &WorkspaceIndex,
-    base: &WorkspaceIndex,
-) -> Option<u32> {
+fn classify(node: Node, source: &str, symbols: &DocumentSymbols, db: &SymbolDb) -> Option<u32> {
     match node.kind() {
-        "ident" => classify_ident(node, source, symbols, workspace, base),
+        "ident" => classify_ident(node, source, symbols, db),
         "annotation_ident" => Some(TT_DECORATOR),
         "comment" => Some(TT_COMMENT),
         "literal_string" => Some(TT_STRING),
@@ -134,8 +118,7 @@ fn classify_ident(
     node: Node,
     source: &str,
     symbols: &DocumentSymbols,
-    workspace: &WorkspaceIndex,
-    base: &WorkspaceIndex,
+    db: &SymbolDb,
 ) -> Option<u32> {
     let parent = node.parent()?;
     match parent.kind() {
@@ -149,18 +132,18 @@ fn classify_ident(
         "local_var_decl_stmt" => Some(TT_VARIABLE),
         "autobind_decl" => Some(TT_PROPERTY),
         // Type annotations and `new ClassName` — only highlight if the type resolves.
-        "type_annot" | "new_expr" => resolve_ident(node, source, symbols, workspace, base),
+        "type_annot" | "new_expr" => resolve_ident(node, source, symbols, db),
         // In `a.b`, both sides require resolution — never guess.
         "member_access_expr" => {
             let prev = node.prev_sibling();
             if prev.map(|n| n.kind() == ".").unwrap_or(false) {
-                resolve_member_ident(node, source, symbols, workspace, base)
+                resolve_member_ident(node, source, symbols, db)
             } else {
-                resolve_ident(node, source, symbols, workspace, base)
+                resolve_ident(node, source, symbols, db)
             }
         }
         // All other expression positions: only highlight if we can resolve the name.
-        _ => resolve_ident(node, source, symbols, workspace, base),
+        _ => resolve_ident(node, source, symbols, db),
     }
 }
 
@@ -168,8 +151,7 @@ fn resolve_ident(
     node: Node,
     source: &str,
     symbols: &DocumentSymbols,
-    workspace: &WorkspaceIndex,
-    base: &WorkspaceIndex,
+    db: &SymbolDb,
 ) -> Option<u32> {
     let name = node.utf8_text(source.as_bytes()).ok()?;
     let byte_offset = node.start_byte();
@@ -225,11 +207,7 @@ fn resolve_ident(
         return Some(symbol_kind_to_token_type(top.kind));
     }
 
-    // Workspace symbols from other files, then base scripts.
-    if let Some(def) = workspace
-        .find_top_level(name)
-        .or_else(|| base.find_top_level(name))
-    {
+    if let Some(def) = db.find_top_level(name) {
         return Some(symbol_kind_to_token_type(def.symbol.kind));
     }
 
@@ -240,8 +218,7 @@ fn resolve_member_ident(
     node: Node,
     source: &str,
     symbols: &DocumentSymbols,
-    workspace: &WorkspaceIndex,
-    base: &WorkspaceIndex,
+    db: &SymbolDb,
 ) -> Option<u32> {
     let name = node.utf8_text(source.as_bytes()).ok()?;
     let parent = node.parent()?;
@@ -300,9 +277,7 @@ fn resolve_member_ident(
         }
     }
 
-    workspace
-        .find_member(&type_name, name)
-        .or_else(|| base.find_member(&type_name, name))
+    db.find_member(&type_name, name)
         .map(|def| symbol_kind_to_token_type(def.symbol.kind))
 }
 
@@ -365,7 +340,7 @@ mod tests {
 
     use super::collect_semantic_tokens;
     use crate::line_index::LineIndex;
-    use crate::resolve::WorkspaceIndex;
+    use crate::resolve::{SymbolDb, WorkspaceIndex};
     use crate::symbols::extract_symbols;
 
     fn parse(source: &str) -> tree_sitter::Tree {
@@ -377,21 +352,15 @@ mod tests {
     }
 
     fn tokens_for(source: &str) -> Vec<u32> {
-        tokens_for_with_workspace(source, &WorkspaceIndex::default())
+        let empty = WorkspaceIndex::default();
+        tokens_for_with_db(source, &SymbolDb::new(&empty, &empty))
     }
 
-    fn tokens_for_with_workspace(source: &str, workspace: &WorkspaceIndex) -> Vec<u32> {
+    fn tokens_for_with_db(source: &str, db: &SymbolDb) -> Vec<u32> {
         let tree = parse(source);
         let index = LineIndex::new(source);
         let symbols = extract_symbols(tree.root_node(), source, &index);
-        collect_semantic_tokens(
-            tree.root_node(),
-            source,
-            &index,
-            &symbols,
-            workspace,
-            &WorkspaceIndex::default(),
-        )
+        collect_semantic_tokens(tree.root_node(), source, &index, &symbols, db)
     }
 
     #[test]
@@ -590,14 +559,9 @@ mod tests {
         let tree = parse(source);
         let index = LineIndex::new(source);
         let symbols = extract_symbols(tree.root_node(), source, &index);
-        let data = collect_semantic_tokens(
-            tree.root_node(),
-            source,
-            &index,
-            &symbols,
-            &super::WorkspaceIndex::default(),
-            &base,
-        );
+        let empty = super::WorkspaceIndex::default();
+        let db = SymbolDb::new(&empty, &base);
+        let data = collect_semantic_tokens(tree.root_node(), source, &index, &symbols, &db);
         let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
         assert!(
             types.contains(&super::TT_CLASS),
