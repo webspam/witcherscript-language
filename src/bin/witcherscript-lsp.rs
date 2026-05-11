@@ -773,7 +773,7 @@ fn hover_location_markdown(definition: &Definition) -> String {
 #[tokio::main]
 async fn main() {
     let (log_tx, mut log_rx) = mpsc::unbounded_channel::<(MessageType, String)>();
-    let log_level = Arc::new(AtomicU8::new(level_to_u8(tracing::Level::INFO)));
+    let log_level = Arc::new(AtomicU8::new(level_to_u8(tracing::Level::WARN)));
 
     tracing_subscriber::registry()
         .with(
