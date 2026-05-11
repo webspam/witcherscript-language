@@ -866,6 +866,66 @@ fn completion_includes_inherited_members() {
     );
 }
 
+#[test]
+fn type_completions_offered_after_colon() {
+    let source = concat!(
+        "class CPlayer {}\n",
+        "struct SData {}\n",
+        "enum EDir { North = 0 }\n",
+        "function Test() {\n",
+        "  var x : \n",
+        "}\n",
+    );
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+
+    // position right after ': ' on line 4 (var x : |)
+    let types = super::type_completions(
+        &doc,
+        &SymbolDb::new(&index, &WorkspaceIndex::default()),
+        SourcePosition {
+            line: 4,
+            character: 10,
+        },
+    );
+
+    let names: Vec<&str> = types.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        names.contains(&"CPlayer"),
+        "class should be in type completions"
+    );
+    assert!(
+        names.contains(&"SData"),
+        "struct should be in type completions"
+    );
+    assert!(
+        names.contains(&"EDir"),
+        "enum should be in type completions"
+    );
+}
+
+#[test]
+fn type_completions_not_offered_outside_type_context() {
+    let source = "function Test() {\n  someVar\n}\n";
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+
+    let types = super::type_completions(
+        &doc,
+        &SymbolDb::new(&index, &WorkspaceIndex::default()),
+        SourcePosition {
+            line: 1,
+            character: 9,
+        },
+    );
+
+    assert!(
+        types.is_empty(),
+        "no type completions outside a type annotation"
+    );
+}
+
 fn make_env(name: &str, type_name: &str) -> ScriptEnvironment {
     use crate::line_index::SourceRange;
     use crate::script_env::ScriptGlobal;

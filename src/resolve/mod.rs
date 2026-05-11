@@ -77,6 +77,19 @@ impl<'a> SymbolDb<'a> {
         }
         seen.into_values().collect()
     }
+
+    pub fn all_types(&self) -> Vec<Definition> {
+        let mut seen: HashMap<String, Definition> = HashMap::new();
+        for def in self
+            .workspace
+            .all_types()
+            .into_iter()
+            .chain(self.base.all_types())
+        {
+            seen.entry(def.symbol.name.clone()).or_insert(def);
+        }
+        seen.into_values().collect()
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -198,6 +211,14 @@ impl WorkspaceIndex {
 
     pub fn find_top_level(&self, name: &str) -> Option<Definition> {
         self.top_level_by_name.get(name).cloned()
+    }
+
+    pub fn all_types(&self) -> Vec<Definition> {
+        self.top_level_by_name
+            .values()
+            .filter(|d| is_type_like(d.symbol.kind) || d.symbol.kind == SymbolKind::Enum)
+            .cloned()
+            .collect()
     }
 
     pub fn find_member(
@@ -949,6 +970,50 @@ fn climb_to_expression(node: Node) -> Node {
 
 fn is_ident_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
+}
+
+pub const BUILTIN_TYPES: &[&str] = &["bool", "byte", "float", "int", "name", "string", "void"];
+
+pub fn type_completions(
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Vec<Definition> {
+    type_completions_inner(document, db, position).unwrap_or_default()
+}
+
+fn type_completions_inner(
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Option<Vec<Definition>> {
+    let byte_offset = document
+        .line_index
+        .position_to_byte(&document.source, position)?;
+
+    if !in_type_annotation_context(&document.source, byte_offset) {
+        return None;
+    }
+
+    Some(db.all_types())
+}
+
+fn in_type_annotation_context(source: &str, byte_offset: usize) -> bool {
+    let bytes = source.as_bytes();
+    let mut pos = byte_offset;
+    // Skip the partial type name being typed.
+    while pos > 0 && is_ident_byte(bytes[pos - 1]) {
+        pos -= 1;
+    }
+    // Skip whitespace.
+    while pos > 0 && matches!(bytes[pos - 1], b' ' | b'\t') {
+        pos -= 1;
+    }
+    // A bare ':' immediately preceded by whitespace or an ident char signals a type annotation.
+    // Guard against '::' (scope resolution, if the language ever uses it).
+    pos > 0
+        && bytes[pos - 1] == b':'
+        && !matches!(pos.checked_sub(2).and_then(|i| bytes.get(i)), Some(b':'))
 }
 
 #[allow(dead_code)]

@@ -32,8 +32,8 @@ use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_file};
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{
-    completion_members, find_references, hover_text, resolve_definition, Definition, SymbolDb,
-    WorkspaceIndex,
+    completion_members, find_references, hover_text, resolve_definition, type_completions,
+    Definition, SymbolDb, WorkspaceIndex, BUILTIN_TYPES,
 };
 use witcherscript_parser::script_env::{parse_script_environment, ScriptEnvironment};
 use witcherscript_parser::semantic_tokens::{
@@ -215,7 +215,7 @@ impl LanguageServer for Backend {
                     TextDocumentSyncKind::FULL,
                 )),
                 completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec![".".to_string()]),
+                    trigger_characters: Some(vec![".".to_string(), ":".to_string()]),
                     ..CompletionOptions::default()
                 }),
                 definition_provider: Some(OneOf::Left(true)),
@@ -538,13 +538,28 @@ impl LanguageServer for Backend {
         let script_env = self.script_env.lock().await;
         let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
 
-        let members = completion_members(uri.as_str(), document, &db, source_position(position));
-        if members.is_empty() {
-            return Ok(None);
+        let pos = source_position(position);
+
+        let member_items: Vec<CompletionItem> =
+            completion_members(uri.as_str(), document, &db, pos)
+                .iter()
+                .map(completion_item)
+                .collect();
+        if !member_items.is_empty() {
+            return Ok(Some(CompletionResponse::Array(member_items)));
         }
 
-        let items: Vec<CompletionItem> = members.iter().map(completion_item).collect();
-        Ok(Some(CompletionResponse::Array(items)))
+        let user_types = type_completions(document, &db, pos);
+        if !user_types.is_empty() {
+            let mut items: Vec<CompletionItem> = BUILTIN_TYPES
+                .iter()
+                .map(|name| builtin_type_item(name))
+                .collect();
+            items.extend(user_types.iter().map(type_completion_item));
+            return Ok(Some(CompletionResponse::Array(items)));
+        }
+
+        Ok(None)
     }
 }
 
@@ -845,6 +860,29 @@ fn completion_item(definition: &Definition) -> CompletionItem {
             kind: MarkupKind::Markdown,
             value: hover_markdown(definition),
         })),
+        ..CompletionItem::default()
+    }
+}
+
+fn type_completion_item(definition: &Definition) -> CompletionItem {
+    let symbol = &definition.symbol;
+    let kind = Some(match symbol.kind {
+        SymbolKind::Struct => CompletionItemKind::STRUCT,
+        SymbolKind::Enum => CompletionItemKind::ENUM,
+        _ => CompletionItemKind::CLASS,
+    });
+    CompletionItem {
+        label: symbol.name.clone(),
+        kind,
+        detail: symbol.detail.clone(),
+        ..CompletionItem::default()
+    }
+}
+
+fn builtin_type_item(name: &str) -> CompletionItem {
+    CompletionItem {
+        label: name.to_string(),
+        kind: Some(CompletionItemKind::KEYWORD),
         ..CompletionItem::default()
     }
 }
