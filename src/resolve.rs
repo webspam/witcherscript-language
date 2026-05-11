@@ -96,6 +96,11 @@ pub fn resolve_definition(
     let byte_offset = document
         .line_index
         .position_to_byte(&document.source, position)?;
+
+    if let Some(def) = resolve_super_keyword(uri, document, workspace, byte_offset) {
+        return Some(def);
+    }
+
     let ident = identifier_at(document.tree.root_node(), byte_offset)?;
     let name = ident.utf8_text(document.source.as_bytes()).ok()?;
 
@@ -409,6 +414,36 @@ fn collect_ident_occurrences<'tree>(
     }
 }
 
+fn resolve_super_keyword(
+    uri: &str,
+    document: &ParsedDocument,
+    workspace: &WorkspaceIndex,
+    byte_offset: usize,
+) -> Option<Definition> {
+    let root = document.tree.root_node();
+    let node = [byte_offset, byte_offset.saturating_sub(1)]
+        .into_iter()
+        .find_map(|offset| root.descendant_for_byte_range(offset, offset))?;
+
+    let is_super = matches!(node.kind(), "super" | "parent")
+        || matches!(
+            node.parent().map(|p| p.kind()),
+            Some("super_expr" | "parent_expr")
+        );
+    if !is_super {
+        return None;
+    }
+
+    let current_type = current_type_symbol(document, byte_offset)?;
+    let base_name = current_type
+        .detail
+        .as_deref()
+        .and_then(|d| d.strip_prefix("extends "))?;
+
+    resolve_document_top_level(uri, document, base_name)
+        .or_else(|| workspace.find_top_level(base_name))
+}
+
 fn resolve_at_definition_site(
     uri: &str,
     document: &ParsedDocument,
@@ -626,6 +661,33 @@ mod tests {
         );
         // Should find x in Outer() only: the declaration and the assignment
         assert_eq!(refs.len(), 2, "x in Other() should not be included");
+    }
+
+    #[test]
+    fn resolves_super_keyword_to_parent_class() {
+        let source_a = "class A extends B {\n function Test() {\n  super.Method();\n }\n}\n";
+        let source_b = "class B {\n function Method() {}\n}\n";
+        let doc_a = parse_document(source_a).expect("parse should succeed");
+        let doc_b = parse_document(source_b).expect("parse should succeed");
+
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///a.ws", &doc_a.symbols);
+        index.update_document("file:///b.ws", &doc_b.symbols);
+
+        // cursor on 'super' (line 2, col 3)
+        let definition = resolve_definition(
+            "file:///a.ws",
+            &doc_a,
+            &index,
+            SourcePosition {
+                line: 2,
+                character: 3,
+            },
+        )
+        .expect("super keyword should navigate to parent class");
+
+        assert_eq!(definition.symbol.name, "B");
+        assert_eq!(definition.symbol.kind, crate::symbols::SymbolKind::Class);
     }
 
     #[test]
