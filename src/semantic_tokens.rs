@@ -16,6 +16,7 @@ pub const TOKEN_TYPES: &[&str] = &[
     "number",     // 10
     "type",       // 11
     "decorator",  // 12 (annotation names)
+    "modifier",   // 13 (access/storage specifiers and declaration keywords)
 ];
 
 pub const TOKEN_MODIFIERS: &[&str] = &["declaration"];
@@ -33,6 +34,7 @@ const TT_STRING: u32 = 9;
 const TT_NUMBER: u32 = 10;
 const TT_TYPE: u32 = 11;
 const TT_DECORATOR: u32 = 12;
+const TT_MODIFIER: u32 = 13;
 
 struct RawToken {
     line: u32,
@@ -78,9 +80,10 @@ fn classify(node: Node) -> Option<u32> {
         // Boolean/null/self keywords are named nodes that wrap a single anonymous keyword.
         "literal_bool" | "literal_null" => Some(TT_KEYWORD),
         "this_expr" | "super_expr" | "parent_expr" | "virtual_parent_expr" => Some(TT_KEYWORD),
-        // Specifiers (public/private/editable/saved/…) and function-flavour keywords
-        // (entry/exec/quest/…) are named nodes wrapping a single anonymous keyword.
-        "specifier" | "func_flavour" | "autobind_single" => Some(TT_KEYWORD),
+        // Specifiers (public/private/editable/saved/…) are access/storage modifiers.
+        "specifier" => Some(TT_MODIFIER),
+        // Function-flavour keywords (entry/exec/quest/…) modify the function declaration.
+        "func_flavour" | "autobind_single" => Some(TT_MODIFIER),
         _ => {
             // Anonymous nodes whose kind string IS the keyword text.
             if !node.is_named() {
@@ -121,15 +124,16 @@ fn classify_ident(node: Node) -> Option<u32> {
 
 fn classify_anonymous_keyword(kind: &str) -> Option<u32> {
     match kind {
-        "class" | "struct" | "enum" | "state" | "function" | "event" | "var" | "return" | "if"
-        | "else" | "while" | "for" | "do" | "switch" | "case" | "default" | "break"
-        | "continue" | "new" | "delete" | "in" | "extends" | "defaults" | "hint" | "autobind"
-        | "abstract" | "statemachine" | "latent" | "import" | "const" | "final" | "editable"
-        | "saved" | "optional" | "out" | "inlined" | "private" | "protected" | "public"
-        | "cleanup" | "entry" | "exec" | "quest" | "reward" | "storyscene" | "timer" | "true"
-        | "false" | "NULL" | "this" | "super" | "parent" | "virtual_parent" | "single" => {
-            Some(TT_KEYWORD)
-        }
+        // Control flow and expression keywords.
+        "if" | "else" | "while" | "for" | "do" | "switch" | "case" | "default" | "break"
+        | "continue" | "return" | "new" | "delete" | "in" | "true" | "false" | "NULL" | "this"
+        | "super" | "parent" | "virtual_parent" => Some(TT_KEYWORD),
+        // Declaration and modifier keywords: introduce or modify a declaration.
+        "class" | "struct" | "enum" | "state" | "function" | "event" | "extends" | "var"
+        | "autobind" | "defaults" | "hint" | "abstract" | "statemachine" | "latent"
+        | "import" | "const" | "final" | "editable" | "saved" | "optional" | "out" | "inlined"
+        | "private" | "protected" | "public" | "cleanup" | "entry" | "exec" | "quest"
+        | "reward" | "storyscene" | "timer" | "single" => Some(TT_MODIFIER),
         _ => None,
     }
 }
@@ -193,16 +197,15 @@ mod tests {
     }
 
     #[test]
-    fn keyword_token_type_is_correct() {
-        // "class" keyword on line 0 should be the first token
+    fn class_declaration_keyword_is_modifier() {
+        // "class" is a declaration keyword → modifier, not control-flow keyword
         let source = "class CExample {}\n";
         let data = tokens_for(source);
-        // First token: deltaLine=0, deltaStart=0, length=5, type=TT_KEYWORD(7)
         assert!(data.len() >= 5);
         assert_eq!(data[0], 0, "delta_line");
         assert_eq!(data[1], 0, "delta_start");
         assert_eq!(data[2], 5, "length of 'class'");
-        assert_eq!(data[3], super::TT_KEYWORD, "token type should be keyword");
+        assert_eq!(data[3], super::TT_MODIFIER, "token type should be modifier");
     }
 
     #[test]
@@ -221,11 +224,44 @@ mod tests {
     fn function_tokens_are_emitted() {
         let source = "function Foo() {}\n";
         let data = tokens_for(source);
-        assert!(data.len() >= 10, "expected keyword + function name tokens");
-        // 'function' keyword first
-        assert_eq!(data[3], super::TT_KEYWORD);
+        assert!(data.len() >= 10, "expected modifier + function name tokens");
+        // 'function' declaration keyword → modifier
+        assert_eq!(data[3], super::TT_MODIFIER);
         // 'Foo' name next — TT_FUNCTION
         assert_eq!(data[8], super::TT_FUNCTION);
+    }
+
+    #[test]
+    fn specifier_is_modifier_not_keyword() {
+        let source = "class C {\n private var x : int;\n}\n";
+        let data = tokens_for(source);
+        let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+        assert!(
+            types.contains(&super::TT_MODIFIER),
+            "expected a modifier token for 'private', got types: {types:?}"
+        );
+    }
+
+    #[test]
+    fn var_is_modifier_not_keyword() {
+        let source = "function F() { var x : int; }\n";
+        let data = tokens_for(source);
+        let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+        assert!(
+            types.contains(&super::TT_MODIFIER),
+            "expected a modifier token for 'var', got types: {types:?}"
+        );
+    }
+
+    #[test]
+    fn control_flow_keywords_are_keyword_type() {
+        let source = "function F() { if (true) { return; } }\n";
+        let data = tokens_for(source);
+        let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+        assert!(
+            types.contains(&super::TT_KEYWORD),
+            "expected keyword tokens for 'if'/'true'/'return', got types: {types:?}"
+        );
     }
 
     #[test]
