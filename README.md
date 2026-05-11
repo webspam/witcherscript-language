@@ -79,14 +79,14 @@ The server reads one user-configurable setting:
 
 | Key | Type | Description |
 |---|---|---|
-| `witcherscript.baseScriptsPath` | `string` | Absolute path to the Witcher 3 base scripts directory (e.g. `C:\The Witcher 3\content\content0\scripts`). All ~1,700 game scripts are parsed and their symbols made available globally. |
+| `witcherscript.gameDirectory` | `string` | Absolute path to the Witcher 3 base scripts directory (e.g. `C:\The Witcher 3\content\content0\scripts`). All ~1,700 game scripts are parsed and their symbols made available globally. |
 
 **How the server receives this value**
 
 The server uses two complementary LSP mechanisms:
 
 1. **`workspace/configuration`** (primary) — after the `initialized` notification the server
-   sends a `workspace/configuration` request for `witcherscript.baseScriptsPath`. The
+   sends a `workspace/configuration` request for `witcherscript.gameDirectory`. The
    `vscode-languageclient` `LanguageClient` fulfils this automatically from the user's VS Code
    settings; no extra client code is needed. The server also handles
    `workspace/didChangeConfiguration` notifications, so changing the path in VS Code settings
@@ -104,7 +104,7 @@ The server uses two complementary LSP mechanisms:
   "configuration": {
     "title": "WitcherScript",
     "properties": {
-      "witcherscript.baseScriptsPath": {
+      "witcherscript.gameDirectory": {
         "type": "string",
         "default": "",
         "description": "Absolute path to the Witcher 3 base scripts directory."
@@ -119,8 +119,8 @@ The server uses two complementary LSP mechanisms:
 const clientOptions: LanguageClientOptions = {
   documentSelector: [{ scheme: 'file', language: 'witcherscript' }],
   initializationOptions: {
-    baseScriptsPath:
-      vscode.workspace.getConfiguration('witcherscript').get<string>('baseScriptsPath') ?? '',
+    gameDirectory:
+      vscode.workspace.getConfiguration('witcherscript').get<string>('gameDirectory') ?? '',
   },
 };
 ```

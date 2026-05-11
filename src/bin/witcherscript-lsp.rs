@@ -41,7 +41,7 @@ impl LanguageServer for Backend {
         // workspace/configuration is pulled after initialized(), but this ensures
         // we have a value even before that round-trip completes.
         if let Some(opts) = &params.initialization_options {
-            if let Some(p) = opts.get("baseScriptsPath").and_then(|v| v.as_str()) {
+            if let Some(p) = opts.get("gameDirectory").and_then(|v| v.as_str()) {
                 if !p.is_empty() {
                     *self.base_scripts_path.lock().await = Some(PathBuf::from(p));
                 }
@@ -74,7 +74,7 @@ impl LanguageServer for Backend {
 
     async fn initialized(&self, _: InitializedParams) {
         self.index_workspace().await;
-        // Pull witcherscript.baseScriptsPath from the client's settings. This may
+        // Pull witcherscript.gameDirectory from the client's settings. This may
         // override the value from initializationOptions.
         self.fetch_config().await;
         self.index_base_scripts().await;
@@ -224,12 +224,12 @@ impl Backend {
         }
     }
 
-    /// Pull `witcherscript.baseScriptsPath` from the client via `workspace/configuration`.
+    /// Pull `witcherscript.gameDirectory` from the client via `workspace/configuration`.
     /// Updates `self.base_scripts_path` if a non-empty value is returned.
     async fn fetch_config(&self) {
         let items = vec![ConfigurationItem {
             scope_uri: None,
-            section: Some("witcherscript.baseScriptsPath".to_string()),
+            section: Some("witcherscript.gameDirectory".to_string()),
         }];
         let Ok(values) = self.client.configuration(items).await else {
             return;
