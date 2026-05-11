@@ -9,27 +9,27 @@ This is a Rust crate (`witcherscript-parser`) that produces two binaries:
 
 The library surface is in `src/`:
 
-| File | Purpose |
-|---|---|
-| `lib.rs` | Module declarations |
-| `diagnostics.rs` | `ParseDiagnostic`, tree-error and late-local-var collection, `format_tree` |
-| `document.rs` | `ParsedDocument` (source + tree + line_index + diagnostics + symbols), parse entry points |
-| `files.rs` | Recursive `.ws` file collection via `walkdir` |
-| `line_index.rs` | Byte-offset ↔ UTF-16 line/character position mapping (LSP-compatible) |
-| `resolve.rs` | `WorkspaceIndex`, `resolve_definition`, `hover_text` |
-| `symbols.rs` | `DocumentSymbols`, `Symbol`, `SymbolKind`, `extract_symbols` |
+| File             | Purpose                                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------- |
+| `lib.rs`         | Module declarations                                                                       |
+| `diagnostics.rs` | `ParseDiagnostic`, tree-error and late-local-var collection, `format_tree`                |
+| `document.rs`    | `ParsedDocument` (source + tree + line_index + diagnostics + symbols), parse entry points |
+| `files.rs`       | Recursive `.ws` file collection via `walkdir`                                             |
+| `line_index.rs`  | Byte-offset ↔ UTF-16 line/character position mapping (LSP-compatible)                     |
+| `resolve.rs`     | `WorkspaceIndex`, `resolve_definition`, `hover_text`                                      |
+| `symbols.rs`     | `DocumentSymbols`, `Symbol`, `SymbolKind`, `extract_symbols`                              |
 
 Grammar: `tree-sitter-witcherscript` pinned to `v0.13.0` from the `webspam` GitHub fork.
 
 ## Build
 
-```powershell
+```
 cargo build
 ```
 
 ## Test
 
-```powershell
+```
 cargo test
 ```
 
@@ -76,7 +76,7 @@ Fix late-local-var rule skipping nop statements
 ## Code style
 
 - No comments unless the reason is non-obvious (hidden constraint, workaround, subtle
-  invariant). Never describe *what* the code does.
+  invariant). Never describe _what_ the code does.
 - No `unwrap()` in library code; use `?` or `Option`/`Result` combinators. `unwrap()` is
   acceptable in tests.
 - No `pub` on symbols that do not need to be visible outside the module.
