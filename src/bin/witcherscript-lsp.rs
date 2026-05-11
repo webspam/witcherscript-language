@@ -14,8 +14,10 @@ use tower_lsp::lsp_types::{
     DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverContents, HoverParams, InitializeParams, InitializeResult,
     InitializedParams, Location, MarkupContent, MarkupKind, MessageType, OneOf, Position, Range,
-    ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
-    WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
+    ReferenceParams, SemanticToken, SemanticTokens, SemanticTokensFullOptions,
+    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind, Url, WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use tracing::{error, warn};
@@ -24,6 +26,9 @@ use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{
     find_references, hover_text, resolve_definition, Definition, WorkspaceIndex,
+};
+use witcherscript_parser::semantic_tokens::{
+    collect_semantic_tokens, TOKEN_MODIFIERS, TOKEN_TYPES,
 };
 use witcherscript_parser::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
 
@@ -65,6 +70,24 @@ impl LanguageServer for Backend {
                 references_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(tower_lsp::lsp_types::HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                semantic_tokens_provider: Some(
+                    SemanticTokensServerCapabilities::SemanticTokensOptions(
+                        SemanticTokensOptions {
+                            legend: SemanticTokensLegend {
+                                token_types: TOKEN_TYPES
+                                    .iter()
+                                    .map(|s| tower_lsp::lsp_types::SemanticTokenType::new(s))
+                                    .collect(),
+                                token_modifiers: TOKEN_MODIFIERS
+                                    .iter()
+                                    .map(|s| tower_lsp::lsp_types::SemanticTokenModifier::new(s))
+                                    .collect(),
+                            },
+                            full: Some(SemanticTokensFullOptions::Bool(true)),
+                            ..SemanticTokensOptions::default()
+                        },
+                    ),
+                ),
                 workspace: Some(WorkspaceServerCapabilities {
                     workspace_folders: Some(WorkspaceFoldersServerCapabilities {
                         supported: Some(true),
@@ -185,6 +208,35 @@ impl LanguageServer for Backend {
             &document.symbols,
             None,
         ))))
+    }
+
+    async fn semantic_tokens_full(
+        &self,
+        params: SemanticTokensParams,
+    ) -> Result<Option<SemanticTokensResult>> {
+        let documents = self.documents.lock().await;
+        let Some(document) = documents.get(&params.text_document.uri) else {
+            return Ok(None);
+        };
+        let data = collect_semantic_tokens(
+            document.tree.root_node(),
+            &document.source,
+            &document.line_index,
+        );
+        let tokens: Vec<SemanticToken> = data
+            .chunks_exact(5)
+            .map(|c| SemanticToken {
+                delta_line: c[0],
+                delta_start: c[1],
+                length: c[2],
+                token_type: c[3],
+                token_modifiers_bitset: c[4],
+            })
+            .collect();
+        Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
+            result_id: None,
+            data: tokens,
+        })))
     }
 
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
