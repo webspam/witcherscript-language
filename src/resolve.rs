@@ -97,7 +97,7 @@ pub fn resolve_definition(
         .line_index
         .position_to_byte(&document.source, position)?;
 
-    if let Some(def) = resolve_super_keyword(uri, document, workspace, byte_offset) {
+    if let Some(def) = resolve_self_keyword(uri, document, workspace, byte_offset) {
         return Some(def);
     }
 
@@ -414,7 +414,7 @@ fn collect_ident_occurrences<'tree>(
     }
 }
 
-fn resolve_super_keyword(
+fn resolve_self_keyword(
     uri: &str,
     document: &ParsedDocument,
     workspace: &WorkspaceIndex,
@@ -425,23 +425,29 @@ fn resolve_super_keyword(
         .into_iter()
         .find_map(|offset| root.descendant_for_byte_range(offset, offset))?;
 
+    let parent_kind = node.parent().map(|p| p.kind());
+
+    let is_this = node.kind() == "this" || matches!(parent_kind, Some("this_expr"));
     let is_super = matches!(node.kind(), "super" | "parent")
-        || matches!(
-            node.parent().map(|p| p.kind()),
-            Some("super_expr" | "parent_expr")
-        );
-    if !is_super {
-        return None;
+        || matches!(parent_kind, Some("super_expr" | "parent_expr"));
+
+    if is_this {
+        let current_type = current_type_symbol(document, byte_offset)?;
+        return resolve_document_top_level(uri, document, &current_type.name.clone())
+            .or_else(|| workspace.find_top_level(&current_type.name));
     }
 
-    let current_type = current_type_symbol(document, byte_offset)?;
-    let base_name = current_type
-        .detail
-        .as_deref()
-        .and_then(|d| d.strip_prefix("extends "))?;
+    if is_super {
+        let current_type = current_type_symbol(document, byte_offset)?;
+        let base_name = current_type
+            .detail
+            .as_deref()
+            .and_then(|d| d.strip_prefix("extends "))?;
+        return resolve_document_top_level(uri, document, base_name)
+            .or_else(|| workspace.find_top_level(base_name));
+    }
 
-    resolve_document_top_level(uri, document, base_name)
-        .or_else(|| workspace.find_top_level(base_name))
+    None
 }
 
 fn resolve_at_definition_site(
@@ -661,6 +667,29 @@ mod tests {
         );
         // Should find x in Outer() only: the declaration and the assignment
         assert_eq!(refs.len(), 2, "x in Other() should not be included");
+    }
+
+    #[test]
+    fn resolves_this_keyword_to_current_class() {
+        let source = "class MyClass {\n function Test() {\n  this.Foo();\n }\n}\n";
+        let doc = parse_document(source).expect("parse should succeed");
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///a.ws", &doc.symbols);
+
+        // cursor on 'this' (line 2, col 3)
+        let definition = resolve_definition(
+            "file:///a.ws",
+            &doc,
+            &index,
+            SourcePosition {
+                line: 2,
+                character: 3,
+            },
+        )
+        .expect("this keyword should navigate to current class");
+
+        assert_eq!(definition.symbol.name, "MyClass");
+        assert_eq!(definition.symbol.kind, crate::symbols::SymbolKind::Class);
     }
 
     #[test]
