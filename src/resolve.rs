@@ -4,6 +4,7 @@ use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
 use crate::line_index::{SourcePosition, SourceRange};
+use crate::script_env::ScriptEnvironment;
 use crate::symbols::{AccessLevel, DocumentSymbols, Symbol, SymbolId, SymbolKind};
 
 #[derive(Debug, Clone)]
@@ -15,11 +16,36 @@ pub struct Definition {
 pub struct SymbolDb<'a> {
     workspace: &'a WorkspaceIndex,
     base: &'a WorkspaceIndex,
+    script_env: Option<&'a ScriptEnvironment>,
 }
 
 impl<'a> SymbolDb<'a> {
     pub fn new(workspace: &'a WorkspaceIndex, base: &'a WorkspaceIndex) -> Self {
-        Self { workspace, base }
+        Self {
+            workspace,
+            base,
+            script_env: None,
+        }
+    }
+
+    pub fn with_script_env(mut self, env: &'a ScriptEnvironment) -> Self {
+        self.script_env = Some(env);
+        self
+    }
+
+    fn find_script_global(&self, name: &str) -> Option<Definition> {
+        let g = self.script_env?.find(name)?;
+        if let Some(class_def) = self.find_top_level(&g.type_name) {
+            return Some(class_def);
+        }
+        Some(Definition {
+            uri: g.ini_uri.clone(),
+            symbol: g.symbol.clone(),
+        })
+    }
+
+    fn script_global_type(&self, name: &str) -> Option<String> {
+        self.script_env?.find(name).map(|g| g.type_name.clone())
     }
 
     pub fn find_top_level(&self, name: &str) -> Option<Definition> {
@@ -156,6 +182,7 @@ pub fn resolve_definition(
         .or_else(|| resolve_current_type_member(uri, document, db, byte_offset, name))
         .or_else(|| resolve_document_top_level(uri, document, name))
         .or_else(|| db.find_top_level(name))
+        .or_else(|| db.find_script_global(name))
         .or_else(|| resolve_at_definition_site(uri, document, byte_offset, name))
 }
 
@@ -256,6 +283,7 @@ fn infer_expr_type(
                 .or_else(|| resolve_document_top_level(uri, document, name))
                 .or_else(|| db.find_top_level(name))
                 .and_then(|def| def.symbol.type_annotation)
+                .or_else(|| db.script_global_type(name))
         }
         "func_call_expr" => {
             let func = node
@@ -336,7 +364,8 @@ fn resolve_member_access(
                             db.find_member(&current_type, receiver_name, AccessLevel::Private)
                         })
                     })
-                    .and_then(|def| def.symbol.type_annotation)?;
+                    .and_then(|def| def.symbol.type_annotation)
+                    .or_else(|| db.script_global_type(receiver_name))?;
             resolve_document_member(uri, document, &type_name, name, AccessLevel::Public)
                 .or_else(|| db.find_member(&type_name, name, AccessLevel::Public))
         }
@@ -677,6 +706,7 @@ mod tests {
     use crate::document::parse_document;
     use crate::line_index::SourcePosition;
 
+    use crate::script_env::ScriptEnvironment;
     use crate::symbols::AccessLevel;
 
     use super::{resolve_definition, SymbolDb, WorkspaceIndex};
@@ -1465,5 +1495,136 @@ mod tests {
         let container_id = definition.symbol.container.expect("method has a container");
         let container = doc.symbols.by_id(container_id).expect("container exists");
         assert_eq!(container.name, "Nest");
+    }
+
+    fn make_env(name: &str, type_name: &str) -> ScriptEnvironment {
+        use crate::line_index::SourceRange;
+        use crate::script_env::ScriptGlobal;
+        use crate::symbols::{Symbol, SymbolId, SymbolKind};
+        let pos = SourcePosition {
+            line: 1,
+            character: 0,
+        };
+        let end = SourcePosition {
+            line: 1,
+            character: name.len() as u32,
+        };
+        ScriptEnvironment {
+            globals: vec![ScriptGlobal {
+                name: name.to_string(),
+                type_name: type_name.to_string(),
+                ini_uri: "file:///redscripts.ini".to_string(),
+                symbol: Symbol {
+                    id: SymbolId(0),
+                    name: name.to_string(),
+                    kind: SymbolKind::Variable,
+                    range: SourceRange { start: pos, end },
+                    selection_range: SourceRange { start: pos, end },
+                    byte_range: 0..name.len(),
+                    selection_byte_range: 0..name.len(),
+                    container: None,
+                    container_name: None,
+                    type_annotation: Some(type_name.to_string()),
+                    signature: None,
+                    detail: None,
+                    annotations: Vec::new(),
+                    access: AccessLevel::Public,
+                },
+            }],
+        }
+    }
+
+    #[test]
+    fn script_global_resolves_to_ini_when_class_not_loaded() {
+        let doc = parse_document("function Test() {\n theGame;\n}\n").expect("parse");
+        let env = make_env("theGame", "CR4Game");
+        let workspace = WorkspaceIndex::default();
+        let base = WorkspaceIndex::default();
+        let def = resolve_definition(
+            "file:///test.ws",
+            &doc,
+            &SymbolDb::new(&workspace, &base).with_script_env(&env),
+            SourcePosition {
+                line: 1,
+                character: 2,
+            },
+        )
+        .expect("should resolve to ini");
+        assert_eq!(def.uri, "file:///redscripts.ini");
+        assert_eq!(def.symbol.name, "theGame");
+    }
+
+    #[test]
+    fn script_global_redirects_to_class_when_loaded() {
+        let doc = parse_document("function Test() {\n theGame;\n}\n").expect("parse");
+        let class_doc = parse_document("class CR4Game {}\n").expect("parse");
+        let env = make_env("theGame", "CR4Game");
+        let mut base = WorkspaceIndex::default();
+        base.update_document("file:///r4game.ws", &class_doc.symbols);
+        let def = resolve_definition(
+            "file:///test.ws",
+            &doc,
+            &SymbolDb::new(&WorkspaceIndex::default(), &base).with_script_env(&env),
+            SourcePosition {
+                line: 1,
+                character: 2,
+            },
+        )
+        .expect("should redirect to class");
+        assert_eq!(def.symbol.name, "CR4Game");
+        assert_eq!(def.uri, "file:///r4game.ws");
+    }
+
+    #[test]
+    fn member_access_on_script_global_resolves_method() {
+        let doc = parse_document("function Test() {\n theGame.GetPlayer();\n}\n").expect("parse");
+        let class_doc =
+            parse_document("class CR4Game {\n public function GetPlayer() : CR4Player {}\n}\n")
+                .expect("parse");
+        let env = make_env("theGame", "CR4Game");
+        let mut base = WorkspaceIndex::default();
+        base.update_document("file:///r4game.ws", &class_doc.symbols);
+        let def = resolve_definition(
+            "file:///test.ws",
+            &doc,
+            &SymbolDb::new(&WorkspaceIndex::default(), &base).with_script_env(&env),
+            SourcePosition {
+                line: 1,
+                character: 11,
+            },
+        )
+        .expect("GetPlayer should resolve");
+        assert_eq!(def.symbol.name, "GetPlayer");
+    }
+
+    #[test]
+    fn local_var_with_same_name_as_script_global_resolves_to_local() {
+        let doc =
+            parse_document("function Test() {\n    var theGame : CR4Game;\n    theGame;\n}\n")
+                .expect("parse");
+        let class_doc = parse_document("class CR4Game {}\n").expect("parse");
+        let env = make_env("theGame", "CR4Game");
+        let mut base = WorkspaceIndex::default();
+        base.update_document("file:///r4game.ws", &class_doc.symbols);
+        let def = resolve_definition(
+            "file:///test.ws",
+            &doc,
+            &SymbolDb::new(&WorkspaceIndex::default(), &base).with_script_env(&env),
+            SourcePosition {
+                line: 2,
+                character: 4,
+            },
+        )
+        .expect("should resolve to local variable");
+        assert_eq!(
+            def.symbol.kind,
+            crate::symbols::SymbolKind::Variable,
+            "expected local variable, not class"
+        );
+        assert_eq!(def.symbol.name, "theGame");
+        assert_ne!(
+            def.uri, "file:///r4game.ws",
+            "should not redirect to class when a local shadows the global"
+        );
     }
 }

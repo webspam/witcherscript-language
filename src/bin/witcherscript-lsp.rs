@@ -27,6 +27,7 @@ use witcherscript_parser::line_index::{SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{
     find_references, hover_text, resolve_definition, Definition, SymbolDb, WorkspaceIndex,
 };
+use witcherscript_parser::script_env::{parse_script_environment, ScriptEnvironment};
 use witcherscript_parser::semantic_tokens::{
     collect_semantic_tokens, TOKEN_MODIFIERS, TOKEN_TYPES,
 };
@@ -42,6 +43,7 @@ struct Backend {
     base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
     base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
+    script_env: Arc<Mutex<ScriptEnvironment>>,
 }
 
 #[tower_lsp::async_trait]
@@ -148,7 +150,8 @@ impl LanguageServer for Backend {
         };
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
-        let db = SymbolDb::new(&workspace, &base);
+        let script_env = self.script_env.lock().await;
+        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
         let Some(definition) =
             resolve_definition(uri.as_str(), document, &db, source_position(position))
         else {
@@ -173,7 +176,8 @@ impl LanguageServer for Backend {
         };
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
-        let db = SymbolDb::new(&workspace, &base);
+        let script_env = self.script_env.lock().await;
+        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
         let Some(definition) =
             resolve_definition(uri.as_str(), document, &db, source_position(position))
         else {
@@ -214,7 +218,8 @@ impl LanguageServer for Backend {
         };
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
-        let db = SymbolDb::new(&workspace, &base);
+        let script_env = self.script_env.lock().await;
+        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
         let data = collect_semantic_tokens(
             document.tree.root_node(),
             &document.source,
@@ -249,7 +254,8 @@ impl LanguageServer for Backend {
         };
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
-        let db = SymbolDb::new(&workspace, &base);
+        let script_env = self.script_env.lock().await;
+        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
 
         let Some(definition) =
             resolve_definition(uri.as_str(), document, &db, source_position(position))
@@ -380,13 +386,19 @@ impl Backend {
     /// Parse all `.ws` files under `base_scripts_path` in parallel and store their
     /// symbols in `base_scripts_index`. No-ops if no path is configured.
     async fn index_base_scripts(&self) {
-        let path = {
+        let game_dir = {
             let guard = self.base_scripts_path.lock().await;
             match guard.clone() {
-                Some(p) => p.join(r"content\content0\scripts"),
+                Some(p) => p,
                 None => return,
             }
         };
+
+        if let Some(env) = parse_script_environment(&game_dir.join(r"bin\redscripts.ini")) {
+            *self.script_env.lock().await = env;
+        }
+
+        let path = game_dir.join(r"content\content0\scripts");
 
         self.client
             .log_message(
@@ -615,6 +627,7 @@ async fn main() {
         base_scripts_path: Arc::new(Mutex::new(None)),
         base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
         base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
+        script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
     });
 
     Server::new(stdin, stdout, socket).serve(service).await;
