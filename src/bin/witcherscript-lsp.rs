@@ -296,24 +296,36 @@ fn source_position(position: Position) -> SourcePosition {
 fn hover_markdown(definition: &Definition) -> String {
     let mut markdown = format!("```witcherscript\n{}\n```", hover_text(definition));
     markdown.push_str(&format!(
-        "\n\nDefined in `{}`",
-        hover_location_label(definition)
+        "\n\nDefined in {}",
+        hover_location_markdown(definition)
     ));
     markdown
 }
 
-fn hover_location_label(definition: &Definition) -> String {
+fn hover_location_markdown(definition: &Definition) -> String {
     let line = definition.symbol.selection_range.start.line + 1;
-    let path = Url::parse(&definition.uri)
+    let Ok(mut uri) = Url::parse(&definition.uri) else {
+        return format!("`{}:{line}`", definition.uri);
+    };
+
+    let label = uri
+        .to_file_path()
         .ok()
-        .and_then(|uri| uri.to_file_path().ok())
         .and_then(|path| {
             path.file_name()
                 .map(|name| name.to_string_lossy().into_owned())
         })
+        .or_else(|| {
+            uri.path_segments()
+                .and_then(|mut segments| segments.next_back())
+                .filter(|segment| !segment.is_empty())
+                .map(str::to_string)
+        })
         .unwrap_or_else(|| definition.uri.clone());
 
-    format!("{path}:{line}")
+    uri.set_fragment(Some(&format!("L{line}")));
+
+    format!("[{label}:{line}]({uri})")
 }
 
 #[tokio::main]
@@ -396,8 +408,35 @@ mod tests {
 
         assert_eq!(
             markdown,
-            "```witcherscript\nlocal dataObject : CScriptedFlashObject\n```\n\nDefined in `example.ws:2`"
+            "```witcherscript\nlocal dataObject : CScriptedFlashObject\n```\n\nDefined in [example.ws:2](file:///example.ws#L2)"
         );
-        assert!(!markdown.contains("file://"));
+        assert!(!markdown.contains("Defined in file://"));
+    }
+
+    #[test]
+    fn formats_annotated_function_hover_with_annotation_first() {
+        let source =
+            "@wrapMethod(CR4Player)\nfunction OnSpawned(spawnData : SEntitySpawnData) {\n}\n";
+        let document = parse_document(source).expect("document should parse");
+        let mut workspace = WorkspaceIndex::default();
+        workspace.update_document("file:///fov.ws", &document.symbols);
+
+        let definition = resolve_definition(
+            "file:///fov.ws",
+            &document,
+            &workspace,
+            SourcePosition {
+                line: 1,
+                character: 9,
+            },
+        )
+        .expect("function should resolve");
+
+        let markdown = hover_markdown(&definition);
+
+        assert_eq!(
+            markdown,
+            "```witcherscript\n@wrapMethod(CR4Player)\nfunction OnSpawned(spawnData : SEntitySpawnData)\n```\n\nDefined in [fov.ws:2](file:///fov.ws#L2)"
+        );
     }
 }

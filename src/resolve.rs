@@ -95,18 +95,6 @@ pub fn hover_text(definition: &Definition) -> String {
         SymbolKind::Event => "event",
     };
 
-    if let Some(signature) = &symbol.signature {
-        lines.push(format!("{label} {signature}"));
-    } else if let Some(type_annotation) = &symbol.type_annotation {
-        lines.push(format!("{label} {} : {type_annotation}", symbol.name));
-    } else {
-        lines.push(format!("{label} {}", symbol.name));
-    }
-
-    if let Some(detail) = &symbol.detail {
-        lines.push(detail.clone());
-    }
-
     if !symbol.annotations.is_empty() {
         let annotations = symbol
             .annotations
@@ -118,6 +106,18 @@ pub fn hover_text(definition: &Definition) -> String {
             .collect::<Vec<_>>()
             .join(", ");
         lines.push(annotations);
+    }
+
+    if let Some(signature) = &symbol.signature {
+        lines.push(signature.clone());
+    } else if let Some(type_annotation) = &symbol.type_annotation {
+        lines.push(format!("{label} {} : {type_annotation}", symbol.name));
+    } else {
+        lines.push(format!("{label} {}", symbol.name));
+    }
+
+    if let Some(detail) = &symbol.detail {
+        lines.push(detail.clone());
     }
 
     lines.join("\n")
