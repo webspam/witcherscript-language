@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser as ClapParser;
 use tree_sitter::Parser as TreeSitterParser;
-use walkdir::WalkDir;
-use witcherscript_parser::diagnostics::{collect_diagnostics, format_tree};
+use witcherscript_parser::diagnostics::format_tree;
+use witcherscript_parser::document::parse_document_with_parser;
+use witcherscript_parser::files::collect_witcherscript_files;
 
 #[derive(Debug, ClapParser)]
 #[command(author, version, about)]
@@ -80,17 +81,15 @@ fn parse_file(
     max_diagnostics: usize,
 ) -> Result<FileResult, Box<dyn Error>> {
     let source = fs::read_to_string(path)?;
-    let tree = parser
-        .parse(&source, None)
-        .ok_or("tree-sitter returned no parse tree")?;
-    let root = tree.root_node();
+    let document = parse_document_with_parser(parser, source)?;
+    let root = document.tree.root_node();
 
     if dump_tree {
         println!("== {} ==", path.display());
         print!("{}", format_tree(root));
     }
 
-    let diagnostics = collect_diagnostics(root, &source);
+    let diagnostics = &document.diagnostics;
     if diagnostics.is_empty() {
         println!("OK {}", path.display());
     } else {
@@ -111,40 +110,4 @@ fn parse_file(
     Ok(FileResult {
         diagnostic_count: diagnostics.len(),
     })
-}
-
-fn collect_witcherscript_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>, Box<dyn Error>> {
-    let mut files = Vec::new();
-
-    for path in paths {
-        if path.is_file() {
-            if is_witcherscript_file(path) {
-                files.push(path.clone());
-            }
-            continue;
-        }
-
-        if path.is_dir() {
-            for entry in WalkDir::new(path) {
-                let entry = entry?;
-                let entry_path = entry.path();
-                if entry_path.is_file() && is_witcherscript_file(entry_path) {
-                    files.push(entry_path.to_path_buf());
-                }
-            }
-            continue;
-        }
-
-        return Err(format!("path does not exist: {}", path.display()).into());
-    }
-
-    files.sort();
-    files.dedup();
-    Ok(files)
-}
-
-fn is_witcherscript_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("ws"))
 }
