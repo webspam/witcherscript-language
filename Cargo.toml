@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Prototype WitcherScript parser and syntax validator for Light Rewrite"
 publish = false
+default-run = "witcherscript-parser"
 
 [dependencies]
 # default-features = false drops colour, suggestions, env, wrap_help, unicode — smaller binary and fewer deps
@@ -15,6 +16,8 @@ clap = { version = "4.5.51", default-features = false, features = [
     "error-context",
     "cargo",
 ] }
+tokio = { version = "1.48.0", features = ["io-std", "macros", "rt-multi-thread", "sync"] }
+tower-lsp = "0.20.0"
 tree-sitter = "=0.22.6"
 tree-sitter-witcherscript = { git = "https://github.com/webspam/tree-sitter-witcherscript.git", tag = "v0.13.0" }
 walkdir = "2.5.0"
