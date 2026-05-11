@@ -5,6 +5,14 @@ use crate::line_index::{LineIndex, SourceRange};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SymbolId(pub usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum AccessLevel {
+    Private,
+    Protected,
+    #[default]
+    Public,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolKind {
     Class,
@@ -41,6 +49,7 @@ pub struct Symbol {
     pub signature: Option<String>,
     pub detail: Option<String>,
     pub annotations: Vec<Annotation>,
+    pub access: AccessLevel,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -166,6 +175,7 @@ impl SymbolExtractor<'_> {
             None,
             None,
             detail,
+            AccessLevel::Public,
         );
 
         self.visit_children(node, Some(id), Vec::new());
@@ -191,6 +201,7 @@ impl SymbolExtractor<'_> {
             None,
             None,
             None,
+            AccessLevel::Public,
         );
 
         self.visit_enum_variants(node, enum_id);
@@ -210,6 +221,7 @@ impl SymbolExtractor<'_> {
                         None,
                         None,
                         None,
+                        AccessLevel::Public,
                     );
                 }
             } else {
@@ -240,6 +252,7 @@ impl SymbolExtractor<'_> {
             None,
             None,
             detail,
+            AccessLevel::Public,
         );
 
         self.visit_children(node, Some(id), Vec::new());
@@ -264,6 +277,7 @@ impl SymbolExtractor<'_> {
         };
         let signature = callable_signature(node, self.source);
         let type_annotation = direct_child_text(node, "type_annot", self.source);
+        let access = self.node_access_level(node);
         let id = self.push_symbol(
             node,
             name_node,
@@ -273,6 +287,7 @@ impl SymbolExtractor<'_> {
             type_annotation,
             signature,
             None,
+            access,
         );
 
         self.visit_params(node, id);
@@ -311,6 +326,7 @@ impl SymbolExtractor<'_> {
         } else {
             None
         };
+        let access = self.node_access_level(node);
         let mut cursor = node.walk();
 
         for child in node.children(&mut cursor) {
@@ -324,6 +340,7 @@ impl SymbolExtractor<'_> {
                     type_annotation.clone(),
                     field_signature.clone(),
                     None,
+                    access,
                 );
             }
         }
@@ -359,6 +376,7 @@ impl SymbolExtractor<'_> {
         type_annotation: Option<String>,
         signature: Option<String>,
         detail: Option<String>,
+        access: AccessLevel,
     ) -> SymbolId {
         let container_name = container
             .and_then(|id| self.symbols.by_id(id))
@@ -385,7 +403,22 @@ impl SymbolExtractor<'_> {
             signature,
             detail,
             annotations,
+            access,
         })
+    }
+
+    fn node_access_level(&self, node: Node) -> AccessLevel {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "specifier" {
+                match &self.source[child.start_byte()..child.end_byte()] {
+                    "private" => return AccessLevel::Private,
+                    "protected" => return AccessLevel::Protected,
+                    _ => {}
+                }
+            }
+        }
+        AccessLevel::Public
     }
 }
 

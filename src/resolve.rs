@@ -4,7 +4,7 @@ use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
 use crate::line_index::{SourcePosition, SourceRange};
-use crate::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
+use crate::symbols::{AccessLevel, DocumentSymbols, Symbol, SymbolId, SymbolKind};
 
 #[derive(Debug, Clone)]
 pub struct Definition {
@@ -28,10 +28,15 @@ impl<'a> SymbolDb<'a> {
             .or_else(|| self.base.find_top_level(name))
     }
 
-    pub fn find_member(&self, container: &str, name: &str) -> Option<Definition> {
+    pub fn find_member(
+        &self,
+        container: &str,
+        name: &str,
+        min_access: AccessLevel,
+    ) -> Option<Definition> {
         self.workspace
-            .find_member(container, name)
-            .or_else(|| self.base.find_member(container, name))
+            .find_member(container, name, min_access)
+            .or_else(|| self.base.find_member(container, name, min_access))
     }
 }
 
@@ -62,8 +67,13 @@ impl WorkspaceIndex {
         })
     }
 
-    pub fn find_member(&self, container_name: &str, name: &str) -> Option<Definition> {
-        self.find_member_in_chain(container_name, name, 0)
+    pub fn find_member(
+        &self,
+        container_name: &str,
+        name: &str,
+        min_access: AccessLevel,
+    ) -> Option<Definition> {
+        self.find_member_in_chain(container_name, name, 0, min_access)
     }
 
     fn find_member_in_chain(
@@ -71,6 +81,7 @@ impl WorkspaceIndex {
         container_name: &str,
         name: &str,
         depth: usize,
+        min_access: AccessLevel,
     ) -> Option<Definition> {
         if depth > 32 {
             return None;
@@ -81,7 +92,11 @@ impl WorkspaceIndex {
                 .find(|symbol| symbol.name == container_name && is_type_like(symbol.kind))?;
             symbols
                 .iter()
-                .find(|symbol| symbol.container == Some(container.id) && symbol.name == name)
+                .find(|symbol| {
+                    symbol.container == Some(container.id)
+                        && symbol.name == name
+                        && symbol.access >= min_access
+                })
                 .cloned()
                 .map(|symbol| Definition {
                     uri: uri.clone(),
@@ -92,7 +107,8 @@ impl WorkspaceIndex {
             return direct;
         }
         let superclass = self.superclass_of(container_name)?;
-        self.find_member_in_chain(&superclass, name, depth + 1)
+        let deeper_min = min_access.max(AccessLevel::Protected);
+        self.find_member_in_chain(&superclass, name, depth + 1, deeper_min)
     }
 
     fn superclass_of(&self, name: &str) -> Option<String> {
@@ -231,13 +247,13 @@ fn resolve_member_access(
     match receiver.kind() {
         "this_expr" => {
             let current_type = current_type_name(document, ident.start_byte())?;
-            resolve_document_member(uri, document, &current_type, name)
-                .or_else(|| db.find_member(&current_type, name))
+            resolve_document_member(uri, document, &current_type, name, AccessLevel::Private)
+                .or_else(|| db.find_member(&current_type, name, AccessLevel::Private))
         }
         "parent_expr" | "super_expr" => {
             let current_type = current_type_symbol(document, ident.start_byte())?;
             let base_name = current_type.detail.as_deref()?.strip_prefix("extends ")?;
-            db.find_member(base_name, name)
+            db.find_member(base_name, name, AccessLevel::Protected)
         }
         "ident" => {
             let receiver_name = receiver.utf8_text(document.source.as_bytes()).ok()?;
@@ -245,12 +261,20 @@ fn resolve_member_access(
                 resolve_local_or_parameter(uri, document, ident.start_byte(), receiver_name)
                     .or_else(|| {
                         let current_type = current_type_name(document, ident.start_byte())?;
-                        resolve_document_member(uri, document, &current_type, receiver_name)
-                            .or_else(|| db.find_member(&current_type, receiver_name))
+                        resolve_document_member(
+                            uri,
+                            document,
+                            &current_type,
+                            receiver_name,
+                            AccessLevel::Private,
+                        )
+                        .or_else(|| {
+                            db.find_member(&current_type, receiver_name, AccessLevel::Private)
+                        })
                     })
                     .and_then(|def| def.symbol.type_annotation)?;
-            resolve_document_member(uri, document, &type_name, name)
-                .or_else(|| db.find_member(&type_name, name))
+            resolve_document_member(uri, document, &type_name, name, AccessLevel::Public)
+                .or_else(|| db.find_member(&type_name, name, AccessLevel::Public))
         }
         _ => None,
     }
@@ -290,8 +314,8 @@ fn resolve_current_type_member(
     name: &str,
 ) -> Option<Definition> {
     let current_type = current_type_name(document, byte_offset)?;
-    resolve_document_member(uri, document, &current_type, name)
-        .or_else(|| db.find_member(&current_type, name))
+    resolve_document_member(uri, document, &current_type, name, AccessLevel::Private)
+        .or_else(|| db.find_member(&current_type, name, AccessLevel::Private))
 }
 
 fn resolve_document_member(
@@ -299,6 +323,7 @@ fn resolve_document_member(
     document: &ParsedDocument,
     container_name: &str,
     name: &str,
+    min_access: AccessLevel,
 ) -> Option<Definition> {
     let container = document
         .symbols
@@ -308,7 +333,7 @@ fn resolve_document_member(
     document
         .symbols
         .children_of(Some(container.id))
-        .find(|symbol| symbol.name == name)
+        .find(|symbol| symbol.name == name && symbol.access >= min_access)
         .cloned()
         .map(|symbol| Definition {
             uri: uri.to_string(),
@@ -542,6 +567,8 @@ fn symbol_id(symbol: &Symbol) -> SymbolId {
 mod tests {
     use crate::document::parse_document;
     use crate::line_index::SourcePosition;
+
+    use crate::symbols::AccessLevel;
 
     use super::{resolve_definition, SymbolDb, WorkspaceIndex};
 
@@ -909,7 +936,9 @@ mod tests {
         let mut index = WorkspaceIndex::default();
         index.update_document("file:///a.ws", &doc.symbols);
         // CObject is not in the index; find_member must terminate without looping.
-        assert!(index.find_member("A", "someMethod").is_none());
+        assert!(index
+            .find_member("A", "someMethod", AccessLevel::Public)
+            .is_none());
     }
 
     #[test]
@@ -1017,5 +1046,131 @@ mod tests {
             definition.symbol.kind,
             crate::symbols::SymbolKind::Parameter
         );
+    }
+
+    #[test]
+    fn private_method_not_visible_in_subclass() {
+        let source_a = "class A extends B {\n function Test() {\n  this.Secret();\n }\n}\n";
+        let source_b = "class B {\n private function Secret() {}\n}\n";
+        let doc_a = parse_document(source_a).expect("parse should succeed");
+        let doc_b = parse_document(source_b).expect("parse should succeed");
+
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///a.ws", &doc_a.symbols);
+        index.update_document("file:///b.ws", &doc_b.symbols);
+
+        let definition = resolve_definition(
+            "file:///a.ws",
+            &doc_a,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
+            SourcePosition {
+                line: 2,
+                character: 8,
+            },
+        );
+
+        assert!(
+            definition.is_none(),
+            "private method of parent should not resolve from subclass"
+        );
+    }
+
+    #[test]
+    fn private_method_visible_within_own_class() {
+        let source = "class A {\n private function Secret() {}\n function Test() {\n  this.Secret();\n }\n}\n";
+        let doc = parse_document(source).expect("parse should succeed");
+
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///a.ws", &doc.symbols);
+
+        let definition = resolve_definition(
+            "file:///a.ws",
+            &doc,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
+            SourcePosition {
+                line: 3,
+                character: 8,
+            },
+        )
+        .expect("private method should be visible from within the same class");
+
+        assert_eq!(definition.symbol.name, "Secret");
+    }
+
+    #[test]
+    fn protected_method_visible_in_subclass() {
+        let source_a = "class A extends B {\n function Test() {\n  this.Guarded();\n }\n}\n";
+        let source_b = "class B {\n protected function Guarded() {}\n}\n";
+        let doc_a = parse_document(source_a).expect("parse should succeed");
+        let doc_b = parse_document(source_b).expect("parse should succeed");
+
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///a.ws", &doc_a.symbols);
+        index.update_document("file:///b.ws", &doc_b.symbols);
+
+        let definition = resolve_definition(
+            "file:///a.ws",
+            &doc_a,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
+            SourcePosition {
+                line: 2,
+                character: 8,
+            },
+        )
+        .expect("protected method should be visible in a subclass");
+
+        assert_eq!(definition.symbol.name, "Guarded");
+    }
+
+    #[test]
+    fn protected_method_not_visible_externally() {
+        let source_a = "class A {\n function Test(b : B) {\n  b.Guarded();\n }\n}\n";
+        let source_b = "class B {\n protected function Guarded() {}\n}\n";
+        let doc_a = parse_document(source_a).expect("parse should succeed");
+        let doc_b = parse_document(source_b).expect("parse should succeed");
+
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///a.ws", &doc_a.symbols);
+        index.update_document("file:///b.ws", &doc_b.symbols);
+
+        let definition = resolve_definition(
+            "file:///a.ws",
+            &doc_a,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
+            SourcePosition {
+                line: 2,
+                character: 5,
+            },
+        );
+
+        assert!(
+            definition.is_none(),
+            "protected method should not resolve from an unrelated external class"
+        );
+    }
+
+    #[test]
+    fn unspecified_access_defaults_to_public() {
+        let source_a = "class A {\n function Test(b : B) {\n  b.Open();\n }\n}\n";
+        let source_b = "class B {\n function Open() {}\n}\n";
+        let doc_a = parse_document(source_a).expect("parse should succeed");
+        let doc_b = parse_document(source_b).expect("parse should succeed");
+
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///a.ws", &doc_a.symbols);
+        index.update_document("file:///b.ws", &doc_b.symbols);
+
+        let definition = resolve_definition(
+            "file:///a.ws",
+            &doc_a,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
+            SourcePosition {
+                line: 2,
+                character: 5,
+            },
+        )
+        .expect("method with no specifier should default to public and be visible externally");
+
+        assert_eq!(definition.symbol.name, "Open");
     }
 }

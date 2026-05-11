@@ -2,7 +2,7 @@ use tree_sitter::Node;
 
 use crate::line_index::LineIndex;
 use crate::resolve::SymbolDb;
-use crate::symbols::{DocumentSymbols, SymbolKind};
+use crate::symbols::{AccessLevel, DocumentSymbols, SymbolKind};
 
 pub const TOKEN_TYPES: &[&str] = &[
     "class",      // 0
@@ -277,7 +277,7 @@ fn resolve_member_ident(
         }
     }
 
-    db.find_member(&type_name, name)
+    db.find_member(&type_name, name, AccessLevel::Public)
         .map(|def| symbol_kind_to_token_type(def.symbol.kind))
 }
 
