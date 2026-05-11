@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
 use rayon::prelude::*;
 use serde_json::Value;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     ConfigurationItem, Diagnostic, DiagnosticSeverity, DidChangeConfigurationParams,
@@ -20,7 +21,11 @@ use tower_lsp::lsp_types::{
     TextDocumentSyncKind, Url, WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
+use tracing::field::{Field, Visit};
 use tracing::{debug, error, info, warn};
+use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::Layer;
 use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_file};
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
@@ -33,9 +38,139 @@ use witcherscript_parser::semantic_tokens::{
 };
 use witcherscript_parser::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
 
+// Log level constants (ERROR=1 .. TRACE=5), matching tracing::Level ordering.
+const LEVEL_ERROR: u8 = 1;
+const LEVEL_WARN: u8 = 2;
+const LEVEL_INFO: u8 = 3;
+const LEVEL_DEBUG: u8 = 4;
+const LEVEL_TRACE: u8 = 5;
+
+fn level_to_u8(level: tracing::Level) -> u8 {
+    match level {
+        tracing::Level::ERROR => LEVEL_ERROR,
+        tracing::Level::WARN => LEVEL_WARN,
+        tracing::Level::INFO => LEVEL_INFO,
+        tracing::Level::DEBUG => LEVEL_DEBUG,
+        tracing::Level::TRACE => LEVEL_TRACE,
+    }
+}
+
+fn level_from_u8(n: u8) -> tracing::Level {
+    match n {
+        LEVEL_ERROR => tracing::Level::ERROR,
+        LEVEL_WARN => tracing::Level::WARN,
+        LEVEL_DEBUG => tracing::Level::DEBUG,
+        LEVEL_TRACE => tracing::Level::TRACE,
+        _ => tracing::Level::INFO,
+    }
+}
+
+fn level_from_str(s: &str) -> tracing::Level {
+    match s.to_ascii_lowercase().as_str() {
+        "error" => tracing::Level::ERROR,
+        "warn" | "warning" => tracing::Level::WARN,
+        "debug" => tracing::Level::DEBUG,
+        "trace" => tracing::Level::TRACE,
+        _ => tracing::Level::INFO,
+    }
+}
+
+/// Forwards tracing events to the LSP client's log_message via an async channel.
+/// The `min_level` atomic is updated at runtime when the user changes `witcherscript.logLevel`.
+struct LspLogSender {
+    sender: mpsc::UnboundedSender<(MessageType, String)>,
+    min_level: Arc<AtomicU8>,
+}
+
+impl<S: tracing::Subscriber> Layer<S> for LspLogSender {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let level = *event.metadata().level();
+        if level > level_from_u8(self.min_level.load(Ordering::Relaxed)) {
+            return;
+        }
+
+        let msg_type = match level {
+            tracing::Level::ERROR => MessageType::ERROR,
+            tracing::Level::WARN => MessageType::WARNING,
+            tracing::Level::INFO => MessageType::INFO,
+            _ => MessageType::LOG,
+        };
+
+        let mut visitor = EventVisitor::default();
+        event.record(&mut visitor);
+        let _ = self.sender.send((msg_type, visitor.finish()));
+    }
+}
+
+#[derive(Default)]
+struct EventVisitor {
+    message: String,
+    fields: String,
+}
+
+impl EventVisitor {
+    fn finish(self) -> String {
+        if self.fields.is_empty() {
+            self.message
+        } else {
+            format!("{} {}", self.message, self.fields)
+        }
+    }
+
+    fn push_field(&mut self, name: &str, value: &dyn std::fmt::Display) {
+        if !self.fields.is_empty() {
+            self.fields.push(' ');
+        }
+        self.fields.push_str(&format!("{name}={value}"));
+    }
+}
+
+impl Visit for EventVisitor {
+    fn record_str(&mut self, field: &Field, value: &str) {
+        if field.name() == "message" {
+            self.message = value.to_owned();
+        } else {
+            self.push_field(field.name(), &value);
+        }
+    }
+
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.message = format!("{value:?}");
+        } else {
+            self.push_field(field.name(), &format_args!("{value:?}"));
+        }
+    }
+
+    fn record_u64(&mut self, field: &Field, value: u64) {
+        self.push_field(field.name(), &value);
+    }
+
+    fn record_i64(&mut self, field: &Field, value: i64) {
+        self.push_field(field.name(), &value);
+    }
+
+    fn record_u128(&mut self, field: &Field, value: u128) {
+        self.push_field(field.name(), &value);
+    }
+
+    fn record_i128(&mut self, field: &Field, value: i128) {
+        self.push_field(field.name(), &value);
+    }
+
+    fn record_bool(&mut self, field: &Field, value: bool) {
+        self.push_field(field.name(), &value);
+    }
+}
+
 #[derive(Debug)]
 struct Backend {
     client: Client,
+    log_level: Arc<AtomicU8>,
     documents: Arc<Mutex<HashMap<Url, ParsedDocument>>>,
     workspace_index: Arc<Mutex<WorkspaceIndex>>,
     workspace_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
@@ -57,6 +192,10 @@ impl LanguageServer for Backend {
                 if !p.is_empty() {
                     *self.base_scripts_path.lock().await = Some(PathBuf::from(p));
                 }
+            }
+            if let Some(level_str) = opts.get("logLevel").and_then(|v| v.as_str()) {
+                self.log_level
+                    .store(level_to_u8(level_from_str(level_str)), Ordering::Relaxed);
             }
         }
 
@@ -259,19 +398,14 @@ impl LanguageServer for Backend {
         let script_env = self.script_env.lock().await;
         let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
 
-        let ws_bytes = workspace.doc_idents_bytes();
-        let base_bytes = base.doc_idents_bytes();
-        self.client
-            .log_message(
-                MessageType::INFO,
-                format!(
-                    "ident index memory: workspace {}KB, base {}KB, total {}KB",
-                    ws_bytes / 1024,
-                    base_bytes / 1024,
-                    (ws_bytes + base_bytes) / 1024,
-                ),
-            )
-            .await;
+        let ws_kb = workspace.doc_idents_bytes() / 1024;
+        let base_kb = base.doc_idents_bytes() / 1024;
+        info!(
+            ws_kb,
+            base_kb,
+            total_kb = ws_kb + base_kb,
+            "ident index memory"
+        );
 
         let Some(definition) =
             resolve_definition(uri.as_str(), document, &db, source_position(position))
@@ -340,12 +474,6 @@ impl Backend {
             }
             Err(err) => {
                 error!(uri = %uri, error = %err, "failed to parse document");
-                self.client
-                    .log_message(
-                        MessageType::ERROR,
-                        format!("failed to parse document: {err}"),
-                    )
-                    .await;
             }
         }
     }
@@ -395,21 +523,33 @@ impl Backend {
         );
     }
 
-    /// Pull `witcherscript.gameDirectory` from the client via `workspace/configuration`.
-    /// Updates `self.base_scripts_path` if a non-empty value is returned.
+    /// Pull `witcherscript.gameDirectory` and `witcherscript.logLevel` from the
+    /// client via `workspace/configuration`.
     async fn fetch_config(&self) {
-        let items = vec![ConfigurationItem {
-            scope_uri: None,
-            section: Some("witcherscript.gameDirectory".to_string()),
-        }];
+        let items = vec![
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.gameDirectory".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.logLevel".to_string()),
+            },
+        ];
         let Ok(values) = self.client.configuration(items).await else {
             warn!("workspace/configuration request failed");
             return;
         };
-        if let Some(Value::String(path_str)) = values.into_iter().next() {
+        let mut iter = values.into_iter();
+        if let Some(Value::String(path_str)) = iter.next() {
             if !path_str.is_empty() {
                 *self.base_scripts_path.lock().await = Some(PathBuf::from(path_str));
             }
+        }
+        if let Some(Value::String(level_str)) = iter.next() {
+            let new_level = level_to_u8(level_from_str(&level_str));
+            self.log_level.store(new_level, Ordering::Relaxed);
+            info!(level = %level_str, "log level updated");
         }
     }
 
@@ -431,19 +571,10 @@ impl Backend {
         let path = game_dir.join(r"content\content0\scripts");
 
         info!(path = %path.display(), "indexing base scripts");
-        self.client
-            .log_message(
-                MessageType::INFO,
-                format!("Indexing base scripts from {}", path.display()),
-            )
-            .await;
         let start = Instant::now();
 
         let Ok(files) = collect_witcherscript_files(&[path]) else {
             warn!("failed to collect base script files");
-            self.client
-                .log_message(MessageType::WARNING, "Failed to collect base script files")
-                .await;
             return;
         };
 
@@ -472,16 +603,13 @@ impl Backend {
         }
 
         let elapsed_ms = start.elapsed().as_millis();
-        info!(indexed, file_count, elapsed_ms, "base scripts indexed");
-        self.client
-            .log_message(
-                MessageType::INFO,
-                format!(
-                    "Base scripts indexed: {indexed}/{file_count} files in {:.1}s",
-                    elapsed_ms as f32 / 1000.0
-                ),
-            )
-            .await;
+        info!(
+            indexed,
+            file_count,
+            elapsed_ms,
+            elapsed_secs = format!("{:.1}", elapsed_ms as f32 / 1000.0),
+            "base scripts indexed"
+        );
     }
 }
 
@@ -644,23 +772,42 @@ fn hover_location_markdown(definition: &Definition) -> String {
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_writer(std::io::stderr)
+    let (log_tx, mut log_rx) = mpsc::unbounded_channel::<(MessageType, String)>();
+    let log_level = Arc::new(AtomicU8::new(level_to_u8(tracing::Level::INFO)));
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_filter(tracing_subscriber::EnvFilter::from_default_env()),
+        )
+        .with(LspLogSender {
+            sender: log_tx,
+            min_level: Arc::clone(&log_level),
+        })
         .init();
 
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
-    let (service, socket) = LspService::new(|client| Backend {
-        client,
-        documents: Arc::new(Mutex::new(HashMap::new())),
-        workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
-        workspace_documents: Arc::new(Mutex::new(HashMap::new())),
-        workspace_roots: Arc::new(Mutex::new(Vec::new())),
-        base_scripts_path: Arc::new(Mutex::new(None)),
-        base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
-        base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
-        script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
+    let (service, socket) = LspService::new(move |client| {
+        let c = client.clone();
+        tokio::spawn(async move {
+            while let Some((kind, msg)) = log_rx.recv().await {
+                c.log_message(kind, msg).await;
+            }
+        });
+        Backend {
+            client,
+            log_level,
+            documents: Arc::new(Mutex::new(HashMap::new())),
+            workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
+            workspace_documents: Arc::new(Mutex::new(HashMap::new())),
+            workspace_roots: Arc::new(Mutex::new(Vec::new())),
+            base_scripts_path: Arc::new(Mutex::new(None)),
+            base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
+            base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
+            script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
+        }
     });
 
     Server::new(stdin, stdout, socket).serve(service).await;
