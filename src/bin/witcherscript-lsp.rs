@@ -9,14 +9,15 @@ use tower_lsp::lsp_types::{
     Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
     GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
-    InitializeParams, InitializeResult, InitializedParams, Location, MarkedString, OneOf, Position,
-    Range, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    InitializeParams, InitializeResult, InitializedParams, Location, MarkupContent, MarkupKind,
+    OneOf, Position, Range, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+    Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_file};
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
-use witcherscript_parser::resolve::{hover_text, resolve_definition, WorkspaceIndex};
+use witcherscript_parser::resolve::{hover_text, resolve_definition, Definition, WorkspaceIndex};
 use witcherscript_parser::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
 
 #[derive(Debug)]
@@ -120,7 +121,10 @@ impl LanguageServer for Backend {
         };
 
         Ok(Some(Hover {
-            contents: HoverContents::Scalar(MarkedString::String(hover_text(&definition))),
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: hover_markdown(&definition),
+            }),
             range: Some(lsp_range(definition.symbol.selection_range)),
         }))
     }
@@ -287,6 +291,29 @@ fn source_position(position: Position) -> SourcePosition {
         line: position.line,
         character: position.character,
     }
+}
+
+fn hover_markdown(definition: &Definition) -> String {
+    let mut markdown = format!("```witcherscript\n{}\n```", hover_text(definition));
+    markdown.push_str(&format!(
+        "\n\nDefined in `{}`",
+        hover_location_label(definition)
+    ));
+    markdown
+}
+
+fn hover_location_label(definition: &Definition) -> String {
+    let line = definition.symbol.selection_range.start.line + 1;
+    let path = Url::parse(&definition.uri)
+        .ok()
+        .and_then(|uri| uri.to_file_path().ok())
+        .and_then(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .unwrap_or_else(|| definition.uri.clone());
+
+    format!("{path}:{line}")
 }
 
 #[tokio::main]

@@ -120,11 +120,6 @@ pub fn hover_text(definition: &Definition) -> String {
         lines.push(annotations);
     }
 
-    lines.push(format!(
-        "{}:{}",
-        definition.uri,
-        symbol.selection_range.start.line + 1
-    ));
     lines.join("\n")
 }
 
