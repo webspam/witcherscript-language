@@ -408,7 +408,7 @@ mod tests {
 
         assert_eq!(
             markdown,
-            "```witcherscript\nlocal dataObject : CScriptedFlashObject\n```\n\nDefined in [example.ws:2](file:///example.ws#L2)"
+            "```witcherscript\nvar dataObject : CScriptedFlashObject\n```\n\nDefined in [example.ws:2](file:///example.ws#L2)"
         );
         assert!(!markdown.contains("Defined in file://"));
     }
