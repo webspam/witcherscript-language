@@ -220,6 +220,11 @@ fn resolve_member_access(
             let receiver_name = receiver.utf8_text(document.source.as_bytes()).ok()?;
             let type_name =
                 resolve_local_or_parameter(uri, document, ident.start_byte(), receiver_name)
+                    .or_else(|| {
+                        let current_type = current_type_name(document, ident.start_byte())?;
+                        resolve_document_member(uri, document, &current_type, receiver_name)
+                            .or_else(|| workspace.find_member(&current_type, receiver_name))
+                    })
                     .and_then(|def| def.symbol.type_annotation)?;
             resolve_document_member(uri, document, &type_name, name)
                 .or_else(|| workspace.find_member(&type_name, name))
@@ -938,6 +943,38 @@ mod tests {
         .expect("this.Inherited() should resolve to superclass method");
 
         assert_eq!(definition.symbol.name, "Inherited");
+    }
+
+    #[test]
+    fn resolves_method_on_class_field_receiver() {
+        let source = concat!(
+            "class Foo {\n",
+            "  private var gConfig : CInGameConfigWrapper;\n",
+            "  function someFunc() {\n",
+            "    gConfig.GetSpecialConfig();\n",
+            "  }\n",
+            "}\n",
+            "class CInGameConfigWrapper {\n",
+            "  function GetSpecialConfig() {}\n",
+            "}\n",
+        );
+        let doc = parse_document(source).expect("parse should succeed");
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &doc.symbols);
+
+        // cursor on 'GetSpecialConfig' (line 3, col 12)
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &doc,
+            &index,
+            SourcePosition {
+                line: 3,
+                character: 12,
+            },
+        )
+        .expect("method on class field should resolve");
+
+        assert_eq!(definition.symbol.name, "GetSpecialConfig");
     }
 
     #[test]
