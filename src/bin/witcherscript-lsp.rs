@@ -45,6 +45,8 @@ const LEVEL_INFO: u8 = 3;
 const LEVEL_DEBUG: u8 = 4;
 const LEVEL_TRACE: u8 = 5;
 
+const DEFAULT_LOG_LEVEL: tracing::Level = tracing::Level::WARN;
+
 fn level_to_u8(level: tracing::Level) -> u8 {
     match level {
         tracing::Level::ERROR => LEVEL_ERROR,
@@ -61,7 +63,7 @@ fn level_from_u8(n: u8) -> tracing::Level {
         LEVEL_WARN => tracing::Level::WARN,
         LEVEL_DEBUG => tracing::Level::DEBUG,
         LEVEL_TRACE => tracing::Level::TRACE,
-        _ => tracing::Level::INFO,
+        _ => DEFAULT_LOG_LEVEL,
     }
 }
 
@@ -71,7 +73,7 @@ fn level_from_str(s: &str) -> tracing::Level {
         "warn" | "warning" => tracing::Level::WARN,
         "debug" => tracing::Level::DEBUG,
         "trace" => tracing::Level::TRACE,
-        _ => tracing::Level::INFO,
+        _ => DEFAULT_LOG_LEVEL,
     }
 }
 
@@ -773,7 +775,7 @@ fn hover_location_markdown(definition: &Definition) -> String {
 #[tokio::main]
 async fn main() {
     let (log_tx, mut log_rx) = mpsc::unbounded_channel::<(MessageType, String)>();
-    let log_level = Arc::new(AtomicU8::new(level_to_u8(tracing::Level::WARN)));
+    let log_level = Arc::new(AtomicU8::new(level_to_u8(DEFAULT_LOG_LEVEL)));
 
     tracing_subscriber::registry()
         .with(
