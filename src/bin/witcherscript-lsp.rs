@@ -236,6 +236,8 @@ impl LanguageServer for Backend {
             &definition,
             definition_document,
             &search_docs,
+            &workspace,
+            &base,
             include_declaration,
         );
 

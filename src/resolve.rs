@@ -280,14 +280,21 @@ pub fn find_references(
     definition: &Definition,
     definition_document: &ParsedDocument,
     search_documents: &[(&str, &ParsedDocument)],
+    workspace: &WorkspaceIndex,
+    base: &WorkspaceIndex,
     include_declaration: bool,
 ) -> Vec<(String, SourceRange)> {
     let name = &definition.symbol.name;
 
-    let scope: Option<std::ops::Range<usize>> = if matches!(
+    // Variables and parameters cannot be referenced outside their file.
+    let locals_only = matches!(
         definition.symbol.kind,
         SymbolKind::Variable | SymbolKind::Parameter
-    ) {
+    );
+
+    // For locals/parameters, restrict the text scan to the enclosing function's
+    // byte range so we skip irrelevant regions quickly before semantic verification.
+    let scan_scope: Option<std::ops::Range<usize>> = if locals_only {
         definition
             .symbol
             .container
@@ -300,7 +307,7 @@ pub fn find_references(
     let mut results = Vec::new();
 
     for (uri, document) in search_documents {
-        if scope.is_some() && *uri != definition.uri.as_str() {
+        if locals_only && *uri != definition.uri.as_str() {
             continue;
         }
 
@@ -309,11 +316,26 @@ pub fn find_references(
             document.tree.root_node(),
             document.source.as_bytes(),
             name,
-            scope.as_ref(),
+            scan_scope.as_ref(),
             &mut byte_ranges,
         );
 
         for byte_range in byte_ranges {
+            // Semantic verification: resolve the candidate and confirm it points
+            // at the same definition (same file + same selection range).
+            let position = document
+                .line_index
+                .byte_to_position(&document.source, byte_range.start);
+            let resolved = resolve_definition(uri, document, workspace, position)
+                .or_else(|| resolve_definition(uri, document, base, position));
+            match resolved {
+                Some(ref r)
+                    if r.uri == definition.uri
+                        && r.symbol.selection_byte_range
+                            == definition.symbol.selection_byte_range => {}
+                _ => continue,
+            }
+
             if !include_declaration
                 && *uri == definition.uri.as_str()
                 && byte_range == definition.symbol.selection_byte_range
@@ -490,10 +512,15 @@ mod tests {
         )
         .expect("definition should resolve");
 
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &document.symbols);
+
         let refs = super::find_references(
             &definition,
             &document,
             &[("file:///test.ws", &document)],
+            &index,
+            &WorkspaceIndex::default(),
             false,
         );
         assert_eq!(refs.len(), 2, "two call sites expected");
@@ -514,16 +541,23 @@ mod tests {
         )
         .expect("definition should resolve");
 
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &document.symbols);
+
         let with_decl = super::find_references(
             &definition,
             &document,
             &[("file:///test.ws", &document)],
+            &index,
+            &WorkspaceIndex::default(),
             true,
         );
         let without_decl = super::find_references(
             &definition,
             &document,
             &[("file:///test.ws", &document)],
+            &index,
+            &WorkspaceIndex::default(),
             false,
         );
         assert_eq!(with_decl.len(), 2);
@@ -546,10 +580,15 @@ mod tests {
         )
         .expect("local variable should resolve");
 
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &document.symbols);
+
         let refs = super::find_references(
             &definition,
             &document,
             &[("file:///test.ws", &document)],
+            &index,
+            &WorkspaceIndex::default(),
             true,
         );
         // Should find x in Outer() only: the declaration and the assignment
