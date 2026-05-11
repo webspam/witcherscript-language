@@ -11,7 +11,7 @@ default:
 # Format Rust code and run tests.
 test:
     cargo fmt --all
-    cargo test
+    cargo test -q -- --format terse
 
 # Run the standard local verification.
 ci:
