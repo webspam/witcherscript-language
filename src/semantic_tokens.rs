@@ -75,7 +75,9 @@ fn classify(node: Node) -> Option<u32> {
         "ident" => classify_ident(node),
         "annotation_ident" => Some(TT_DECORATOR),
         "comment" => Some(TT_COMMENT),
-        "literal_string" | "literal_name" => Some(TT_STRING),
+        "literal_string" => Some(TT_STRING),
+        // CName literals ('SomeName') are compile-time symbol references, not text.
+        "literal_name" => Some(TT_ENUM_MEMBER),
         "literal_int" | "literal_float" | "literal_hex" => Some(TT_NUMBER),
         // Boolean/null/self keywords are named nodes that wrap a single anonymous keyword.
         "literal_bool" | "literal_null" => Some(TT_KEYWORD),
@@ -130,10 +132,10 @@ fn classify_anonymous_keyword(kind: &str) -> Option<u32> {
         | "super" | "parent" | "virtual_parent" => Some(TT_KEYWORD),
         // Declaration and modifier keywords: introduce or modify a declaration.
         "class" | "struct" | "enum" | "state" | "function" | "event" | "extends" | "var"
-        | "autobind" | "defaults" | "hint" | "abstract" | "statemachine" | "latent"
-        | "import" | "const" | "final" | "editable" | "saved" | "optional" | "out" | "inlined"
-        | "private" | "protected" | "public" | "cleanup" | "entry" | "exec" | "quest"
-        | "reward" | "storyscene" | "timer" | "single" => Some(TT_MODIFIER),
+        | "autobind" | "defaults" | "hint" | "abstract" | "statemachine" | "latent" | "import"
+        | "const" | "final" | "editable" | "saved" | "optional" | "out" | "inlined" | "private"
+        | "protected" | "public" | "cleanup" | "entry" | "exec" | "quest" | "reward"
+        | "storyscene" | "timer" | "single" => Some(TT_MODIFIER),
         _ => None,
     }
 }
@@ -280,6 +282,21 @@ mod tests {
         assert!(
             types.contains(&super::TT_STRING),
             "expected a string token, got types: {types:?}"
+        );
+    }
+
+    #[test]
+    fn name_literal_is_enum_member_not_string() {
+        let source = "function F() { var n : CName; n = 'SomeName'; }\n";
+        let data = tokens_for(source);
+        let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+        assert!(
+            types.contains(&super::TT_ENUM_MEMBER),
+            "expected enumMember token for name literal, got types: {types:?}"
+        );
+        assert!(
+            !types.contains(&super::TT_STRING),
+            "name literal should not be classified as string, got types: {types:?}"
         );
     }
 
