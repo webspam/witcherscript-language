@@ -1188,4 +1188,71 @@ mod tests {
 
         assert_eq!(definition.symbol.name, "Open");
     }
+
+    #[test]
+    fn state_parent_dot_resolves_to_owner_class_method() {
+        // parent.X inside a state should resolve to X on the owning class (public only).
+        let source = concat!(
+            "class CPlayer {\n",
+            "  function GetHealth() : int {}\n",
+            "}\n",
+            "state Idle in CPlayer {\n",
+            "  function Test() {\n",
+            "    parent.GetHealth();\n",
+            "  }\n",
+            "}\n",
+        );
+        let doc = parse_document(source).expect("parse should succeed");
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &doc.symbols);
+
+        // cursor on 'GetHealth' (line 5, col 11)
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &doc,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
+            SourcePosition {
+                line: 5,
+                character: 11,
+            },
+        )
+        .expect("parent.Method() in a state should resolve to the owner class method");
+
+        assert_eq!(definition.symbol.name, "GetHealth");
+    }
+
+    #[test]
+    fn state_parent_dot_cannot_see_protected_owner_method() {
+        // parent confers no inheritance relationship; protected members of the owner
+        // are not accessible via parent.
+        let source = concat!(
+            "class CPlayer {\n",
+            "  protected function InternalTick() {}\n",
+            "}\n",
+            "state Idle in CPlayer {\n",
+            "  function Test() {\n",
+            "    parent.InternalTick();\n",
+            "  }\n",
+            "}\n",
+        );
+        let doc = parse_document(source).expect("parse should succeed");
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &doc.symbols);
+
+        // cursor on 'InternalTick' (line 5, col 11)
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &doc,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
+            SourcePosition {
+                line: 5,
+                character: 11,
+            },
+        );
+
+        assert!(
+            definition.is_none(),
+            "parent.X in a state must not resolve protected members of the owner class"
+        );
+    }
 }
