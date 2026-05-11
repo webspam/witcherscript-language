@@ -69,28 +69,93 @@ impl<'a> SymbolDb<'a> {
 #[derive(Debug, Clone, Default)]
 pub struct WorkspaceIndex {
     documents: HashMap<String, Vec<Symbol>>,
+    top_level_by_name: HashMap<String, Definition>,
+    superclass_by_name: HashMap<String, String>,
+    member_by_type: HashMap<String, HashMap<String, Definition>>,
 }
 
 impl WorkspaceIndex {
     pub fn update_document(&mut self, uri: impl Into<String>, symbols: &DocumentSymbols) {
-        self.documents.insert(uri.into(), symbols.all().to_vec());
+        let uri: String = uri.into();
+        self.remove_from_indices(&uri);
+        let all_symbols = symbols.all().to_vec();
+        self.insert_into_indices(&uri, &all_symbols);
+        self.documents.insert(uri, all_symbols);
     }
 
     pub fn remove_document(&mut self, uri: &str) {
+        self.remove_from_indices(uri);
         self.documents.remove(uri);
     }
 
+    fn remove_from_indices(&mut self, uri: &str) {
+        let Some(old_symbols) = self.documents.get(uri) else {
+            return;
+        };
+        for sym in old_symbols.clone() {
+            if sym.container.is_none() {
+                if self
+                    .top_level_by_name
+                    .get(&sym.name)
+                    .map(|d| d.uri == uri)
+                    .unwrap_or(false)
+                {
+                    self.top_level_by_name.remove(&sym.name);
+                }
+                if is_type_like(sym.kind) {
+                    self.superclass_by_name.remove(&sym.name);
+                }
+            } else if let Some(cn) = &sym.container_name {
+                if let Some(members) = self.member_by_type.get_mut(cn) {
+                    if members
+                        .get(&sym.name)
+                        .map(|d| d.uri == uri)
+                        .unwrap_or(false)
+                    {
+                        members.remove(&sym.name);
+                    }
+                    if members.is_empty() {
+                        self.member_by_type.remove(cn);
+                    }
+                }
+            }
+        }
+    }
+
+    fn insert_into_indices(&mut self, uri: &str, symbols: &[Symbol]) {
+        for sym in symbols {
+            if sym.container.is_none() {
+                self.top_level_by_name.insert(
+                    sym.name.clone(),
+                    Definition {
+                        uri: uri.to_string(),
+                        symbol: sym.clone(),
+                    },
+                );
+                if is_type_like(sym.kind) {
+                    if let Some(superclass) = sym
+                        .detail
+                        .as_deref()
+                        .and_then(|d| d.strip_prefix("extends "))
+                    {
+                        self.superclass_by_name
+                            .insert(sym.name.clone(), superclass.to_string());
+                    }
+                }
+            } else if let Some(cn) = &sym.container_name {
+                self.member_by_type.entry(cn.clone()).or_default().insert(
+                    sym.name.clone(),
+                    Definition {
+                        uri: uri.to_string(),
+                        symbol: sym.clone(),
+                    },
+                );
+            }
+        }
+    }
+
     pub fn find_top_level(&self, name: &str) -> Option<Definition> {
-        self.documents.iter().find_map(|(uri, symbols)| {
-            symbols
-                .iter()
-                .find(|symbol| symbol.container.is_none() && symbol.name == name)
-                .cloned()
-                .map(|symbol| Definition {
-                    uri: uri.clone(),
-                    symbol,
-                })
-        })
+        self.top_level_by_name.get(name).cloned()
     }
 
     pub fn find_member(
@@ -112,43 +177,18 @@ impl WorkspaceIndex {
         if depth > 32 {
             return None;
         }
-        let direct = self.documents.iter().find_map(|(uri, symbols)| {
-            let container = symbols
-                .iter()
-                .find(|symbol| symbol.name == container_name && is_type_like(symbol.kind))?;
-            symbols
-                .iter()
-                .find(|symbol| {
-                    symbol.container == Some(container.id)
-                        && symbol.name == name
-                        && symbol.access >= min_access
-                })
-                .cloned()
-                .map(|symbol| Definition {
-                    uri: uri.clone(),
-                    symbol,
-                })
-        });
+        let direct = self
+            .member_by_type
+            .get(container_name)
+            .and_then(|members| members.get(name))
+            .filter(|def| def.symbol.access >= min_access)
+            .cloned();
         if direct.is_some() {
             return direct;
         }
-        let superclass = self.superclass_of(container_name)?;
+        let superclass = self.superclass_by_name.get(container_name)?.clone();
         let deeper_min = min_access.max(AccessLevel::Protected);
         self.find_member_in_chain(&superclass, name, depth + 1, deeper_min)
-    }
-
-    fn superclass_of(&self, name: &str) -> Option<String> {
-        self.documents.iter().find_map(|(_, symbols)| {
-            symbols
-                .iter()
-                .find(|s| s.name == name && is_type_like(s.kind))
-                .and_then(|s| {
-                    s.detail
-                        .as_deref()
-                        .and_then(|d| d.strip_prefix("extends "))
-                        .map(|base| base.to_string())
-                })
-        })
     }
 }
 
