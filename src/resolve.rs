@@ -104,12 +104,13 @@ pub fn resolve_definition(
     let ident = identifier_at(document.tree.root_node(), byte_offset)?;
     let name = ident.utf8_text(document.source.as_bytes()).ok()?;
 
-    if ident
-        .parent()
-        .map(|p| p.kind() == "member_access_expr")
-        .unwrap_or(false)
-    {
-        return resolve_member_access(uri, document, workspace, ident, name);
+    if let Some(member_access) = ident.parent().filter(|p| p.kind() == "member_access_expr") {
+        let is_receiver = first_named_child(member_access)
+            .map(|r| r.id() == ident.id())
+            .unwrap_or(false);
+        if !is_receiver {
+            return resolve_member_access(uri, document, workspace, ident, name);
+        }
     }
 
     resolve_local_or_parameter(uri, document, byte_offset, name)
@@ -674,6 +675,35 @@ mod tests {
         );
         // Should find x in Outer() only: the declaration and the assignment
         assert_eq!(refs.len(), 2, "x in Other() should not be included");
+    }
+
+    #[test]
+    fn resolves_receiver_variable_itself_in_member_access() {
+        let source = concat!(
+            "class Example {\n",
+            "  function Test() {\n",
+            "    var unrelated : UnrelatedClass;\n",
+            "    unrelated.Initialize();\n",
+            "  }\n",
+            "}\n",
+        );
+        let doc = parse_document(source).expect("parse should succeed");
+        let index = WorkspaceIndex::default();
+
+        // cursor on 'unrelated' in 'unrelated.Initialize()' — line 3, col 4
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &doc,
+            &index,
+            SourcePosition {
+                line: 3,
+                character: 4,
+            },
+        )
+        .expect("receiver variable should resolve to its declaration");
+
+        assert_eq!(definition.symbol.name, "unrelated");
+        assert_eq!(definition.symbol.kind, crate::symbols::SymbolKind::Variable);
     }
 
     #[test]
