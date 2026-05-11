@@ -78,6 +78,94 @@ fn resolves_workspace_top_level_symbols() {
     assert_eq!(definition.symbol.name, "CShared");
 }
 
+#[test]
+fn resolves_top_level_symbol_from_base_index() {
+    let base_doc = parse_document("class CGameplayEntity {}\n").expect("base should parse");
+    let user_doc = parse_document("function Foo() {\n var x : CGameplayEntity;\n}\n")
+        .expect("user doc should parse");
+    let workspace = WorkspaceIndex::default();
+    let mut base = WorkspaceIndex::default();
+    base.update_document("file:///base/gameplay.ws", &base_doc.symbols);
+
+    // Mirrors the LSP fallthrough: try workspace first, then base index.
+    let pos = SourcePosition {
+        line: 1,
+        character: 10,
+    }; // inside "CGameplayEntity"
+    let definition = resolve_definition("file:///user/mod.ws", &user_doc, &workspace, pos)
+        .or_else(|| resolve_definition("file:///user/mod.ws", &user_doc, &base, pos))
+        .expect("symbol should resolve from base index");
+
+    assert_eq!(definition.symbol.name, "CGameplayEntity");
+    assert_eq!(definition.uri, "file:///base/gameplay.ws");
+}
+
+#[test]
+fn workspace_index_shadows_base_index_for_same_name() {
+    let base_doc = parse_document("class CGameplayEntity {}\n").expect("base should parse");
+    let workspace_doc =
+        parse_document("class CGameplayEntity {}\n").expect("workspace doc should parse");
+    let user_doc = parse_document("function Foo() {\n var x : CGameplayEntity;\n}\n")
+        .expect("user doc should parse");
+    let mut workspace = WorkspaceIndex::default();
+    workspace.update_document("file:///user/override.ws", &workspace_doc.symbols);
+    workspace.update_document("file:///user/mod.ws", &user_doc.symbols);
+    let mut base = WorkspaceIndex::default();
+    base.update_document("file:///base/gameplay.ws", &base_doc.symbols);
+
+    let pos = SourcePosition {
+        line: 1,
+        character: 10,
+    }; // inside "CGameplayEntity"
+    let definition = resolve_definition("file:///user/mod.ws", &user_doc, &workspace, pos)
+        .or_else(|| resolve_definition("file:///user/mod.ws", &user_doc, &base, pos))
+        .expect("symbol should resolve");
+
+    assert_eq!(definition.uri, "file:///user/override.ws");
+}
+
+#[test]
+fn returns_none_when_symbol_absent_from_both_indexes() {
+    let user_doc =
+        parse_document("function Foo() {\n var x : CUnknown;\n}\n").expect("user doc should parse");
+    let workspace = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+
+    let pos = SourcePosition {
+        line: 1,
+        character: 10,
+    }; // inside "CUnknown"
+    let definition = resolve_definition("file:///user/mod.ws", &user_doc, &workspace, pos)
+        .or_else(|| resolve_definition("file:///user/mod.ws", &user_doc, &base, pos));
+
+    assert!(definition.is_none());
+}
+
+#[test]
+fn resolves_member_access_against_class_in_base_index() {
+    // Uses the class name directly as the member access receiver (CBaseClass.value)
+    // so the resolver looks up members of "CBaseClass" in whichever index has it.
+    let base_doc =
+        parse_document("class CBaseClass {\n var value : int;\n}\n").expect("base should parse");
+    let user_doc =
+        parse_document("function Foo() {\n CBaseClass.value;\n}\n").expect("user doc should parse");
+    let workspace = WorkspaceIndex::default();
+    let mut base = WorkspaceIndex::default();
+    base.update_document("file:///base/base_class.ws", &base_doc.symbols);
+
+    let pos = SourcePosition {
+        line: 1,
+        character: 12,
+    }; // inside "value" in "CBaseClass.value"
+    let definition = resolve_definition("file:///user/mod.ws", &user_doc, &workspace, pos)
+        .or_else(|| resolve_definition("file:///user/mod.ws", &user_doc, &base, pos))
+        .expect("member should resolve from base index");
+
+    assert_eq!(definition.symbol.name, "value");
+    assert_eq!(definition.symbol.kind, SymbolKind::Field);
+    assert_eq!(definition.uri, "file:///base/base_class.ws");
+}
+
 fn assert_symbol(
     document: &witcherscript_parser::document::ParsedDocument,
     name: &str,
