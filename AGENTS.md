@@ -43,8 +43,8 @@ The test suite includes:
 - `tests/language_features.rs` — integration tests for symbol extraction and definition
   resolution.
 
-IMPORTANT: When adding a new grammar construct or validation rule, add or update a fixture file and
-a targeted unit test.
+IMPORTANT: When adding a new grammar construct or validation rule, add or update a
+fixture file and a targeted unit test.
 
 ## Committing changes
 
@@ -72,6 +72,10 @@ Extend hover_text() to emit "enum variant <Name>" for EnumVariant kind.
 ```
 Fix late-local-var rule skipping nop statements
 ```
+
+IMPORTANT: The first part of the commit message should be HUMAN RELATABLE. DO NOT just
+write which part of the code you changed; instead, what actual problem is it fixing/goal
+is it achieving?
 
 ## Code style
 
