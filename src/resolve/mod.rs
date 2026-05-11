@@ -93,6 +93,26 @@ impl WorkspaceIndex {
         self.documents.remove(uri);
     }
 
+    fn is_indexed(&self, uri: &str) -> bool {
+        self.doc_idents.contains_key(uri)
+    }
+
+    /// Approximate heap bytes consumed by the ident occurrence index.
+    pub fn doc_idents_bytes(&self) -> usize {
+        let mut total = 0usize;
+        for (uri, name_map) in &self.doc_idents {
+            total += uri.capacity();
+            for (name, ranges) in name_map {
+                total += name.capacity();
+                total += ranges.capacity() * size_of::<std::ops::Range<usize>>();
+            }
+            // HashMap slot overhead: ~56 bytes per entry (key ptr + value ptr + hash)
+            total += name_map.capacity() * 56;
+        }
+        total += self.doc_idents.capacity() * 56;
+        total
+    }
+
     fn ident_ranges_in_doc(&self, uri: &str, name: &str) -> Option<&[std::ops::Range<usize>]> {
         self.doc_idents.get(uri)?.get(name).map(Vec::as_slice)
     }
@@ -615,12 +635,16 @@ pub fn find_references(
 
         let mut byte_ranges: Vec<std::ops::Range<usize>> = Vec::new();
         if scan_range.is_none() {
-            if let Some(ranges) = db
-                .workspace
-                .ident_ranges_in_doc(uri, name)
-                .or_else(|| db.base.ident_ranges_in_doc(uri, name))
-            {
-                byte_ranges.extend_from_slice(ranges);
+            if db.workspace.is_indexed(uri) || db.base.is_indexed(uri) {
+                // Document is in the index: use it. If the name isn't present,
+                // both calls return None and byte_ranges stays empty — no tree scan.
+                if let Some(ranges) = db
+                    .workspace
+                    .ident_ranges_in_doc(uri, name)
+                    .or_else(|| db.base.ident_ranges_in_doc(uri, name))
+                {
+                    byte_ranges.extend_from_slice(ranges);
+                }
             } else {
                 collect_ident_occurrences(
                     document.tree.root_node(),

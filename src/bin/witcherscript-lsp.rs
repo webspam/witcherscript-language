@@ -257,6 +257,15 @@ impl LanguageServer for Backend {
         let script_env = self.script_env.lock().await;
         let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
 
+        let ws_bytes = workspace.doc_idents_bytes();
+        let base_bytes = base.doc_idents_bytes();
+        tracing::info!(
+            workspace_kb = ws_bytes / 1024,
+            base_kb = base_bytes / 1024,
+            total_kb = (ws_bytes + base_bytes) / 1024,
+            "ident index memory"
+        );
+
         let Some(definition) =
             resolve_definition(uri.as_str(), document, &db, source_position(position))
         else {
