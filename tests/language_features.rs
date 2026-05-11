@@ -142,9 +142,9 @@ fn returns_none_when_symbol_absent_from_both_indexes() {
 }
 
 #[test]
-fn resolves_member_access_against_class_in_base_index() {
-    // Uses the class name directly as the member access receiver (CBaseClass.value)
-    // so the resolver looks up members of "CBaseClass" in whichever index has it.
+fn class_name_used_as_receiver_does_not_resolve() {
+    // WitcherScript has no static member access; a class name used directly as
+    // a receiver (CBaseClass.value) is not valid and should resolve to nothing.
     let base_doc =
         parse_document("class CBaseClass {\n var value : int;\n}\n").expect("base should parse");
     let user_doc =
@@ -157,13 +157,13 @@ fn resolves_member_access_against_class_in_base_index() {
         line: 1,
         character: 12,
     }; // inside "value" in "CBaseClass.value"
-    let definition = resolve_definition("file:///user/mod.ws", &user_doc, &workspace, pos)
-        .or_else(|| resolve_definition("file:///user/mod.ws", &user_doc, &base, pos))
-        .expect("member should resolve from base index");
+    let result = resolve_definition("file:///user/mod.ws", &user_doc, &workspace, pos)
+        .or_else(|| resolve_definition("file:///user/mod.ws", &user_doc, &base, pos));
 
-    assert_eq!(definition.symbol.name, "value");
-    assert_eq!(definition.symbol.kind, SymbolKind::Field);
-    assert_eq!(definition.uri, "file:///base/base_class.ws");
+    assert!(
+        result.is_none(),
+        "static-style member access must not resolve"
+    );
 }
 
 fn assert_symbol(
