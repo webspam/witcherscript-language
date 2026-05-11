@@ -104,8 +104,12 @@ pub fn resolve_definition(
     let ident = identifier_at(document.tree.root_node(), byte_offset)?;
     let name = ident.utf8_text(document.source.as_bytes()).ok()?;
 
-    if let Some(member_definition) = resolve_member_access(uri, document, workspace, ident, name) {
-        return Some(member_definition);
+    if ident
+        .parent()
+        .map(|p| p.kind() == "member_access_expr")
+        .unwrap_or(false)
+    {
+        return resolve_member_access(uri, document, workspace, ident, name);
     }
 
     resolve_local_or_parameter(uri, document, byte_offset, name)
@@ -188,8 +192,7 @@ fn resolve_member_access(
             let receiver_name = receiver.utf8_text(document.source.as_bytes()).ok()?;
             let type_name =
                 resolve_local_or_parameter(uri, document, ident.start_byte(), receiver_name)
-                    .and_then(|def| def.symbol.type_annotation)
-                    .unwrap_or_else(|| receiver_name.to_string());
+                    .and_then(|def| def.symbol.type_annotation)?;
             resolve_document_member(uri, document, &type_name, name)
                 .or_else(|| workspace.find_member(&type_name, name))
         }
@@ -671,6 +674,34 @@ mod tests {
         );
         // Should find x in Outer() only: the declaration and the assignment
         assert_eq!(refs.len(), 2, "x in Other() should not be included");
+    }
+
+    #[test]
+    fn unknown_receiver_dot_method_resolves_to_nothing() {
+        let source = concat!(
+            "class Example {\n",
+            "  public function Initialize() {\n",
+            "    typo.Initialize();\n",
+            "  }\n",
+            "}\n",
+        );
+        let doc = parse_document(source).expect("parse should succeed");
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &doc.symbols);
+
+        let result = resolve_definition(
+            "file:///test.ws",
+            &doc,
+            &index,
+            SourcePosition {
+                line: 2,
+                character: 9,
+            },
+        );
+        assert!(
+            result.is_none(),
+            "unknown receiver must not fall back to current class"
+        );
     }
 
     #[test]
