@@ -14,7 +14,7 @@ use tower_lsp::lsp_types::{
     DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverContents, HoverParams, InitializeParams, InitializeResult,
     InitializedParams, Location, MarkupContent, MarkupKind, MessageType, OneOf, Position, Range,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
     WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -22,7 +22,9 @@ use tracing::{error, warn};
 use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_file};
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
-use witcherscript_parser::resolve::{hover_text, resolve_definition, Definition, WorkspaceIndex};
+use witcherscript_parser::resolve::{
+    find_references, hover_text, resolve_definition, Definition, WorkspaceIndex,
+};
 use witcherscript_parser::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
 
 #[derive(Debug)]
@@ -58,6 +60,7 @@ impl LanguageServer for Backend {
                     TextDocumentSyncKind::FULL,
                 )),
                 definition_provider: Some(OneOf::Left(true)),
+                references_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(tower_lsp::lsp_types::HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 workspace: Some(WorkspaceServerCapabilities {
@@ -180,6 +183,59 @@ impl LanguageServer for Backend {
             &document.symbols,
             None,
         ))))
+    }
+
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let include_declaration = params.context.include_declaration;
+
+        let documents = self.documents.lock().await;
+        let Some(document) = documents.get(&uri) else {
+            return Ok(None);
+        };
+        let workspace = self.workspace_index.lock().await;
+        let base = self.base_scripts_index.lock().await;
+
+        let Some(definition) = resolve_definition(
+            uri.as_str(),
+            document,
+            &workspace,
+            source_position(position),
+        )
+        .or_else(|| resolve_definition(uri.as_str(), document, &base, source_position(position))) else {
+            return Ok(Some(Vec::new()));
+        };
+
+        let def_url = Url::parse(&definition.uri).ok();
+        let definition_document = def_url
+            .as_ref()
+            .and_then(|u| documents.get(u))
+            .unwrap_or(document);
+
+        let search_docs: Vec<(&str, &ParsedDocument)> = documents
+            .iter()
+            .map(|(url, doc)| (url.as_str(), doc))
+            .collect();
+
+        let refs = find_references(
+            &definition,
+            definition_document,
+            &search_docs,
+            include_declaration,
+        );
+
+        let locations: Vec<Location> = refs
+            .into_iter()
+            .filter_map(|(ref_uri, range)| {
+                Url::parse(&ref_uri).ok().map(|url| Location {
+                    uri: url,
+                    range: lsp_range(range),
+                })
+            })
+            .collect();
+
+        Ok(Some(locations))
     }
 }
 
@@ -529,21 +585,30 @@ mod tests {
     #[test]
     fn reads_utf8_script_file() {
         let path = write_temp("ws_test_utf8.ws", b"class CExample {}\n");
-        assert_eq!(read_script_file(&path).expect("should read"), "class CExample {}\n");
+        assert_eq!(
+            read_script_file(&path).expect("should read"),
+            "class CExample {}\n"
+        );
     }
 
     #[test]
     fn reads_utf16le_script_file() {
         let bytes = encode_utf16le("class CExample {}\n");
         let path = write_temp("ws_test_utf16le.ws", &bytes);
-        assert_eq!(read_script_file(&path).expect("should read"), "class CExample {}\n");
+        assert_eq!(
+            read_script_file(&path).expect("should read"),
+            "class CExample {}\n"
+        );
     }
 
     #[test]
     fn reads_utf16be_script_file() {
         let bytes = encode_utf16be("class CExample {}\n");
         let path = write_temp("ws_test_utf16be.ws", &bytes);
-        assert_eq!(read_script_file(&path).expect("should read"), "class CExample {}\n");
+        assert_eq!(
+            read_script_file(&path).expect("should read"),
+            "class CExample {}\n"
+        );
     }
 
     #[test]

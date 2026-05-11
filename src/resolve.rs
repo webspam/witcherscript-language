@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
-use crate::line_index::SourcePosition;
+use crate::line_index::{SourcePosition, SourceRange};
 use crate::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
 
 #[derive(Debug, Clone)]
@@ -272,6 +272,84 @@ fn is_type_like(kind: SymbolKind) -> bool {
     )
 }
 
+pub fn find_references(
+    definition: &Definition,
+    definition_document: &ParsedDocument,
+    search_documents: &[(&str, &ParsedDocument)],
+    include_declaration: bool,
+) -> Vec<(String, SourceRange)> {
+    let name = &definition.symbol.name;
+
+    let scope: Option<std::ops::Range<usize>> = if matches!(
+        definition.symbol.kind,
+        SymbolKind::Variable | SymbolKind::Parameter
+    ) {
+        definition
+            .symbol
+            .container
+            .and_then(|id| definition_document.symbols.by_id(id))
+            .map(|container| container.byte_range.clone())
+    } else {
+        None
+    };
+
+    let mut results = Vec::new();
+
+    for (uri, document) in search_documents {
+        if scope.is_some() && *uri != definition.uri.as_str() {
+            continue;
+        }
+
+        let mut byte_ranges: Vec<std::ops::Range<usize>> = Vec::new();
+        collect_ident_occurrences(
+            document.tree.root_node(),
+            document.source.as_bytes(),
+            name,
+            scope.as_ref(),
+            &mut byte_ranges,
+        );
+
+        for byte_range in byte_ranges {
+            if !include_declaration
+                && *uri == definition.uri.as_str()
+                && byte_range == definition.symbol.selection_byte_range
+            {
+                continue;
+            }
+            let range = document.line_index.byte_range_to_range(
+                &document.source,
+                byte_range.start,
+                byte_range.end,
+            );
+            results.push((uri.to_string(), range));
+        }
+    }
+
+    results
+}
+
+fn collect_ident_occurrences<'tree>(
+    node: Node<'tree>,
+    source: &[u8],
+    name: &str,
+    scope: Option<&std::ops::Range<usize>>,
+    results: &mut Vec<std::ops::Range<usize>>,
+) {
+    if let Some(s) = scope {
+        if node.end_byte() <= s.start || node.start_byte() >= s.end {
+            return;
+        }
+    }
+    if node.kind() == "ident" && node.utf8_text(source).ok() == Some(name) {
+        results.push(node.start_byte()..node.end_byte());
+        return;
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_ident_occurrences(child, source, name, scope, results);
+    }
+}
+
 fn resolve_at_definition_site(
     uri: &str,
     document: &ParsedDocument,
@@ -369,6 +447,87 @@ mod tests {
             definition.symbol.kind,
             crate::symbols::SymbolKind::EnumVariant
         );
+    }
+
+    #[test]
+    fn finds_references_to_top_level_function() {
+        let source = "function Foo() {}\nfunction Bar() {\n Foo();\n Foo();\n}\n";
+        let document = parse_document(source).expect("parse should succeed");
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &document,
+            &WorkspaceIndex::default(),
+            SourcePosition {
+                line: 0,
+                character: 9,
+            },
+        )
+        .expect("definition should resolve");
+
+        let refs = super::find_references(
+            &definition,
+            &document,
+            &[("file:///test.ws", &document)],
+            false,
+        );
+        assert_eq!(refs.len(), 2, "two call sites expected");
+    }
+
+    #[test]
+    fn find_references_respects_include_declaration() {
+        let source = "function Foo() {}\nfunction Bar() {\n Foo();\n}\n";
+        let document = parse_document(source).expect("parse should succeed");
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &document,
+            &WorkspaceIndex::default(),
+            SourcePosition {
+                line: 0,
+                character: 9,
+            },
+        )
+        .expect("definition should resolve");
+
+        let with_decl = super::find_references(
+            &definition,
+            &document,
+            &[("file:///test.ws", &document)],
+            true,
+        );
+        let without_decl = super::find_references(
+            &definition,
+            &document,
+            &[("file:///test.ws", &document)],
+            false,
+        );
+        assert_eq!(with_decl.len(), 2);
+        assert_eq!(without_decl.len(), 1);
+    }
+
+    #[test]
+    fn finds_references_to_local_variable_within_function_scope() {
+        let source =
+            "function Outer() {\n var x : int;\n x = 1;\n}\nfunction Other() {\n var x : int;\n}\n";
+        let document = parse_document(source).expect("parse should succeed");
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &document,
+            &WorkspaceIndex::default(),
+            SourcePosition {
+                line: 2,
+                character: 1,
+            },
+        )
+        .expect("local variable should resolve");
+
+        let refs = super::find_references(
+            &definition,
+            &document,
+            &[("file:///test.ws", &document)],
+            true,
+        );
+        // Should find x in Outer() only: the declaration and the assignment
+        assert_eq!(refs.len(), 2, "x in Other() should not be included");
     }
 
     #[test]
