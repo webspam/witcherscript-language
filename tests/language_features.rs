@@ -37,7 +37,7 @@ fn resolves_same_file_member_access_on_this() {
         "class CExample {\n var value : int;\n function Set() {\n  this.value = 1;\n }\n}\n";
     let document = parse_document(source).expect("source should parse");
     let mut workspace = WorkspaceIndex::default();
-    workspace.update_document("file:///example.ws", &document.symbols);
+    workspace.update_document("file:///example.ws", &document);
 
     let empty = WorkspaceIndex::default();
     let definition = resolve_definition(
@@ -61,8 +61,8 @@ fn resolves_workspace_top_level_symbols() {
     let document = parse_document("function Make() {\n var shared : CShared;\n}\n")
         .expect("document should parse");
     let mut workspace = WorkspaceIndex::default();
-    workspace.update_document("file:///library.ws", &library.symbols);
-    workspace.update_document("file:///document.ws", &document.symbols);
+    workspace.update_document("file:///library.ws", &library);
+    workspace.update_document("file:///document.ws", &document);
 
     let empty = WorkspaceIndex::default();
     let definition = resolve_definition(
@@ -87,7 +87,7 @@ fn resolves_top_level_symbol_from_base_index() {
         .expect("user doc should parse");
     let workspace = WorkspaceIndex::default();
     let mut base = WorkspaceIndex::default();
-    base.update_document("file:///base/gameplay.ws", &base_doc.symbols);
+    base.update_document("file:///base/gameplay.ws", &base_doc);
 
     // Mirrors the LSP fallthrough: try workspace first, then base index.
     let pos = SourcePosition {
@@ -114,10 +114,10 @@ fn workspace_index_shadows_base_index_for_same_name() {
     let user_doc = parse_document("function Foo() {\n var x : CGameplayEntity;\n}\n")
         .expect("user doc should parse");
     let mut workspace = WorkspaceIndex::default();
-    workspace.update_document("file:///user/override.ws", &workspace_doc.symbols);
-    workspace.update_document("file:///user/mod.ws", &user_doc.symbols);
+    workspace.update_document("file:///user/override.ws", &workspace_doc);
+    workspace.update_document("file:///user/mod.ws", &user_doc);
     let mut base = WorkspaceIndex::default();
-    base.update_document("file:///base/gameplay.ws", &base_doc.symbols);
+    base.update_document("file:///base/gameplay.ws", &base_doc);
 
     let pos = SourcePosition {
         line: 1,
@@ -165,7 +165,7 @@ fn class_name_used_as_receiver_does_not_resolve() {
         parse_document("function Foo() {\n CBaseClass.value;\n}\n").expect("user doc should parse");
     let workspace = WorkspaceIndex::default();
     let mut base = WorkspaceIndex::default();
-    base.update_document("file:///base/base_class.ws", &base_doc.symbols);
+    base.update_document("file:///base/base_class.ws", &base_doc);
 
     let pos = SourcePosition {
         line: 1,

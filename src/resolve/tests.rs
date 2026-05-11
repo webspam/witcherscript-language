@@ -108,7 +108,7 @@ fn finds_references_to_top_level_function() {
     .expect("definition should resolve");
 
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &document.symbols);
+    index.update_document("file:///test.ws", &document);
 
     let refs = super::find_references(
         &definition,
@@ -136,7 +136,7 @@ fn find_references_respects_include_declaration() {
     .expect("definition should resolve");
 
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &document.symbols);
+    index.update_document("file:///test.ws", &document);
 
     let with_decl = super::find_references(
         &definition,
@@ -173,7 +173,7 @@ fn finds_references_to_local_variable_within_function_scope() {
     .expect("local variable should resolve");
 
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &document.symbols);
+    index.update_document("file:///test.ws", &document);
 
     let refs = super::find_references(
         &definition,
@@ -226,7 +226,7 @@ fn unknown_receiver_dot_method_resolves_to_nothing() {
     );
     let doc = parse_document(source).expect("parse should succeed");
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc.symbols);
+    index.update_document("file:///test.ws", &doc);
 
     let result = resolve_definition(
         "file:///test.ws",
@@ -260,7 +260,7 @@ fn resolves_variable_dot_method_to_declared_type_not_current_class() {
     );
     let doc = parse_document(source).expect("parse should succeed");
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc.symbols);
+    index.update_document("file:///test.ws", &doc);
 
     // line 3, col 14 — "Initialize" after "unrelated."
     let definition = resolve_definition(
@@ -292,7 +292,7 @@ fn resolves_this_keyword_to_current_class() {
     let source = "class MyClass {\n function Test() {\n  this.Foo();\n }\n}\n";
     let doc = parse_document(source).expect("parse should succeed");
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc.symbols);
+    index.update_document("file:///a.ws", &doc);
 
     // cursor on 'this' (line 2, col 3)
     let definition = resolve_definition(
@@ -318,8 +318,8 @@ fn resolves_super_keyword_to_parent_class() {
     let doc_b = parse_document(source_b).expect("parse should succeed");
 
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc_a.symbols);
-    index.update_document("file:///b.ws", &doc_b.symbols);
+    index.update_document("file:///a.ws", &doc_a);
+    index.update_document("file:///b.ws", &doc_b);
 
     // cursor on 'super' (line 2, col 3)
     let definition = resolve_definition(
@@ -345,8 +345,8 @@ fn resolves_inherited_method_via_workspace() {
     let doc_b = parse_document(source_b).expect("parse should succeed");
 
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc_a.symbols);
-    index.update_document("file:///b.ws", &doc_b.symbols);
+    index.update_document("file:///a.ws", &doc_a);
+    index.update_document("file:///b.ws", &doc_b);
 
     let definition = resolve_definition(
         "file:///a.ws",
@@ -367,7 +367,7 @@ fn resolves_inherited_method_via_workspace() {
 fn class_without_explicit_extends_defaults_to_cobject() {
     let doc = parse_document("class A {}").expect("parse should succeed");
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc.symbols);
+    index.update_document("file:///a.ws", &doc);
     // CObject is not in the index; find_member must terminate without looping.
     assert!(index
         .find_member("A", "someMethod", AccessLevel::Public)
@@ -382,8 +382,8 @@ fn resolves_inherited_method_unqualified_inside_subclass() {
     let doc_b = parse_document(source_b).expect("parse should succeed");
 
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc_a.symbols);
-    index.update_document("file:///b.ws", &doc_b.symbols);
+    index.update_document("file:///a.ws", &doc_a);
+    index.update_document("file:///b.ws", &doc_b);
 
     let definition = resolve_definition(
         "file:///a.ws",
@@ -407,8 +407,8 @@ fn resolves_this_dot_inherited_method() {
     let doc_b = parse_document(source_b).expect("parse should succeed");
 
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc_a.symbols);
-    index.update_document("file:///b.ws", &doc_b.symbols);
+    index.update_document("file:///a.ws", &doc_a);
+    index.update_document("file:///b.ws", &doc_b);
 
     let definition = resolve_definition(
         "file:///a.ws",
@@ -439,7 +439,7 @@ fn resolves_method_on_class_field_receiver() {
     );
     let doc = parse_document(source).expect("parse should succeed");
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc.symbols);
+    index.update_document("file:///test.ws", &doc);
 
     // cursor on 'GetSpecialConfig' (line 3, col 12)
     let definition = resolve_definition(
@@ -462,7 +462,7 @@ fn resolves_parameter_before_top_level() {
         parse_document("function value() {}\nfunction test(value : int) {\n value = 1;\n}\n")
             .expect("parse should succeed");
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &document.symbols);
+    index.update_document("file:///test.ws", &document);
 
     let definition = resolve_definition(
         "file:///test.ws",
@@ -489,8 +489,8 @@ fn private_method_not_visible_in_subclass() {
     let doc_b = parse_document(source_b).expect("parse should succeed");
 
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc_a.symbols);
-    index.update_document("file:///b.ws", &doc_b.symbols);
+    index.update_document("file:///a.ws", &doc_a);
+    index.update_document("file:///b.ws", &doc_b);
 
     let definition = resolve_definition(
         "file:///a.ws",
@@ -515,7 +515,7 @@ fn private_method_visible_within_own_class() {
     let doc = parse_document(source).expect("parse should succeed");
 
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc.symbols);
+    index.update_document("file:///a.ws", &doc);
 
     let definition = resolve_definition(
         "file:///a.ws",
@@ -539,8 +539,8 @@ fn protected_method_visible_in_subclass() {
     let doc_b = parse_document(source_b).expect("parse should succeed");
 
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc_a.symbols);
-    index.update_document("file:///b.ws", &doc_b.symbols);
+    index.update_document("file:///a.ws", &doc_a);
+    index.update_document("file:///b.ws", &doc_b);
 
     let definition = resolve_definition(
         "file:///a.ws",
@@ -564,8 +564,8 @@ fn protected_method_not_visible_externally() {
     let doc_b = parse_document(source_b).expect("parse should succeed");
 
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc_a.symbols);
-    index.update_document("file:///b.ws", &doc_b.symbols);
+    index.update_document("file:///a.ws", &doc_a);
+    index.update_document("file:///b.ws", &doc_b);
 
     let definition = resolve_definition(
         "file:///a.ws",
@@ -591,8 +591,8 @@ fn unspecified_access_defaults_to_public() {
     let doc_b = parse_document(source_b).expect("parse should succeed");
 
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc_a.symbols);
-    index.update_document("file:///b.ws", &doc_b.symbols);
+    index.update_document("file:///a.ws", &doc_a);
+    index.update_document("file:///b.ws", &doc_b);
 
     let definition = resolve_definition(
         "file:///a.ws",
@@ -623,7 +623,7 @@ fn state_parent_dot_resolves_to_owner_class_method() {
     );
     let doc = parse_document(source).expect("parse should succeed");
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc.symbols);
+    index.update_document("file:///test.ws", &doc);
 
     // cursor on 'GetHealth' (line 5, col 11)
     let definition = resolve_definition(
@@ -656,7 +656,7 @@ fn state_parent_dot_cannot_see_protected_owner_method() {
     );
     let doc = parse_document(source).expect("parse should succeed");
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc.symbols);
+    index.update_document("file:///test.ws", &doc);
 
     // cursor on 'InternalTick' (line 5, col 11)
     let definition = resolve_definition(
@@ -688,7 +688,7 @@ fn resolves_method_on_function_return_value() {
     );
     let doc = parse_document(source).expect("parse should succeed");
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc.symbols);
+    index.update_document("file:///test.ws", &doc);
 
     // cursor on 'Quack' — line 5, col 16
     let definition = resolve_definition(
@@ -723,8 +723,8 @@ fn find_references_for_private_member_scoped_to_defining_file() {
     let doc_b = parse_document(source_b).expect("parse should succeed");
 
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc_a.symbols);
-    index.update_document("file:///b.ws", &doc_b.symbols);
+    index.update_document("file:///a.ws", &doc_a);
+    index.update_document("file:///b.ws", &doc_b);
     let base = WorkspaceIndex::default();
     let db = SymbolDb::new(&index, &base);
 
@@ -772,7 +772,7 @@ fn resolves_chained_call_method() {
     );
     let doc = parse_document(source).expect("parse should succeed");
     let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc.symbols);
+    index.update_document("file:///test.ws", &doc);
 
     // cursor on 'Count' — line 8, col 26
     let definition = resolve_definition(
@@ -855,7 +855,7 @@ fn script_global_redirects_to_class_when_loaded() {
     let class_doc = parse_document("class CR4Game {}\n").expect("parse");
     let env = make_env("theGame", "CR4Game");
     let mut base = WorkspaceIndex::default();
-    base.update_document("file:///r4game.ws", &class_doc.symbols);
+    base.update_document("file:///r4game.ws", &class_doc);
     let def = resolve_definition(
         "file:///test.ws",
         &doc,
@@ -878,7 +878,7 @@ fn member_access_on_script_global_resolves_method() {
             .expect("parse");
     let env = make_env("theGame", "CR4Game");
     let mut base = WorkspaceIndex::default();
-    base.update_document("file:///r4game.ws", &class_doc.symbols);
+    base.update_document("file:///r4game.ws", &class_doc);
     let def = resolve_definition(
         "file:///test.ws",
         &doc,
@@ -899,7 +899,7 @@ fn local_var_with_same_name_as_script_global_resolves_to_local() {
     let class_doc = parse_document("class CR4Game {}\n").expect("parse");
     let env = make_env("theGame", "CR4Game");
     let mut base = WorkspaceIndex::default();
-    base.update_document("file:///r4game.ws", &class_doc.symbols);
+    base.update_document("file:///r4game.ws", &class_doc);
     let def = resolve_definition(
         "file:///test.ws",
         &doc,

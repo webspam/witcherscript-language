@@ -1,6 +1,7 @@
 use tree_sitter::Parser;
 
 use super::collect_semantic_tokens;
+use crate::document::parse_document;
 use crate::line_index::LineIndex;
 use crate::resolve::{SymbolDb, WorkspaceIndex};
 use crate::symbols::extract_symbols;
@@ -209,12 +210,9 @@ fn resolved_type_annotation_gets_class_token() {
 fn type_annotation_from_base_scripts_gets_class_token() {
     // CActor is defined only in base_scripts — the field type annotation should
     // still resolve and produce a class token.
-    let base_source = "class CActor {}\n";
-    let base_tree = parse(base_source);
-    let base_index = LineIndex::new(base_source);
-    let base_symbols = extract_symbols(base_tree.root_node(), base_source, &base_index);
+    let base_doc = parse_document("class CActor {}\n").expect("base parse");
     let mut base = WorkspaceIndex::default();
-    base.update_document("file:///base/CActor.ws", &base_symbols);
+    base.update_document("file:///base/CActor.ws", &base_doc);
 
     let source = "class SomeClass {\n  var actor : CActor;\n}\n";
     let tree = parse(source);

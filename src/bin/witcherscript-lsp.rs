@@ -316,7 +316,7 @@ impl Backend {
                 self.workspace_index
                     .lock()
                     .await
-                    .update_document(uri.as_str(), &document.symbols);
+                    .update_document(uri.as_str(), &document);
                 self.documents.lock().await.insert(uri.clone(), document);
                 self.client
                     .publish_diagnostics(uri, diagnostics, None)
@@ -360,7 +360,7 @@ impl Backend {
                 warn!(path = %path.display(), "failed to convert path to URI");
                 continue;
             };
-            index.update_document(uri.as_str(), &document.symbols);
+            index.update_document(uri.as_str(), &document);
             docs.insert(uri.to_string(), document);
         }
     }
@@ -435,7 +435,7 @@ impl Backend {
             let mut index = self.base_scripts_index.lock().await;
             let mut docs = self.base_scripts_documents.lock().await;
             for (uri, document) in parsed {
-                index.update_document(uri.as_str(), &document.symbols);
+                index.update_document(uri.as_str(), &document);
                 docs.insert(uri, document);
             }
         }
@@ -739,7 +739,7 @@ mod tests {
         let source = "function Make() {\n var dataObject : CScriptedFlashObject;\n dataObject = dataObject;\n}\n";
         let document = parse_document(source).expect("document should parse");
         let mut workspace = WorkspaceIndex::default();
-        workspace.update_document("file:///example.ws", &document.symbols);
+        workspace.update_document("file:///example.ws", &document);
 
         let definition = resolve_definition(
             "file:///example.ws",
@@ -767,7 +767,7 @@ mod tests {
             "@wrapMethod(CR4Player)\nfunction OnSpawned(spawnData : SEntitySpawnData) {\n}\n";
         let document = parse_document(source).expect("document should parse");
         let mut workspace = WorkspaceIndex::default();
-        workspace.update_document("file:///fov.ws", &document.symbols);
+        workspace.update_document("file:///fov.ws", &document);
 
         let definition = resolve_definition(
             "file:///fov.ws",
@@ -793,7 +793,7 @@ mod tests {
         let source = "function Make(spawnData : SEntitySpawnData) {\n spawnData = spawnData;\n}\n";
         let document = parse_document(source).expect("document should parse");
         let mut workspace = WorkspaceIndex::default();
-        workspace.update_document("file:///example.ws", &document.symbols);
+        workspace.update_document("file:///example.ws", &document);
 
         let definition = resolve_definition(
             "file:///example.ws",
@@ -819,7 +819,7 @@ mod tests {
         let source = "class CExample {\n public function DoThing(x : int) : bool {}\n}\n";
         let document = parse_document(source).expect("document should parse");
         let mut workspace = WorkspaceIndex::default();
-        workspace.update_document("file:///example.ws", &document.symbols);
+        workspace.update_document("file:///example.ws", &document);
 
         let definition = resolve_definition(
             "file:///example.ws",
@@ -847,8 +847,8 @@ mod tests {
         let doc_a = parse_document(source_a).expect("document should parse");
         let doc_b = parse_document(source_b).expect("document should parse");
         let mut workspace = WorkspaceIndex::default();
-        workspace.update_document("file:///a.ws", &doc_a.symbols);
-        workspace.update_document("file:///b.ws", &doc_b.symbols);
+        workspace.update_document("file:///a.ws", &doc_a);
+        workspace.update_document("file:///b.ws", &doc_b);
 
         let definition = resolve_definition(
             "file:///a.ws",
@@ -870,7 +870,7 @@ mod tests {
         let source = "class CExample {\n protected editable var ignore : bool;\n}\n";
         let document = parse_document(source).expect("document should parse");
         let mut workspace = WorkspaceIndex::default();
-        workspace.update_document("file:///example.ws", &document.symbols);
+        workspace.update_document("file:///example.ws", &document);
 
         let definition = resolve_definition(
             "file:///example.ws",

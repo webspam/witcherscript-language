@@ -5,7 +5,7 @@ use tree_sitter::Node;
 use crate::document::ParsedDocument;
 use crate::line_index::{SourcePosition, SourceRange};
 use crate::script_env::ScriptEnvironment;
-use crate::symbols::{AccessLevel, DocumentSymbols, Symbol, SymbolId, SymbolKind};
+use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
 #[derive(Debug, Clone)]
 pub struct Definition {
@@ -72,20 +72,29 @@ pub struct WorkspaceIndex {
     top_level_by_name: HashMap<String, Definition>,
     superclass_by_name: HashMap<String, String>,
     member_by_type: HashMap<String, HashMap<String, Definition>>,
+    doc_idents: HashMap<String, HashMap<String, Vec<std::ops::Range<usize>>>>,
 }
 
 impl WorkspaceIndex {
-    pub fn update_document(&mut self, uri: impl Into<String>, symbols: &DocumentSymbols) {
+    pub fn update_document(&mut self, uri: impl Into<String>, document: &ParsedDocument) {
         let uri: String = uri.into();
         self.remove_from_indices(&uri);
-        let all_symbols = symbols.all().to_vec();
+        self.doc_idents.remove(&uri);
+        let all_symbols = document.symbols.all().to_vec();
         self.insert_into_indices(&uri, &all_symbols);
+        self.doc_idents
+            .insert(uri.clone(), scan_ident_occurrences(document));
         self.documents.insert(uri, all_symbols);
     }
 
     pub fn remove_document(&mut self, uri: &str) {
         self.remove_from_indices(uri);
+        self.doc_idents.remove(uri);
         self.documents.remove(uri);
+    }
+
+    fn ident_ranges_in_doc(&self, uri: &str, name: &str) -> Option<&[std::ops::Range<usize>]> {
+        self.doc_idents.get(uri)?.get(name).map(Vec::as_slice)
     }
 
     fn remove_from_indices(&mut self, uri: &str) {
@@ -605,13 +614,31 @@ pub fn find_references(
         };
 
         let mut byte_ranges: Vec<std::ops::Range<usize>> = Vec::new();
-        collect_ident_occurrences(
-            document.tree.root_node(),
-            document.source.as_bytes(),
-            name,
-            scan_range,
-            &mut byte_ranges,
-        );
+        if scan_range.is_none() {
+            if let Some(ranges) = db
+                .workspace
+                .ident_ranges_in_doc(uri, name)
+                .or_else(|| db.base.ident_ranges_in_doc(uri, name))
+            {
+                byte_ranges.extend_from_slice(ranges);
+            } else {
+                collect_ident_occurrences(
+                    document.tree.root_node(),
+                    document.source.as_bytes(),
+                    name,
+                    None,
+                    &mut byte_ranges,
+                );
+            }
+        } else {
+            collect_ident_occurrences(
+                document.tree.root_node(),
+                document.source.as_bytes(),
+                name,
+                scan_range,
+                &mut byte_ranges,
+            );
+        }
 
         for byte_range in byte_ranges {
             // Semantic verification: resolve the candidate and confirm it points
@@ -644,6 +671,37 @@ pub fn find_references(
     }
 
     results
+}
+
+fn scan_ident_occurrences(
+    document: &ParsedDocument,
+) -> HashMap<String, Vec<std::ops::Range<usize>>> {
+    let mut map: HashMap<String, Vec<std::ops::Range<usize>>> = HashMap::new();
+    collect_all_idents(
+        document.tree.root_node(),
+        document.source.as_bytes(),
+        &mut map,
+    );
+    map
+}
+
+fn collect_all_idents<'tree>(
+    node: Node<'tree>,
+    source: &[u8],
+    map: &mut HashMap<String, Vec<std::ops::Range<usize>>>,
+) {
+    if node.kind() == "ident" {
+        if let Ok(name) = node.utf8_text(source) {
+            map.entry(name.to_string())
+                .or_default()
+                .push(node.start_byte()..node.end_byte());
+        }
+        return;
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_all_idents(child, source, map);
+    }
 }
 
 fn collect_ident_occurrences<'tree>(
