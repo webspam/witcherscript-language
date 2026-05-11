@@ -1,11 +1,17 @@
-# WitcherScript Parser Prototype
+# WitcherScript Language Tools
 
-Small Rust CLI for parsing and validating WitcherScript (`.ws`) files with Tree-sitter.
+Rust workspace providing a WitcherScript (`.ws`) parser, syntax validator, and Language
+Server Protocol (LSP) server built on Tree-sitter.
 
-This is a syntax validator and parse-tree inspection tool. It is not a formatter, and it
-does not build a lossy semantic AST.
+Two binaries are produced:
 
-## Usage
+- **`witcherscript-parser`** — CLI syntax validator and parse-tree inspector.
+- **`witcherscript-lsp`** — LSP server for editor integration (go-to-definition, hover,
+  document symbols, inline diagnostics).
+
+## CLI: witcherscript-parser
+
+### Usage
 
 From this directory:
 
@@ -30,7 +36,7 @@ Exit codes:
 - `1`: one or more files parsed with syntax or validation diagnostics.
 - `2`: CLI, IO, setup, or parser initialisation error.
 
-## Diagnostics
+### Diagnostics
 
 Diagnostics include the file path, start line/column, end line/column, byte range, node
 kind, and a source-line snippet when available.
@@ -41,14 +47,59 @@ Current validation rules:
   Blank lines, comments, and bare semicolons do not count as executable statements.
 
 `--dump-tree` prints a concrete syntax tree with node kinds plus line/column and byte
-ranges. This keeps comments, token positions, and concrete structure visible for future
-formatter experiments without introducing a lossy AST layer.
+ranges.
+
+## LSP: witcherscript-lsp
+
+The LSP server communicates over stdin/stdout and can be integrated with any LSP-capable
+editor. Build with:
+
+```powershell
+cargo build --bin witcherscript-lsp --release
+```
+
+The resulting binary is `target/release/witcherscript-lsp.exe`.
+
+### LSP capabilities
+
+| Capability | Detail |
+|---|---|
+| Text sync | Full document sync on open and change |
+| Diagnostics | Syntax errors and validation rules published on every parse |
+| Go-to-definition | Locals, parameters, fields (`this.x`), and workspace-wide top-level symbols |
+| Hover | Signature or type annotation shown in a fenced `witcherscript` code block |
+| Document symbols | Nested outline of classes, structs, enums, functions, methods, states, events, and fields |
+
+On startup the server indexes every `.ws` file in the workspace root(s), then keeps
+open documents in sync as they are edited.
+
+## Symbol extraction
+
+The library extracts a flat symbol table from each document during parsing. Symbols carry:
+
+- `name`, `kind` (Class, Struct, Enum, EnumVariant, Function, Method, Field, Variable,
+  Parameter, State, Event)
+- `range` / `selection_range` as UTF-16 line/character positions (LSP-compatible)
+- `byte_range` / `selection_byte_range` for fast cursor queries
+- `container` — parent `SymbolId` for members, `None` for top-level declarations
+- `type_annotation`, `signature`, `detail`, `annotations` (`@wrapMethod`, `@addMethod`, …)
+
+The `WorkspaceIndex` in `resolve.rs` maintains a per-URI symbol list and supports
+cross-file go-to-definition lookups.
 
 ## Tests
 
+```powershell
+cargo test
+```
+
 Parser fixtures live under `tests/fixtures/valid` and `tests/fixtures/invalid`. Add `.ws`
-files there when covering larger WitcherScript examples; the unit tests discover those
+files there when covering larger WitcherScript examples; the fixture tests discover those
 files automatically.
+
+Unit tests are embedded in `diagnostics.rs`, `symbols.rs`, `line_index.rs`, and
+`resolve.rs`. Integration tests for language features (symbol extraction, definition
+resolution) live in `tests/language_features.rs`.
 
 ## Current Validation Result
 
@@ -75,3 +126,5 @@ pass.
   in this prototype.
 - The grammar dependency is pinned to the `webspam` fork so future grammar fixes can be
   made outside this repo and consumed by retargeting the Cargo dependency.
+- Definition resolution does not yet follow inheritance chains (e.g. resolving a member
+  through a base class requires the type name to match exactly).
