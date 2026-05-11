@@ -73,6 +73,61 @@ The resulting binary is `target/release/witcherscript-lsp.exe`.
 On startup the server indexes every `.ws` file in the workspace root(s), then keeps
 open documents in sync as they are edited.
 
+### LSP Configuration
+
+The server reads one user-configurable setting:
+
+| Key | Type | Description |
+|---|---|---|
+| `witcherscript.baseScriptsPath` | `string` | Absolute path to the Witcher 3 base scripts directory (e.g. `C:\The Witcher 3\content\content0\scripts`). All ~1,700 game scripts are parsed and their symbols made available globally. |
+
+**How the server receives this value**
+
+The server uses two complementary LSP mechanisms:
+
+1. **`workspace/configuration`** (primary) — after the `initialized` notification the server
+   sends a `workspace/configuration` request for `witcherscript.baseScriptsPath`. The
+   `vscode-languageclient` `LanguageClient` fulfils this automatically from the user's VS Code
+   settings; no extra client code is needed. The server also handles
+   `workspace/didChangeConfiguration` notifications, so changing the path in VS Code settings
+   re-indexes the base scripts without restarting.
+
+2. **`initializationOptions`** (fallback) — the client may pass the path in the
+   `initialize` request so the server has a value immediately at startup, before the
+   `workspace/configuration` round-trip completes.
+
+**VS Code plugin integration**
+
+*`package.json` — declare the setting:*
+```json
+"contributes": {
+  "configuration": {
+    "title": "WitcherScript",
+    "properties": {
+      "witcherscript.baseScriptsPath": {
+        "type": "string",
+        "default": "",
+        "description": "Absolute path to the Witcher 3 base scripts directory."
+      }
+    }
+  }
+}
+```
+
+*Extension activation — pass as `initializationOptions` for a fast first start:*
+```typescript
+const clientOptions: LanguageClientOptions = {
+  documentSelector: [{ scheme: 'file', language: 'witcherscript' }],
+  initializationOptions: {
+    baseScriptsPath:
+      vscode.workspace.getConfiguration('witcherscript').get<string>('baseScriptsPath') ?? '',
+  },
+};
+```
+
+The `LanguageClient` handles all `workspace/configuration` and `workspace/didChangeConfiguration`
+traffic automatically once the setting is declared in `package.json`.
+
 ## Symbol extraction
 
 The library extracts a flat symbol table from each document during parsing. Symbols carry:

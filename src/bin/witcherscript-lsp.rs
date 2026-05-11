@@ -2,16 +2,20 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
+use rayon::prelude::*;
+use serde_json::Value;
 use tokio::sync::Mutex;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
-    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
-    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
-    InitializeParams, InitializeResult, InitializedParams, Location, MarkupContent, MarkupKind,
-    OneOf, Position, Range, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
-    Url,
+    ConfigurationItem, Diagnostic, DiagnosticSeverity, DidChangeConfigurationParams,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverContents, HoverParams, InitializeParams, InitializeResult,
+    InitializedParams, Location, MarkupContent, MarkupKind, MessageType, OneOf, Position, Range,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+    WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use witcherscript_parser::document::{parse_document, ParsedDocument};
@@ -26,11 +30,24 @@ struct Backend {
     documents: Arc<Mutex<HashMap<Url, ParsedDocument>>>,
     workspace_index: Arc<Mutex<WorkspaceIndex>>,
     workspace_roots: Arc<Mutex<Vec<PathBuf>>>,
+    base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
+    base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
 }
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        // Capture base scripts path from initializationOptions if provided.
+        // workspace/configuration is pulled after initialized(), but this ensures
+        // we have a value even before that round-trip completes.
+        if let Some(opts) = &params.initialization_options {
+            if let Some(p) = opts.get("baseScriptsPath").and_then(|v| v.as_str()) {
+                if !p.is_empty() {
+                    *self.base_scripts_path.lock().await = Some(PathBuf::from(p));
+                }
+            }
+        }
+
         let roots = workspace_roots(params);
         *self.workspace_roots.lock().await = roots;
 
@@ -42,6 +59,13 @@ impl LanguageServer for Backend {
                 definition_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(tower_lsp::lsp_types::HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                workspace: Some(WorkspaceServerCapabilities {
+                    workspace_folders: Some(WorkspaceFoldersServerCapabilities {
+                        supported: Some(true),
+                        change_notifications: None,
+                    }),
+                    ..WorkspaceServerCapabilities::default()
+                }),
                 ..ServerCapabilities::default()
             },
             ..InitializeResult::default()
@@ -50,6 +74,10 @@ impl LanguageServer for Backend {
 
     async fn initialized(&self, _: InitializedParams) {
         self.index_workspace().await;
+        // Pull witcherscript.baseScriptsPath from the client's settings. This may
+        // override the value from initializationOptions.
+        self.fetch_config().await;
+        self.index_base_scripts().await;
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -74,6 +102,11 @@ impl LanguageServer for Backend {
             .await;
     }
 
+    async fn did_change_configuration(&self, _: DidChangeConfigurationParams) {
+        self.fetch_config().await;
+        self.index_base_scripts().await;
+    }
+
     async fn goto_definition(
         &self,
         params: GotoDefinitionParams,
@@ -85,12 +118,10 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let workspace = self.workspace_index.lock().await;
-        let Some(definition) = resolve_definition(
-            uri.as_str(),
-            document,
-            &workspace,
-            source_position(position),
-        ) else {
+        let base = self.base_scripts_index.lock().await;
+        let Some(definition) = resolve_definition(uri.as_str(), document, &workspace, source_position(position))
+            .or_else(|| resolve_definition(uri.as_str(), document, &base, source_position(position)))
+        else {
             return Ok(None);
         };
         let Ok(target_uri) = Url::parse(&definition.uri) else {
@@ -111,12 +142,10 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let workspace = self.workspace_index.lock().await;
-        let Some(definition) = resolve_definition(
-            uri.as_str(),
-            document,
-            &workspace,
-            source_position(position),
-        ) else {
+        let base = self.base_scripts_index.lock().await;
+        let Some(definition) = resolve_definition(uri.as_str(), document, &workspace, source_position(position))
+            .or_else(|| resolve_definition(uri.as_str(), document, &base, source_position(position)))
+        else {
             return Ok(None);
         };
 
@@ -162,7 +191,7 @@ impl Backend {
             Err(error) => {
                 self.client
                     .log_message(
-                        tower_lsp::lsp_types::MessageType::ERROR,
+                        MessageType::ERROR,
                         format!("failed to parse document: {error}"),
                     )
                     .await;
@@ -193,6 +222,82 @@ impl Backend {
             };
             index.update_document(uri.as_str(), &document.symbols);
         }
+    }
+
+    /// Pull `witcherscript.baseScriptsPath` from the client via `workspace/configuration`.
+    /// Updates `self.base_scripts_path` if a non-empty value is returned.
+    async fn fetch_config(&self) {
+        let items = vec![ConfigurationItem {
+            scope_uri: None,
+            section: Some("witcherscript.baseScriptsPath".to_string()),
+        }];
+        let Ok(values) = self.client.configuration(items).await else {
+            return;
+        };
+        if let Some(Value::String(path_str)) = values.into_iter().next() {
+            if !path_str.is_empty() {
+                *self.base_scripts_path.lock().await = Some(PathBuf::from(path_str));
+            }
+        }
+    }
+
+    /// Parse all `.ws` files under `base_scripts_path` in parallel and store their
+    /// symbols in `base_scripts_index`. No-ops if no path is configured.
+    async fn index_base_scripts(&self) {
+        let path = {
+            let guard = self.base_scripts_path.lock().await;
+            match guard.clone() {
+                Some(p) => p,
+                None => return,
+            }
+        };
+
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!("Indexing base scripts from {}", path.display()),
+            )
+            .await;
+        let start = Instant::now();
+
+        let Ok(files) = collect_witcherscript_files(&[path]) else {
+            self.client
+                .log_message(MessageType::WARNING, "Failed to collect base script files")
+                .await;
+            return;
+        };
+
+        let file_count = files.len();
+
+        // Parse files in parallel; each rayon thread gets its own tree-sitter parser
+        // via parse_document(), so there is no shared mutable state.
+        let parsed: Vec<(String, DocumentSymbols)> = files
+            .par_iter()
+            .filter_map(|path| {
+                let source = fs::read_to_string(path).ok()?;
+                let document = parse_document(source).ok()?;
+                let uri = Url::from_file_path(path).ok()?;
+                Some((uri.to_string(), document.symbols))
+            })
+            .collect();
+
+        let indexed = parsed.len();
+        {
+            let mut index = self.base_scripts_index.lock().await;
+            for (uri, symbols) in &parsed {
+                index.update_document(uri.as_str(), symbols);
+            }
+        }
+
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!(
+                    "Base scripts indexed: {indexed}/{file_count} files in {:.1}s",
+                    start.elapsed().as_secs_f32()
+                ),
+            )
+            .await;
     }
 }
 
@@ -337,6 +442,8 @@ async fn main() {
         documents: Arc::new(Mutex::new(HashMap::new())),
         workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
         workspace_roots: Arc::new(Mutex::new(Vec::new())),
+        base_scripts_path: Arc::new(Mutex::new(None)),
+        base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
     });
 
     Server::new(stdin, stdout, socket).serve(service).await;
