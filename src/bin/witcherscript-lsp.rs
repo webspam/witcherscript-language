@@ -334,8 +334,10 @@ async fn main() {
 mod tests {
     use tower_lsp::lsp_types::SymbolKind as LspSymbolKind;
     use witcherscript_parser::document::parse_document;
+    use witcherscript_parser::line_index::SourcePosition;
+    use witcherscript_parser::resolve::{resolve_definition, WorkspaceIndex};
 
-    use super::{document_symbols, lsp_diagnostics};
+    use super::{document_symbols, hover_markdown, lsp_diagnostics};
 
     #[test]
     fn maps_core_diagnostics_to_lsp_diagnostics() {
@@ -370,5 +372,32 @@ mod tests {
                 .name,
             "value"
         );
+    }
+
+    #[test]
+    fn formats_hover_contents_as_markdown() {
+        let source = "function Make() {\n var dataObject : CScriptedFlashObject;\n dataObject = dataObject;\n}\n";
+        let document = parse_document(source).expect("document should parse");
+        let mut workspace = WorkspaceIndex::default();
+        workspace.update_document("file:///example.ws", &document.symbols);
+
+        let definition = resolve_definition(
+            "file:///example.ws",
+            &document,
+            &workspace,
+            SourcePosition {
+                line: 2,
+                character: 2,
+            },
+        )
+        .expect("local variable should resolve");
+
+        let markdown = hover_markdown(&definition);
+
+        assert_eq!(
+            markdown,
+            "```witcherscript\nlocal dataObject : CScriptedFlashObject\n```\n\nDefined in `example.ws:2`"
+        );
+        assert!(!markdown.contains("file://"));
     }
 }
