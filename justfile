@@ -1,5 +1,6 @@
 set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
 
+alias b := build
 alias r := release
 alias t := test
 
@@ -17,6 +18,10 @@ ci:
     cargo fmt --all -- --check
     cargo clippy --all-targets --all-features -- -D warnings
     cargo test
+
+# Build dev binary.
+build:
+    cargo build
 
 # Build the optimised release binary.
 release:

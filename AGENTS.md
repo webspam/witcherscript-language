@@ -23,14 +23,16 @@ Grammar: `tree-sitter-witcherscript` pinned to `v0.13.0` from the `webspam` GitH
 
 ## Build
 
+Use justfile recipes instead of hand-crafting your own build / test commands:
+
 ```
-cargo build
+just build
 ```
 
 ## Test
 
 ```
-cargo test
+just test
 ```
 
 The test suite includes:
@@ -56,9 +58,15 @@ Before committing:
 
 1. Run `cargo fmt --all` to format code.
 2. Run `cargo clippy --all-targets` and fix any warnings.
-3. Run `cargo test` and confirm all tests pass.
+3. Run `just test` and confirm all tests pass.
 4. Stage only the files relevant to the change — avoid `git add .` when unrelated files
    are dirty.
+
+### Commit messages
+
+IMPORTANT: The first part of the commit message should be HUMAN RELATABLE. DO NOT just
+write which part of the code you changed; instead, what actual problem is it fixing /
+what goal is it achieving?
 
 Commit message format: one imperative-mood subject line (≤50 chars), blank line, then
 optional body. Be CONCISE. Examples:
@@ -72,10 +80,6 @@ Extend hover_text() to emit "enum variant <Name>" for EnumVariant kind.
 ```
 Fix late-local-var rule skipping nop statements
 ```
-
-IMPORTANT: The first part of the commit message should be HUMAN RELATABLE. DO NOT just
-write which part of the code you changed; instead, what actual problem is it fixing/goal
-is it achieving?
 
 ## Code style
 
