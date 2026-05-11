@@ -186,8 +186,12 @@ fn resolve_member_access(
         }
         "ident" => {
             let receiver_name = receiver.utf8_text(document.source.as_bytes()).ok()?;
-            resolve_document_member(uri, document, receiver_name, name)
-                .or_else(|| workspace.find_member(receiver_name, name))
+            let type_name =
+                resolve_local_or_parameter(uri, document, ident.start_byte(), receiver_name)
+                    .and_then(|def| def.symbol.type_annotation)
+                    .unwrap_or_else(|| receiver_name.to_string());
+            resolve_document_member(uri, document, &type_name, name)
+                .or_else(|| workspace.find_member(&type_name, name))
         }
         _ => None,
     }
@@ -667,6 +671,50 @@ mod tests {
         );
         // Should find x in Outer() only: the declaration and the assignment
         assert_eq!(refs.len(), 2, "x in Other() should not be included");
+    }
+
+    #[test]
+    fn resolves_variable_dot_method_to_declared_type_not_current_class() {
+        // Regression: unrelated.Initialize() inside Example should resolve to
+        // UnrelatedClass.Initialize, not Example.Initialize.
+        let source = concat!(
+            "class Example {\n",
+            "  public function Initialize() {\n",
+            "    var unrelated : UnrelatedClass = new UnrelatedClass in this;\n",
+            "    unrelated.Initialize();\n",
+            "  }\n",
+            "}\n",
+            "class UnrelatedClass {\n",
+            "  public function Initialize() {}\n",
+            "}\n",
+        );
+        let doc = parse_document(source).expect("parse should succeed");
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &doc.symbols);
+
+        // line 3, col 14 — "Initialize" after "unrelated."
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &doc,
+            &index,
+            SourcePosition {
+                line: 3,
+                character: 14,
+            },
+        )
+        .expect("should resolve to UnrelatedClass.Initialize");
+
+        assert_eq!(definition.symbol.name, "Initialize");
+        // The definition must live inside UnrelatedClass, not Example
+        let container_id = definition
+            .symbol
+            .container
+            .expect("method should have a container");
+        let container = doc
+            .symbols
+            .by_id(container_id)
+            .expect("container should exist");
+        assert_eq!(container.name, "UnrelatedClass");
     }
 
     #[test]
