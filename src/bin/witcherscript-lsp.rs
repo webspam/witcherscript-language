@@ -290,7 +290,7 @@ impl Backend {
         let parsed: Vec<(String, DocumentSymbols)> = files
             .par_iter()
             .filter_map(|path| {
-                let source = fs::read_to_string(path).ok()?;
+                let source = read_script_file(path).ok()?;
                 let document = parse_document(source).ok()?;
                 let uri = Url::from_file_path(path).ok()?;
                 Some((uri.to_string(), document.symbols))
@@ -315,6 +315,31 @@ impl Backend {
             )
             .await;
     }
+}
+
+/// Read a WitcherScript source file, handling UTF-16LE/BE BOMs produced by the
+/// Witcher 3 toolchain. Falls back to UTF-8 when no BOM is present.
+fn read_script_file(path: &std::path::Path) -> std::io::Result<String> {
+    let bytes = fs::read(path)?;
+    if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
+        // UTF-16 LE
+        let words: Vec<u16> = rest
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        return String::from_utf16(&words)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e));
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
+        // UTF-16 BE
+        let words: Vec<u16> = rest
+            .chunks_exact(2)
+            .map(|c| u16::from_be_bytes([c[0], c[1]]))
+            .collect();
+        return String::from_utf16(&words)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e));
+    }
+    String::from_utf8(bytes).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
 fn workspace_roots(params: InitializeParams) -> Vec<PathBuf> {
