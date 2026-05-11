@@ -32,9 +32,11 @@ struct Backend {
     client: Client,
     documents: Arc<Mutex<HashMap<Url, ParsedDocument>>>,
     workspace_index: Arc<Mutex<WorkspaceIndex>>,
+    workspace_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     workspace_roots: Arc<Mutex<Vec<PathBuf>>>,
     base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
     base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
+    base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
 }
 
 #[tower_lsp::async_trait]
@@ -207,15 +209,27 @@ impl LanguageServer for Backend {
             return Ok(Some(Vec::new()));
         };
 
-        let def_url = Url::parse(&definition.uri).ok();
-        let definition_document = def_url
-            .as_ref()
-            .and_then(|u| documents.get(u))
-            .unwrap_or(document);
+        let workspace_docs = self.workspace_documents.lock().await;
+        let base_docs = self.base_scripts_documents.lock().await;
 
-        let search_docs: Vec<(&str, &ParsedDocument)> = documents
+        // Merge all indexed documents; open documents take precedence over indexed ones
+        // so that unsaved edits are reflected in reference search results.
+        let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
+        for (uri, doc) in base_docs.iter() {
+            merged.insert(uri.clone(), doc);
+        }
+        for (uri, doc) in workspace_docs.iter() {
+            merged.insert(uri.clone(), doc);
+        }
+        for (url, doc) in documents.iter() {
+            merged.insert(url.to_string(), doc);
+        }
+
+        let definition_document = merged.get(&definition.uri).copied().unwrap_or(document);
+
+        let search_docs: Vec<(&str, &ParsedDocument)> = merged
             .iter()
-            .map(|(url, doc)| (url.as_str(), doc))
+            .map(|(uri, doc)| (uri.as_str(), *doc))
             .collect();
 
         let refs = find_references(
@@ -277,6 +291,7 @@ impl Backend {
         };
 
         let mut index = self.workspace_index.lock().await;
+        let mut docs = self.workspace_documents.lock().await;
         for path in files {
             let Ok(source) = fs::read_to_string(&path) else {
                 warn!(path = %path.display(), "failed to read workspace file");
@@ -291,6 +306,7 @@ impl Backend {
                 continue;
             };
             index.update_document(uri.as_str(), &document.symbols);
+            docs.insert(uri.to_string(), document);
         }
     }
 
@@ -343,21 +359,23 @@ impl Backend {
 
         // Parse files in parallel; each rayon thread gets its own tree-sitter parser
         // via parse_document(), so there is no shared mutable state.
-        let parsed: Vec<(String, DocumentSymbols)> = files
+        let parsed: Vec<(String, ParsedDocument)> = files
             .par_iter()
             .filter_map(|path| {
                 let source = read_script_file(path).ok()?;
                 let document = parse_document(source).ok()?;
                 let uri = Url::from_file_path(path).ok()?;
-                Some((uri.to_string(), document.symbols))
+                Some((uri.to_string(), document))
             })
             .collect();
 
         let indexed = parsed.len();
         {
             let mut index = self.base_scripts_index.lock().await;
-            for (uri, symbols) in &parsed {
-                index.update_document(uri.as_str(), symbols);
+            let mut docs = self.base_scripts_documents.lock().await;
+            for (uri, document) in parsed {
+                index.update_document(uri.as_str(), &document.symbols);
+                docs.insert(uri, document);
             }
         }
 
@@ -543,9 +561,11 @@ async fn main() {
         client,
         documents: Arc::new(Mutex::new(HashMap::new())),
         workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
+        workspace_documents: Arc::new(Mutex::new(HashMap::new())),
         workspace_roots: Arc::new(Mutex::new(Vec::new())),
         base_scripts_path: Arc::new(Mutex::new(None)),
         base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
+        base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
     });
 
     Server::new(stdin, stdout, socket).serve(service).await;
