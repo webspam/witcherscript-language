@@ -1241,3 +1241,294 @@ fn parameters_of_multi_name_group() {
 
     assert_eq!(params, vec!["a", "b", "c"]);
 }
+
+#[test]
+fn statement_completions_excludes_local_declared_after_cursor() {
+    let source = "function Test() {\n  var bar : int;\n  bar;\n}\n";
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // Cursor at line 1, character 2 — before the `bar` identifier in the declaration
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 2,
+        },
+    );
+    let local_names: Vec<&str> = result
+        .locals
+        .iter()
+        .map(|d| d.symbol.name.as_str())
+        .collect();
+    assert!(
+        !local_names.contains(&"bar"),
+        "variable declared after cursor must not appear in locals"
+    );
+}
+
+#[test]
+fn statement_completions_includes_local_declared_before_cursor() {
+    let source = "function Test() {\n  var count : int;\n  count;\n}\n";
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // Cursor at line 2, character 2 — after the `count` declaration on line 1
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 2,
+            character: 2,
+        },
+    );
+    let local_names: Vec<&str> = result
+        .locals
+        .iter()
+        .map(|d| d.symbol.name.as_str())
+        .collect();
+    assert!(
+        local_names.contains(&"count"),
+        "variable declared before cursor must appear in locals"
+    );
+}
+
+#[test]
+fn statement_completions_includes_parameters() {
+    let source = "function Test(owner : int) {\n  owner;\n}\n";
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 2,
+        },
+    );
+    let local_names: Vec<&str> = result
+        .locals
+        .iter()
+        .map(|d| d.symbol.name.as_str())
+        .collect();
+    assert!(
+        local_names.contains(&"owner"),
+        "function parameter must appear in locals"
+    );
+    assert!(
+        result
+            .locals
+            .iter()
+            .any(|d| d.symbol.name == "owner"
+                && d.symbol.kind == crate::symbols::SymbolKind::Parameter),
+        "owner must have kind Parameter"
+    );
+}
+
+#[test]
+fn statement_completions_members_includes_private_symbols_of_own_class() {
+    let source = concat!(
+        "class CExample {\n",
+        "  private var secret : int;\n",
+        "  private function Hidden() {}\n",
+        "  function Test() {\n",
+        "    secret;\n",
+        "  }\n",
+        "}\n",
+    );
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // Cursor on line 4, character 4 — inside the Test method body
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 4,
+            character: 4,
+        },
+    );
+    let member_names: Vec<&str> = result
+        .members
+        .iter()
+        .map(|d| d.symbol.name.as_str())
+        .collect();
+    assert!(
+        member_names.contains(&"secret"),
+        "private field should appear in members when inside the class"
+    );
+    assert!(
+        member_names.contains(&"Hidden"),
+        "private method should appear in members when inside the class"
+    );
+}
+
+#[test]
+fn statement_completions_members_empty_in_free_function() {
+    let source = "function Test() {\n  \n}\n";
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 2,
+        },
+    );
+    assert!(
+        result.members.is_empty(),
+        "members bucket must be empty when cursor is in a free function"
+    );
+}
+
+#[test]
+fn statement_completions_globals_contains_functions_from_indexed_documents() {
+    let doc_a = parse_document("function Alpha() {}\n").expect("parse should succeed");
+    let doc_b = parse_document("function Beta() {}\n").expect("parse should succeed");
+    let doc_c = parse_document("function Caller() {\n  \n}\n").expect("parse should succeed");
+
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///a.ws", &doc_a);
+    index.update_document("file:///b.ws", &doc_b);
+    index.update_document("file:///c.ws", &doc_c);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///c.ws",
+        &doc_c,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 2,
+        },
+    );
+    let global_names: Vec<&str> = result
+        .globals
+        .iter()
+        .map(|d| d.symbol.name.as_str())
+        .collect();
+    assert!(
+        global_names.contains(&"Alpha"),
+        "Alpha from another document must appear in globals"
+    );
+    assert!(
+        global_names.contains(&"Beta"),
+        "Beta from another document must appear in globals"
+    );
+}
+
+#[test]
+fn statement_completions_globals_excludes_class_methods() {
+    let source = concat!(
+        "class Foo {\n",
+        "  function Bar() {}\n",
+        "}\n",
+        "function Outer() {\n",
+        "  \n",
+        "}\n",
+    );
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 4,
+            character: 2,
+        },
+    );
+    let global_names: Vec<&str> = result
+        .globals
+        .iter()
+        .map(|d| d.symbol.name.as_str())
+        .collect();
+    assert!(
+        !global_names.contains(&"Bar"),
+        "class method Bar must not appear in globals"
+    );
+}
+
+#[test]
+fn statement_completions_all_empty_outside_any_callable() {
+    let source = "class CExample {}\n\n";
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // Cursor at line 1, character 0 — between definitions, not inside any callable
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 0,
+        },
+    );
+    assert!(
+        result.locals.is_empty() && result.members.is_empty() && result.globals.is_empty(),
+        "all buckets must be empty when cursor is outside any callable"
+    );
+}
+
+#[test]
+fn statement_completions_members_includes_inherited_public_method() {
+    let source_b = "class B {\n  public function BMethod() {}\n}\n";
+    let source_a = "class A extends B {\n  function Test() {\n    \n  }\n}\n";
+    let doc_b = parse_document(source_b).expect("parse b");
+    let doc_a = parse_document(source_a).expect("parse a");
+
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///b.ws", &doc_b);
+    index.update_document("file:///a.ws", &doc_a);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // Cursor at line 2, character 4 — inside A::Test method body
+    let result = super::statement_completions(
+        "file:///a.ws",
+        &doc_a,
+        &db,
+        SourcePosition {
+            line: 2,
+            character: 4,
+        },
+    );
+    let member_names: Vec<&str> = result
+        .members
+        .iter()
+        .map(|d| d.symbol.name.as_str())
+        .collect();
+    assert!(
+        member_names.contains(&"BMethod"),
+        "inherited public method from parent class must appear in members"
+    );
+}

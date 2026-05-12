@@ -91,6 +91,19 @@ impl<'a> SymbolDb<'a> {
         seen.into_values().collect()
     }
 
+    pub fn all_top_level_callables(&self) -> Vec<Definition> {
+        let mut seen: HashMap<String, Definition> = HashMap::new();
+        for def in self
+            .workspace
+            .all_top_level_callables()
+            .into_iter()
+            .chain(self.base.all_top_level_callables())
+        {
+            seen.entry(def.symbol.name.clone()).or_insert(def);
+        }
+        seen.into_values().collect()
+    }
+
     pub fn parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<String> {
         let params = self.workspace.parameters_of(uri, callable_id);
         if !params.is_empty() {
@@ -225,6 +238,14 @@ impl WorkspaceIndex {
         self.top_level_by_name
             .values()
             .filter(|d| is_type_like(d.symbol.kind) || d.symbol.kind == SymbolKind::Enum)
+            .cloned()
+            .collect()
+    }
+
+    pub fn all_top_level_callables(&self) -> Vec<Definition> {
+        self.top_level_by_name
+            .values()
+            .filter(|d| matches!(d.symbol.kind, SymbolKind::Function | SymbolKind::Event))
             .cloned()
             .collect()
     }
@@ -1038,6 +1059,67 @@ fn has_type_annot_ancestor(node: Node) -> bool {
             None => return false,
         }
     }
+}
+
+pub struct StatementCompletions {
+    pub locals: Vec<Definition>,
+    pub members: Vec<Definition>,
+    pub globals: Vec<Definition>,
+}
+
+pub fn statement_completions(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> StatementCompletions {
+    statement_completions_inner(uri, document, db, position).unwrap_or(StatementCompletions {
+        locals: vec![],
+        members: vec![],
+        globals: vec![],
+    })
+}
+
+fn statement_completions_inner(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Option<StatementCompletions> {
+    let byte_offset = document
+        .line_index
+        .position_to_byte(&document.source, position)?;
+
+    let callable = document.symbols.enclosing_symbol_at(
+        byte_offset,
+        &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
+    )?;
+
+    let locals: Vec<Definition> = document
+        .symbols
+        .children_of(Some(callable.id))
+        .filter(|sym| {
+            matches!(sym.kind, SymbolKind::Variable | SymbolKind::Parameter)
+                && sym.selection_byte_range.start <= byte_offset
+        })
+        .cloned()
+        .map(|symbol| Definition {
+            uri: uri.to_string(),
+            symbol,
+        })
+        .collect();
+
+    let members: Vec<Definition> = current_type_name(document, byte_offset)
+        .map(|type_name| db.members_of(&type_name, AccessLevel::Private))
+        .unwrap_or_default();
+
+    let globals = db.all_top_level_callables();
+
+    Some(StatementCompletions {
+        locals,
+        members,
+        globals,
+    })
 }
 
 #[allow(dead_code)]

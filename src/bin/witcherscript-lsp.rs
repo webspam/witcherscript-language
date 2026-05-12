@@ -34,8 +34,8 @@ use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_file};
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{
-    completion_members, find_references, hover_text, resolve_definition, type_completions,
-    Definition, SymbolDb, WorkspaceIndex, BUILTIN_TYPES,
+    completion_members, find_references, hover_text, resolve_definition, statement_completions,
+    type_completions, Definition, SymbolDb, WorkspaceIndex, BUILTIN_TYPES,
 };
 use witcherscript_parser::script_env::{parse_script_environment, ScriptEnvironment};
 use witcherscript_parser::semantic_tokens::{
@@ -596,6 +596,30 @@ impl LanguageServer for Backend {
                 .map(|name| builtin_type_item(name))
                 .collect();
             items.extend(user_types.iter().map(type_completion_item));
+            return Ok(Some(CompletionResponse::Array(items)));
+        }
+
+        let stmt = statement_completions(uri.as_str(), document, &db, pos);
+        if !stmt.locals.is_empty() || !stmt.members.is_empty() || !stmt.globals.is_empty() {
+            let mut items: Vec<CompletionItem> = Vec::new();
+            for def in &stmt.locals {
+                let params = db.parameters_of(&def.uri, def.symbol.id);
+                let mut item = completion_item(def, &params);
+                item.sort_text = Some(format!("0_{}", def.symbol.name));
+                items.push(item);
+            }
+            for def in &stmt.members {
+                let params = db.parameters_of(&def.uri, def.symbol.id);
+                let mut item = completion_item(def, &params);
+                item.sort_text = Some(format!("1_{}", def.symbol.name));
+                items.push(item);
+            }
+            for def in &stmt.globals {
+                let params = db.parameters_of(&def.uri, def.symbol.id);
+                let mut item = completion_item(def, &params);
+                item.sort_text = Some(format!("2_{}", def.symbol.name));
+                items.push(item);
+            }
             return Ok(Some(CompletionResponse::Array(items)));
         }
 
