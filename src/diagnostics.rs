@@ -43,6 +43,7 @@ impl ParseDiagnostic {
 pub fn collect_diagnostics(root: Node, source: &str) -> Vec<ParseDiagnostic> {
     let mut diagnostics = Vec::new();
     collect_tree_errors(root, source, &mut diagnostics);
+    collect_incomplete_exprs(root, source, &mut diagnostics);
     collect_late_local_vars(root, source, &mut diagnostics);
     diagnostics
 }
@@ -61,6 +62,24 @@ fn collect_tree_errors(node: Node, source: &str, diagnostics: &mut Vec<ParseDiag
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         collect_tree_errors(child, source, diagnostics);
+    }
+}
+
+fn collect_incomplete_exprs(node: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>) {
+    if node.kind() == "incomplete_member_access_expr" {
+        diagnostics.push(ParseDiagnostic {
+            kind: "incomplete_member_access_expr".to_string(),
+            message: "incomplete member access: expected identifier after '.'".to_string(),
+            start: node.start_position(),
+            end: node.end_position(),
+            byte_range: node.start_byte()..node.end_byte(),
+            snippet: line_snippet(source, node.start_position().row),
+        });
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_incomplete_exprs(child, source, diagnostics);
     }
 }
 
@@ -194,5 +213,24 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].kind, "late_local_var_decl");
+    }
+
+    #[test]
+    fn reports_incomplete_member_access() {
+        let source = "class C extends CR4Player {\n  var x : W3AbilityManager;\n  function F() {\n    x = super.\n  }\n}\n";
+        let tree = parse(source);
+
+        let diagnostics = collect_diagnostics(tree.root_node(), source);
+
+        let incomplete = diagnostics
+            .iter()
+            .find(|d| d.kind == "incomplete_member_access_expr");
+        assert!(
+            incomplete.is_some(),
+            "expected incomplete_member_access_expr diagnostic"
+        );
+        let d = incomplete.unwrap();
+        assert_eq!(d.start.row, 3);
+        assert_eq!(d.start.row, d.end.row);
     }
 }
