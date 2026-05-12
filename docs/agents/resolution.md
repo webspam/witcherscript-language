@@ -1,0 +1,206 @@
+# Resolution and workspace indexing
+
+**File:** `src/resolve/mod.rs` (and `resolve/tests.rs` — 1800 lines of tests)
+
+## WorkspaceIndex
+
+The persistent cross-document symbol store. One instance exists for the user workspace, one for base scripts.
+
+```rust
+pub struct WorkspaceIndex {
+    documents: HashMap<String, Vec<Symbol>>,               // uri → all symbols (for parameters_of)
+    top_level_by_name: HashMap<String, Definition>,        // name → top-level symbol (class, fn, etc.)
+    superclass_by_name: HashMap<String, String>,           // class name → base class name
+    member_by_type: HashMap<String, HashMap<String, Definition>>, // container → {member name → def}
+    doc_idents: HashMap<String, HashMap<String, Vec<Range<usize>>>>, // uri → {ident → byte ranges}
+}
+```
+
+`doc_idents` is a pre-built occurrence index used by `find_references` to quickly check which documents contain a given identifier by name before doing the more expensive semantic resolution pass.
+
+### Mutations
+
+```rust
+WorkspaceIndex::update_document(uri, document)  // remove old entries, re-insert from document.symbols
+WorkspaceIndex::remove_document(uri)             // clean removal from all maps
+```
+
+### Queries
+
+```rust
+find_top_level(name)                              // O(1) HashMap lookup
+direct_member_of(container, name, min_access)     // O(1) lookup with access check
+direct_members_of(container, min_access)          // all direct members of a type
+superclass_of(class_name)                         // one hop up the chain
+members_of(container, min_access)                 // full chain including inherited
+parameters_of(uri, callable_id)                   // non-optional params of a callable
+all_types()                                       // all Class/Struct/State/Enum symbols
+all_top_level_callables()                         // all Function/Event, excluding exec/quest
+```
+
+## SymbolDb
+
+A per-request view combining workspace + base indexes.
+
+```rust
+pub struct SymbolDb<'a> {
+    workspace: &'a WorkspaceIndex,
+    base: &'a WorkspaceIndex,
+    script_env: Option<&'a ScriptEnvironment>,
+}
+
+// Construction
+SymbolDb::new(&workspace_index, &base_scripts_index)
+    .with_script_env(&script_env)  // optional; adds INI globals
+
+// workspace always takes priority over base for same-name symbols
+```
+
+`SymbolDb` mirrors most `WorkspaceIndex` queries but searches workspace first, then falls back to base. For member resolution it uses `find_member_chain_cross()` which can traverse inheritance across both indexes simultaneously.
+
+## resolve_definition priority chain
+
+```
+resolve_definition(uri, document, db, position)
+    │
+    ├─ 1. Self keyword? (this/super/parent)
+    │      this   → enclosing class definition
+    │      super  → superclass of enclosing class
+    │      parent → owner class of enclosing state (public members only)
+    │
+    ├─ 2. After dot in member_access_expr?
+    │      → infer_expr_type(receiver) → find_member(type, name, Protected)
+    │
+    ├─ 3. Local variable or parameter in enclosing function
+    │
+    ├─ 4. Member of enclosing class/struct/state
+    │
+    ├─ 5. Top-level symbol in this document
+    │
+    ├─ 6. Top-level symbol in workspace (db.find_top_level)
+    │      └─ workspace shadows base for same-name symbols
+    │
+    ├─ 7. Script global from INI (db.find_script_global)
+    │      redirects to the class definition if the class is loaded
+    │
+    └─ 8. Definition site itself (fallback: cursor is on the name being defined)
+```
+
+## Member chain traversal
+
+`find_member_chain_cross(container, name, depth, min_access)`:
+1. Check direct members of `container` in workspace, then base.
+2. If not found, look up `superclass_of(container)` (workspace first, then base).
+3. Recurse with `depth + 1` and `min_access.max(Protected)`.
+4. Hard stop at depth 32 (prevents infinite loops from circular inheritance in malformed code).
+
+When inherited: `Private` members are never visible. `Protected` members are visible when accessed from within a subclass. `Public` members are always visible.
+
+## infer_expr_type
+
+Used to determine the receiver's type for member access and chained calls:
+
+| Receiver node | Inferred type |
+|---|---|
+| `this_expr` | name of enclosing class/struct/state |
+| `super_expr` / `parent_expr` / `virtual_parent_expr` | superclass (via `detail`) |
+| `ident` | `type_annotation` of the resolved local/param/member |
+| `func_call_expr` | return type of the resolved function (recursive) |
+| `member_access_expr` | return type of the resolved member (recursive) |
+| `new_expr` | type name from the new expression |
+
+## Completion functions
+
+### `completion_members(uri, document, db, position)`
+Called when the trigger character is `.` or `:`. Returns `Vec<(u8, Definition)>` where `u8` is the tier:
+- `0` = own member of the receiver's type
+- `1` = inherited member
+
+Access level: `Public` for global use; `Protected` from within the same class.
+
+### `type_completions(document, db, position)`
+Called in type annotation context. Returns:
+- All `Class`, `Struct`, `Enum`, `State` symbols from workspace + base
+- `BUILTIN_TYPES`: `["bool", "byte", "float", "int", "name", "string", "void"]`
+
+### `statement_completions(uri, document, db, position)`
+Called in function body context. Returns `StatementCompletions`:
+```rust
+pub struct StatementCompletions {
+    pub locals: Vec<Definition>,    // local vars + params in scope
+    pub members: Vec<Definition>,   // members of enclosing class
+    pub globals: Vec<Definition>,   // all top-level callables (excluding exec/quest)
+    pub has_this: bool,
+    pub has_super: bool,
+}
+```
+
+### `class_body_completions(document, position)`
+Called in class/struct/state body. Returns `Option<SymbolKind>`:
+- `Some(Struct)` → in a struct body (only `var` makes sense)
+- `Some(Class)` or `Some(State)` → in a class/state body (full member declarations)
+- `None` → not in a type body
+
+## find_references
+
+```rust
+find_references(definition, definition_document, search_documents, db, include_declaration)
+    → Vec<(String uri, SourceRange)>
+```
+
+Scoping rules:
+- **Local variables / parameters** → only within the `func_block` byte range
+- **Private members** → only within the defining file URI
+- **Public / protected members** → all documents in `search_documents`
+
+For each candidate document, the `doc_idents` index is consulted first to skip documents that don't contain the identifier by name at all, then each occurrence is semantically verified by calling `resolve_definition` and checking that it resolves to the same symbol.
+
+## hover_text
+
+Formats a symbol as a multi-line string for LSP hover:
+
+| Kind | Format |
+|------|--------|
+| `Method` | `(method) ClassName.name(params) : ReturnType` |
+| `Field` | `(field) var name : Type` (or full signature text) |
+| `Function` | full signature text |
+| `Class`/`Struct`/`State` | `class Name` + `extends Base` on next line |
+| `Enum` | `enum Name` |
+| `EnumVariant` | `enum variant Name` |
+| `Variable` | `var name : Type` |
+| `Parameter` | `(parameter) name : Type` |
+| `Event` | `event Name(params)` |
+
+Annotations are prepended as `@name(arg), @name2(arg2)`.
+
+## BUILTIN_TYPES
+
+```rust
+pub const BUILTIN_TYPES: &[&str] = &["bool", "byte", "float", "int", "name", "string", "void"];
+```
+
+These are not in any `WorkspaceIndex` but are returned by `type_completions()` and treated as primitive types during resolution.
+
+## Script environment (INI globals)
+
+`ScriptEnvironment` is populated from `gameDirectory/bin/redscripts.ini`, which contains `[globals]` entries like:
+```ini
+[globals]
+theGame=CR4Game
+thePlayer=CR4Player
+```
+
+When resolving a name like `theGame`:
+1. `find_script_global("theGame")` finds the global.
+2. If `CR4Game` is a known class in the loaded index, returns the class definition.
+3. Otherwise returns a synthetic symbol pointing to the INI file.
+
+Script globals are the last resort in the priority chain (after workspace and base).
+
+## Key constraints
+
+- Exec/quest functions are **excluded** from `all_top_level_callables()` and therefore from statement completions. Their signatures start with `"exec "` or `"quest "`.
+- `parameters_of()` excludes parameters where `is_optional == true`.
+- The inheritance depth cap is **32** in both `WorkspaceIndex` (single-index chain) and `SymbolDb` (cross-index chain).
+- Superclass is stored in `Symbol.detail` as `"extends ClassName"`. The string is stripped of the prefix to get the class name.
+- State owner is stored as `"in OwnerClass"` in `detail`; for `parent` keyword resolution this is parsed to find the owner, and only `Public` members of the owner are accessible.
