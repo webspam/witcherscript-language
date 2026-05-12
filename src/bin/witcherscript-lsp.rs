@@ -15,13 +15,14 @@ use tower_lsp::lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
     GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
-    InitializeParams, InitializeResult, InitializedParams, Location, MarkupContent, MarkupKind,
-    MessageType, OneOf, Position, PrepareRenameResponse, Range, ReferenceParams, RenameOptions,
-    RenameParams, SemanticToken, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
-    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentPositionParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgressOptions,
-    WorkspaceEdit, WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
+    InitializeParams, InitializeResult, InitializedParams, InsertTextFormat, Location,
+    MarkupContent, MarkupKind, MessageType, OneOf, Position, PrepareRenameResponse, Range,
+    ReferenceParams, RenameOptions, RenameParams, SemanticToken, SemanticTokens,
+    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
+    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities,
+    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
+    WorkDoneProgressOptions, WorkspaceEdit, WorkspaceFoldersServerCapabilities,
+    WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use tracing::field::{Field, Visit};
@@ -888,6 +889,10 @@ fn source_position(position: Position) -> SourcePosition {
 
 fn completion_item(definition: &Definition) -> CompletionItem {
     let symbol = &definition.symbol;
+    let is_callable = matches!(
+        symbol.kind,
+        SymbolKind::Method | SymbolKind::Event | SymbolKind::Function
+    );
     let kind = Some(match symbol.kind {
         SymbolKind::Method | SymbolKind::Event => CompletionItemKind::METHOD,
         SymbolKind::Field => CompletionItemKind::FIELD,
@@ -898,6 +903,14 @@ fn completion_item(definition: &Definition) -> CompletionItem {
         .signature
         .clone()
         .or_else(|| symbol.type_annotation.clone());
+    let (insert_text, insert_text_format) = if is_callable {
+        (
+            Some(format!("{}($1)", symbol.name)),
+            Some(InsertTextFormat::SNIPPET),
+        )
+    } else {
+        (None, None)
+    };
     CompletionItem {
         label: symbol.name.clone(),
         kind,
@@ -906,6 +919,8 @@ fn completion_item(definition: &Definition) -> CompletionItem {
             kind: MarkupKind::Markdown,
             value: hover_markdown(definition),
         })),
+        insert_text,
+        insert_text_format,
         ..CompletionItem::default()
     }
 }
