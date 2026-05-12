@@ -245,7 +245,14 @@ impl WorkspaceIndex {
     pub fn all_top_level_callables(&self) -> Vec<Definition> {
         self.top_level_by_name
             .values()
-            .filter(|d| matches!(d.symbol.kind, SymbolKind::Function | SymbolKind::Event))
+            .filter(|d| {
+                matches!(d.symbol.kind, SymbolKind::Function | SymbolKind::Event)
+                    && !d
+                        .symbol
+                        .signature
+                        .as_deref()
+                        .map_or(false, |s| s.starts_with("exec "))
+            })
             .cloned()
             .collect()
     }

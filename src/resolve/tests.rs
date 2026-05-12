@@ -1532,3 +1532,42 @@ fn statement_completions_members_includes_inherited_public_method() {
         "inherited public method from parent class must appear in members"
     );
 }
+
+#[test]
+fn statement_completions_globals_excludes_exec_functions() {
+    let source = concat!(
+        "exec function DebugCmd() {}\n",
+        "function NormalFunc() {}\n",
+        "function Caller() {\n",
+        "  \n",
+        "}\n",
+    );
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 3,
+            character: 2,
+        },
+    );
+    let global_names: Vec<&str> = result
+        .globals
+        .iter()
+        .map(|d| d.symbol.name.as_str())
+        .collect();
+    assert!(
+        !global_names.contains(&"DebugCmd"),
+        "exec function must not appear in globals"
+    );
+    assert!(
+        global_names.contains(&"NormalFunc"),
+        "non-exec function must still appear in globals"
+    );
+}
