@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -187,6 +187,8 @@ struct Backend {
     base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     script_env: Arc<Mutex<ScriptEnvironment>>,
+    formatter_line_limit: Arc<AtomicU32>,
+    formatter_compact_colon: Arc<AtomicBool>,
 }
 
 #[tower_lsp::async_trait]
@@ -204,6 +206,16 @@ impl LanguageServer for Backend {
             if let Some(level_str) = opts.get("logLevel").and_then(|v| v.as_str()) {
                 self.log_level
                     .store(level_to_u8(level_from_str(level_str)), Ordering::Relaxed);
+            }
+            if let Some(formatter) = opts.get("formatter") {
+                if let Some(limit) = formatter.get("lineLimit").and_then(|v| v.as_u64()) {
+                    self.formatter_line_limit
+                        .store(limit as u32, Ordering::Relaxed);
+                }
+                if let Some(compact) = formatter.get("compactColon").and_then(|v| v.as_bool()) {
+                    self.formatter_compact_colon
+                        .store(compact, Ordering::Relaxed);
+                }
             }
         }
 
@@ -663,13 +675,16 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
+        let line_limit = self.formatter_line_limit.load(Ordering::Relaxed);
+        let compact_colon = self.formatter_compact_colon.load(Ordering::Relaxed);
+
         let formatted = format_document(
             document.tree.root_node(),
             &document.source,
             tab_size,
             use_tabs,
-            100,
-            false,
+            line_limit,
+            compact_colon,
         );
 
         if formatted == document.source {
@@ -754,8 +769,8 @@ impl Backend {
         );
     }
 
-    /// Pull `witcherscript.gameDirectory` and `witcherscript.logLevel` from the
-    /// client via `workspace/configuration`.
+    /// Pull `witcherscript.gameDirectory`, `witcherscript.logLevel`, and formatter
+    /// settings from the client via `workspace/configuration`.
     async fn fetch_config(&self) {
         let items = vec![
             ConfigurationItem {
@@ -765,6 +780,14 @@ impl Backend {
             ConfigurationItem {
                 scope_uri: None,
                 section: Some("witcherscript.logLevel".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.formatter.lineLimit".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.formatter.compactColon".to_string()),
             },
         ];
         let Ok(values) = self.client.configuration(items).await else {
@@ -781,6 +804,16 @@ impl Backend {
             let new_level = level_to_u8(level_from_str(&level_str));
             self.log_level.store(new_level, Ordering::Relaxed);
             info!(level = %level_str, "log level updated");
+        }
+        if let Some(Value::Number(n)) = iter.next() {
+            if let Some(limit) = n.as_u64() {
+                self.formatter_line_limit
+                    .store(limit as u32, Ordering::Relaxed);
+            }
+        }
+        if let Some(Value::Bool(compact)) = iter.next() {
+            self.formatter_compact_colon
+                .store(compact, Ordering::Relaxed);
         }
     }
 
@@ -1142,6 +1175,8 @@ async fn main() {
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
             script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
+            formatter_line_limit: Arc::new(AtomicU32::new(100)),
+            formatter_compact_colon: Arc::new(AtomicBool::new(false)),
         }
     });
 
