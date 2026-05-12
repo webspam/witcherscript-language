@@ -741,24 +741,21 @@ fn current_type_symbol(document: &ParsedDocument, byte_offset: usize) -> Option<
 }
 
 fn identifier_at(root: Node, byte_offset: usize) -> Option<Node> {
-    for offset in [byte_offset, byte_offset.saturating_sub(1)] {
-        let node = root.descendant_for_byte_range(offset, offset)?;
-        if node.kind() == "ident" {
-            return Some(node);
-        }
-        let mut current = node;
-        while let Some(parent) = current.parent() {
-            if parent.kind() == "ident" {
-                return Some(parent);
+    nodes_at_offset(root, byte_offset)
+        .into_iter()
+        .find_map(|node| {
+            if node.kind() == "ident" {
+                return Some(node);
             }
-            current = parent;
-        }
-        if offset == 0 {
-            break;
-        }
-    }
-
-    None
+            let mut current = node;
+            while let Some(parent) = current.parent() {
+                if parent.kind() == "ident" {
+                    return Some(parent);
+                }
+                current = parent;
+            }
+            None
+        })
 }
 
 fn first_named_child(node: Node) -> Option<Node> {
@@ -962,9 +959,14 @@ fn resolve_self_keyword(
     byte_offset: usize,
 ) -> Option<Definition> {
     let root = document.tree.root_node();
-    let node = [byte_offset, byte_offset.saturating_sub(1)]
-        .into_iter()
-        .find_map(|offset| root.descendant_for_byte_range(offset, offset))?;
+    let node = nodes_at_offset(root, byte_offset).into_iter().find(|n| {
+        let pk = n.parent().map(|p| p.kind());
+        matches!(n.kind(), "this" | "super" | "parent")
+            || matches!(
+                pk,
+                Some("this_expr") | Some("super_expr") | Some("parent_expr")
+            )
+    })?;
 
     let parent_kind = node.parent().map(|p| p.kind());
 
@@ -1043,9 +1045,8 @@ fn completion_members_inner(
         .position_to_byte(&document.source, position)?;
 
     let root = document.tree.root_node();
-    let access_node = [byte_offset, byte_offset.saturating_sub(1)]
+    let access_node = nodes_at_offset(root, byte_offset)
         .into_iter()
-        .filter_map(|off| root.descendant_for_byte_range(off, off))
         .find_map(|n| {
             find_ancestor_of_kind(n, &["member_access_expr", "incomplete_member_access_expr"])
         })?;
@@ -1085,6 +1086,15 @@ fn find_ancestor_of_kind<'a>(mut node: Node<'a>, kinds: &[&str]) -> Option<Node<
     }
 }
 
+fn nodes_at_offset<'a>(root: Node<'a>, byte_offset: usize) -> Vec<Node<'a>> {
+    let second = byte_offset.checked_sub(1);
+    [Some(byte_offset), second]
+        .into_iter()
+        .flatten()
+        .filter_map(|off| root.descendant_for_byte_range(off, off))
+        .collect()
+}
+
 pub const BUILTIN_TYPES: &[&str] = &["bool", "byte", "float", "int", "name", "string", "void"];
 
 pub fn type_completions(
@@ -1105,9 +1115,8 @@ fn type_completions_inner(
         .position_to_byte(&document.source, position)?;
 
     let root = document.tree.root_node();
-    let in_type_annot = [byte_offset, byte_offset.saturating_sub(1)]
+    let in_type_annot = nodes_at_offset(root, byte_offset)
         .into_iter()
-        .filter_map(|offset| root.descendant_for_byte_range(offset, offset))
         .any(has_type_annot_ancestor);
 
     if !in_type_annot {
@@ -1154,9 +1163,8 @@ fn extends_completions_inner(
     // whitespace is transparent in the AST. Filter those out, then fall back to finding
     // the last top-level child whose byte range ends at or before the cursor — that child
     // is the context we want to inspect.
-    let direct: Vec<Node> = [byte_offset, byte_offset.saturating_sub(1)]
+    let direct: Vec<Node> = nodes_at_offset(root, byte_offset)
         .into_iter()
-        .filter_map(|off| root.descendant_for_byte_range(off, off))
         .filter(|n| n.kind() != "script")
         .collect();
 
@@ -1290,28 +1298,24 @@ fn statement_completions_inner(
         .position_to_byte(&document.source, position)?;
 
     let root = document.tree.root_node();
-    if [byte_offset, byte_offset.saturating_sub(1)]
-        .into_iter()
-        .filter_map(|off| root.descendant_for_byte_range(off, off))
-        .any(|n| {
-            find_ancestor_of_kind(
-                n,
-                &[
-                    "member_access_expr",
-                    "incomplete_member_access_expr",
-                    "ERROR",
-                ],
-            )
-            .is_some()
-        })
-    {
+    let nodes = nodes_at_offset(root, byte_offset);
+    if nodes.iter().any(|n| {
+        find_ancestor_of_kind(
+            *n,
+            &[
+                "member_access_expr",
+                "incomplete_member_access_expr",
+                "ERROR",
+            ],
+        )
+        .is_some()
+    }) {
         return None;
     }
 
-    let in_func_body = [byte_offset, byte_offset.saturating_sub(1)]
-        .into_iter()
-        .filter_map(|off| root.descendant_for_byte_range(off, off))
-        .any(|n| find_ancestor_of_kind(n, &["func_block"]).is_some());
+    let in_func_body = nodes
+        .iter()
+        .any(|n| find_ancestor_of_kind(*n, &["func_block"]).is_some());
 
     if !in_func_body {
         return None;

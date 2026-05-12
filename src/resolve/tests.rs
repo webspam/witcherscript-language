@@ -338,6 +338,33 @@ fn resolves_super_keyword_to_parent_class() {
 }
 
 #[test]
+fn resolves_super_keyword_with_caret_at_end_of_word() {
+    let source_a = "class A extends B {\n function Test() {\n  super.Method();\n }\n}\n";
+    let source_b = "class B {\n function Method() {}\n}\n";
+    let doc_a = parse_document(source_a).expect("parse should succeed");
+    let doc_b = parse_document(source_b).expect("parse should succeed");
+
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///a.ws", &doc_a);
+    index.update_document("file:///b.ws", &doc_b);
+
+    // cursor just past the 'r' of "super" (line 2, col 7 — one past the end of the word)
+    let definition = resolve_definition(
+        "file:///a.ws",
+        &doc_a,
+        &SymbolDb::new(&index, &WorkspaceIndex::default()),
+        SourcePosition {
+            line: 2,
+            character: 7,
+        },
+    )
+    .expect("super keyword should resolve when caret is at end of word");
+
+    assert_eq!(definition.symbol.name, "B");
+    assert_eq!(definition.symbol.kind, crate::symbols::SymbolKind::Class);
+}
+
+#[test]
 fn resolves_inherited_method_via_workspace() {
     let source_a = "class A extends B {\n function Test() {\n  Inherited();\n }\n}\n";
     let source_b = "class B {\n function Inherited() {}\n}\n";
