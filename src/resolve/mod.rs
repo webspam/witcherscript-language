@@ -89,6 +89,17 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn members_of(&self, container: &str, min_access: AccessLevel) -> Vec<Definition> {
+        self.members_of_tiered(container, min_access)
+            .into_iter()
+            .map(|(_, def)| def)
+            .collect()
+    }
+
+    pub fn members_of_tiered(
+        &self,
+        container: &str,
+        min_access: AccessLevel,
+    ) -> Vec<(u8, Definition)> {
         self.members_of_chain_cross(container, 0, min_access)
     }
 
@@ -97,18 +108,19 @@ impl<'a> SymbolDb<'a> {
         container_name: &str,
         depth: usize,
         min_access: AccessLevel,
-    ) -> Vec<Definition> {
+    ) -> Vec<(u8, Definition)> {
         if depth > 32 {
             return vec![];
         }
-        let mut seen: HashMap<String, Definition> = HashMap::new();
+        let tier = if depth == 0 { 0u8 } else { 1u8 };
+        let mut seen: HashMap<String, (u8, Definition)> = HashMap::new();
         for def in self
             .workspace
             .direct_members_of(container_name, min_access)
             .into_iter()
             .chain(self.base.direct_members_of(container_name, min_access))
         {
-            seen.entry(def.symbol.name.clone()).or_insert(def);
+            seen.entry(def.symbol.name.clone()).or_insert((tier, def));
         }
         let superclass = self
             .workspace
@@ -116,8 +128,8 @@ impl<'a> SymbolDb<'a> {
             .or_else(|| self.base.superclass_of(container_name));
         if let Some(superclass) = superclass {
             let deeper_min = min_access.max(AccessLevel::Protected);
-            for def in self.members_of_chain_cross(&superclass, depth + 1, deeper_min) {
-                seen.entry(def.symbol.name.clone()).or_insert(def);
+            for item in self.members_of_chain_cross(&superclass, depth + 1, deeper_min) {
+                seen.entry(item.1.symbol.name.clone()).or_insert(item);
             }
         }
         seen.into_values().collect()
@@ -1020,7 +1032,7 @@ pub fn completion_members(
     document: &ParsedDocument,
     db: &SymbolDb,
     position: SourcePosition,
-) -> Vec<Definition> {
+) -> Vec<(u8, Definition)> {
     completion_members_inner(uri, document, db, position).unwrap_or_default()
 }
 
@@ -1029,7 +1041,7 @@ fn completion_members_inner(
     document: &ParsedDocument,
     db: &SymbolDb,
     position: SourcePosition,
-) -> Option<Vec<Definition>> {
+) -> Option<Vec<(u8, Definition)>> {
     let byte_offset = document
         .line_index
         .position_to_byte(&document.source, position)?;
@@ -1073,7 +1085,7 @@ fn completion_members_inner(
         _ => infer_expr_type(uri, document, db, expr, before_dot)?,
     };
 
-    Some(db.members_of(&type_name, AccessLevel::Public))
+    Some(db.members_of_tiered(&type_name, AccessLevel::Public))
 }
 
 fn climb_to_expression(node: Node) -> Node {

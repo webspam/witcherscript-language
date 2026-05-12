@@ -819,7 +819,10 @@ fn completion_after_dot_returns_public_members() {
         },
     );
 
-    let names: Vec<&str> = members.iter().map(|d| d.symbol.name.as_str()).collect();
+    let names: Vec<&str> = members
+        .iter()
+        .map(|(_, d)| d.symbol.name.as_str())
+        .collect();
     assert!(
         names.contains(&"GetHealth"),
         "public method should be in completions"
@@ -858,11 +861,28 @@ fn completion_includes_inherited_members() {
         },
     );
 
-    let names: Vec<&str> = members.iter().map(|d| d.symbol.name.as_str()).collect();
+    let names: Vec<&str> = members
+        .iter()
+        .map(|(_, d)| d.symbol.name.as_str())
+        .collect();
     assert!(names.contains(&"Own"), "own method should appear");
     assert!(
         names.contains(&"Inherited"),
         "inherited method should appear"
+    );
+    let own_tier = members
+        .iter()
+        .find(|(_, d)| d.symbol.name == "Own")
+        .map(|(t, _)| *t)
+        .unwrap();
+    let inherited_tier = members
+        .iter()
+        .find(|(_, d)| d.symbol.name == "Inherited")
+        .map(|(t, _)| *t)
+        .unwrap();
+    assert!(
+        own_tier < inherited_tier,
+        "own members must have lower sort tier than inherited members"
     );
 }
 

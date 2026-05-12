@@ -580,9 +580,11 @@ impl LanguageServer for Backend {
         let member_items: Vec<CompletionItem> =
             completion_members(uri.as_str(), document, &db, pos)
                 .iter()
-                .map(|def| {
+                .map(|(tier, def)| {
                     let params = db.parameters_of(&def.uri, def.symbol.id);
-                    completion_item(def, &params)
+                    let mut item = completion_item(def, &params);
+                    item.sort_text = Some(format!("{}_{}", tier, def.symbol.name));
+                    item
                 })
                 .collect();
         if !member_items.is_empty() {
@@ -1376,7 +1378,8 @@ mod tests {
         );
 
         assert!(!members.is_empty(), "should have completion members");
-        let item = completion_item(&members[0], &[]);
+        let (_, def) = &members[0];
+        let item = completion_item(def, &[]);
         assert_eq!(item.label, "DoThing");
         assert_eq!(item.kind, Some(CompletionItemKind::METHOD));
         assert_eq!(item.insert_text.as_deref(), Some("DoThing()"));
@@ -1412,9 +1415,9 @@ mod tests {
             },
         );
 
-        let find_def = members
+        let (_, find_def) = members
             .iter()
-            .find(|d| d.symbol.name == "Find")
+            .find(|(_, d)| d.symbol.name == "Find")
             .expect("Find should appear in completions");
         let params = db.parameters_of(&find_def.uri, find_def.symbol.id);
         let item = completion_item(find_def, &params);
