@@ -959,20 +959,13 @@ fn resolve_self_keyword(
     byte_offset: usize,
 ) -> Option<Definition> {
     let root = document.tree.root_node();
-    let node = nodes_at_offset(root, byte_offset).into_iter().find(|n| {
-        let pk = n.parent().map(|p| p.kind());
-        matches!(n.kind(), "this" | "super" | "parent")
-            || matches!(
-                pk,
-                Some("this_expr") | Some("super_expr") | Some("parent_expr")
-            )
-    })?;
+    let node = nodes_at_offset(root, byte_offset)
+        .into_iter()
+        .find_map(|n| find_ancestor_of_kind(n, &["this_expr", "super_expr", "parent_expr"]))?;
 
-    let parent_kind = node.parent().map(|p| p.kind());
-
-    let is_this = node.kind() == "this" || matches!(parent_kind, Some("this_expr"));
-    let is_super = node.kind() == "super" || matches!(parent_kind, Some("super_expr"));
-    let is_parent = node.kind() == "parent" || matches!(parent_kind, Some("parent_expr"));
+    let is_this = node.kind() == "this_expr";
+    let is_super = node.kind() == "super_expr";
+    let is_parent = node.kind() == "parent_expr";
 
     if is_this {
         let current_type = current_type_symbol(document, byte_offset)?;
