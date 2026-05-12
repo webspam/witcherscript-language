@@ -60,20 +60,65 @@ impl<'a> SymbolDb<'a> {
         name: &str,
         min_access: AccessLevel,
     ) -> Option<Definition> {
-        self.workspace
-            .find_member(container, name, min_access)
-            .or_else(|| self.base.find_member(container, name, min_access))
+        self.find_member_chain_cross(container, name, 0, min_access)
+    }
+
+    fn find_member_chain_cross(
+        &self,
+        container_name: &str,
+        name: &str,
+        depth: usize,
+        min_access: AccessLevel,
+    ) -> Option<Definition> {
+        if depth > 32 {
+            return None;
+        }
+        let direct = self
+            .workspace
+            .direct_member_of(container_name, name, min_access)
+            .or_else(|| self.base.direct_member_of(container_name, name, min_access));
+        if direct.is_some() {
+            return direct;
+        }
+        let superclass = self
+            .workspace
+            .superclass_of(container_name)
+            .or_else(|| self.base.superclass_of(container_name))?;
+        let deeper_min = min_access.max(AccessLevel::Protected);
+        self.find_member_chain_cross(&superclass, name, depth + 1, deeper_min)
     }
 
     pub fn members_of(&self, container: &str, min_access: AccessLevel) -> Vec<Definition> {
+        self.members_of_chain_cross(container, 0, min_access)
+    }
+
+    fn members_of_chain_cross(
+        &self,
+        container_name: &str,
+        depth: usize,
+        min_access: AccessLevel,
+    ) -> Vec<Definition> {
+        if depth > 32 {
+            return vec![];
+        }
         let mut seen: HashMap<String, Definition> = HashMap::new();
         for def in self
             .workspace
-            .members_of(container, min_access)
+            .direct_members_of(container_name, min_access)
             .into_iter()
-            .chain(self.base.members_of(container, min_access))
+            .chain(self.base.direct_members_of(container_name, min_access))
         {
             seen.entry(def.symbol.name.clone()).or_insert(def);
+        }
+        let superclass = self
+            .workspace
+            .superclass_of(container_name)
+            .or_else(|| self.base.superclass_of(container_name));
+        if let Some(superclass) = superclass {
+            let deeper_min = min_access.max(AccessLevel::Protected);
+            for def in self.members_of_chain_cross(&superclass, depth + 1, deeper_min) {
+                seen.entry(def.symbol.name.clone()).or_insert(def);
+            }
         }
         seen.into_values().collect()
     }
@@ -251,7 +296,7 @@ impl WorkspaceIndex {
                         .symbol
                         .signature
                         .as_deref()
-                        .map_or(false, |s| s.starts_with("exec ") || s.starts_with("quest "))
+                        .is_some_and(|s| s.starts_with("exec ") || s.starts_with("quest "))
             })
             .cloned()
             .collect()
@@ -264,6 +309,39 @@ impl WorkspaceIndex {
         min_access: AccessLevel,
     ) -> Option<Definition> {
         self.find_member_in_chain(container_name, name, 0, min_access)
+    }
+
+    pub fn direct_member_of(
+        &self,
+        container_name: &str,
+        name: &str,
+        min_access: AccessLevel,
+    ) -> Option<Definition> {
+        self.member_by_type
+            .get(container_name)
+            .and_then(|members| members.get(name))
+            .filter(|def| def.symbol.access >= min_access)
+            .cloned()
+    }
+
+    pub fn direct_members_of(
+        &self,
+        container_name: &str,
+        min_access: AccessLevel,
+    ) -> Vec<Definition> {
+        self.member_by_type
+            .get(container_name)
+            .map(|m| {
+                m.values()
+                    .filter(|d| d.symbol.access >= min_access)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn superclass_of(&self, class_name: &str) -> Option<String> {
+        self.superclass_by_name.get(class_name).cloned()
     }
 
     pub fn members_of(&self, container_name: &str, min_access: AccessLevel) -> Vec<Definition> {
