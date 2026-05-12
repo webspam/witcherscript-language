@@ -35,8 +35,9 @@ use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_
 use witcherscript_parser::formatter::format_document;
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{
-    completion_members, extends_completions, find_references, hover_text, resolve_definition,
-    statement_completions, type_completions, Definition, SymbolDb, WorkspaceIndex, BUILTIN_TYPES,
+    class_body_keyword_completions, completion_members, extends_completions, find_references,
+    hover_text, resolve_definition, statement_completions, type_completions, Definition, SymbolDb,
+    WorkspaceIndex, BUILTIN_TYPES,
 };
 use witcherscript_parser::script_env::{parse_script_environment, ScriptEnvironment};
 use witcherscript_parser::semantic_tokens::{
@@ -613,6 +614,16 @@ impl LanguageServer for Backend {
             )));
         }
 
+        let class_body_kws = class_body_keyword_completions(document, pos);
+        if !class_body_kws.is_empty() {
+            return Ok(Some(CompletionResponse::Array(
+                class_body_kws
+                    .iter()
+                    .map(|kw| class_body_kw_item(kw))
+                    .collect(),
+            )));
+        }
+
         let user_types = type_completions(document, &db, pos);
         if !user_types.is_empty() {
             let mut items: Vec<CompletionItem> = BUILTIN_TYPES
@@ -1105,6 +1116,27 @@ fn this_super_item(name: &str) -> CompletionItem {
         label: name.to_string(),
         kind: Some(CompletionItemKind::VARIABLE),
         sort_text: Some(format!("0_{name}")),
+        ..CompletionItem::default()
+    }
+}
+
+fn class_body_kw_item(keyword: &str) -> CompletionItem {
+    let (snippet, sort_prefix): (Option<&str>, &str) = match keyword {
+        "var" => (Some("var ${1:name} : ${2:Type};"), "0"),
+        "function" => (Some("function ${1:Name}() {\n\t$0\n}"), "0"),
+        "event" => (Some("event On${1:Name}() {\n\t$0\n}"), "0"),
+        "autobind" => (Some("autobind ${1:name} : ${2:Type} = single;"), "0"),
+        "default" => (Some("default ${1:member} = ${2:value};"), "0"),
+        "defaults" => (Some("defaults {\n\t${1:member} = ${2:value};\n}"), "0"),
+        "hint" => (Some("hint ${1:member} = \"${2:tooltip}\";"), "0"),
+        _ => (None, "1"),
+    };
+    CompletionItem {
+        label: keyword.to_string(),
+        kind: Some(CompletionItemKind::KEYWORD),
+        insert_text: snippet.map(str::to_string),
+        insert_text_format: snippet.map(|_| InsertTextFormat::SNIPPET),
+        sort_text: Some(format!("{sort_prefix}_{keyword}")),
         ..CompletionItem::default()
     }
 }

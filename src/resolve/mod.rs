@@ -1341,5 +1341,223 @@ fn symbol_id(symbol: &Symbol) -> SymbolId {
     symbol.id
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum ClassBodyKind {
+    Class,
+    State,
+    Struct,
+}
+
+struct ClassBodyCtx {
+    kind: ClassBodyKind,
+    has_import: bool,
+    has_access: bool,
+    has_final: bool,
+    has_latent: bool,
+    has_editable: bool,
+    has_saved: bool,
+    has_const_: bool,
+    has_inlined: bool,
+    has_optional: bool,
+    saw_decl_keyword: bool,
+}
+
+impl ClassBodyCtx {
+    fn has_any(&self) -> bool {
+        self.has_import
+            || self.has_access
+            || self.has_final
+            || self.has_latent
+            || self.has_editable
+            || self.has_saved
+            || self.has_const_
+            || self.has_inlined
+            || self.has_optional
+    }
+}
+
+pub fn class_body_keyword_completions(
+    document: &ParsedDocument,
+    position: SourcePosition,
+) -> Vec<&'static str> {
+    class_body_kw_inner(document, position).unwrap_or_default()
+}
+
+fn class_body_kw_inner(
+    document: &ParsedDocument,
+    position: SourcePosition,
+) -> Option<Vec<&'static str>> {
+    let byte_offset = document
+        .line_index
+        .position_to_byte(&document.source, position)?;
+
+    let root = document.tree.root_node();
+    let nodes = nodes_at_offset(root, byte_offset);
+
+    let kind = nodes.iter().find_map(|n| enclosing_body_kind(*n))?;
+    let ctx = scan_class_body_ctx(&document.source, byte_offset, kind);
+
+    if ctx.saw_decl_keyword {
+        return None;
+    }
+
+    Some(class_body_kw_candidates(&ctx))
+}
+
+fn enclosing_body_kind(mut node: Node) -> Option<ClassBodyKind> {
+    loop {
+        match node.kind() {
+            "func_block" | "member_default_val_block" => return None,
+            "script" => return None,
+            "class_def" => {
+                return node.parent().and_then(|p| match p.kind() {
+                    "class_decl" => Some(ClassBodyKind::Class),
+                    "state_decl" => Some(ClassBodyKind::State),
+                    _ => None,
+                });
+            }
+            "struct_def" => return Some(ClassBodyKind::Struct),
+            _ => {}
+        }
+        match node.parent() {
+            Some(p) => node = p,
+            None => return None,
+        }
+    }
+}
+
+fn class_body_stmt_start(source: &str, byte_offset: usize) -> usize {
+    let before = &source[..byte_offset.min(source.len())];
+    let bytes = before.as_bytes();
+    let mut depth = 0i32;
+    let mut i = bytes.len();
+    while i > 0 {
+        i -= 1;
+        match bytes[i] {
+            b'}' => depth += 1,
+            b'{' if depth > 0 => depth -= 1,
+            b'{' | b';' if depth == 0 => return i + 1,
+            _ => {}
+        }
+    }
+    0
+}
+
+fn scan_class_body_ctx(source: &str, byte_offset: usize, kind: ClassBodyKind) -> ClassBodyCtx {
+    let stmt_start = class_body_stmt_start(source, byte_offset);
+    let stmt_text = source[stmt_start..byte_offset.min(source.len())].trim_start();
+
+    let mut ctx = ClassBodyCtx {
+        kind,
+        has_import: false,
+        has_access: false,
+        has_final: false,
+        has_latent: false,
+        has_editable: false,
+        has_saved: false,
+        has_const_: false,
+        has_inlined: false,
+        has_optional: false,
+        saw_decl_keyword: false,
+    };
+
+    for token in stmt_text.split_ascii_whitespace() {
+        match token {
+            "private" | "protected" | "public" => ctx.has_access = true,
+            "import" => ctx.has_import = true,
+            "final" => ctx.has_final = true,
+            "latent" => ctx.has_latent = true,
+            "editable" => ctx.has_editable = true,
+            "saved" => ctx.has_saved = true,
+            "const" => ctx.has_const_ = true,
+            "inlined" => ctx.has_inlined = true,
+            "optional" => ctx.has_optional = true,
+            "var" | "function" | "event" | "autobind" | "default" | "defaults" | "hint" => {
+                ctx.saw_decl_keyword = true;
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    ctx
+}
+
+fn class_body_kw_candidates(ctx: &ClassBodyCtx) -> Vec<&'static str> {
+    let mut kw: Vec<&'static str> = Vec::new();
+
+    if !ctx.has_any() {
+        kw.extend_from_slice(&["private", "protected", "public", "import"]);
+        kw.extend_from_slice(&["editable", "saved", "const", "inlined"]);
+        if ctx.kind != ClassBodyKind::Struct {
+            kw.extend_from_slice(&["final", "latent", "optional"]);
+        }
+        kw.push("var");
+        if ctx.kind != ClassBodyKind::Struct {
+            kw.extend_from_slice(&["function", "event", "autobind"]);
+        }
+        kw.extend_from_slice(&["default", "defaults", "hint"]);
+        return kw;
+    }
+
+    if !ctx.has_access {
+        kw.extend_from_slice(&["private", "protected", "public"]);
+    }
+
+    let in_var_path = ctx.has_editable || ctx.has_saved || ctx.has_const_ || ctx.has_inlined;
+    let in_func_path = ctx.has_final || ctx.has_latent;
+    let in_autobind_path = ctx.has_optional;
+
+    if ctx.kind != ClassBodyKind::Struct && !in_var_path && !in_autobind_path {
+        if !ctx.has_final {
+            kw.push("final");
+        }
+        if !ctx.has_latent {
+            kw.push("latent");
+        }
+    }
+
+    if !ctx.has_import && !in_func_path && !in_autobind_path {
+        if !ctx.has_editable {
+            kw.push("editable");
+        }
+        if !ctx.has_saved {
+            kw.push("saved");
+        }
+        if !ctx.has_const_ {
+            kw.push("const");
+        }
+        if !ctx.has_inlined {
+            kw.push("inlined");
+        }
+    }
+
+    if ctx.kind != ClassBodyKind::Struct
+        && !ctx.has_optional
+        && !ctx.has_import
+        && !in_var_path
+        && !in_func_path
+    {
+        kw.push("optional");
+    }
+
+    let can_var = !in_func_path && !in_autobind_path;
+    let can_function = ctx.kind != ClassBodyKind::Struct && !in_var_path && !in_autobind_path;
+    let can_autobind =
+        ctx.kind != ClassBodyKind::Struct && !in_var_path && !in_func_path && !ctx.has_import;
+
+    if can_var {
+        kw.push("var");
+    }
+    if can_function {
+        kw.push("function");
+    }
+    if can_autobind {
+        kw.push("autobind");
+    }
+
+    kw
+}
+
 #[cfg(test)]
 mod tests;
