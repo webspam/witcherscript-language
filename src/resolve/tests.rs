@@ -1576,3 +1576,89 @@ fn statement_completions_globals_excludes_exec_and_quest_functions() {
         "normal function must still appear in globals"
     );
 }
+
+#[test]
+fn statement_completions_has_this_inside_class_method() {
+    let source = "class CExample {\n  function Test() {\n    \n  }\n}\n";
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 2,
+            character: 4,
+        },
+    );
+    assert!(
+        result.has_this,
+        "this must be available inside a class method"
+    );
+    assert!(
+        !result.has_super,
+        "super must not be available without a superclass"
+    );
+}
+
+#[test]
+fn statement_completions_has_super_when_class_extends() {
+    let source_b = "class B {}\n";
+    let source_a = "class A extends B {\n  function Test() {\n    \n  }\n}\n";
+    let doc_b = parse_document(source_b).expect("parse b");
+    let doc_a = parse_document(source_a).expect("parse a");
+
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///b.ws", &doc_b);
+    index.update_document("file:///a.ws", &doc_a);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///a.ws",
+        &doc_a,
+        &db,
+        SourcePosition {
+            line: 2,
+            character: 4,
+        },
+    );
+    assert!(
+        result.has_this,
+        "this must be available inside a class method"
+    );
+    assert!(
+        result.has_super,
+        "super must be available when class extends another"
+    );
+}
+
+#[test]
+fn statement_completions_no_this_in_free_function() {
+    let source = "function Test() {\n  \n}\n";
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 2,
+        },
+    );
+    assert!(
+        !result.has_this,
+        "this must not be available in a free function"
+    );
+    assert!(
+        !result.has_super,
+        "super must not be available in a free function"
+    );
+}

@@ -1072,6 +1072,8 @@ pub struct StatementCompletions {
     pub locals: Vec<Definition>,
     pub members: Vec<Definition>,
     pub globals: Vec<Definition>,
+    pub has_this: bool,
+    pub has_super: bool,
 }
 
 pub fn statement_completions(
@@ -1084,6 +1086,8 @@ pub fn statement_completions(
         locals: vec![],
         members: vec![],
         globals: vec![],
+        has_this: false,
+        has_super: false,
     })
 }
 
@@ -1116,9 +1120,17 @@ fn statement_completions_inner(
         })
         .collect();
 
-    let members: Vec<Definition> = current_type_name(document, byte_offset)
-        .map(|type_name| db.members_of(&type_name, AccessLevel::Private))
+    let current_type = current_type_symbol(document, byte_offset);
+
+    let members: Vec<Definition> = current_type
+        .map(|t| db.members_of(&t.name, AccessLevel::Private))
         .unwrap_or_default();
+
+    let has_this = current_type.is_some();
+    let has_super = current_type
+        .and_then(|t| t.detail.as_deref())
+        .and_then(|d| d.strip_prefix("extends "))
+        .is_some();
 
     let globals = db.all_top_level_callables();
 
@@ -1126,6 +1138,8 @@ fn statement_completions_inner(
         locals,
         members,
         globals,
+        has_this,
+        has_super,
     })
 }
 

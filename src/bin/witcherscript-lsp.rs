@@ -600,8 +600,19 @@ impl LanguageServer for Backend {
         }
 
         let stmt = statement_completions(uri.as_str(), document, &db, pos);
-        if !stmt.locals.is_empty() || !stmt.members.is_empty() || !stmt.globals.is_empty() {
+        if stmt.has_this
+            || stmt.has_super
+            || !stmt.locals.is_empty()
+            || !stmt.members.is_empty()
+            || !stmt.globals.is_empty()
+        {
             let mut items: Vec<CompletionItem> = Vec::new();
+            if stmt.has_this {
+                items.push(this_super_item("this"));
+            }
+            if stmt.has_super {
+                items.push(this_super_item("super"));
+            }
             for def in &stmt.locals {
                 let params = db.parameters_of(&def.uri, def.symbol.id);
                 let mut item = completion_item(def, &params);
@@ -984,6 +995,15 @@ fn builtin_type_item(name: &str) -> CompletionItem {
     CompletionItem {
         label: name.to_string(),
         kind: Some(CompletionItemKind::KEYWORD),
+        ..CompletionItem::default()
+    }
+}
+
+fn this_super_item(name: &str) -> CompletionItem {
+    CompletionItem {
+        label: name.to_string(),
+        kind: Some(CompletionItemKind::VARIABLE),
+        sort_text: Some(format!("0_{name}")),
         ..CompletionItem::default()
     }
 }
