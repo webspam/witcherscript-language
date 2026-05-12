@@ -965,31 +965,26 @@ fn resolve_self_keyword(
         .into_iter()
         .find_map(|n| find_ancestor_of_kind(n, &["this_expr", "super_expr", "parent_expr"]))?;
 
-    let is_this = node.kind() == "this_expr";
-    let is_super = node.kind() == "super_expr";
-    let is_parent = node.kind() == "parent_expr";
-
-    if is_this {
-        let current_type = current_type_symbol(document, byte_offset)?;
-        return resolve_document_top_level(uri, document, &current_type.name.clone())
-            .or_else(|| db.find_top_level(&current_type.name));
+    match node.kind() {
+        "this_expr" => {
+            let current_type = current_type_symbol(document, byte_offset)?;
+            resolve_document_top_level(uri, document, &current_type.name.clone())
+                .or_else(|| db.find_top_level(&current_type.name))
+        }
+        "super_expr" => {
+            let current_type = current_type_symbol(document, byte_offset)?;
+            let base_name = current_type.base_class.as_deref()?;
+            resolve_document_top_level(uri, document, base_name)
+                .or_else(|| db.find_top_level(base_name))
+        }
+        "parent_expr" => {
+            let current_type = current_type_symbol(document, byte_offset)?;
+            let owner_name = current_type.owner_class.as_deref()?;
+            resolve_document_top_level(uri, document, owner_name)
+                .or_else(|| db.find_top_level(owner_name))
+        }
+        _ => None,
     }
-
-    if is_super {
-        let current_type = current_type_symbol(document, byte_offset)?;
-        let base_name = current_type.base_class.as_deref()?;
-        return resolve_document_top_level(uri, document, base_name)
-            .or_else(|| db.find_top_level(base_name));
-    }
-
-    if is_parent {
-        let current_type = current_type_symbol(document, byte_offset)?;
-        let owner_name = current_type.owner_class.as_deref()?;
-        return resolve_document_top_level(uri, document, owner_name)
-            .or_else(|| db.find_top_level(owner_name));
-    }
-
-    None
 }
 
 fn resolve_at_definition_site(
