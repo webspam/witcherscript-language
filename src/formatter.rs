@@ -352,13 +352,6 @@ impl<'a> Formatter<'a> {
 
     // ---- Core: token-preserving walk ----
 
-    fn emit_leaf(&mut self, node: Node) {
-        if !node.is_missing() {
-            let t = self.text(node).to_string();
-            self.emit(&t);
-        }
-    }
-
     // Universal safety-net: emit a node's source text verbatim.
     // Use this as the fallback in every exhaustive child loop so that
     // no CST node — especially comment extras — is ever silently dropped.
@@ -419,7 +412,7 @@ impl<'a> Formatter<'a> {
                 }
             }
             if child.child_count() == 0 {
-                self.emit_leaf(*child);
+                self.emit_verbatim(*child);
             } else {
                 self.format_node(*child);
             }
@@ -583,7 +576,7 @@ impl<'a> Formatter<'a> {
                 }
             }
             if child.child_count() == 0 {
-                self.emit_leaf(*child);
+                self.emit_verbatim(*child);
             } else {
                 self.format_node(*child);
             }
@@ -738,7 +731,7 @@ impl<'a> Formatter<'a> {
                 }
             }
             if child.child_count() == 0 {
-                self.emit_leaf(*child);
+                self.emit_verbatim(*child);
             } else {
                 self.format_node(*child);
             }
@@ -763,7 +756,7 @@ impl<'a> Formatter<'a> {
                 }
             }
             if child.child_count() == 0 {
-                self.emit_leaf(*child);
+                self.emit_verbatim(*child);
             } else {
                 self.format_node(*child);
             }
@@ -793,7 +786,7 @@ impl<'a> Formatter<'a> {
                 }
             }
             if child.child_count() == 0 {
-                self.emit_leaf(*child);
+                self.emit_verbatim(*child);
             } else {
                 self.format_node(*child);
             }
