@@ -1534,9 +1534,10 @@ fn statement_completions_members_includes_inherited_public_method() {
 }
 
 #[test]
-fn statement_completions_globals_excludes_exec_functions() {
+fn statement_completions_globals_excludes_exec_and_quest_functions() {
     let source = concat!(
         "exec function DebugCmd() {}\n",
+        "quest function QuestFunc() {}\n",
         "function NormalFunc() {}\n",
         "function Caller() {\n",
         "  \n",
@@ -1553,7 +1554,7 @@ fn statement_completions_globals_excludes_exec_functions() {
         &doc,
         &db,
         SourcePosition {
-            line: 3,
+            line: 4,
             character: 2,
         },
     );
@@ -1567,7 +1568,11 @@ fn statement_completions_globals_excludes_exec_functions() {
         "exec function must not appear in globals"
     );
     assert!(
+        !global_names.contains(&"QuestFunc"),
+        "quest function must not appear in globals"
+    );
+    assert!(
         global_names.contains(&"NormalFunc"),
-        "non-exec function must still appear in globals"
+        "normal function must still appear in globals"
     );
 }

@@ -251,7 +251,7 @@ impl WorkspaceIndex {
                         .symbol
                         .signature
                         .as_deref()
-                        .map_or(false, |s| s.starts_with("exec "))
+                        .map_or(false, |s| s.starts_with("exec ") || s.starts_with("quest "))
             })
             .cloned()
             .collect()
