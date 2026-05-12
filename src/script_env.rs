@@ -91,6 +91,8 @@ pub fn parse_script_environment(ini_path: &Path) -> Option<ScriptEnvironment> {
                 type_annotation: Some(type_name.to_string()),
                 signature: None,
                 detail: None,
+                base_class: None,
+                owner_class: None,
                 flavour: None,
                 annotations: Vec::new(),
                 access: AccessLevel::Public,

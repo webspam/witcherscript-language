@@ -48,6 +48,8 @@ pub struct Symbol {
     pub type_annotation: Option<String>,
     pub signature: Option<String>,
     pub detail: Option<String>,
+    pub base_class: Option<String>,
+    pub owner_class: Option<String>,
     pub flavour: Option<String>,
     pub annotations: Vec<Annotation>,
     pub access: AccessLevel,
@@ -173,7 +175,8 @@ impl SymbolExtractor<'_> {
             self.visit_children(node, container, annotations);
             return;
         };
-        let detail = base_type(node, self.source).map(|base| format!("extends {base}"));
+        let base_class = base_type(node, self.source);
+        let detail = base_class.as_deref().map(|b| format!("extends {b}"));
         let id = self.push_symbol(
             node,
             name_node,
@@ -183,6 +186,8 @@ impl SymbolExtractor<'_> {
             None,
             None,
             detail,
+            base_class,
+            None,
             None,
             AccessLevel::Public,
         );
@@ -211,6 +216,8 @@ impl SymbolExtractor<'_> {
             None,
             None,
             None,
+            None,
+            None,
             AccessLevel::Public,
         );
 
@@ -228,6 +235,8 @@ impl SymbolExtractor<'_> {
                         Some(enum_id),
                         Vec::new(),
                         SymbolKind::EnumVariant,
+                        None,
+                        None,
                         None,
                         None,
                         None,
@@ -252,8 +261,8 @@ impl SymbolExtractor<'_> {
             self.visit_children(node, container, annotations);
             return;
         };
-        let detail = nth_child_kind(node, "ident", 1)
-            .map(|state_owner| format!("in {}", node_text(state_owner, self.source)));
+        let owner_class = nth_child_kind(node, "ident", 1).map(|n| node_text(n, self.source));
+        let detail = owner_class.as_deref().map(|o| format!("in {o}"));
         let id = self.push_symbol(
             node,
             name_node,
@@ -263,6 +272,8 @@ impl SymbolExtractor<'_> {
             None,
             None,
             detail,
+            None,
+            owner_class,
             None,
             AccessLevel::Public,
         );
@@ -299,6 +310,8 @@ impl SymbolExtractor<'_> {
             kind,
             type_annotation,
             signature,
+            None,
+            None,
             None,
             flavour,
             access,
@@ -363,6 +376,8 @@ impl SymbolExtractor<'_> {
                     field_signature.clone(),
                     None,
                     None,
+                    None,
+                    None,
                     access,
                 );
                 if is_optional {
@@ -402,6 +417,8 @@ impl SymbolExtractor<'_> {
         type_annotation: Option<String>,
         signature: Option<String>,
         detail: Option<String>,
+        base_class: Option<String>,
+        owner_class: Option<String>,
         flavour: Option<String>,
         access: AccessLevel,
     ) -> SymbolId {
@@ -429,6 +446,8 @@ impl SymbolExtractor<'_> {
             type_annotation,
             signature,
             detail,
+            base_class,
+            owner_class,
             flavour,
             annotations,
             access,

@@ -266,13 +266,9 @@ impl WorkspaceIndex {
                     },
                 );
                 if is_type_like(sym.kind) {
-                    if let Some(superclass) = sym
-                        .detail
-                        .as_deref()
-                        .and_then(|d| d.strip_prefix("extends "))
-                    {
+                    if let Some(superclass) = &sym.base_class {
                         self.superclass_by_name
-                            .insert(sym.name.clone(), superclass.to_string());
+                            .insert(sym.name.clone(), superclass.clone());
                     }
                 }
             } else if let Some(cn) = &sym.container_name {
@@ -613,13 +609,19 @@ fn resolve_member_access(
         }
         "super_expr" => {
             let current_type = current_type_symbol(document, ident.start_byte())?;
-            let base_name = current_type.detail.as_deref()?.strip_prefix("extends ")?;
-            db.find_member(base_name, name, AccessLevel::Protected)
+            db.find_member(
+                current_type.base_class.as_deref()?,
+                name,
+                AccessLevel::Protected,
+            )
         }
         "parent_expr" => {
             let current_type = current_type_symbol(document, ident.start_byte())?;
-            let owner_name = current_type.detail.as_deref()?.strip_prefix("in ")?;
-            db.find_member(owner_name, name, AccessLevel::Public)
+            db.find_member(
+                current_type.owner_class.as_deref()?,
+                name,
+                AccessLevel::Public,
+            )
         }
         "ident" => {
             let receiver_name = receiver.utf8_text(document.source.as_bytes()).ok()?;
@@ -975,20 +977,14 @@ fn resolve_self_keyword(
 
     if is_super {
         let current_type = current_type_symbol(document, byte_offset)?;
-        let base_name = current_type
-            .detail
-            .as_deref()
-            .and_then(|d| d.strip_prefix("extends "))?;
+        let base_name = current_type.base_class.as_deref()?;
         return resolve_document_top_level(uri, document, base_name)
             .or_else(|| db.find_top_level(base_name));
     }
 
     if is_parent {
         let current_type = current_type_symbol(document, byte_offset)?;
-        let owner_name = current_type
-            .detail
-            .as_deref()
-            .and_then(|d| d.strip_prefix("in "))?;
+        let owner_name = current_type.owner_class.as_deref()?;
         return resolve_document_top_level(uri, document, owner_name)
             .or_else(|| db.find_top_level(owner_name));
     }
@@ -1050,19 +1046,11 @@ fn completion_members_inner(
     let type_name = match expr.kind() {
         "super_expr" | "super" => {
             let current_type = current_type_symbol(document, context_byte)?;
-            current_type
-                .detail
-                .as_deref()?
-                .strip_prefix("extends ")?
-                .to_string()
+            current_type.base_class.as_deref()?.to_string()
         }
         "parent_expr" | "parent" => {
             let current_type = current_type_symbol(document, context_byte)?;
-            current_type
-                .detail
-                .as_deref()?
-                .strip_prefix("in ")?
-                .to_string()
+            current_type.owner_class.as_deref()?.to_string()
         }
         _ => infer_expr_type(uri, document, db, expr, context_byte)?,
     };
@@ -1340,10 +1328,7 @@ fn statement_completions_inner(
         .unwrap_or_default();
 
     let has_this = current_type.is_some();
-    let has_super = current_type
-        .and_then(|t| t.detail.as_deref())
-        .and_then(|d| d.strip_prefix("extends "))
-        .is_some();
+    let has_super = current_type.and_then(|t| t.base_class.as_deref()).is_some();
 
     let globals = db.all_top_level_callables();
 

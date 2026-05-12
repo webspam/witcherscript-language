@@ -231,16 +231,19 @@ fn resolve_member_ident(
             )?
             .name
             .clone(),
-        "super_expr" | "parent_expr" | "virtual_parent_expr" => {
+        "super_expr" | "virtual_parent_expr" => {
             let class_sym = symbols.enclosing_symbol_at(
                 node.start_byte(),
                 &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
             )?;
-            class_sym
-                .detail
-                .as_deref()?
-                .strip_prefix("extends ")?
-                .to_string()
+            class_sym.base_class.as_deref()?.to_string()
+        }
+        "parent_expr" => {
+            let class_sym = symbols.enclosing_symbol_at(
+                node.start_byte(),
+                &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
+            )?;
+            class_sym.owner_class.as_deref()?.to_string()
         }
         "ident" => {
             let receiver_name = receiver.utf8_text(source.as_bytes()).ok()?;
