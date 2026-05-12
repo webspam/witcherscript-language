@@ -1175,6 +1175,15 @@ fn statement_completions_inner(
         return None;
     }
 
+    let in_func_body = [byte_offset, byte_offset.saturating_sub(1)]
+        .into_iter()
+        .filter_map(|off| root.descendant_for_byte_range(off, off))
+        .any(|n| find_ancestor_of_kind(n, &["func_block"]).is_some());
+
+    if !in_func_body {
+        return None;
+    }
+
     let callable = document.symbols.enclosing_symbol_at(
         byte_offset,
         &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],

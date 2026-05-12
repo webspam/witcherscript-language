@@ -1722,3 +1722,343 @@ fn statement_completions_empty_after_dot_in_class_method() {
         "dot-access context must not produce statement completions"
     );
 }
+
+// --- Completion context detection tests ---
+//
+// Fixture layout for completion_class_body_contexts.ws:
+//   line 0:  class C {
+//   line 1:    var field : int;
+//   line 2:    (blank)                    ← class body, outside any callable
+//   line 3:    function Name(test : bool) {
+//   line 4:    (blank)                    ← method body, inside callable
+//   line 5:    }
+//   line 6:  }
+//
+// Fixture layout for completion_declaration_contexts.ws:
+//   line 0:  class CRefType {}
+//   line 1:  (blank)
+//   line 2:  class C {
+//   line 3:    var isName : CRefType;     col 15 = start of CRefType (field type)
+//   line 4:    private function SomeFunction() {}
+//                                         col 19 = start of SomeFunction (fn name decl)
+//   line 5:    var someVar : int;         col  6 = start of someVar (var name, between callables)
+//                                         col 16 = start of int (field type)
+//   line 6:    function Name(test : int, other : bool) {}
+//                                         col 16 = start of test  (1st param name)
+//                                         col 23 = start of int   (1st param type)
+//                                         col 28 = start of other (2nd param name)
+//                                         col 36 = start of bool  (2nd param type)
+//   line 7:  }
+
+#[test]
+fn blank_in_class_body_yields_no_completions() {
+    let source = include_str!("../../tests/fixtures/valid/completion_class_body_contexts.ws");
+    let doc = parse_document(source).expect("fixture should parse");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let pos = SourcePosition {
+        line: 2,
+        character: 0,
+    };
+
+    let members = super::completion_members("file:///test.ws", &doc, &db, pos);
+    assert!(
+        members.is_empty(),
+        "dot-access completions must not fire on a blank line in the class body"
+    );
+
+    let types = super::type_completions(&doc, &db, pos);
+    assert!(
+        types.is_empty(),
+        "type completions must not fire on a blank line in the class body"
+    );
+
+    let stmt = super::statement_completions("file:///test.ws", &doc, &db, pos);
+    assert!(
+        stmt.locals.is_empty()
+            && stmt.members.is_empty()
+            && stmt.globals.is_empty()
+            && !stmt.has_this
+            && !stmt.has_super,
+        "statement completions must be all-empty in the class body (no enclosing callable)"
+    );
+}
+
+#[test]
+fn blank_in_class_method_body_yields_statement_completions() {
+    let source = include_str!("../../tests/fixtures/valid/completion_class_body_contexts.ws");
+    let doc = parse_document(source).expect("fixture should parse");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let pos = SourcePosition {
+        line: 4,
+        character: 0,
+    };
+
+    let members = super::completion_members("file:///test.ws", &doc, &db, pos);
+    assert!(
+        members.is_empty(),
+        "dot-access completions must not fire without a dot"
+    );
+
+    let types = super::type_completions(&doc, &db, pos);
+    assert!(
+        types.is_empty(),
+        "type completions must not fire without a type annotation"
+    );
+
+    let stmt = super::statement_completions("file:///test.ws", &doc, &db, pos);
+    assert!(
+        stmt.has_this,
+        "this must be available inside a class method body"
+    );
+    let local_names: Vec<&str> = stmt.locals.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        local_names.contains(&"test"),
+        "function parameter 'test' must appear in locals at the blank line"
+    );
+    let member_names: Vec<&str> = stmt
+        .members
+        .iter()
+        .map(|d| d.symbol.name.as_str())
+        .collect();
+    assert!(
+        member_names.contains(&"field"),
+        "class field 'field' must appear in members inside the method"
+    );
+}
+
+#[test]
+fn field_type_annotation_in_class_body_fires_type_completions() {
+    let source = include_str!("../../tests/fixtures/valid/completion_declaration_contexts.ws");
+    let doc = parse_document(source).expect("fixture should parse");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // col 15: start of CRefType in `  var isName : CRefType;`
+    let pos = SourcePosition {
+        line: 3,
+        character: 15,
+    };
+
+    let members = super::completion_members("file:///test.ws", &doc, &db, pos);
+    assert!(
+        members.is_empty(),
+        "dot-access completions must not fire at a field type annotation"
+    );
+
+    let types = super::type_completions(&doc, &db, pos);
+    let type_names: Vec<&str> = types.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        type_names.contains(&"CRefType"),
+        "CRefType must appear in type completions at the field type position"
+    );
+
+    let stmt = super::statement_completions("file:///test.ws", &doc, &db, pos);
+    assert!(
+        stmt.locals.is_empty()
+            && stmt.members.is_empty()
+            && stmt.globals.is_empty()
+            && !stmt.has_this,
+        "statement completions must be all-empty at a class field type annotation (no enclosing callable)"
+    );
+}
+
+#[test]
+fn field_name_between_methods_yields_no_completions() {
+    let source = include_str!("../../tests/fixtures/valid/completion_declaration_contexts.ws");
+    let doc = parse_document(source).expect("fixture should parse");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // col 6: start of someVar in `  var someVar : int;` — between SomeFunction and Name
+    let pos = SourcePosition {
+        line: 5,
+        character: 6,
+    };
+
+    let members = super::completion_members("file:///test.ws", &doc, &db, pos);
+    assert!(
+        members.is_empty(),
+        "dot-access completions must not fire at a variable name declaration"
+    );
+
+    let types = super::type_completions(&doc, &db, pos);
+    assert!(
+        types.is_empty(),
+        "type completions must not fire at a variable name (not a type annotation)"
+    );
+
+    let stmt = super::statement_completions("file:///test.ws", &doc, &db, pos);
+    assert!(
+        stmt.locals.is_empty()
+            && stmt.members.is_empty()
+            && stmt.globals.is_empty()
+            && !stmt.has_this,
+        "statement completions must be all-empty at a variable name between two methods"
+    );
+}
+
+#[test]
+fn field_type_between_methods_fires_type_completions() {
+    let source = include_str!("../../tests/fixtures/valid/completion_declaration_contexts.ws");
+    let doc = parse_document(source).expect("fixture should parse");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // col 16: start of int in `  var someVar : int;` — between SomeFunction and Name
+    let pos = SourcePosition {
+        line: 5,
+        character: 16,
+    };
+
+    let members = super::completion_members("file:///test.ws", &doc, &db, pos);
+    assert!(
+        members.is_empty(),
+        "dot-access completions must not fire at a field type annotation"
+    );
+
+    let types = super::type_completions(&doc, &db, pos);
+    assert!(
+        !types.is_empty(),
+        "type completions must fire at the field type position"
+    );
+
+    let stmt = super::statement_completions("file:///test.ws", &doc, &db, pos);
+    assert!(
+        stmt.locals.is_empty()
+            && stmt.members.is_empty()
+            && stmt.globals.is_empty()
+            && !stmt.has_this,
+        "statement completions must be all-empty at a field type annotation between methods"
+    );
+}
+
+#[test]
+fn parameter_type_annotation_fires_type_completions() {
+    // `CParam` is in the parameter type annotation — must trigger type completions
+    // regardless of whether the enclosing callable is a free function or a method.
+    let source = concat!("class CParam {}\n", "function Foo(x : CParam) {}\n",);
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // line 1: `function Foo(x : CParam) {}`
+    //          0         1
+    //          0123456789012345678
+    //                            ^ col 17 = start of CParam
+    let pos = SourcePosition {
+        line: 1,
+        character: 17,
+    };
+
+    let members = super::completion_members("file:///test.ws", &doc, &db, pos);
+    assert!(
+        members.is_empty(),
+        "dot-access completions must not fire at a parameter type annotation"
+    );
+
+    let types = super::type_completions(&doc, &db, pos);
+    let type_names: Vec<&str> = types.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        type_names.contains(&"CParam"),
+        "CParam must appear in type completions at the parameter type position"
+    );
+}
+
+#[test]
+fn function_return_type_annotation_fires_type_completions() {
+    let source = concat!(
+        "class CReturnType {}\n",
+        "function Foo() : CReturnType {}\n",
+    );
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // line 1: `function Foo() : CReturnType {}`
+    //          0         1
+    //          01234567890123456789
+    //                             ^ col 17 = start of CReturnType
+    let pos = SourcePosition {
+        line: 1,
+        character: 17,
+    };
+
+    let members = super::completion_members("file:///test.ws", &doc, &db, pos);
+    assert!(
+        members.is_empty(),
+        "dot-access completions must not fire at a return type annotation"
+    );
+
+    let types = super::type_completions(&doc, &db, pos);
+    let type_names: Vec<&str> = types.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        type_names.contains(&"CReturnType"),
+        "CReturnType must appear in type completions at the return type position"
+    );
+}
+
+#[test]
+fn function_name_in_class_body_yields_no_statement_completions() {
+    let source = include_str!("../../tests/fixtures/valid/completion_declaration_contexts.ws");
+    let doc = parse_document(source).expect("fixture should parse");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // col 19: start of SomeFunction in `  private function SomeFunction() {}`
+    let pos = SourcePosition {
+        line: 4,
+        character: 19,
+    };
+
+    let stmt = super::statement_completions("file:///test.ws", &doc, &db, pos);
+    assert!(
+        stmt.locals.is_empty()
+            && stmt.members.is_empty()
+            && stmt.globals.is_empty()
+            && !stmt.has_this,
+        "statement completions must be all-empty at a function name declaration"
+    );
+}
+
+#[test]
+fn parameter_name_yields_no_statement_completions() {
+    let source = include_str!("../../tests/fixtures/valid/completion_declaration_contexts.ws");
+    let doc = parse_document(source).expect("fixture should parse");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // col 16: start of `test`  (first parameter name)
+    // col 28: start of `other` (second parameter name, after the comma)
+    for (label, character) in [("first param", 16u32), ("second param after comma", 28u32)] {
+        let pos = SourcePosition { line: 6, character };
+        let stmt = super::statement_completions("file:///test.ws", &doc, &db, pos);
+        assert!(
+            stmt.locals.is_empty()
+                && stmt.members.is_empty()
+                && stmt.globals.is_empty()
+                && !stmt.has_this,
+            "statement completions must be all-empty at parameter name ({label})"
+        );
+    }
+}
