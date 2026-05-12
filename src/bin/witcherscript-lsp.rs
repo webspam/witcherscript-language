@@ -13,8 +13,8 @@ use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
     ConfigurationItem, Diagnostic, DiagnosticSeverity, DidChangeConfigurationParams,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
-    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
+    DocumentFormattingParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
+    Documentation, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
     InitializeParams, InitializeResult, InitializedParams, InsertTextFormat, Location,
     MarkupContent, MarkupKind, MessageType, OneOf, Position, PrepareRenameResponse, Range,
     ReferenceParams, RenameOptions, RenameParams, SemanticToken, SemanticTokens,
@@ -32,6 +32,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_file};
+use witcherscript_parser::formatter::format_document;
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{
     completion_members, extends_completions, find_references, hover_text, resolve_definition,
@@ -246,6 +247,7 @@ impl LanguageServer for Backend {
                         },
                     ),
                 ),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 workspace: Some(WorkspaceServerCapabilities {
                     workspace_folders: Some(WorkspaceFoldersServerCapabilities {
                         supported: Some(true),
@@ -649,6 +651,41 @@ impl LanguageServer for Backend {
         }
 
         Ok(None)
+    }
+
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+        let uri = params.text_document.uri;
+        let tab_size = params.options.tab_size;
+        let use_tabs = !params.options.insert_spaces;
+
+        let documents = self.documents.lock().await;
+        let Some(document) = documents.get(&uri) else {
+            return Ok(None);
+        };
+
+        let formatted = format_document(
+            document.tree.root_node(),
+            &document.source,
+            tab_size,
+            use_tabs,
+            100,
+            false,
+        );
+
+        if formatted == document.source {
+            return Ok(Some(Vec::new()));
+        }
+
+        let full_range = lsp_range(document.line_index.byte_range_to_range(
+            &document.source,
+            0,
+            document.source.len(),
+        ));
+
+        Ok(Some(vec![TextEdit {
+            range: full_range,
+            new_text: formatted,
+        }]))
     }
 }
 

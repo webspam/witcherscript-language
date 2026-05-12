@@ -1,0 +1,585 @@
+# formatter-test-spec.yaml
+#
+# Machine-readable specification of every formatter test case.
+# Used by agents to verify a rewritten formatter against the original rules.
+#
+# FORMAT OPTIONS DEFAULTS (applied when a test omits the "options" key or a field within it):
+#   tab_size:      4
+#   use_tabs:      false
+#   line_limit:    100
+#   compact_colon: false
+#
+# ASSERTION TYPES:
+#   contains:     output string must contain this exact substring
+#   not_contains: output string must NOT contain this exact substring
+#   eq_first_fmt: formatting the output again (with same options) must produce identical output (idempotency)
+#
+# ESCAPE SEQUENCES in input/expected strings:
+#   \n = newline   \t = tab   \\ = literal backslash
+
+defaults:
+  tab_size: 4
+  use_tabs: false
+  line_limit: 100
+  compact_colon: false
+
+tests:
+
+  # ─── COLON STYLE ────────────────────────────────────────────────────────────
+
+  - id: default_colon_style_unchanged
+    category: colon_style
+    rule: >
+      With compact_colon=false (default), colons in type annotations always have
+      a space on both sides: " : ".  Applies to function parameters, return types,
+      and local variable declarations.
+    options: {}
+    input: "function F(x : int) : bool { var y : int; return true; }"
+    assertions:
+      - contains: "(x : int)"
+      - contains: ") : bool"
+      - contains: "var y : int;"
+
+  - id: compact_colon_local_var
+    category: colon_style
+    rule: >
+      With compact_colon=true, local variable type annotations use ": " (no leading space).
+    options:
+      compact_colon: true
+    input: "function F() { var x : int; }"
+    assertions:
+      - contains: "var x: int;"
+
+  - id: compact_colon_member_var
+    category: colon_style
+    rule: >
+      With compact_colon=true, class member variable type annotations use ": ".
+    options:
+      compact_colon: true
+    input: "class C { var x : int; }"
+    assertions:
+      - contains: "var x: int;"
+
+  - id: compact_colon_func_param
+    category: colon_style
+    rule: >
+      With compact_colon=true, function parameter type annotations use ": ".
+    options:
+      compact_colon: true
+    input: "function F(x : int, y : bool) {}"
+    assertions:
+      - contains: "(x: int, y: bool)"
+
+  - id: compact_colon_return_type
+    category: colon_style
+    rule: >
+      With compact_colon=true, return type annotation uses ": " (no leading space before colon).
+    options:
+      compact_colon: true
+    input: "function F() : bool { return true; }"
+    assertions:
+      - contains: "function F(): bool"
+
+  # ─── FUNCTION DECLARATIONS ──────────────────────────────────────────────────
+
+  - id: formats_simple_function
+    category: function_decl
+    rule: >
+      Basic function: parameter and return type colons get spaces (" : "),
+      opening brace on same line as signature, body indented 4 spaces.
+    options: {}
+    input: "function Foo(x:int):bool{return true;}"
+    assertions:
+      - contains: "function Foo(x : int) : bool {"
+      - contains: "    return true;"
+      - contains: "}"
+
+  - id: short_func_signature_stays_inline
+    category: function_decl
+    rule: >
+      A function signature short enough to fit within line_limit stays on one line
+      (no newline after opening paren).
+    options:
+      line_limit: 100
+    input: "function Short(a:int):bool{return true;}"
+    assertions:
+      - not_contains: "(\n"
+      - contains: "function Short(a : int) : bool {"
+
+  - id: long_func_signature_splits_params
+    category: function_decl
+    rule: >
+      When the full inline signature would exceed line_limit, each parameter goes on
+      its own indented line with a trailing comma (except the last). The closing paren
+      and return type appear on their own line at the base indent.
+      Applies with line_limit=60.
+    options:
+      line_limit: 60
+    input: "function LongFuncName(paramOne:int,paramTwo:bool,paramThree:string):bool{}"
+    assertions:
+      - contains: "function LongFuncName(\n"
+      - contains: "    paramOne : int,\n"
+      - contains: "    paramTwo : bool,\n"
+      - contains: "    paramThree : string\n"
+      - contains: ") : bool {"
+
+  - id: no_param_func_never_splits
+    category: function_decl
+    rule: >
+      A zero-parameter function never splits its param list regardless of line_limit.
+    options:
+      line_limit: 10
+    input: "function NoParams():bool{return true;}"
+    assertions:
+      - not_contains: "(\n"
+
+  - id: split_signature_is_idempotent
+    category: function_decl
+    rule: >
+      Formatting a split-param signature a second time produces the identical output.
+    options:
+      line_limit: 60
+    input: "function LongFuncName(paramOne:int,paramTwo:bool,paramThree:string):bool{}"
+    assertions:
+      - eq_first_fmt: true
+
+  - id: class_method_params_wrapped_when_body_has_error
+    category: function_decl
+    rule: >
+      A func_decl whose BODY contains a parse error must NOT cause the entire
+      function to be emitted verbatim. The parameter list must still be wrapped
+      if it exceeds line_limit.
+    options: {}
+    input: "class C {\n    function SomeLongMethodName(firstParam : SomeLongType, secondParam : AnotherLongType, thirdParam : YetAnotherType) : bool {\n        SomeCall() // missing semicolon\n    }\n}"
+    assertions:
+      - contains: "(\n"
+
+  # ─── CLASS / STRUCT / STATE / ENUM ──────────────────────────────────────────
+
+  - id: formats_class_with_method
+    category: type_decl
+    rule: >
+      Class body: field and method are both indented 4 spaces under "class X extends Y {".
+    options: {}
+    input: "class C extends B { var x : int; function M() {} }"
+    assertions:
+      - contains: "class C extends B {"
+      - contains: "    var x : int;"
+      - contains: "    function M() {}"
+
+  - id: formats_empty_state
+    category: type_decl
+    rule: >
+      An empty state body collapses to "{}" on the same line (no newline before closing brace).
+    options: {}
+    input: "state Idle in Owner {}"
+    assertions:
+      - contains: "state Idle in Owner {}"
+
+  - id: formats_enum
+    category: type_decl
+    rule: >
+      Enum: each variant is indented 4 spaces and gets a trailing comma.
+    options: {}
+    input: "enum EKind { A, B = 1, C = 2 }"
+    assertions:
+      - contains: "enum EKind {"
+      - contains: "    A,"
+      - contains: "    B = 1,"
+
+  - id: preserves_comment_only_class_body
+    category: type_decl
+    rule: >
+      A class body that contains only a comment must NOT be collapsed to "{}".
+      The comment must be emitted inside the braces.
+    options: {}
+    input: "class C extends CPlayer {\n    // A comment\n}"
+    assertions:
+      - contains: "// A comment"
+
+  # ─── BLANK LINES ────────────────────────────────────────────────────────────
+
+  - id: preserves_single_blank_line_in_body
+    category: blank_lines
+    rule: >
+      A single blank line between statements inside a function body is preserved.
+    options: {}
+    input: "function F() {\n    a();\n\n    b();\n}"
+    assertions:
+      - contains: "a();\n\n    b();"
+
+  - id: collapses_multiple_blank_lines_to_one
+    category: blank_lines
+    rule: >
+      Two or more consecutive blank lines inside a function body collapse to exactly one.
+    options: {}
+    input: "function F() {\n    a();\n\n\n    b();\n}"
+    assertions:
+      - contains: "a();\n\n    b();"
+      - not_contains: "a();\n\n\n"
+
+  - id: blank_line_between_class_fields_preserved
+    category: blank_lines
+    rule: >
+      A single blank line between class member fields is preserved.
+    options: {}
+    input: "class C extends B {\n    var a : int;\n\n    var b : int;\n}"
+    assertions:
+      - contains: "var a : int;\n\n    var b : int;"
+
+  - id: blank_line_at_class_start_preserved
+    category: blank_lines
+    rule: >
+      A blank line immediately after the opening brace of a class body is preserved.
+    options: {}
+    input: "class C extends B {\n\n    var a : int;\n}"
+    assertions:
+      - contains: "{\n\n    var a : int;"
+
+  - id: multiple_blank_lines_in_class_condensed_to_one
+    category: blank_lines
+    rule: >
+      Multiple consecutive blank lines in a class body collapse to exactly one.
+    options: {}
+    input: "class C extends B {\n    var a : int;\n\n\n    var b : int;\n}"
+    assertions:
+      - contains: "var a : int;\n\n    var b : int;"
+      - not_contains: "var a : int;\n\n\n"
+
+  - id: no_blank_line_between_adjacent_class_fields
+    category: blank_lines
+    rule: >
+      Adjacent class fields with no blank line in source must NOT gain a blank line
+      in the formatted output.
+    options: {}
+    input: "class C extends B {\n    var a : int;\n    var b : int;\n}"
+    assertions:
+      - not_contains: "var a : int;\n\n"
+
+  # ─── EXPRESSION NORMALISATION ───────────────────────────────────────────────
+
+  - id: normalizes_expr_whitespace
+    category: expressions
+    rule: >
+      Extra whitespace around "." (member access) and before/after "(" and ")" in calls
+      is removed from expressions.
+    options: {}
+    input: "function F() { var x : int = SomeObj  .Method   (  ); }"
+    assertions:
+      - contains: "var x : int = SomeObj.Method();"
+
+  - id: normalizes_extra_spaces_in_call
+    category: expressions
+    rule: >
+      Multiple spaces between function name and arguments, or between arguments,
+      are collapsed to single spaces (one space after each comma, no space prior).
+    options: {}
+    input: "function F() { SomeFunc   (  a,   b  ); }"
+    assertions:
+      - contains: "SomeFunc(a, b);"
+
+  # ─── CONTROL FLOW ───────────────────────────────────────────────────────────
+
+  - id: formats_if_else
+    category: control_flow
+    rule: >
+      Block if/else: condition is wrapped in " (cond) ", opening brace on same line.
+      The "else" keyword appears on a new line after the closing "}" of the if-block.
+    options: {}
+    input: "function F() { if(x){a();} else{b();} }"
+    assertions:
+      - contains: "if (x) {"
+      - contains: "}\n    else {"
+
+  - id: inline_single_stmt_if
+    category: control_flow
+    rule: >
+      A single (non-block) statement body for an if with no else stays on the same
+      line as the "if (cond)".
+    options: {}
+    input: "function F() { if (x)\n    return; }"
+    assertions:
+      - contains: "if (x) return;"
+
+  - id: inline_single_stmt_if_else
+    category: control_flow
+    rule: >
+      If/else with single-stmt bodies: the if-body stays inline; the "else" keyword
+      starts on a new line followed by its body inline.
+    options: {}
+    input: "function F() { if (x)\n    return;\nelse\n    break; }"
+    assertions:
+      - contains: "if (x) return;"
+      - contains: "    else break;"
+
+  - id: block_if_else_else_on_new_line
+    category: control_flow
+    rule: >
+      When both branches use explicit blocks, "else" still appears on a new line
+      after the closing "}" of the if-block.
+    options: {}
+    input: "function F() { if(x){a();} else{b();} }"
+    assertions:
+      - contains: "if (x) {"
+      - contains: "}\n    else {"
+
+  - id: long_line_forces_block_form
+    category: control_flow
+    rule: >
+      If ANY branch in an if/else-if/else chain would exceed line_limit when written
+      inline, ALL branches in that chain are forced to use block form ("{ }"),
+      even the short ones that would otherwise fit inline.
+    options: {}
+    input: "function F() {\n    if (expr) DoThing();\n    else if (veryLongVariableName.IsWayTooLong.SeriouslyNeedsToBeSmaller().DoesntFitWell > 1)\n        return;\n    else\n        Log(\"Something\");\n}"
+    assertions:
+      - contains: "if (expr) {"
+      - contains: "else if ("
+      - contains: ") {"
+      - contains: "else {"
+
+  - id: formats_for_loop
+    category: control_flow
+    rule: >
+      For loop is formatted as "for (init; cond; iter) {" with semicolons separating
+      the three clauses.
+    options: {}
+    input: "function F() { for(i=0;i<10;i+=1){a();} }"
+    assertions:
+      - contains: "for (i=0; i<10; i+=1) {"
+
+  - id: long_if_condition_splits_onto_own_lines
+    category: control_flow
+    rule: >
+      When the full "if (cond)" line would exceed line_limit, the condition is split.
+      Threshold: indent_width + len("if (cond)") + 1 > line_limit.
+      Format: "if (\n" on the first line, then each operand on its own indented line
+      with the binary operator (|| or &&) appended at the END of that line.
+      The last operand has no trailing operator.
+      A multiline condition always forces a block body.
+      Uses line_limit=30.
+    options:
+      line_limit: 30
+    input: "function F() { if (alpha || beta || gamma) return; }"
+    assertions:
+      - contains: "if (\n"
+      - contains: "alpha ||\n"
+      - contains: "beta ||\n"
+      - contains: "gamma\n"
+      - contains: ") {\n"
+      - contains: "return;"
+
+  - id: short_if_condition_not_split
+    category: control_flow
+    rule: >
+      A short if condition that fits within line_limit stays on one line.
+    options: {}
+    input: "function F() { if (x > 0) return; }"
+    assertions:
+      - not_contains: "if (\n"
+
+  - id: long_if_condition_with_and_operators
+    category: control_flow
+    rule: >
+      The "&&" operator also triggers condition splitting, same rules as "||".
+      Uses line_limit=40.
+    options:
+      line_limit: 40
+    input: "function F() { if (conditionAlpha && conditionBeta && conditionGamma) return; }"
+    assertions:
+      - contains: "if (\n"
+      - contains: "conditionAlpha &&\n"
+
+  - id: multiline_if_condition_is_idempotent
+    category: control_flow
+    rule: >
+      Formatting a split if-condition a second time produces identical output.
+    options:
+      line_limit: 30
+    input: "function F() { if (alpha || beta || gamma) return; }"
+    assertions:
+      - eq_first_fmt: true
+
+  # ─── LONG CALL STATEMENTS ───────────────────────────────────────────────────
+
+  - id: long_call_stmt_splits_args
+    category: call_splitting
+    rule: >
+      When a function-call expression statement would exceed line_limit, the arguments
+      are split: "FuncName(\n" then each arg on its own indented line with a trailing
+      comma (except the last), then ");\n".
+      Only applies to top-level expression statements — NOT to call sub-expressions
+      nested inside larger expressions.
+      Only triggered when there are 2+ arguments.
+      Uses line_limit=60.
+    options:
+      line_limit: 60
+    input: "function F() { SetupEnemiesCollection(enemyCollectionDist, findMoveTargetDist, 10); }"
+    assertions:
+      - contains: "SetupEnemiesCollection(\n"
+      - contains: "enemyCollectionDist,\n"
+      - contains: "findMoveTargetDist,\n"
+      - contains: ");\n"
+
+  - id: short_call_stmt_stays_inline
+    category: call_splitting
+    rule: >
+      A call statement that fits within line_limit stays on one line.
+    options: {}
+    input: "function F() { Foo(a, b); }"
+    assertions:
+      - not_contains: "Foo(\n"
+      - contains: "Foo(a, b);"
+
+  - id: split_call_stmt_is_idempotent
+    category: call_splitting
+    rule: >
+      Formatting a split call statement a second time produces identical output.
+    options:
+      line_limit: 60
+    input: "function F() { SetupEnemiesCollection(enemyCollectionDist, findMoveTargetDist, 10); }"
+    assertions:
+      - eq_first_fmt: true
+
+  # ─── ERROR RECOVERY ──────────────────────────────────────────────────────────
+
+  - id: error_recovery_formats_valid_stmts_around_invalid
+    category: error_recovery
+    rule: >
+      When a function body contains a mix of valid and invalid (error) statements:
+      - Valid statements ARE formatted normally (whitespace normalized, etc.).
+      - Invalid (error-node) statements are preserved VERBATIM, including any
+        extra internal whitespace AND any trailing semicolons that appear in source.
+    options: {}
+    input: "function Test() {\n             var    b  : int;\n    var  a;\n}"
+    assertions:
+      - contains: "var b : int;"
+      - contains: "var  a;"
+
+  - id: trailing_comment_on_error_member_var_preserved
+    category: error_recovery
+    rule: >
+      A member_var_decl that is an error node (e.g. missing ";") but has a trailing
+      inline comment must have that comment preserved in the output.
+      A spurious ";" must NOT be appended after the comment text itself.
+    options: {}
+    input: "class C {\n    var x : int // trailing comment\n}"
+    assertions:
+      - contains: "// trailing comment"
+      - not_contains: "// trailing comment;"
+
+  - id: trailing_comment_on_member_default_val_preserved
+    category: error_recovery
+    rule: >
+      A member_default_val that is structurally valid (semicolon present, just on
+      the next line) but has a trailing inline comment must have that comment preserved.
+    options: {}
+    input: "class C {\n    var x : int;\n    default x = OT_None // keep me\n    ;\n}"
+    assertions:
+      - contains: "// keep me"
+
+  # ─── IDENTIFIER VALUES (silent data-loss regression) ────────────────────────
+
+  - id: member_default_val_with_ident_value_preserved
+    category: data_loss_regression
+    rule: >
+      A "default x = VALUE;" where VALUE is a bare identifier (not a string or number
+      literal) must not be dropped. The entire assignment must appear in output.
+    options: {}
+    input: "class C extends B {\n    default isPotato = OT_None;\n}"
+    assertions:
+      - contains: "default isPotato = OT_None;"
+
+  - id: local_var_init_with_ident_value_preserved
+    category: data_loss_regression
+    rule: >
+      A "var x : Type = VALUE;" where VALUE is a bare identifier (e.g. an enum member)
+      must not have the initializer dropped. The full declaration must appear in output.
+    options: {}
+    input: "function F() { var x : EOrientationTarget = OT_None; }"
+    assertions:
+      - contains: "var x : EOrientationTarget = OT_None;"
+
+  # ─── COMMENT PRESERVATION ───────────────────────────────────────────────────
+  #
+  # tree-sitter places `comment` nodes as named "extras" anywhere in the tree.
+  # The formatter must never silently drop them, even when reprinting nodes that
+  # it would otherwise reconstruct from scratch (function signatures, enum bodies,
+  # defaults blocks).  All content from the original source must survive.
+
+  - id: comment_before_param_preserved
+    category: comment_preservation
+    rule: >
+      A comment that appears before the first parameter inside a parameter list
+      must be preserved in the output.  The parameter itself must also be present.
+    options: {}
+    input: "function lossy(/* comment */ param1 : bool) {}"
+    assertions:
+      - contains: "/* comment */"
+      - contains: "param1"
+
+  - id: comment_between_params_preserved
+    category: comment_preservation
+    rule: >
+      A comment that appears between two parameters inside a parameter list
+      must be preserved in the output.
+    options: {}
+    input: "function F(a : int, /* mid */ b : bool) {}"
+    assertions:
+      - contains: "/* mid */"
+
+  - id: comment_trailing_param_preserved
+    category: comment_preservation
+    rule: >
+      A comment that appears after the last parameter (before the closing paren)
+      must be preserved in the output.
+    options: {}
+    input: "function F(a : int /* trailing */) {}"
+    assertions:
+      - contains: "/* trailing */"
+
+  - id: comment_between_params_comma_position
+    category: comment_preservation
+    rule: >
+      When comments appear between two parameter groups, the separating comma must
+      be placed AFTER the trailing comments of the first group, not before them.
+      Concretely: "a : bool /*b*/,/*a*/ i : int" must NOT produce
+      "a : bool, /*b*/ /*a*/ i : int" (comma before all comments).
+    options: {}
+    input: "function F(a : bool /*b*/,/*a*/ i : int) {}"
+    assertions:
+      - contains: "/*b*/"
+      - contains: "/*a*/"
+      - not_contains: "bool,"
+
+  - id: comment_in_enum_body_preserved
+    category: comment_preservation
+    rule: >
+      A comment that appears inside an enum body (between variants, or before/after
+      them) must be preserved in the formatted output.
+    options: {}
+    input: "enum EKind {\n    // a comment\n    A,\n    B\n}"
+    assertions:
+      - contains: "// a comment"
+
+  - id: comment_in_defaults_block_preserved
+    category: comment_preservation
+    rule: >
+      A comment that appears inside a "defaults { }" block (between assignments)
+      must be preserved in the formatted output.
+    options: {}
+    input: "class C {\n    defaults {\n        // a comment\n        x = 1;\n    }\n}"
+    assertions:
+      - contains: "// a comment"
+
+  # ─── IDEMPOTENCY ─────────────────────────────────────────────────────────────
+
+  - id: idempotent_on_valid_fixture
+    category: idempotency
+    rule: >
+      Formatting the fixture file "tests/fixtures/valid/basic_function.ws" and then
+      formatting the result a second time must produce identical output.
+      (The fixture is read from disk; the actual content is not inlined here.)
+    options: {}
+    input_file: "tests/fixtures/valid/basic_function.ws"
+    assertions:
+      - eq_first_fmt: true
