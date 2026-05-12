@@ -1168,8 +1168,15 @@ fn statement_completions_inner(
         .into_iter()
         .filter_map(|off| root.descendant_for_byte_range(off, off))
         .any(|n| {
-            find_ancestor_of_kind(n, &["member_access_expr", "incomplete_member_access_expr"])
-                .is_some()
+            find_ancestor_of_kind(
+                n,
+                &[
+                    "member_access_expr",
+                    "incomplete_member_access_expr",
+                    "ERROR",
+                ],
+            )
+            .is_some()
         })
     {
         return None;

@@ -1723,6 +1723,38 @@ fn statement_completions_empty_after_dot_in_class_method() {
     );
 }
 
+#[test]
+fn statement_completions_empty_after_leading_dot_in_method() {
+    // A bare '.' at the start of a statement has no valid LHS — tree-sitter
+    // produces an incomplete_member_access_expr with a missing receiver.
+    // statement_completions must not fire here.
+    let source = "class C {\n  function A() {\n    .\n  }\n}\n";
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // line 2: "    ." — dot at col 4, cursor at col 5 (right after the dot)
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 2,
+            character: 5,
+        },
+    );
+    assert!(
+        result.locals.is_empty()
+            && result.members.is_empty()
+            && result.globals.is_empty()
+            && !result.has_this
+            && !result.has_super,
+        "a leading dot with no LHS must not produce statement completions"
+    );
+}
+
 // --- Completion context detection tests ---
 //
 // Fixture layout for completion_class_body_contexts.ws:
