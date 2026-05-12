@@ -1130,6 +1130,120 @@ fn has_type_annot_ancestor(node: Node) -> bool {
     }
 }
 
+pub fn extends_completions(
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Vec<Definition> {
+    extends_completions_inner(document, db, position).unwrap_or_default()
+}
+
+fn extends_completions_inner(
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Option<Vec<Definition>> {
+    let byte_offset = document
+        .line_index
+        .position_to_byte(&document.source, position)?;
+
+    let root = document.tree.root_node();
+
+    // When the cursor sits in trailing whitespace (after the last token of an incomplete
+    // declaration), descendant_for_byte_range returns the root "script" node because
+    // whitespace is transparent in the AST. Filter those out, then fall back to finding
+    // the last top-level child whose byte range ends at or before the cursor — that child
+    // is the context we want to inspect.
+    let direct: Vec<Node> = [byte_offset, byte_offset.saturating_sub(1)]
+        .into_iter()
+        .filter_map(|off| root.descendant_for_byte_range(off, off))
+        .filter(|n| n.kind() != "script")
+        .collect();
+
+    let in_extends = if !direct.is_empty() {
+        direct
+            .iter()
+            .any(|n| in_class_extends_position(*n, byte_offset))
+    } else {
+        let mut tc = root.walk();
+        root.children(&mut tc)
+            .take_while(|c| c.end_byte() <= byte_offset)
+            .last()
+            .is_some_and(|n| in_class_extends_position(n, byte_offset))
+    };
+
+    if !in_extends {
+        return None;
+    }
+
+    Some(
+        db.all_types()
+            .into_iter()
+            .filter(|def| matches!(def.symbol.kind, SymbolKind::Class | SymbolKind::State))
+            .collect(),
+    )
+}
+
+fn in_class_extends_position(node: Node, byte_offset: usize) -> bool {
+    let mut current = node;
+    loop {
+        match current.kind() {
+            "class_decl" | "state_decl" => {
+                return is_after_extends_before_body(current, byte_offset);
+            }
+            "ERROR" => {
+                if let Some(parent) = current.parent() {
+                    if matches!(parent.kind(), "class_decl" | "state_decl") {
+                        return is_after_extends_before_body(parent, byte_offset);
+                    }
+                }
+                return error_node_has_class_extends(current, byte_offset);
+            }
+            _ => {}
+        }
+        match current.parent() {
+            Some(p) => current = p,
+            None => return false,
+        }
+    }
+}
+
+fn is_after_extends_before_body(decl_node: Node, byte_offset: usize) -> bool {
+    let mut cursor = decl_node.walk();
+    let mut saw_extends = false;
+    for child in decl_node.children(&mut cursor) {
+        if child.start_byte() >= byte_offset {
+            break;
+        }
+        match child.kind() {
+            "extends" => saw_extends = true,
+            "class_def" => return false,
+            _ => {}
+        }
+    }
+    saw_extends
+}
+
+fn error_node_has_class_extends(error_node: Node, byte_offset: usize) -> bool {
+    let mut cursor = error_node.walk();
+    let mut saw_class_kw = false;
+    let mut saw_extends = false;
+    for child in error_node.children(&mut cursor) {
+        if child.start_byte() >= byte_offset {
+            break;
+        }
+        match child.kind() {
+            "class" | "state" => saw_class_kw = true,
+            "extends" if saw_class_kw => {
+                saw_extends = true;
+            }
+            "{" => return false,
+            _ => {}
+        }
+    }
+    saw_extends
+}
+
 pub struct StatementCompletions {
     pub locals: Vec<Definition>,
     pub members: Vec<Definition>,

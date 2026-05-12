@@ -39,6 +39,7 @@ Full architecture diagram and data flow: [docs/agents/architecture.md](docs/agen
 | Change highlighting | `src/semantic_tokens/mod.rs` + `src/semantic_tokens/tests.rs` |
 | Fix position/encoding bug | `src/line_index.rs` + its `#[cfg(test)]` block |
 | Add WitcherScript syntax support | Grammar repo (`tree-sitter-witcherscript`) is external; pin new tag in `Cargo.toml` |
+| Inspect grammar node kinds / rule structure | Read `../tree-sitter-witcherscript/grammar.js` (relative to repo root). Online: https://raw.githubusercontent.com/webspam/tree-sitter-witcherscript/refs/heads/master/grammar.js |
 
 ## WitcherScript language cheat sheet
 

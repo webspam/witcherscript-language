@@ -1978,6 +1978,161 @@ fn field_type_between_methods_fires_type_completions() {
 }
 
 #[test]
+fn extends_completions_fires_after_extends_keyword_incomplete_decl() {
+    // Source: class with no body — whole decl is an ERROR node in the tree.
+    // Cursor is right after the space following 'extends'.
+    let source = "class CExample {}\nclass Foo extends \n";
+    //            line 0              line 1: "class Foo extends " (chars 0-17, cursor at 18)
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let pos = SourcePosition {
+        line: 1,
+        character: 18,
+    };
+
+    let result = super::extends_completions(&doc, &db, pos);
+    let names: Vec<&str> = result.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        names.contains(&"CExample"),
+        "class names must appear in extends completions after the 'extends' keyword"
+    );
+}
+
+#[test]
+fn extends_completions_fires_mid_base_class_name() {
+    // Cursor is inside a partially-typed base class name — still an ERROR node.
+    let source = "class CExample {}\nclass Foo extends CEx\n";
+    //            line 1: "class Foo extends CEx" — cursor at char 20 (on 'x')
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let pos = SourcePosition {
+        line: 1,
+        character: 20,
+    };
+
+    let result = super::extends_completions(&doc, &db, pos);
+    let names: Vec<&str> = result.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        names.contains(&"CExample"),
+        "extends completions must fire while mid-typing the base class name"
+    );
+}
+
+#[test]
+fn extends_completions_empty_inside_class_body() {
+    // Cursor is inside the class body — must NOT trigger extends completions.
+    let source = "class CExample {}\nclass Foo extends CExample {\n  \n}\n";
+    //            line 2: "  " — cursor at char 2 (inside body)
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let pos = SourcePosition {
+        line: 2,
+        character: 2,
+    };
+
+    let result = super::extends_completions(&doc, &db, pos);
+    assert!(
+        result.is_empty(),
+        "extends completions must not fire inside the class body"
+    );
+}
+
+#[test]
+fn extends_completions_empty_at_class_name_position() {
+    // Cursor is on the class name itself — no 'extends' keyword present.
+    let source = "class Foo {\n  \n}\n";
+    //            line 0: "class Foo {" — cursor at char 6 (on 'F')
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let pos = SourcePosition {
+        line: 0,
+        character: 6,
+    };
+
+    let result = super::extends_completions(&doc, &db, pos);
+    assert!(
+        result.is_empty(),
+        "extends completions must not fire at the class name position"
+    );
+}
+
+#[test]
+fn extends_completions_fires_for_state_decl() {
+    // State declarations also support 'extends' for base state.
+    let source = "class CBase {}\nstate IdleState in CBase extends \n";
+    //            line 1: "state IdleState in CBase extends " (32 chars, cursor at 32)
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let pos = SourcePosition {
+        line: 1,
+        character: 32,
+    };
+
+    let result = super::extends_completions(&doc, &db, pos);
+    let names: Vec<&str> = result.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        names.contains(&"CBase"),
+        "extends completions must fire after 'extends' in a state declaration"
+    );
+}
+
+#[test]
+fn extends_completions_excludes_enums_and_structs() {
+    // Only Class and State symbols must appear — not Enum or Struct.
+    let source = concat!(
+        "class CExample {}\n",
+        "struct SExample {}\n",
+        "enum EExample {}\n",
+        "class Foo extends \n",
+    );
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // line 3: "class Foo extends " — cursor at char 18
+    let pos = SourcePosition {
+        line: 3,
+        character: 18,
+    };
+
+    let result = super::extends_completions(&doc, &db, pos);
+    let names: Vec<&str> = result.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        names.contains(&"CExample"),
+        "Class symbols must appear in extends completions"
+    );
+    assert!(
+        !names.contains(&"SExample"),
+        "Struct symbols must not appear in extends completions"
+    );
+    assert!(
+        !names.contains(&"EExample"),
+        "Enum symbols must not appear in extends completions"
+    );
+}
+
+#[test]
 fn parameter_type_annotation_fires_type_completions() {
     // `CParam` is in the parameter type annotation — must trigger type completions
     // regardless of whether the enclosing callable is a free function or a method.

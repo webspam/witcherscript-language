@@ -34,8 +34,8 @@ use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_file};
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{
-    completion_members, find_references, hover_text, resolve_definition, statement_completions,
-    type_completions, Definition, SymbolDb, WorkspaceIndex, BUILTIN_TYPES,
+    completion_members, extends_completions, find_references, hover_text, resolve_definition,
+    statement_completions, type_completions, Definition, SymbolDb, WorkspaceIndex, BUILTIN_TYPES,
 };
 use witcherscript_parser::script_env::{parse_script_environment, ScriptEnvironment};
 use witcherscript_parser::semantic_tokens::{
@@ -589,6 +589,13 @@ impl LanguageServer for Backend {
                 .collect();
         if !member_items.is_empty() {
             return Ok(Some(CompletionResponse::Array(member_items)));
+        }
+
+        let extends = extends_completions(document, &db, pos);
+        if !extends.is_empty() {
+            return Ok(Some(CompletionResponse::Array(
+                extends.iter().map(type_completion_item).collect(),
+            )));
         }
 
         let user_types = type_completions(document, &db, pos);
