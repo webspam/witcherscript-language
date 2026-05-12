@@ -2390,11 +2390,20 @@ fn class_body_kw_after_access_modifier_offers_decl_and_remaining_specifiers() {
 }
 
 #[test]
-fn class_body_kw_after_editable_suppresses_func_keywords() {
+fn class_body_kw_after_editable_suppresses_func_keywords_and_const() {
     let source = "class CExample {\n  editable \n}\n";
     let doc = parse_document(source).expect("parse");
     let result = kw(&doc, 1, 10);
     assert!(result.contains(&"var"), "should offer var after editable");
+    assert!(
+        result.contains(&"saved"),
+        "should offer saved after editable"
+    );
+    assert!(
+        result.contains(&"inlined"),
+        "should offer inlined after editable"
+    );
+    assert!(!result.contains(&"const"), "const cannot follow editable");
     assert!(
         !result.contains(&"function"),
         "function invalid after editable"
@@ -2405,6 +2414,51 @@ fn class_body_kw_after_editable_suppresses_func_keywords() {
         !result.contains(&"autobind"),
         "autobind invalid after editable"
     );
+}
+
+#[test]
+fn class_body_kw_saved_is_terminal_no_more_var_specifiers() {
+    let source = "class CExample {\n  saved \n}\n";
+    let doc = parse_document(source).expect("parse");
+    let result = kw(&doc, 1, 8);
+    assert!(result.contains(&"var"), "should offer var after saved");
+    assert!(
+        !result.contains(&"editable"),
+        "editable cannot follow saved"
+    );
+    assert!(!result.contains(&"const"), "const cannot follow saved");
+    assert!(!result.contains(&"inlined"), "inlined cannot follow saved");
+}
+
+#[test]
+fn class_body_kw_after_access_and_saved_no_further_var_specifiers() {
+    let source = "class CExample {\n  public saved \n}\n";
+    let doc = parse_document(source).expect("parse");
+    let result = kw(&doc, 1, 14);
+    assert!(result.contains(&"var"), "should offer var");
+    assert!(!result.contains(&"inlined"), "inlined cannot follow saved");
+    assert!(!result.contains(&"const"), "const cannot follow saved");
+    assert!(
+        !result.contains(&"editable"),
+        "editable cannot follow saved"
+    );
+}
+
+#[test]
+fn class_body_kw_after_const_only_offers_inlined() {
+    let source = "class CExample {\n  const \n}\n";
+    let doc = parse_document(source).expect("parse");
+    let result = kw(&doc, 1, 8);
+    assert!(result.contains(&"var"), "should offer var after const");
+    assert!(
+        result.contains(&"inlined"),
+        "should offer inlined after const"
+    );
+    assert!(
+        !result.contains(&"editable"),
+        "editable cannot follow const"
+    );
+    assert!(!result.contains(&"saved"), "saved cannot follow const");
 }
 
 #[test]

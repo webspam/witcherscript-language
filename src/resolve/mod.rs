@@ -1518,17 +1518,20 @@ fn class_body_kw_candidates(ctx: &ClassBodyCtx) -> Vec<&'static str> {
     }
 
     if !ctx.has_import && !in_func_path && !in_autobind_path {
-        if !ctx.has_editable {
-            kw.push("editable");
-        }
-        if !ctx.has_saved {
-            kw.push("saved");
-        }
-        if !ctx.has_const_ {
-            kw.push("const");
-        }
-        if !ctx.has_inlined {
-            kw.push("inlined");
+        // saved and inlined are terminal — nothing can follow them.
+        // Valid non-trivial sequences: editable→{saved|inlined}, const→inlined.
+        let var_path_done = ctx.has_saved || ctx.has_inlined;
+        if !var_path_done {
+            if !ctx.has_editable && !ctx.has_const_ && !ctx.has_saved {
+                kw.extend_from_slice(&["editable", "saved", "const", "inlined"]);
+            } else if ctx.has_editable && !ctx.has_saved && !ctx.has_const_ {
+                // editable can be followed by saved or inlined (not const)
+                kw.extend_from_slice(&["saved", "inlined"]);
+            } else if ctx.has_const_ {
+                // const can only be followed by inlined
+                kw.push("inlined");
+            }
+            // saved alone: terminal — no more var specifiers
         }
     }
 
