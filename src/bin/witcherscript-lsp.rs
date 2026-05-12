@@ -375,6 +375,7 @@ impl LanguageServer for Backend {
         Ok(Some(DocumentSymbolResponse::Nested(document_symbols(
             &document.symbols,
             None,
+            params.text_document.uri.as_str(),
         ))))
     }
 
@@ -950,10 +951,26 @@ fn lsp_diagnostics(document: &ParsedDocument) -> Vec<Diagnostic> {
 }
 
 #[allow(deprecated)]
-fn document_symbols(symbols: &DocumentSymbols, container: Option<SymbolId>) -> Vec<DocumentSymbol> {
+fn document_symbols(
+    symbols: &DocumentSymbols,
+    container: Option<SymbolId>,
+    uri: &str,
+) -> Vec<DocumentSymbol> {
     symbols
         .children_of(container)
         .filter(|symbol| is_outline_symbol(symbol))
+        .filter(|symbol| {
+            if symbol.name.is_empty() {
+                warn!(
+                    "skipping {:?} symbol with empty name at line {} in {uri} (parse error in source)",
+                    symbol.kind,
+                    symbol.range.start.line + 1,
+                );
+                false
+            } else {
+                true
+            }
+        })
         .map(|symbol| DocumentSymbol {
             name: symbol.name.clone(),
             detail: symbol
@@ -965,7 +982,7 @@ fn document_symbols(symbols: &DocumentSymbols, container: Option<SymbolId>) -> V
             deprecated: None,
             range: lsp_range(symbol.range),
             selection_range: lsp_range(symbol.selection_range),
-            children: Some(document_symbols(symbols, Some(symbol.id))),
+            children: Some(document_symbols(symbols, Some(symbol.id), uri)),
         })
         .collect()
 }
@@ -1271,7 +1288,7 @@ mod tests {
         let document = parse_document("class CExample {\n var value : int;\n}\n")
             .expect("document should parse");
 
-        let symbols = document_symbols(&document.symbols, None);
+        let symbols = document_symbols(&document.symbols, None, "file:///test.ws");
 
         assert_eq!(symbols.len(), 1);
         assert_eq!(symbols[0].name, "CExample");
