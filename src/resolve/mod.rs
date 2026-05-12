@@ -304,11 +304,7 @@ impl WorkspaceIndex {
             .values()
             .filter(|d| {
                 matches!(d.symbol.kind, SymbolKind::Function | SymbolKind::Event)
-                    && !d
-                        .symbol
-                        .signature
-                        .as_deref()
-                        .is_some_and(|s| s.starts_with("exec ") || s.starts_with("quest "))
+                    && !matches!(d.symbol.flavour.as_deref(), Some("exec") | Some("quest"))
             })
             .cloned()
             .collect()
@@ -1046,28 +1042,20 @@ fn completion_members_inner(
         .line_index
         .position_to_byte(&document.source, position)?;
 
-    let src = document.source.as_bytes();
-
-    // Skip back over ident chars (cursor may be inside a partial member name).
-    let mut scan = byte_offset;
-    while scan > 0 && is_ident_byte(src[scan - 1]) {
-        scan -= 1;
-    }
-
-    // The character immediately before the (possibly partial) member name must be '.'.
-    let dot_byte = scan.checked_sub(1)?;
-    if src.get(dot_byte) != Some(&b'.') {
-        return None;
-    }
-
-    let before_dot = dot_byte.checked_sub(1)?;
     let root = document.tree.root_node();
-    let node = root.descendant_for_byte_range(before_dot, before_dot)?;
-    let expr = climb_to_expression(node);
+    let access_node = [byte_offset, byte_offset.saturating_sub(1)]
+        .into_iter()
+        .filter_map(|off| root.descendant_for_byte_range(off, off))
+        .find_map(|n| {
+            find_ancestor_of_kind(n, &["member_access_expr", "incomplete_member_access_expr"])
+        })?;
+
+    let expr = first_named_child(access_node)?;
+    let context_byte = expr.start_byte();
 
     let type_name = match expr.kind() {
         "super_expr" | "super" => {
-            let current_type = current_type_symbol(document, before_dot)?;
+            let current_type = current_type_symbol(document, context_byte)?;
             current_type
                 .detail
                 .as_deref()?
@@ -1075,42 +1063,26 @@ fn completion_members_inner(
                 .to_string()
         }
         "parent_expr" | "parent" => {
-            let current_type = current_type_symbol(document, before_dot)?;
+            let current_type = current_type_symbol(document, context_byte)?;
             current_type
                 .detail
                 .as_deref()?
                 .strip_prefix("in ")?
                 .to_string()
         }
-        _ => infer_expr_type(uri, document, db, expr, before_dot)?,
+        _ => infer_expr_type(uri, document, db, expr, context_byte)?,
     };
 
     Some(db.members_of_tiered(&type_name, AccessLevel::Public))
 }
 
-fn climb_to_expression(node: Node) -> Node {
-    const EXPR_KINDS: &[&str] = &[
-        "ident",
-        "this_expr",
-        "super_expr",
-        "parent_expr",
-        "func_call_expr",
-        "member_access_expr",
-    ];
-    let mut current = node;
+fn find_ancestor_of_kind<'a>(mut node: Node<'a>, kinds: &[&str]) -> Option<Node<'a>> {
     loop {
-        if EXPR_KINDS.contains(&current.kind()) {
-            return current;
+        if kinds.contains(&node.kind()) {
+            return Some(node);
         }
-        match current.parent() {
-            Some(p) => current = p,
-            None => return node,
-        }
+        node = node.parent()?;
     }
-}
-
-fn is_ident_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
 }
 
 pub const BUILTIN_TYPES: &[&str] = &["bool", "byte", "float", "int", "name", "string", "void"];
@@ -1191,13 +1163,15 @@ fn statement_completions_inner(
         .line_index
         .position_to_byte(&document.source, position)?;
 
-    // Dot-access context belongs to completion_members, not here.
-    let src = document.source.as_bytes();
-    let mut scan = byte_offset;
-    while scan > 0 && is_ident_byte(src[scan - 1]) {
-        scan -= 1;
-    }
-    if scan > 0 && src[scan - 1] == b'.' {
+    let root = document.tree.root_node();
+    if [byte_offset, byte_offset.saturating_sub(1)]
+        .into_iter()
+        .filter_map(|off| root.descendant_for_byte_range(off, off))
+        .any(|n| {
+            find_ancestor_of_kind(n, &["member_access_expr", "incomplete_member_access_expr"])
+                .is_some()
+        })
+    {
         return None;
     }
 

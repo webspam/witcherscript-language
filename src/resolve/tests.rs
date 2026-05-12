@@ -1064,6 +1064,7 @@ fn make_env(name: &str, type_name: &str) -> ScriptEnvironment {
                 type_annotation: Some(type_name.to_string()),
                 signature: None,
                 detail: None,
+                flavour: None,
                 annotations: Vec::new(),
                 access: AccessLevel::Public,
                 is_optional: false,

@@ -48,6 +48,7 @@ pub struct Symbol {
     pub type_annotation: Option<String>,
     pub signature: Option<String>,
     pub detail: Option<String>,
+    pub flavour: Option<String>,
     pub annotations: Vec<Annotation>,
     pub access: AccessLevel,
     pub is_optional: bool,
@@ -182,6 +183,7 @@ impl SymbolExtractor<'_> {
             None,
             None,
             detail,
+            None,
             AccessLevel::Public,
         );
 
@@ -208,6 +210,7 @@ impl SymbolExtractor<'_> {
             None,
             None,
             None,
+            None,
             AccessLevel::Public,
         );
 
@@ -225,6 +228,7 @@ impl SymbolExtractor<'_> {
                         Some(enum_id),
                         Vec::new(),
                         SymbolKind::EnumVariant,
+                        None,
                         None,
                         None,
                         None,
@@ -259,6 +263,7 @@ impl SymbolExtractor<'_> {
             None,
             None,
             detail,
+            None,
             AccessLevel::Public,
         );
 
@@ -284,6 +289,7 @@ impl SymbolExtractor<'_> {
         };
         let signature = callable_signature(node, self.source);
         let type_annotation = direct_child_text(node, "type_annot", self.source);
+        let flavour = first_child_kind(node, "func_flavour").map(|n| node_text(n, self.source));
         let access = self.node_access_level(node);
         let id = self.push_symbol(
             node,
@@ -294,6 +300,7 @@ impl SymbolExtractor<'_> {
             type_annotation,
             signature,
             None,
+            flavour,
             access,
         );
 
@@ -355,6 +362,7 @@ impl SymbolExtractor<'_> {
                     type_annotation.clone(),
                     field_signature.clone(),
                     None,
+                    None,
                     access,
                 );
                 if is_optional {
@@ -394,6 +402,7 @@ impl SymbolExtractor<'_> {
         type_annotation: Option<String>,
         signature: Option<String>,
         detail: Option<String>,
+        flavour: Option<String>,
         access: AccessLevel,
     ) -> SymbolId {
         let container_name = container
@@ -420,6 +429,7 @@ impl SymbolExtractor<'_> {
             type_annotation,
             signature,
             detail,
+            flavour,
             annotations,
             access,
             is_optional: false,
