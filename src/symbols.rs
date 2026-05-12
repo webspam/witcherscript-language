@@ -50,6 +50,7 @@ pub struct Symbol {
     pub detail: Option<String>,
     pub annotations: Vec<Annotation>,
     pub access: AccessLevel,
+    pub is_optional: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -81,6 +82,12 @@ impl DocumentSymbols {
                     && byte_offset <= symbol.byte_range.end
             })
             .min_by_key(|symbol| symbol.byte_range.end - symbol.byte_range.start)
+    }
+
+    pub fn mark_optional(&mut self, id: SymbolId) {
+        if let Some(sym) = self.symbols.get_mut(id.0) {
+            sym.is_optional = true;
+        }
     }
 
     fn push(&mut self, mut symbol: Symbol) -> SymbolId {
@@ -327,11 +334,19 @@ impl SymbolExtractor<'_> {
             None
         };
         let access = self.node_access_level(node);
+        let is_optional = {
+            let mut c = node.walk();
+            let result = node.children(&mut c).any(|child| {
+                child.kind() == "specifier"
+                    && &self.source[child.start_byte()..child.end_byte()] == "optional"
+            });
+            result
+        };
         let mut cursor = node.walk();
 
         for child in node.children(&mut cursor) {
             if child.kind() == "ident" {
-                self.push_symbol(
+                let id = self.push_symbol(
                     node,
                     child,
                     container,
@@ -342,6 +357,9 @@ impl SymbolExtractor<'_> {
                     None,
                     access,
                 );
+                if is_optional {
+                    self.symbols.mark_optional(id);
+                }
             }
         }
     }
@@ -404,6 +422,7 @@ impl SymbolExtractor<'_> {
             detail,
             annotations,
             access,
+            is_optional: false,
         })
     }
 

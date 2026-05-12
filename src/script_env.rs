@@ -93,6 +93,7 @@ pub fn parse_script_environment(ini_path: &Path) -> Option<ScriptEnvironment> {
                 detail: None,
                 annotations: Vec::new(),
                 access: AccessLevel::Public,
+                is_optional: false,
             },
         });
     }
