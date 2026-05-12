@@ -1682,3 +1682,42 @@ fn statement_completions_no_this_in_free_function() {
         "super must not be available in a free function"
     );
 }
+
+#[test]
+fn statement_completions_empty_after_dot_in_class_method() {
+    // Regression: typing `someVar.` inside a class method must not trigger
+    // statement completions — that belongs to completion_members.
+    let source = concat!(
+        "class CExample {\n",
+        "  var mField : int;\n",
+        "  function Test() {\n",
+        "    var local : CExample;\n",
+        "    local.\n",
+        "  }\n",
+        "}\n",
+    );
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // Cursor right after the dot on line 4 ("    local." = chars 0-9, dot at 9, cursor at 10).
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 4,
+            character: 10,
+        },
+    );
+    assert!(
+        result.locals.is_empty()
+            && result.members.is_empty()
+            && result.globals.is_empty()
+            && !result.has_this
+            && !result.has_super,
+        "dot-access context must not produce statement completions"
+    );
+}

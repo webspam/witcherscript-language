@@ -1191,6 +1191,16 @@ fn statement_completions_inner(
         .line_index
         .position_to_byte(&document.source, position)?;
 
+    // Dot-access context belongs to completion_members, not here.
+    let src = document.source.as_bytes();
+    let mut scan = byte_offset;
+    while scan > 0 && is_ident_byte(src[scan - 1]) {
+        scan -= 1;
+    }
+    if scan > 0 && src[scan - 1] == b'.' {
+        return None;
+    }
+
     let callable = document.symbols.enclosing_symbol_at(
         byte_offset,
         &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
