@@ -615,6 +615,11 @@ impl LanguageServer for Backend {
             if stmt.has_super {
                 items.push(this_super_item("super"));
             }
+            items.push(keyword_snippet_item(
+                "var",
+                "var ${1:name} : ${2:Type};",
+                "0_var",
+            ));
             for def in &stmt.locals {
                 let params = db.parameters_of(&def.uri, def.symbol.id);
                 let mut item = completion_item(def, &params);
@@ -1006,6 +1011,17 @@ fn this_super_item(name: &str) -> CompletionItem {
         label: name.to_string(),
         kind: Some(CompletionItemKind::VARIABLE),
         sort_text: Some(format!("0_{name}")),
+        ..CompletionItem::default()
+    }
+}
+
+fn keyword_snippet_item(label: &str, snippet: &str, sort_text: &str) -> CompletionItem {
+    CompletionItem {
+        label: label.to_string(),
+        kind: Some(CompletionItemKind::KEYWORD),
+        insert_text: Some(snippet.to_string()),
+        insert_text_format: Some(InsertTextFormat::SNIPPET),
+        sort_text: Some(sort_text.to_string()),
         ..CompletionItem::default()
     }
 }
