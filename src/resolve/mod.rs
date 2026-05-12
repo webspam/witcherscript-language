@@ -90,6 +90,14 @@ impl<'a> SymbolDb<'a> {
         }
         seen.into_values().collect()
     }
+
+    pub fn parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<String> {
+        let params = self.workspace.parameters_of(uri, callable_id);
+        if !params.is_empty() {
+            return params;
+        }
+        self.base.parameters_of(uri, callable_id)
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -232,6 +240,21 @@ impl WorkspaceIndex {
 
     pub fn members_of(&self, container_name: &str, min_access: AccessLevel) -> Vec<Definition> {
         self.members_of_chain(container_name, 0, min_access)
+    }
+
+    pub fn parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<String> {
+        let Some(symbols) = self.documents.get(uri) else {
+            return vec![];
+        };
+        symbols
+            .iter()
+            .filter(|s| {
+                s.kind == SymbolKind::Parameter
+                    && s.container == Some(callable_id)
+                    && !s.is_optional
+            })
+            .map(|s| s.name.clone())
+            .collect()
     }
 
     fn members_of_chain(

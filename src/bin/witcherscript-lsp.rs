@@ -580,7 +580,10 @@ impl LanguageServer for Backend {
         let member_items: Vec<CompletionItem> =
             completion_members(uri.as_str(), document, &db, pos)
                 .iter()
-                .map(completion_item)
+                .map(|def| {
+                    let params = db.parameters_of(&def.uri, def.symbol.id);
+                    completion_item(def, &params)
+                })
                 .collect();
         if !member_items.is_empty() {
             return Ok(Some(CompletionResponse::Array(member_items)));
@@ -887,7 +890,7 @@ fn source_position(position: Position) -> SourcePosition {
     }
 }
 
-fn completion_item(definition: &Definition) -> CompletionItem {
+fn completion_item(definition: &Definition, params: &[String]) -> CompletionItem {
     let symbol = &definition.symbol;
     let is_callable = matches!(
         symbol.kind,
@@ -904,10 +907,23 @@ fn completion_item(definition: &Definition) -> CompletionItem {
         .clone()
         .or_else(|| symbol.type_annotation.clone());
     let (insert_text, insert_text_format) = if is_callable {
-        (
-            Some(format!("{}($1)", symbol.name)),
-            Some(InsertTextFormat::SNIPPET),
-        )
+        if params.is_empty() {
+            (
+                Some(format!("{}()", symbol.name)),
+                Some(InsertTextFormat::SNIPPET),
+            )
+        } else {
+            let args = params
+                .iter()
+                .enumerate()
+                .map(|(i, name)| format!("${{{}:{}}}", i + 1, name))
+                .collect::<Vec<_>>()
+                .join(", ");
+            (
+                Some(format!("{}({})$0", symbol.name, args)),
+                Some(InsertTextFormat::SNIPPET),
+            )
+        }
     } else {
         (None, None)
     };
@@ -1316,9 +1332,55 @@ mod tests {
         );
 
         assert!(!members.is_empty(), "should have completion members");
-        let item = completion_item(&members[0]);
+        let item = completion_item(&members[0], &[]);
         assert_eq!(item.label, "DoThing");
         assert_eq!(item.kind, Some(CompletionItemKind::METHOD));
+        assert_eq!(item.insert_text.as_deref(), Some("DoThing()"));
+    }
+
+    #[test]
+    fn completion_item_snippet_includes_param_placeholders() {
+        use tower_lsp::lsp_types::{CompletionItemKind, InsertTextFormat};
+        use witcherscript_parser::resolve::{completion_members, SymbolDb, WorkspaceIndex};
+
+        let source = concat!(
+            "class CExample {\n",
+            "  public function Find(findName : string, range : float) : int {}\n",
+            "}\n",
+            "function Test() {\n",
+            "  var e : CExample;\n",
+            "  e.\n",
+            "}\n",
+        );
+        let document = parse_document(source).expect("document should parse");
+        let mut workspace = WorkspaceIndex::default();
+        workspace.update_document("file:///example.ws", &document);
+
+        let base = WorkspaceIndex::default();
+        let db = SymbolDb::new(&workspace, &base);
+        let members = completion_members(
+            "file:///example.ws",
+            &document,
+            &db,
+            SourcePosition {
+                line: 5,
+                character: 4,
+            },
+        );
+
+        let find_def = members
+            .iter()
+            .find(|d| d.symbol.name == "Find")
+            .expect("Find should appear in completions");
+        let params = db.parameters_of(&find_def.uri, find_def.symbol.id);
+        let item = completion_item(find_def, &params);
+
+        assert_eq!(item.kind, Some(CompletionItemKind::METHOD));
+        assert_eq!(item.insert_text_format, Some(InsertTextFormat::SNIPPET));
+        assert_eq!(
+            item.insert_text.as_deref(),
+            Some("Find(${1:findName}, ${2:range})$0")
+        );
     }
 
     #[test]

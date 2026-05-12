@@ -1046,6 +1046,7 @@ fn make_env(name: &str, type_name: &str) -> ScriptEnvironment {
                 detail: None,
                 annotations: Vec::new(),
                 access: AccessLevel::Public,
+                is_optional: false,
             },
         }],
     }
@@ -1142,4 +1143,101 @@ fn local_var_with_same_name_as_script_global_resolves_to_local() {
         def.uri, "file:///r4game.ws",
         "should not redirect to class when a local shadows the global"
     );
+}
+
+#[test]
+fn parameters_of_returns_names_in_source_order() {
+    let doc = parse_document(
+        "function Find(findName : string, range : float, shouldScanAllObjects : bool) : int {}",
+    )
+    .expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let def = db.find_top_level("Find").expect("Find should be indexed");
+    let params = db.parameters_of(&def.uri, def.symbol.id);
+
+    assert_eq!(params, vec!["findName", "range", "shouldScanAllObjects"]);
+}
+
+#[test]
+fn parameters_of_returns_empty_for_zero_param_function() {
+    let doc = parse_document("function NoArgs() {}").expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let def = db
+        .find_top_level("NoArgs")
+        .expect("NoArgs should be indexed");
+    let params = db.parameters_of(&def.uri, def.symbol.id);
+
+    assert!(params.is_empty());
+}
+
+#[test]
+fn parameters_of_works_for_class_method() {
+    let doc = parse_document("class CPlayer { function GetHealth(modifier : float) : int {} }")
+        .expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let def = db
+        .find_member("CPlayer", "GetHealth", AccessLevel::Public)
+        .expect("GetHealth should be indexed");
+    let params = db.parameters_of(&def.uri, def.symbol.id);
+
+    assert_eq!(params, vec!["modifier"]);
+}
+
+#[test]
+fn parameters_of_works_for_event() {
+    let doc = parse_document("class C { event OnSpawn(spawnData : int) {} }")
+        .expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let def = db
+        .find_member("C", "OnSpawn", AccessLevel::Public)
+        .expect("OnSpawn should be indexed");
+    let params = db.parameters_of(&def.uri, def.symbol.id);
+
+    assert_eq!(params, vec!["spawnData"]);
+}
+
+#[test]
+fn parameters_of_skips_optional_params() {
+    let doc = parse_document("function Find(name : string, optional range : float) : int {}")
+        .expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let def = db.find_top_level("Find").expect("Find should be indexed");
+    let params = db.parameters_of(&def.uri, def.symbol.id);
+
+    assert_eq!(params, vec!["name"]);
+}
+
+#[test]
+fn parameters_of_multi_name_group() {
+    let doc =
+        parse_document("function Multi(a, b : int, c : string) {}").expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let def = db.find_top_level("Multi").expect("Multi should be indexed");
+    let params = db.parameters_of(&def.uri, def.symbol.id);
+
+    assert_eq!(params, vec!["a", "b", "c"]);
 }
