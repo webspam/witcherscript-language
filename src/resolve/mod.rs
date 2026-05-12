@@ -1218,10 +1218,22 @@ fn is_after_extends_before_body(decl_node: Node, byte_offset: usize) -> bool {
         match child.kind() {
             "extends" => saw_extends = true,
             "class_def" => return false,
+            // When _class_base fails (extends without a following ident), tree-sitter
+            // wraps the stranded 'extends' keyword in an ERROR child of the decl node.
+            // Scan one level into that ERROR to detect the keyword.
+            "ERROR" if node_contains_kind(child, "extends") => {
+                saw_extends = true;
+            }
             _ => {}
         }
     }
     saw_extends
+}
+
+fn node_contains_kind(node: Node, kind: &str) -> bool {
+    let mut cursor = node.walk();
+    let found = node.children(&mut cursor).any(|c| c.kind() == kind);
+    found
 }
 
 fn error_node_has_class_extends(error_node: Node, byte_offset: usize) -> bool {

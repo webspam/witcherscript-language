@@ -2133,6 +2133,33 @@ fn extends_completions_excludes_enums_and_structs() {
 }
 
 #[test]
+fn extends_completions_empty_between_extends_and_class_body() {
+    // "class C extends  {}" — two spaces between 'extends' and '{'
+    // Cursor is in the second space (line 1, char 16). No base class name has been typed,
+    // but the body {} is already present. Must not fire completions.
+    let source = "class CExample {}\nclass C extends  {}\n";
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::extends_completions(
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 16,
+        },
+    );
+    let names: Vec<&str> = result.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        names.contains(&"CExample"),
+        "extends completions must fire when cursor is in whitespace between 'extends' and the class body, so the user can pick a base class"
+    );
+}
+
+#[test]
 fn parameter_type_annotation_fires_type_completions() {
     // `CParam` is in the parameter type annotation — must trigger type completions
     // regardless of whether the enclosing callable is a free function or a method.
