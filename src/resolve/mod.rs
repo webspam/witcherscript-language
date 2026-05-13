@@ -1364,6 +1364,129 @@ fn statement_completions_inner(
     })
 }
 
+pub struct ExpressionCompletions {
+    pub locals: Vec<Definition>,
+    pub members: Vec<Definition>,
+    pub globals: Vec<Definition>,
+    pub has_this: bool,
+    pub has_super: bool,
+}
+
+pub fn expression_completions(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Option<ExpressionCompletions> {
+    expression_completions_inner(uri, document, db, position)
+}
+
+fn is_expression_boundary(node: Node) -> bool {
+    matches!(
+        node.kind(),
+        "(" | ","
+            | "="
+            | "return"
+            | "assign_op_direct"
+            | "assign_op_sum"
+            | "assign_op_diff"
+            | "assign_op_mult"
+            | "assign_op_div"
+            | "assign_op_bitand"
+            | "assign_op_bitor"
+            | "binary_op_or"
+            | "binary_op_and"
+            | "binary_op_bitor"
+            | "binary_op_bitand"
+            | "binary_op_bitxor"
+            | "binary_op_eq"
+            | "binary_op_neq"
+            | "binary_op_gt"
+            | "binary_op_ge"
+            | "binary_op_lt"
+            | "binary_op_le"
+            | "binary_op_diff"
+            | "binary_op_sum"
+            | "binary_op_mod"
+            | "binary_op_div"
+            | "binary_op_mult"
+            | "unary_op_neg"
+            | "unary_op_not"
+            | "unary_op_bitnot"
+            | "unary_op_plus"
+    )
+}
+
+fn expression_completions_inner(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Option<ExpressionCompletions> {
+    let byte_offset = document
+        .line_index
+        .position_to_byte(&document.source, position)?;
+
+    let root = document.tree.root_node();
+    let nodes = nodes_at_offset(root, byte_offset);
+
+    let prev = node_before_byte(root, document.source.as_bytes(), byte_offset);
+    let at_expr_start = prev.is_some_and(is_expression_boundary);
+    let writing_expr_token = nodes
+        .last()
+        .filter(|&n| is_kind_or_error_wrapped_kind(*n, &["ident"]))
+        .and_then(|n| node_before_byte(root, document.source.as_bytes(), n.start_byte()))
+        .is_some_and(is_expression_boundary);
+    if !at_expr_start && !writing_expr_token {
+        return None;
+    }
+
+    let in_func_body = nodes
+        .iter()
+        .any(|n| find_ancestor_of_kind(*n, &["func_block"]).is_some());
+    if !in_func_body {
+        return None;
+    }
+
+    let callable = document.symbols.enclosing_symbol_at(
+        byte_offset,
+        &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
+    )?;
+
+    let locals: Vec<Definition> = document
+        .symbols
+        .children_of(Some(callable.id))
+        .filter(|sym| {
+            matches!(sym.kind, SymbolKind::Variable | SymbolKind::Parameter)
+                && sym.selection_byte_range.start <= byte_offset
+        })
+        .cloned()
+        .map(|symbol| Definition {
+            uri: uri.to_string(),
+            symbol,
+        })
+        .collect();
+
+    let current_type = current_type_symbol(document, byte_offset);
+
+    let members: Vec<Definition> = current_type
+        .map(|t| db.members_of(&t.name, AccessLevel::Private))
+        .unwrap_or_default();
+
+    let has_this = current_type.is_some();
+    let has_super = current_type.and_then(|t| t.base_class.as_deref()).is_some();
+
+    let globals = db.all_top_level_callables();
+
+    Some(ExpressionCompletions {
+        locals,
+        members,
+        globals,
+        has_this,
+        has_super,
+    })
+}
+
 #[allow(dead_code)]
 fn symbol_id(symbol: &Symbol) -> SymbolId {
     symbol.id

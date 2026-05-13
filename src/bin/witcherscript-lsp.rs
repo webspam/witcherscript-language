@@ -35,9 +35,9 @@ use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_
 use witcherscript_parser::formatter::format_document;
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{
-    class_body_keyword_completions, completion_members, extends_completions, find_references,
-    hover_text, resolve_definition, statement_completions, type_completions, Definition, SymbolDb,
-    WorkspaceIndex, BUILTIN_TYPES,
+    class_body_keyword_completions, completion_members, expression_completions,
+    extends_completions, find_references, hover_text, resolve_definition, statement_completions,
+    type_completions, Definition, SymbolDb, WorkspaceIndex, BUILTIN_TYPES,
 };
 use witcherscript_parser::script_env::{parse_script_environment, ScriptEnvironment};
 use witcherscript_parser::semantic_tokens::{
@@ -689,6 +689,37 @@ impl LanguageServer for Backend {
                 items.push(item);
             }
             for def in &stmt.globals {
+                let params = db.parameters_of(&def.uri, def.symbol.id);
+                let mut item = completion_item(def, &params);
+                item.sort_text = Some(format!("2_{}", def.symbol.name));
+                items.push(item);
+            }
+            return Ok(Some(CompletionResponse::Array(items)));
+        }
+
+        if let Some(expr) = expression_completions(uri.as_str(), document, &db, pos) {
+            let mut items: Vec<CompletionItem> = Vec::new();
+            if expr.has_this {
+                items.push(this_super_item("this"));
+            }
+            if expr.has_super {
+                items.push(this_super_item("super"));
+            }
+            items.push(keyword_snippet_item("true", "true", "0_true"));
+            items.push(keyword_snippet_item("false", "false", "0_false"));
+            for def in &expr.locals {
+                let params = db.parameters_of(&def.uri, def.symbol.id);
+                let mut item = completion_item(def, &params);
+                item.sort_text = Some(format!("0_{}", def.symbol.name));
+                items.push(item);
+            }
+            for def in &expr.members {
+                let params = db.parameters_of(&def.uri, def.symbol.id);
+                let mut item = completion_item(def, &params);
+                item.sort_text = Some(format!("1_{}", def.symbol.name));
+                items.push(item);
+            }
+            for def in &expr.globals {
                 let params = db.parameters_of(&def.uri, def.symbol.id);
                 let mut item = completion_item(def, &params);
                 item.sort_text = Some(format!("2_{}", def.symbol.name));
