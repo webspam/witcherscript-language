@@ -1851,6 +1851,122 @@ fn statement_completions_in_switch_false_outside_switch() {
 }
 
 #[test]
+fn statement_completions_in_loop_true_inside_for_body() {
+    // loop_stmts.ws line 3:0 — blank line inside for body; prev token is `{` at byte 67.
+    let source = include_str!("../../tests/fixtures/valid/loop_stmts.ws");
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 3,
+            character: 0,
+        },
+    );
+    assert!(result.in_loop, "in_loop must be true inside a for body");
+}
+
+#[test]
+fn statement_completions_in_loop_true_inside_while_body() {
+    // loop_stmts.ws line 6:0 — blank line inside while body; prev token is `{` at byte 90.
+    let source = include_str!("../../tests/fixtures/valid/loop_stmts.ws");
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 6,
+            character: 0,
+        },
+    );
+    assert!(result.in_loop, "in_loop must be true inside a while body");
+}
+
+#[test]
+fn statement_completions_in_loop_true_inside_do_while_body() {
+    // loop_stmts.ws line 9:0 — blank line inside do body; prev token is `{` at byte 102.
+    let source = include_str!("../../tests/fixtures/valid/loop_stmts.ws");
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 9,
+            character: 0,
+        },
+    );
+    assert!(
+        result.in_loop,
+        "in_loop must be true inside a do-while body"
+    );
+}
+
+#[test]
+fn statement_completions_in_loop_true_inside_nested_if_in_loop() {
+    // loop_stmts.ws line 13:0 — blank line inside if body nested in a for loop.
+    // break/continue must still be offered because the enclosing loop is accessible.
+    // prev token is `{` at byte 171.
+    let source = include_str!("../../tests/fixtures/valid/loop_stmts.ws");
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 13,
+            character: 0,
+        },
+    );
+    assert!(
+        result.in_loop,
+        "in_loop must be true inside an if nested within a for loop"
+    );
+}
+
+#[test]
+fn statement_completions_in_loop_false_outside_loop() {
+    // Plain function body — in_loop must be false.
+    let source = "function Test() {\n  \n}\n";
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 2,
+        },
+    );
+    assert!(
+        !result.in_loop,
+        "in_loop must be false in a plain function body"
+    );
+}
+
+#[test]
 fn statement_completions_empty_after_leading_dot_in_method() {
     // A bare '.' at the start of a statement has no valid LHS — tree-sitter
     // produces an incomplete_member_access_expr with a missing receiver.

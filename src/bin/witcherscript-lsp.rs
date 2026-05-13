@@ -674,6 +674,11 @@ impl LanguageServer for Backend {
             if stmt.in_switch {
                 items.push(keyword_snippet_item("case", "case ${1:val}: $0"));
                 items.push(keyword_snippet_item("default", "default: $0"));
+                items.push(keyword_snippet_item("break", "break;"));
+            }
+            if stmt.in_loop {
+                items.push(keyword_snippet_item("break", "break;"));
+                items.push(keyword_snippet_item("continue", "continue;"));
             }
             for def in &stmt.locals {
                 let params = db.parameters_of(&def.uri, def.symbol.id);

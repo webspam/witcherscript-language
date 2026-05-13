@@ -1287,6 +1287,7 @@ pub struct StatementCompletions {
     pub has_this: bool,
     pub has_super: bool,
     pub in_switch: bool,
+    pub in_loop: bool,
 }
 
 pub fn statement_completions(
@@ -1302,6 +1303,7 @@ pub fn statement_completions(
         has_this: false,
         has_super: false,
         in_switch: false,
+        in_loop: false,
     })
 }
 
@@ -1379,6 +1381,10 @@ fn statement_completions_inner(
         .iter()
         .any(|n| nearest_enclosing_block(*n).is_some_and(|b| b.kind() == "switch_block"));
 
+    let in_loop = nodes
+        .iter()
+        .any(|n| find_ancestor_of_kind(*n, &["for_stmt", "while_stmt", "do_while_stmt"]).is_some());
+
     let globals = db.all_top_level_callables();
 
     Some(StatementCompletions {
@@ -1388,6 +1394,7 @@ fn statement_completions_inner(
         has_this,
         has_super,
         in_switch,
+        in_loop,
     })
 }
 
