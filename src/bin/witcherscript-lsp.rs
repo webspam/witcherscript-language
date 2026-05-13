@@ -37,8 +37,8 @@ use witcherscript_parser::line_index::{SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{
     after_wrap_method_completions, annotation_arg_completions, class_body_keyword_completions,
     completion_members, expression_completions, extends_completions, find_references, hover_text,
-    resolve_definition, statement_completions, type_completions, Definition, SymbolDb,
-    WorkspaceIndex, BUILTIN_TYPES,
+    resolve_definition, statement_completions, type_completions, wrap_method_snippet,
+    AfterWrapMethodCompletions, Definition, SymbolDb, WorkspaceIndex, BUILTIN_TYPES,
 };
 use witcherscript_parser::script_env::{parse_script_environment, ScriptEnvironment};
 use witcherscript_parser::semantic_tokens::{
@@ -618,13 +618,30 @@ impl LanguageServer for Backend {
             )));
         }
 
-        if let Some(wrap) = after_wrap_method_completions(document, &db, pos) {
-            let mut items = vec![keyword_snippet_item("function", "function")];
-            for def in &wrap.class_methods {
-                let params = db.parameters_of(&def.uri, def.symbol.id);
-                items.push(completion_item(def, &params));
+        match after_wrap_method_completions(document, &db, pos) {
+            Some(AfterWrapMethodCompletions::FunctionKeyword) => {
+                return Ok(Some(CompletionResponse::Array(vec![keyword_snippet_item(
+                    "function", "function",
+                )])));
             }
-            return Ok(Some(CompletionResponse::Array(items)));
+            Some(AfterWrapMethodCompletions::MethodList(methods)) => {
+                let items = methods
+                    .iter()
+                    .map(|def| {
+                        let snippet = wrap_method_snippet(def, &db);
+                        CompletionItem {
+                            label: def.symbol.name.clone(),
+                            kind: Some(CompletionItemKind::METHOD),
+                            detail: def.symbol.signature.clone(),
+                            insert_text: Some(snippet),
+                            insert_text_format: Some(InsertTextFormat::SNIPPET),
+                            ..CompletionItem::default()
+                        }
+                    })
+                    .collect();
+                return Ok(Some(CompletionResponse::Array(items)));
+            }
+            None => {}
         }
 
         let extends = extends_completions(document, &db, pos);

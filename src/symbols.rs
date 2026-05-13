@@ -54,6 +54,7 @@ pub struct Symbol {
     pub annotations: Vec<Annotation>,
     pub access: AccessLevel,
     pub is_optional: bool,
+    pub is_out: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -90,6 +91,12 @@ impl DocumentSymbols {
     pub fn mark_optional(&mut self, id: SymbolId) {
         if let Some(sym) = self.symbols.get_mut(id.0) {
             sym.is_optional = true;
+        }
+    }
+
+    pub fn mark_out(&mut self, id: SymbolId) {
+        if let Some(sym) = self.symbols.get_mut(id.0) {
+            sym.is_out = true;
         }
     }
 
@@ -362,6 +369,14 @@ impl SymbolExtractor<'_> {
             });
             result
         };
+        let is_out = {
+            let mut c = node.walk();
+            let result = node.children(&mut c).any(|child| {
+                child.kind() == "specifier"
+                    && &self.source[child.start_byte()..child.end_byte()] == "out"
+            });
+            result
+        };
         let mut cursor = node.walk();
 
         for child in node.children(&mut cursor) {
@@ -382,6 +397,9 @@ impl SymbolExtractor<'_> {
                 );
                 if is_optional {
                     self.symbols.mark_optional(id);
+                }
+                if is_out {
+                    self.symbols.mark_out(id);
                 }
             }
         }
@@ -452,6 +470,7 @@ impl SymbolExtractor<'_> {
             annotations,
             access,
             is_optional: false,
+            is_out: false,
         })
     }
 

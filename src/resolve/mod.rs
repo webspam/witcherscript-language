@@ -185,6 +185,14 @@ impl<'a> SymbolDb<'a> {
         }
         self.base.parameters_of(uri, callable_id)
     }
+
+    pub fn full_parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<Symbol> {
+        let params = self.workspace.full_parameters_of(uri, callable_id);
+        if !params.is_empty() {
+            return params;
+        }
+        self.base.full_parameters_of(uri, callable_id)
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -381,6 +389,17 @@ impl WorkspaceIndex {
                     && !s.is_optional
             })
             .map(|s| s.name.clone())
+            .collect()
+    }
+
+    pub fn full_parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<Symbol> {
+        let Some(symbols) = self.documents.get(uri) else {
+            return vec![];
+        };
+        symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Parameter && s.container == Some(callable_id))
+            .cloned()
             .collect()
     }
 
@@ -1229,8 +1248,12 @@ fn is_inside_annotation_parens(annotation: Node, byte_offset: usize) -> bool {
     saw_open
 }
 
-pub struct AfterWrapMethodCompletions {
-    pub class_methods: Vec<Definition>,
+#[derive(Debug)]
+pub enum AfterWrapMethodCompletions {
+    /// Cursor is directly after `@wrapMethod(CClass)` — only `function` is valid next.
+    FunctionKeyword,
+    /// Cursor is after `@wrapMethod(CClass)\nfunction ` — offer methods of the class.
+    MethodList(Vec<Definition>),
 }
 
 pub fn after_wrap_method_completions(
@@ -1245,22 +1268,56 @@ pub fn after_wrap_method_completions(
     let root = document.tree.root_node();
     let prev = node_before_byte(root, document.source.as_bytes(), byte_offset)?;
 
-    let class_name = wrap_method_class_from_closing_paren(prev, &document.source)?;
+    // Stage 2: prev is the `function` keyword that follows a @wrapMethod annotation.
+    if prev.kind() == "function" {
+        let before_fn = node_before_byte(root, document.source.as_bytes(), prev.start_byte())?;
+        let class_name = wrap_method_class_from_closing_paren(before_fn, &document.source)?;
+        return Some(AfterWrapMethodCompletions::MethodList(
+            direct_methods_of_class(class_name, db)?,
+        ));
+    }
 
-    let class_def = db.find_top_level(&class_name)?;
+    // Stage 1: prev is `)` closing a @wrapMethod(CClass) annotation.
+    let class_name = wrap_method_class_from_closing_paren(prev, &document.source)?;
+    direct_methods_of_class(class_name, db)?;
+    Some(AfterWrapMethodCompletions::FunctionKeyword)
+}
+
+pub fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String {
+    let params = db.full_parameters_of(&method.uri, method.symbol.id);
+    let param_list = params
+        .iter()
+        .map(|p| {
+            let mut s = String::new();
+            if p.is_optional {
+                s.push_str("optional ");
+            }
+            if p.is_out {
+                s.push_str("out ");
+            }
+            s.push_str(&p.name);
+            if let Some(ty) = &p.type_annotation {
+                s.push_str(" : ");
+                s.push_str(ty);
+            }
+            s
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{}({}) {{\n\t$0\n}}", method.symbol.name, param_list)
+}
+
+fn direct_methods_of_class<'a>(class_name: &'a str, db: &SymbolDb) -> Option<Vec<Definition>> {
+    let class_def = db.find_top_level(class_name)?;
     if class_def.symbol.kind != SymbolKind::Class {
         return None;
     }
-
-    let methods = db
-        .direct_members_of(&class_name, AccessLevel::Private)
-        .into_iter()
-        .filter(|def| matches!(def.symbol.kind, SymbolKind::Method | SymbolKind::Event))
-        .collect();
-
-    Some(AfterWrapMethodCompletions {
-        class_methods: methods,
-    })
+    Some(
+        db.direct_members_of(class_name, AccessLevel::Private)
+            .into_iter()
+            .filter(|def| matches!(def.symbol.kind, SymbolKind::Method | SymbolKind::Event))
+            .collect(),
+    )
 }
 
 fn wrap_method_class_from_closing_paren<'a>(node: Node, source: &'a str) -> Option<&'a str> {
