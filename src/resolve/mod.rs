@@ -1287,7 +1287,10 @@ pub fn after_wrap_method_completions(
 
     // Stage 1: `)` of annotation is the boundary — `function` keyword not yet complete.
     let class_name = wrap_method_class_from_closing_paren(effective_prev, &document.source)?;
-    direct_methods_of_class(class_name, db)?;
+    let class_def = db.find_top_level(class_name)?;
+    if class_def.symbol.kind != SymbolKind::Class {
+        return None;
+    }
     Some(AfterWrapMethodCompletions::FunctionKeyword)
 }
 
