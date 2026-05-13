@@ -176,7 +176,7 @@ impl Visit for EventVisitor {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Backend {
     client: Client,
     log_level: Arc<AtomicU8>,
@@ -275,11 +275,14 @@ impl LanguageServer for Backend {
     }
 
     async fn initialized(&self, _: InitializedParams) {
-        self.index_workspace().await;
-        // Pull witcherscript.gameDirectory from the client's settings. This may
-        // override the value from initializationOptions.
-        self.fetch_config().await;
-        self.index_base_scripts().await;
+        let backend = self.clone();
+        tokio::spawn(async move {
+            backend.index_workspace().await;
+            // Pull witcherscript.gameDirectory from the client's settings. This may
+            // override the value from initializationOptions.
+            backend.fetch_config().await;
+            backend.index_base_scripts().await;
+        });
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -805,26 +808,32 @@ impl Backend {
         };
 
         let file_count = files.len();
-        let mut indexed = 0usize;
-        let mut index = self.workspace_index.lock().await;
-        let mut docs = self.workspace_documents.lock().await;
-        for path in files {
-            let Ok(source) = fs::read_to_string(&path) else {
-                warn!(path = %path.display(), "failed to read workspace file");
-                continue;
-            };
-            let Ok(document) = parse_document(source) else {
-                warn!(path = %path.display(), "failed to parse workspace file");
-                continue;
-            };
-            let Ok(uri) = Url::from_file_path(&path) else {
-                warn!(path = %path.display(), "failed to convert path to URI");
-                continue;
-            };
-            debug!(uri = %uri, "indexed workspace file");
-            index.update_document(uri.as_str(), &document);
-            docs.insert(uri.to_string(), document);
-            indexed += 1;
+
+        let parsed: Vec<(String, ParsedDocument)> = files
+            .iter()
+            .filter_map(|path| {
+                let source = fs::read_to_string(path)
+                    .map_err(|_| warn!(path = %path.display(), "failed to read workspace file"))
+                    .ok()?;
+                let document = parse_document(source)
+                    .map_err(|_| warn!(path = %path.display(), "failed to parse workspace file"))
+                    .ok()?;
+                let uri = Url::from_file_path(path)
+                    .map_err(|_| warn!(path = %path.display(), "failed to convert path to URI"))
+                    .ok()?;
+                debug!(uri = %uri, "indexed workspace file");
+                Some((uri.to_string(), document))
+            })
+            .collect();
+
+        let indexed = parsed.len();
+        {
+            let mut index = self.workspace_index.lock().await;
+            let mut docs = self.workspace_documents.lock().await;
+            for (uri, document) in parsed {
+                index.update_document(uri.as_str(), &document);
+                docs.insert(uri, document);
+            }
         }
 
         info!(
