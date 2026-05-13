@@ -102,104 +102,24 @@ fn split_binary_condition(node: Node, source: &str) -> Vec<(String, Option<&'sta
     parts
 }
 
-fn split_at_commas(s: &str) -> Vec<String> {
-    let mut parts = Vec::new();
-    let mut current = String::new();
-    let mut depth: i32 = 0;
-    let bytes = s.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'(' | b'[' => {
-                depth += 1;
-                current.push(bytes[i] as char);
-                i += 1;
-            }
-            b')' | b']' => {
-                depth -= 1;
-                current.push(bytes[i] as char);
-                i += 1;
-            }
-            b'"' => {
-                current.push('"');
-                i += 1;
-                while i < bytes.len() {
-                    let sb = bytes[i];
-                    current.push(sb as char);
-                    i += 1;
-                    if sb == b'\\' && i < bytes.len() {
-                        current.push(bytes[i] as char);
-                        i += 1;
-                    } else if sb == b'"' {
-                        break;
-                    }
-                }
-            }
-            b'\'' => {
-                current.push('\'');
-                i += 1;
-                while i < bytes.len() {
-                    let sb = bytes[i];
-                    current.push(sb as char);
-                    i += 1;
-                    if sb == b'\'' {
-                        break;
-                    }
-                }
-            }
-            b',' if depth == 0 => {
-                parts.push(current.trim().to_string());
-                current = String::new();
-                i += 1;
-                while i < bytes.len() && bytes[i] == b' ' {
-                    i += 1;
-                }
-            }
-            b => {
-                current.push(b as char);
-                i += 1;
-            }
-        }
-    }
-    let last = current.trim().to_string();
-    if !last.is_empty() {
-        parts.push(last);
-    }
-    parts
-}
-
-fn try_split_call_args(s: &str) -> Option<(String, Vec<String>)> {
-    if !s.ends_with(')') {
+fn try_split_call_args(node: Node, source: &str) -> Option<(String, Vec<String>)> {
+    if node.kind() != "func_call_expr" {
         return None;
     }
-    let bytes = s.as_bytes();
-    let mut depth: i32 = 0;
-    let mut open = None;
-    let mut i = bytes.len();
-    while i > 0 {
-        i -= 1;
-        match bytes[i] {
-            b')' => depth += 1,
-            b'(' => {
-                depth -= 1;
-                if depth == 0 {
-                    open = Some(i);
-                    break;
-                }
-            }
-            _ => {}
-        }
-    }
-    let open = open?;
-    if open == 0 {
-        return None;
-    }
-    let prefix = s[..open].to_string();
-    let args_str = &s[open + 1..s.len() - 1];
-    let args = split_at_commas(args_str);
+    let func = node.child_by_field_name("func")?;
+    let args_node = node.child_by_field_name("args")?;
+    let args: Vec<String> = {
+        let mut cursor = args_node.walk();
+        args_node
+            .children(&mut cursor)
+            .filter(|c| c.kind() != ",")
+            .map(|c| normalize_expr(&source[c.start_byte()..c.end_byte()]))
+            .collect()
+    };
     if args.len() <= 1 {
         return None;
     }
+    let prefix = normalize_expr(&source[func.start_byte()..func.end_byte()]);
     Some((prefix, args))
 }
 
@@ -1474,7 +1394,7 @@ impl<'a> Formatter<'a> {
             let normalized = normalize_expr(self.text(e));
             let indent = self.level * self.indent_unit.len();
             if indent + normalized.len() + 1 > self.line_limit {
-                if let Some((prefix, args)) = try_split_call_args(&normalized) {
+                if let Some((prefix, args)) = try_split_call_args(e, self.source) {
                     self.emit(&prefix);
                     self.emit("(\n");
                     self.level += 1;
