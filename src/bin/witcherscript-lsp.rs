@@ -671,6 +671,10 @@ impl LanguageServer for Backend {
                 "switch",
                 "switch (${1:expr}) {\n\tcase ${2:val}:\n\t\t$0\n\t\tbreak;\n}",
             ));
+            if stmt.in_switch {
+                items.push(keyword_snippet_item("case", "case ${1:val}: $0"));
+                items.push(keyword_snippet_item("default", "default: $0"));
+            }
             for def in &stmt.locals {
                 let params = db.parameters_of(&def.uri, def.symbol.id);
                 let mut item = completion_item(def, &params);

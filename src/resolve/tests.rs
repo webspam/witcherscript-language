@@ -1753,6 +1753,83 @@ fn statement_completions_empty_after_dot_in_class_method() {
 }
 
 #[test]
+fn statement_completions_in_switch_true_at_switch_body_level() {
+    // tests/fixtures/valid/switch_stmt.ws, line 6 (0-indexed: 5), character 0.
+    // Blank line between `break;` (line 5) and `case 2:` (line 7), directly
+    // inside switch_block. Last non-whitespace token before cursor: `;` (byte 77).
+    let source = include_str!("../../tests/fixtures/valid/switch_stmt.ws");
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 5,
+            character: 0,
+        },
+    );
+    assert!(
+        result.in_switch,
+        "in_switch must be true directly inside a switch block"
+    );
+}
+
+#[test]
+fn statement_completions_in_switch_false_inside_nested_block() {
+    // tests/fixtures/valid/switch_stmt.ws, line 9 (0-indexed: 8), character 0.
+    // Blank line inside the if body (func_block at bytes 109..119), which is
+    // itself nested inside the switch_block. Last non-whitespace before cursor:
+    // `{` at byte 109. in_switch must be false here.
+    let source = include_str!("../../tests/fixtures/valid/switch_stmt.ws");
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 8,
+            character: 0,
+        },
+    );
+    assert!(
+        !result.in_switch,
+        "in_switch must be false inside a nested block within a switch"
+    );
+}
+
+#[test]
+fn statement_completions_in_switch_false_outside_switch() {
+    // Plain function body — in_switch must be false.
+    let source = "function Test() {\n  \n}\n";
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 2,
+        },
+    );
+    assert!(
+        !result.in_switch,
+        "in_switch must be false in a plain function body"
+    );
+}
+
+#[test]
 fn statement_completions_empty_after_leading_dot_in_method() {
     // A bare '.' at the start of a statement has no valid LHS — tree-sitter
     // produces an incomplete_member_access_expr with a missing receiver.

@@ -1062,6 +1062,16 @@ fn find_ancestor_of_kind<'a>(mut node: Node<'a>, kinds: &[&str]) -> Option<Node<
     }
 }
 
+fn nearest_enclosing_block<'a>(mut node: Node<'a>) -> Option<Node<'a>> {
+    const BLOCKS: &[&str] = &["func_block", "switch_block", "member_default_val_block"];
+    loop {
+        if BLOCKS.contains(&node.kind()) {
+            return Some(node);
+        }
+        node = node.parent()?;
+    }
+}
+
 fn nodes_at_offset<'a>(root: Node<'a>, byte_offset: usize) -> Vec<Node<'a>> {
     let second = byte_offset.checked_sub(1);
     [Some(byte_offset), second]
@@ -1266,6 +1276,7 @@ pub struct StatementCompletions {
     pub globals: Vec<Definition>,
     pub has_this: bool,
     pub has_super: bool,
+    pub in_switch: bool,
 }
 
 pub fn statement_completions(
@@ -1280,6 +1291,7 @@ pub fn statement_completions(
         globals: vec![],
         has_this: false,
         has_super: false,
+        in_switch: false,
     })
 }
 
@@ -1307,7 +1319,7 @@ fn statement_completions_inner(
                 *n,
                 &[
                     "ident", "var", "this", "super", "if", "else", "do", "while", "for", "switch",
-                    "return",
+                    "return", "case", "default",
                 ],
             )
         })
@@ -1353,6 +1365,10 @@ fn statement_completions_inner(
     let has_this = current_type.is_some();
     let has_super = current_type.and_then(|t| t.base_class.as_deref()).is_some();
 
+    let in_switch = nodes
+        .iter()
+        .any(|n| nearest_enclosing_block(*n).is_some_and(|b| b.kind() == "switch_block"));
+
     let globals = db.all_top_level_callables();
 
     Some(StatementCompletions {
@@ -1361,6 +1377,7 @@ fn statement_completions_inner(
         globals,
         has_this,
         has_super,
+        in_switch,
     })
 }
 
