@@ -492,14 +492,7 @@ fn direct_child_text(node: Node, kind: &str, source: &str) -> Option<String> {
 }
 
 fn callable_signature(node: Node, source: &str) -> Option<String> {
-    let start = first_child_kind(node, "func_flavour")
-        .or_else(|| first_child_kind(node, "function"))
-        .or_else(|| first_child_kind(node, "event"))?;
-    let end = first_child_kind(node, "func_block")
-        .map(|block| block.start_byte())
-        .unwrap_or_else(|| node.end_byte());
-
-    Some(source[start.start_byte()..end].trim().to_string())
+    crate::formatter::render_callable_signature(node, source)
 }
 
 fn base_type(node: Node, source: &str) -> Option<String> {

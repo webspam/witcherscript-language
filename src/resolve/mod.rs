@@ -475,11 +475,7 @@ pub fn hover_text(definition: &Definition) -> String {
 
     match symbol.kind {
         SymbolKind::Method => {
-            let params_and_return = symbol
-                .signature
-                .as_deref()
-                .and_then(|sig| sig.find('(').map(|i| &sig[i..]))
-                .unwrap_or("");
+            let params_and_return = symbol.signature.as_deref().unwrap_or("");
             let class_prefix = symbol
                 .container_name
                 .as_deref()
@@ -512,8 +508,13 @@ pub fn hover_text(definition: &Definition) -> String {
                 SymbolKind::Event => "event",
                 SymbolKind::Method | SymbolKind::Field => unreachable!(),
             };
-            if let Some(signature) = &symbol.signature {
-                lines.push(signature.clone());
+            if let Some(sig) = &symbol.signature {
+                let flavour_prefix = symbol
+                    .flavour
+                    .as_deref()
+                    .map(|f| format!("{f} "))
+                    .unwrap_or_default();
+                lines.push(format!("{flavour_prefix}{label} {}{sig}", symbol.name));
             } else if let Some(type_annotation) = &symbol.type_annotation {
                 lines.push(format!("{label} {} : {type_annotation}", symbol.name));
             } else {

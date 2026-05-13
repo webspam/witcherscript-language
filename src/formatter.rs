@@ -273,6 +273,22 @@ fn is_expr_node(kind: &str) -> bool {
     )
 }
 
+/// Renders the parameter list and return type of a callable declaration node as a
+/// clean, normalised string — comments stripped, whitespace canonical.
+/// Returns `None` if the node has no `func_params` child.
+pub fn render_callable_signature(node: Node, source: &str) -> Option<String> {
+    let f = Formatter {
+        source,
+        indent_unit: String::new(),
+        level: 0,
+        out: String::new(),
+        suppress_next_indent: false,
+        line_limit: usize::MAX,
+        compact_colon: true,
+    };
+    f.render_sig(node)
+}
+
 pub fn format_document(
     root: Node,
     source: &str,
@@ -703,6 +719,43 @@ impl<'a> Formatter<'a> {
 
     fn render_param_group(&self, node: Node) -> String {
         self.render_node(node)
+    }
+
+    fn render_sig(&self, func_node: Node) -> Option<String> {
+        let param_groups: Vec<String> = self
+            .collect_func_param_nodes(func_node)
+            .into_iter()
+            .filter(|n| n.kind() == "func_param_group")
+            .map(|n| self.render_param_group(n))
+            .collect();
+
+        // Guard: no func_params means this isn't a callable we can render.
+        self.child_of_kind(func_node, "func_params")?;
+
+        let ret_str = {
+            let children: Vec<Node> = {
+                let mut c = func_node.walk();
+                func_node.children(&mut c).collect()
+            };
+            let mut past_params = false;
+            let mut past_colon = false;
+            let mut result = String::new();
+            for child in &children {
+                if child.kind() == "func_params" {
+                    past_params = true;
+                }
+                if past_params && child.kind() == ":" && !child.is_missing() {
+                    past_colon = true;
+                }
+                if past_colon && child.kind() == "type_annot" {
+                    result = format!(" : {}", self.text(*child));
+                    break;
+                }
+            }
+            result
+        };
+
+        Some(format!("({}){}", param_groups.join(", "), ret_str))
     }
 
     fn format_class_decl(&mut self, node: Node) {

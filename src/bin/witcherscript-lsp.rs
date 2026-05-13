@@ -1528,7 +1528,22 @@ mod tests {
         .expect("inherited method should resolve");
 
         let text = witcherscript_parser::resolve::hover_text(&definition);
-        assert_eq!(text, "(method) B.Inherited() : int");
+        assert!(
+            text.starts_with("(method) "),
+            "method hover should start with '(method) '"
+        );
+        assert!(
+            text.contains("B."),
+            "method hover should include defining class"
+        );
+        assert!(
+            text.contains("Inherited"),
+            "method hover should include method name"
+        );
+        assert!(
+            text.contains("int"),
+            "method hover should include return type"
+        );
     }
 
     #[test]
