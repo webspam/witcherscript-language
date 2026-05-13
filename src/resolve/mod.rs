@@ -1395,13 +1395,91 @@ fn class_body_kw_inner(
     let nodes = nodes_at_offset(root, byte_offset);
 
     let kind = nodes.iter().find_map(|n| enclosing_body_kind(*n))?;
-    let ctx = scan_class_body_ctx(&document.source, byte_offset, kind);
+    let class_body = nodes.iter().find_map(|n| enclosing_class_body_node(*n))?;
+
+    let mut ctx = ClassBodyCtx {
+        kind,
+        has_import: false,
+        has_access: false,
+        has_final: false,
+        has_latent: false,
+        has_editable: false,
+        has_saved: false,
+        has_const_: false,
+        has_inlined: false,
+        has_optional: false,
+        saw_decl_keyword: false,
+    };
+
+    if let Some(child) = class_body_child_at_cursor(class_body, byte_offset) {
+        let cursor_inside = byte_offset < child.end_byte();
+        if cursor_inside || child.is_error() {
+            let limit = if cursor_inside {
+                byte_offset
+            } else {
+                child.end_byte()
+            };
+            let mut cur = child.walk();
+            for ch in child.children(&mut cur) {
+                if ch.start_byte() >= limit {
+                    break;
+                }
+                if ch.kind() == "specifier" {
+                    match ch.utf8_text(document.source.as_bytes()).unwrap_or("") {
+                        "private" | "protected" | "public" => ctx.has_access = true,
+                        "import" => ctx.has_import = true,
+                        "final" => ctx.has_final = true,
+                        "latent" => ctx.has_latent = true,
+                        "editable" => ctx.has_editable = true,
+                        "saved" => ctx.has_saved = true,
+                        "const" => ctx.has_const_ = true,
+                        "inlined" => ctx.has_inlined = true,
+                        "optional" => ctx.has_optional = true,
+                        _ => {}
+                    }
+                } else if matches!(
+                    ch.kind(),
+                    "var" | "function" | "event" | "autobind" | "default" | "defaults" | "hint"
+                ) {
+                    ctx.saw_decl_keyword = true;
+                    break;
+                }
+                // unknown token (partial ident etc.) — ignore, don't affect context
+            }
+        }
+        // cursor after a complete declaration: ctx stays empty, offer all keywords
+    }
 
     if ctx.saw_decl_keyword {
         return None;
     }
 
     Some(class_body_kw_candidates(&ctx))
+}
+
+fn enclosing_class_body_node(mut node: Node) -> Option<Node> {
+    loop {
+        match node.kind() {
+            "func_block" | "member_default_val_block" | "script" => return None,
+            "class_def" | "struct_def" => return Some(node),
+            _ => node = node.parent()?,
+        }
+    }
+}
+
+fn class_body_child_at_cursor(class_body: Node, byte_offset: usize) -> Option<Node> {
+    let mut cur = class_body.walk();
+    let mut result = None;
+    for child in class_body.children(&mut cur) {
+        if !child.is_named() {
+            continue;
+        }
+        if child.start_byte() > byte_offset {
+            break;
+        }
+        result = Some(child);
+    }
+    result
 }
 
 fn enclosing_body_kind(mut node: Node) -> Option<ClassBodyKind> {
@@ -1424,63 +1502,6 @@ fn enclosing_body_kind(mut node: Node) -> Option<ClassBodyKind> {
             None => return None,
         }
     }
-}
-
-fn class_body_stmt_start(source: &str, byte_offset: usize) -> usize {
-    let before = &source[..byte_offset.min(source.len())];
-    let bytes = before.as_bytes();
-    let mut depth = 0i32;
-    let mut i = bytes.len();
-    while i > 0 {
-        i -= 1;
-        match bytes[i] {
-            b'}' => depth += 1,
-            b'{' if depth > 0 => depth -= 1,
-            b'{' | b';' if depth == 0 => return i + 1,
-            _ => {}
-        }
-    }
-    0
-}
-
-fn scan_class_body_ctx(source: &str, byte_offset: usize, kind: ClassBodyKind) -> ClassBodyCtx {
-    let stmt_start = class_body_stmt_start(source, byte_offset);
-    let stmt_text = source[stmt_start..byte_offset.min(source.len())].trim_start();
-
-    let mut ctx = ClassBodyCtx {
-        kind,
-        has_import: false,
-        has_access: false,
-        has_final: false,
-        has_latent: false,
-        has_editable: false,
-        has_saved: false,
-        has_const_: false,
-        has_inlined: false,
-        has_optional: false,
-        saw_decl_keyword: false,
-    };
-
-    for token in stmt_text.split_ascii_whitespace() {
-        match token {
-            "private" | "protected" | "public" => ctx.has_access = true,
-            "import" => ctx.has_import = true,
-            "final" => ctx.has_final = true,
-            "latent" => ctx.has_latent = true,
-            "editable" => ctx.has_editable = true,
-            "saved" => ctx.has_saved = true,
-            "const" => ctx.has_const_ = true,
-            "inlined" => ctx.has_inlined = true,
-            "optional" => ctx.has_optional = true,
-            "var" | "function" | "event" | "autobind" | "default" | "defaults" | "hint" => {
-                ctx.saw_decl_keyword = true;
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    ctx
 }
 
 fn class_body_kw_candidates(ctx: &ClassBodyCtx) -> Vec<&'static str> {

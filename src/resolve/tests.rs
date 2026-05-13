@@ -2330,6 +2330,74 @@ fn class_body_kw_blank_position_offers_all_keywords() {
 }
 
 #[test]
+fn class_body_kw_blank_after_function_block_offers_all_keywords() {
+    // Blank line after a complete function body — must offer all class-body keywords.
+    let source = "class CExample {\n  function Foo() {\n  }\n  \n}\n";
+    let doc = parse_document(source).expect("parse");
+    // Line 3, col 2 is on the blank line after the closing `}` of the function.
+    let result = kw(&doc, 3, 2);
+    for expected in &[
+        "var", "function", "event", "private", "editable", "defaults",
+    ] {
+        assert!(
+            result.contains(expected),
+            "blank line after function body should offer '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn class_body_kw_partial_word_still_offers_keywords() {
+    // Typing `p` — partial prefix of `private/protected/public`. The ident is not a
+    // recognised specifier but also not a decl keyword; the server should still offer
+    // all class-body keywords so the client can do prefix filtering.
+    let source = "class C {\n  p\n}\n";
+    let doc = parse_document(source).expect("parse");
+    let result = kw(&doc, 1, 3);
+    for expected in &["var", "function", "private", "protected", "public"] {
+        assert!(
+            result.contains(expected),
+            "partial identifier should not suppress class-body keywords: missing '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn class_body_kw_after_complete_specifier_plus_space_offers_filtered_keywords() {
+    // `public ` — `public` is fully typed and parsed as a specifier inside an ERROR
+    // node, cursor is in trailing whitespace past the ERROR boundary.
+    let source = "class C {\n  public \n}\n";
+    let doc = parse_document(source).expect("parse");
+    // col 9 = one past the trailing space after `public`
+    let result = kw(&doc, 1, 9);
+    assert!(
+        result.contains(&"var"),
+        "should still offer var after public"
+    );
+    assert!(!result.contains(&"public"), "should not re-offer public");
+    assert!(
+        !result.contains(&"private"),
+        "should not offer private after an access modifier"
+    );
+}
+
+#[test]
+fn class_body_kw_specifier_followed_by_valid_statement_still_offers_filtered_keywords() {
+    // When tree-sitter error-recovers `public ` into a single member_var_decl with the
+    // following line, the cursor inside that node must still see the specifier prefix.
+    let source = "class C {\n  public \n  public var valid : bool;\n}\n";
+    let doc = parse_document(source).expect("parse");
+    // col 9 = after `  public ` on line 1
+    let result = kw(&doc, 1, 9);
+    assert!(result.contains(&"var"), "should offer var after public");
+    assert!(!result.contains(&"public"), "should not re-offer public");
+    assert!(
+        !result.contains(&"private"),
+        "should not offer private after access modifier"
+    );
+}
+
+#[test]
 fn class_body_kw_not_offered_inside_func_block() {
     let source = "class CExample {\n  function Foo() {\n    \n  }\n}\n";
     let doc = parse_document(source).expect("parse");
