@@ -8,9 +8,10 @@ alias t := test
 default:
     @just --list
 
-# Format Rust code and run tests.
+# Format Rust code, run clippy & tests - optimised for agents
 test:
     cargo fmt --all
+    cargo clippy --all-targets --all-features -- -D warnings
     cargo test -q -- --format terse
 
 # Run the standard local verification.

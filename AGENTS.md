@@ -9,37 +9,37 @@ This is a Rust crate (`witcherscript-parser`) that produces two binaries:
 
 ## Module quick reference
 
-| File | Purpose | Detail doc |
-|---|---|---|
-| `src/lib.rs` | Module declarations, public API surface | |
-| `src/document.rs` | `ParsedDocument`, parse entry points | |
-| `src/diagnostics.rs` | `ParseDiagnostic`, `collect_diagnostics`, `format_tree` | [diagnostics.md](docs/agents/diagnostics.md) |
-| `src/files.rs` | Recursive `.ws` file collection via `walkdir` | |
-| `src/line_index.rs` | Byte ↔ UTF-16 position mapping (LSP-compatible) | |
-| `src/script_env.rs` | Script globals from `redscripts.ini` | |
-| `src/symbols.rs` | `DocumentSymbols`, `Symbol`, `SymbolKind`, `extract_symbols` | [symbols.md](docs/agents/symbols.md) |
-| `src/resolve/mod.rs` | `WorkspaceIndex`, `SymbolDb`, `resolve_definition`, completions | [resolution.md](docs/agents/resolution.md) |
-| `src/resolve/tests/` | ~3400-line test suite split across 11 focused files — use as pattern reference | [testing.md](docs/agents/testing.md) |
-| `src/semantic_tokens/mod.rs` | `TOKEN_TYPES`, `collect_semantic_tokens`, classify | [semantic_tokens.md](docs/agents/semantic_tokens.md) |
-| `src/semantic_tokens/tests.rs` | Semantic token unit tests | |
-| `src/main.rs` | CLI binary entry point | [architecture.md](docs/agents/architecture.md) |
-| `src/bin/witcherscript-lsp.rs` | LSP server — `Backend`, all handlers | [lsp_server.md](docs/agents/lsp_server.md) |
+| File                           | Purpose                                                                        | Detail doc                                           |
+| ------------------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `src/lib.rs`                   | Module declarations, public API surface                                        |                                                      |
+| `src/document.rs`              | `ParsedDocument`, parse entry points                                           |                                                      |
+| `src/diagnostics.rs`           | `ParseDiagnostic`, `collect_diagnostics`, `format_tree`                        | [diagnostics.md](docs/agents/diagnostics.md)         |
+| `src/files.rs`                 | Recursive `.ws` file collection via `walkdir`                                  |                                                      |
+| `src/line_index.rs`            | Byte ↔ UTF-16 position mapping (LSP-compatible)                                |                                                      |
+| `src/script_env.rs`            | Script globals from `redscripts.ini`                                           |                                                      |
+| `src/symbols.rs`               | `DocumentSymbols`, `Symbol`, `SymbolKind`, `extract_symbols`                   | [symbols.md](docs/agents/symbols.md)                 |
+| `src/resolve/mod.rs`           | `WorkspaceIndex`, `SymbolDb`, `resolve_definition`, completions                | [resolution.md](docs/agents/resolution.md)           |
+| `src/resolve/tests/`           | ~3400-line test suite split across 11 focused files — use as pattern reference | [testing.md](docs/agents/testing.md)                 |
+| `src/semantic_tokens/mod.rs`   | `TOKEN_TYPES`, `collect_semantic_tokens`, classify                             | [semantic_tokens.md](docs/agents/semantic_tokens.md) |
+| `src/semantic_tokens/tests.rs` | Semantic token unit tests                                                      |                                                      |
+| `src/main.rs`                  | CLI binary entry point                                                         | [architecture.md](docs/agents/architecture.md)       |
+| `src/bin/witcherscript-lsp.rs` | LSP server — `Backend`, all handlers                                           | [lsp_server.md](docs/agents/lsp_server.md)           |
 
 Full architecture diagram and data flow: [docs/agents/architecture.md](docs/agents/architecture.md)
 
 ## Task guide — what to touch for a given task
 
-| Task | Files to modify |
-|---|---|
-| Add a validation rule | `src/diagnostics.rs` + test + fixture under `tests/fixtures/invalid/` + README |
-| Add a new LSP capability | `src/bin/witcherscript-lsp.rs` + `src/resolve/mod.rs` if it needs new resolve logic |
-| Add a new symbol kind | `src/symbols.rs` (SymbolKind enum), `src/resolve/mod.rs` (hover_text), `src/semantic_tokens/mod.rs` (symbol_kind_to_token_type + classify_ident), `src/bin/witcherscript-lsp.rs` (lsp_symbol_kind) |
-| Add a new completion context | `src/resolve/mod.rs` (new pub fn) + `src/bin/witcherscript-lsp.rs` (completion() dispatch) |
-| Fix a resolution bug | `src/resolve/mod.rs` + the relevant file under `src/resolve/tests/` |
-| Change highlighting | `src/semantic_tokens/mod.rs` + `src/semantic_tokens/tests.rs` |
-| Fix position/encoding bug | `src/line_index.rs` + its `#[cfg(test)]` block |
-| Add WitcherScript syntax support | Grammar repo (`tree-sitter-witcherscript`) is external; pin new tag in `Cargo.toml` |
-| Inspect grammar node kinds / rule structure | Read `../tree-sitter-witcherscript/grammar.js` (relative to repo root). Online: https://raw.githubusercontent.com/webspam/tree-sitter-witcherscript/refs/heads/master/grammar.js |
+| Task                                        | Files to modify                                                                                                                                                                                    |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add a validation rule                       | `src/diagnostics.rs` + test + fixture under `tests/fixtures/invalid/` + README                                                                                                                     |
+| Add a new LSP capability                    | `src/bin/witcherscript-lsp.rs` + `src/resolve/mod.rs` if it needs new resolve logic                                                                                                                |
+| Add a new symbol kind                       | `src/symbols.rs` (SymbolKind enum), `src/resolve/mod.rs` (hover_text), `src/semantic_tokens/mod.rs` (symbol_kind_to_token_type + classify_ident), `src/bin/witcherscript-lsp.rs` (lsp_symbol_kind) |
+| Add a new completion context                | `src/resolve/mod.rs` (new pub fn) + `src/bin/witcherscript-lsp.rs` (completion() dispatch)                                                                                                         |
+| Fix a resolution bug                        | `src/resolve/mod.rs` + the relevant file under `src/resolve/tests/`                                                                                                                                |
+| Change highlighting                         | `src/semantic_tokens/mod.rs` + `src/semantic_tokens/tests.rs`                                                                                                                                      |
+| Fix position/encoding bug                   | `src/line_index.rs` + its `#[cfg(test)]` block                                                                                                                                                     |
+| Add WitcherScript syntax support            | Grammar repo (`tree-sitter-witcherscript`) is external; pin new tag in `Cargo.toml`                                                                                                                |
+| Inspect grammar node kinds / rule structure | Read `../tree-sitter-witcherscript/grammar.js` (relative to repo root). Online: https://raw.githubusercontent.com/webspam/tree-sitter-witcherscript/refs/heads/master/grammar.js                   |
 
 ## WitcherScript language cheat sheet
 
@@ -58,6 +58,7 @@ Full architecture diagram and data flow: [docs/agents/architecture.md](docs/agen
 **Special receivers:** `this` (enclosing class), `super` (base class), `parent` (state → owner class)
 
 **Common modding annotations:**
+
 - `@addField(ClassName)` — inject field into existing class
 - `@addMethod(ClassName)` — inject method
 - `@wrapMethod(ClassName)` — wrap existing method
@@ -106,7 +107,7 @@ just build
 ## Test
 
 ```
-just ci
+just test
 ```
 
 The test suite includes:
