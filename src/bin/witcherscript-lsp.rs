@@ -653,6 +653,29 @@ impl LanguageServer for Backend {
                 "var ${1:name} : ${2:Type};",
                 "0_var",
             ));
+            items.push(keyword_snippet_item("if", "if (${1:condition})", "0_if"));
+            items.push(keyword_snippet_item("else", "else", "0_else"));
+            items.push(keyword_snippet_item("return", "return;", "0_return"));
+            items.push(keyword_snippet_item(
+                "for",
+                "for (${1:init}; ${2:condition}; ${3:increment})\n{\n\t$0\n}",
+                "0_for",
+            ));
+            items.push(keyword_snippet_item(
+                "while",
+                "while (${1:condition})\n{\n\t$0\n}",
+                "0_while",
+            ));
+            items.push(keyword_snippet_item(
+                "do",
+                "do\n{\n\t$0\n} while (${1:condition});",
+                "0_do",
+            ));
+            items.push(keyword_snippet_item(
+                "switch",
+                "switch (${1:expr})\n{\n\tcase ${2:val}:\n\t\t$0\n\t\tbreak;\n}",
+                "0_switch",
+            ));
             for def in &stmt.locals {
                 let params = db.parameters_of(&def.uri, def.symbol.id);
                 let mut item = completion_item(def, &params);
