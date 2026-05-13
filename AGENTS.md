@@ -106,7 +106,7 @@ just build
 ## Test
 
 ```
-just test
+just ci
 ```
 
 The test suite includes:
