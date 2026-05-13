@@ -349,7 +349,8 @@ fn annotation_name_completions_fires_while_typing_name() {
                 line: 0,
                 character: 2
             }
-        ),
+        )
+        .is_some(),
         "should fire while typing an annotation name"
     );
 }
@@ -361,13 +362,14 @@ fn annotation_name_completions_false_inside_parens() {
     let doc = make_doc(source);
 
     assert!(
-        !annotation_name_completions(
+        annotation_name_completions(
             &doc,
             SourcePosition {
                 line: 0,
                 character: 12
             }
-        ),
+        )
+        .is_none(),
         "should not fire when cursor is inside annotation parens"
     );
 }

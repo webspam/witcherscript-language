@@ -446,7 +446,7 @@ fn wrap_method_snippet_plain_params() {
     let snippet = wrap_method_snippet(&method, &db);
     assert_eq!(
         snippet,
-        "CanParry(damage : int, attacker : CObject) {\n\t$0\n}"
+        "CanParry(damage : int, attacker : CObject) {\n\t$0\n\n\treturn wrappedMethod(damage, attacker);\n}"
     );
 }
 
@@ -472,7 +472,7 @@ fn wrap_method_snippet_optional_and_out_params() {
     let snippet = wrap_method_snippet(&method, &db);
     assert_eq!(
         snippet,
-        "Foo(a : int, optional b : float, out c : string) {\n\t$0\n}"
+        "Foo(a : int, optional b : float, out c : string) {\n\twrappedMethod(a, b, c);\n\n\t$0\n}"
     );
 }
 
@@ -492,5 +492,25 @@ fn wrap_method_snippet_no_params() {
         .expect("OnSpawned should be a member");
 
     let snippet = wrap_method_snippet(&method, &db);
-    assert_eq!(snippet, "OnSpawned() {\n\t$0\n}");
+    assert_eq!(snippet, "OnSpawned() {\n\twrappedMethod();\n\n\t$0\n}");
+}
+
+#[test]
+fn wrap_method_snippet_event_uses_return_form() {
+    // Events always use the return form so the caller can be reached after custom logic.
+    let source = "class CPlayer {\n  public event OnDeath() {}\n}\n";
+    let doc = parse_document(source).expect("parse");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
+
+    let method = db
+        .members_of("CPlayer", AccessLevel::Public)
+        .into_iter()
+        .find(|d| d.symbol.name == "OnDeath")
+        .expect("OnDeath should be a member");
+
+    let snippet = wrap_method_snippet(&method, &db);
+    assert_eq!(snippet, "OnDeath() {\n\t$0\n\n\treturn wrappedMethod();\n}");
 }

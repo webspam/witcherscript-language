@@ -1207,27 +1207,44 @@ fn has_type_annot_ancestor(node: Node) -> bool {
     }
 }
 
-pub fn annotation_name_completions(document: &ParsedDocument, position: SourcePosition) -> bool {
-    let Some(byte_offset) = document
+/// Returns the `SourcePosition` of the leading `@` when the cursor is typing an
+/// annotation name, or `None` when the gate does not fire.
+/// The returned position is used by the caller to build a TextEdit range that
+/// replaces the whole `@…` token rather than just the word part after `@`.
+pub fn annotation_name_completions(
+    document: &ParsedDocument,
+    position: SourcePosition,
+) -> Option<SourcePosition> {
+    let byte_offset = document
         .line_index
-        .position_to_byte(&document.source, position)
-    else {
-        return false;
-    };
+        .position_to_byte(&document.source, position)?;
     let root = document.tree.root_node();
-    if nodes_at_offset(root, byte_offset)
-        .iter()
-        .any(|n| n.kind() == "annotation_ident")
-    {
-        return true;
+
+    for node in nodes_at_offset(root, byte_offset) {
+        if node.kind() == "annotation_ident" {
+            return Some(
+                document
+                    .line_index
+                    .byte_to_position(&document.source, node.start_byte()),
+            );
+        }
     }
+
     // Bare `@` (no following char yet) parses as ERROR/ERROR with no annotation_ident child.
     // Remove this fallback once the grammar emits annotation_ident for standalone `@`.
-    bare_at_sign_fallback(&document.source, byte_offset)
+    bare_at_sign_fallback(&document.source, &document.line_index, byte_offset)
 }
 
-fn bare_at_sign_fallback(source: &str, byte_offset: usize) -> bool {
-    source.as_bytes().get(byte_offset.wrapping_sub(1)) == Some(&b'@')
+fn bare_at_sign_fallback(
+    source: &str,
+    line_index: &crate::line_index::LineIndex,
+    byte_offset: usize,
+) -> Option<SourcePosition> {
+    if source.as_bytes().get(byte_offset.wrapping_sub(1)) == Some(&b'@') {
+        Some(line_index.byte_to_position(source, byte_offset - 1))
+    } else {
+        None
+    }
 }
 
 pub fn annotation_arg_completions(

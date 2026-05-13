@@ -36,7 +36,7 @@ use witcherscript_parser::semantic_tokens::{
 use crate::convert::{
     annotation_name_items, builtin_type_item, class_body_kw_item, completion_item,
     document_symbols, hover_markdown, keyword_snippet_item, lsp_range, source_position,
-    this_super_item, type_completion_item, workspace_roots, wrap_method_snippet,
+    source_range, this_super_item, type_completion_item, workspace_roots, wrap_method_snippet,
 };
 use crate::logging::{level_from_str, level_to_u8};
 
@@ -485,8 +485,11 @@ impl LanguageServer for Backend {
             )));
         }
 
-        if annotation_name_completions(document, pos) {
-            return Ok(Some(CompletionResponse::Array(annotation_name_items())));
+        if let Some(at_pos) = annotation_name_completions(document, pos) {
+            let replace_range = lsp_range(source_range(at_pos, pos));
+            return Ok(Some(CompletionResponse::Array(annotation_name_items(
+                replace_range,
+            ))));
         }
 
         match after_wrap_method_completions(document, &db, pos) {

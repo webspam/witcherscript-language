@@ -2,9 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, Diagnostic, DiagnosticSeverity, DocumentSymbol,
-    Documentation, InitializeParams, InsertTextFormat, MarkupContent, MarkupKind, Position, Range,
-    Url,
+    CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic, DiagnosticSeverity,
+    DocumentSymbol, Documentation, InitializeParams, InsertTextFormat, MarkupContent, MarkupKind,
+    Position, Range, TextEdit, Url,
 };
 use tracing::warn;
 use witcherscript_parser::document::ParsedDocument;
@@ -144,6 +144,10 @@ pub(crate) fn lsp_range(range: SourceRange) -> Range {
     }
 }
 
+pub(crate) fn source_range(start: SourcePosition, end: SourcePosition) -> SourceRange {
+    SourceRange { start, end }
+}
+
 pub(crate) fn source_position(position: Position) -> SourcePosition {
     SourcePosition {
         line: position.line,
@@ -224,7 +228,23 @@ pub(crate) fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String 
         })
         .collect::<Vec<_>>()
         .join(", ");
-    format!("{}({}) {{\n\t$0\n}}", method.symbol.name, param_list)
+    let call_args = params
+        .iter()
+        .map(|p| p.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let has_return = method.symbol.kind == SymbolKind::Event
+        || method
+            .symbol
+            .type_annotation
+            .as_deref()
+            .is_some_and(|t| t != "void");
+    let body = if has_return {
+        format!("{{\n\t$0\n\n\treturn wrappedMethod({});\n}}", call_args)
+    } else {
+        format!("{{\n\twrappedMethod({});\n\n\t$0\n}}", call_args)
+    };
+    format!("{}({}) {}", method.symbol.name, param_list, body)
 }
 
 pub(crate) fn type_completion_item(definition: &Definition) -> CompletionItem {
@@ -300,7 +320,7 @@ pub(crate) fn hover_markdown(definition: &Definition) -> String {
     markdown
 }
 
-pub(crate) fn annotation_name_items() -> Vec<CompletionItem> {
+pub(crate) fn annotation_name_items(replace_range: Range) -> Vec<CompletionItem> {
     [
         ("@wrapMethod", "@wrapMethod(${1:ClassName})"),
         ("@addMethod", "@addMethod(${1:ClassName})"),
@@ -310,8 +330,12 @@ pub(crate) fn annotation_name_items() -> Vec<CompletionItem> {
     .iter()
     .map(|(label, snippet)| CompletionItem {
         label: label.to_string(),
+        filter_text: Some(label.to_string()),
         kind: Some(CompletionItemKind::KEYWORD),
-        insert_text: Some(snippet.to_string()),
+        text_edit: Some(CompletionTextEdit::Edit(TextEdit {
+            range: replace_range,
+            new_text: snippet.to_string(),
+        })),
         insert_text_format: Some(InsertTextFormat::SNIPPET),
         sort_text: Some(format!("0_{label}")),
         ..CompletionItem::default()
