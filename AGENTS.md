@@ -19,7 +19,7 @@ This is a Rust crate (`witcherscript-parser`) that produces two binaries:
 | `src/script_env.rs` | Script globals from `redscripts.ini` | |
 | `src/symbols.rs` | `DocumentSymbols`, `Symbol`, `SymbolKind`, `extract_symbols` | [symbols.md](docs/agents/symbols.md) |
 | `src/resolve/mod.rs` | `WorkspaceIndex`, `SymbolDb`, `resolve_definition`, completions | [resolution.md](docs/agents/resolution.md) |
-| `src/resolve/tests.rs` | ~1800-line test suite — use as pattern reference | [testing.md](docs/agents/testing.md) |
+| `src/resolve/tests/` | ~3400-line test suite split across 11 focused files — use as pattern reference | [testing.md](docs/agents/testing.md) |
 | `src/semantic_tokens/mod.rs` | `TOKEN_TYPES`, `collect_semantic_tokens`, classify | [semantic_tokens.md](docs/agents/semantic_tokens.md) |
 | `src/semantic_tokens/tests.rs` | Semantic token unit tests | |
 | `src/main.rs` | CLI binary entry point | [architecture.md](docs/agents/architecture.md) |
@@ -35,7 +35,7 @@ Full architecture diagram and data flow: [docs/agents/architecture.md](docs/agen
 | Add a new LSP capability | `src/bin/witcherscript-lsp.rs` + `src/resolve/mod.rs` if it needs new resolve logic |
 | Add a new symbol kind | `src/symbols.rs` (SymbolKind enum), `src/resolve/mod.rs` (hover_text), `src/semantic_tokens/mod.rs` (symbol_kind_to_token_type + classify_ident), `src/bin/witcherscript-lsp.rs` (lsp_symbol_kind) |
 | Add a new completion context | `src/resolve/mod.rs` (new pub fn) + `src/bin/witcherscript-lsp.rs` (completion() dispatch) |
-| Fix a resolution bug | `src/resolve/mod.rs` + `src/resolve/tests.rs` |
+| Fix a resolution bug | `src/resolve/mod.rs` + the relevant file under `src/resolve/tests/` |
 | Change highlighting | `src/semantic_tokens/mod.rs` + `src/semantic_tokens/tests.rs` |
 | Fix position/encoding bug | `src/line_index.rs` + its `#[cfg(test)]` block |
 | Add WitcherScript syntax support | Grammar repo (`tree-sitter-witcherscript`) is external; pin new tag in `Cargo.toml` |

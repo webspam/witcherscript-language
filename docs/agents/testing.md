@@ -8,7 +8,7 @@
 | `src/symbols.rs` `#[cfg(test)]` | `extract_symbols()` — params, locals, functions |
 | `src/line_index.rs` `#[cfg(test)]` | `LineIndex` — byte↔position conversions, UTF-16 |
 | `src/script_env.rs` `#[cfg(test)]` | INI parsing, globals section, symbol positions |
-| `src/resolve/tests.rs` | Everything in `resolve/mod.rs` (~1800 lines, most comprehensive) |
+| `src/resolve/tests/` | Everything in `resolve/mod.rs` (~3400 lines across 11 files, most comprehensive) |
 | `src/semantic_tokens/tests.rs` | `collect_semantic_tokens()` — classify, resolve, encode |
 | `src/bin/witcherscript-lsp.rs` `#[cfg(test)]` | LSP-specific: encoding, hover markdown, completion items, rename |
 | `tests/parser_fixtures.rs` | Parametrized parse tests over all fixture files |
@@ -36,9 +36,23 @@
 
 When adding a new grammar feature or parse rule, add or update a fixture rather than relying solely on unit tests for complex syntax.
 
-## resolve/tests.rs — authoritative test patterns
+## resolve/tests/ — authoritative test patterns
 
-This file (~1800 lines) is the canonical reference for how to write resolution and completion tests. Use it as examples before writing new tests in `resolve/mod.rs`.
+This directory (~3400 lines across 11 files) is the canonical reference for how to write resolution and completion tests. Use it as examples before writing new tests in `resolve/mod.rs`.
+
+| File | What it covers |
+|---|---|
+| `definition.rs` | `resolve_definition` — top-level functions, methods, enum variants, receiver vars |
+| `references.rs` | `find_references` — scoping, include_declaration flag, private member scoping |
+| `inheritance.rs` | `this`/`super`/`parent`, access levels, inherited method resolution |
+| `chaining.rs` | Method-on-return-value, multi-level chained calls |
+| `script_globals.rs` | INI globals, redirect to class, local shadows global |
+| `parameters.rs` | `parameters_of`, `wrap_method_snippet` |
+| `completion_members.rs` | `completion_members` — dot-access, tier ordering |
+| `completion_statement.rs` | `statement_completions` — locals, members, globals, `this`/`super`, loop/switch flags, context guards |
+| `completion_type.rs` | `type_completions`, `extends_completions` |
+| `completion_keywords.rs` | `class_body_keyword_completions` — specifier state machine |
+| `completion_annotation.rs` | `annotation_arg_completions`, `after_wrap_method_completions` |
 
 **Test categories covered:**
 - Definition resolution for top-level functions, class methods, enum variants, fields, locals, parameters
