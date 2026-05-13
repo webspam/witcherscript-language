@@ -88,6 +88,23 @@ impl<'a> SymbolDb<'a> {
         self.find_member_chain_cross(&superclass, name, depth + 1, deeper_min)
     }
 
+    pub fn direct_members_of(
+        &self,
+        container_name: &str,
+        min_access: AccessLevel,
+    ) -> Vec<Definition> {
+        let mut seen: HashMap<String, Definition> = HashMap::new();
+        for def in self
+            .workspace
+            .direct_members_of(container_name, min_access)
+            .into_iter()
+            .chain(self.base.direct_members_of(container_name, min_access))
+        {
+            seen.entry(def.symbol.name.clone()).or_insert(def);
+        }
+        seen.into_values().collect()
+    }
+
     pub fn members_of(&self, container: &str, min_access: AccessLevel) -> Vec<Definition> {
         self.members_of_tiered(container, min_access)
             .into_iter()
@@ -1145,6 +1162,126 @@ fn has_type_annot_ancestor(node: Node) -> bool {
             None => return false,
         }
     }
+}
+
+pub fn annotation_arg_completions(
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Vec<Definition> {
+    annotation_arg_completions_inner(document, db, position).unwrap_or_default()
+}
+
+fn annotation_arg_completions_inner(
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Option<Vec<Definition>> {
+    let byte_offset = document
+        .line_index
+        .position_to_byte(&document.source, position)?;
+
+    let root = document.tree.root_node();
+    let in_annotation_arg = nodes_at_offset(root, byte_offset)
+        .into_iter()
+        .any(|n| has_annotation_arg_ancestor(n, byte_offset));
+
+    if !in_annotation_arg {
+        return None;
+    }
+
+    Some(
+        db.all_types()
+            .into_iter()
+            .filter(|def| def.symbol.kind == SymbolKind::Class)
+            .collect(),
+    )
+}
+
+fn has_annotation_arg_ancestor(node: Node, byte_offset: usize) -> bool {
+    let mut current = node;
+    loop {
+        if current.kind() == "annotation" {
+            return is_inside_annotation_parens(current, byte_offset);
+        }
+        match current.parent() {
+            Some(p) => current = p,
+            None => return false,
+        }
+    }
+}
+
+fn is_inside_annotation_parens(annotation: Node, byte_offset: usize) -> bool {
+    let mut cursor = annotation.walk();
+    let mut saw_open = false;
+    for child in annotation.children(&mut cursor) {
+        match child.kind() {
+            "(" => saw_open = true,
+            ")" => {
+                if byte_offset <= child.start_byte() {
+                    return saw_open;
+                }
+                return false;
+            }
+            _ => {}
+        }
+    }
+    saw_open
+}
+
+pub struct AfterWrapMethodCompletions {
+    pub class_methods: Vec<Definition>,
+}
+
+pub fn after_wrap_method_completions(
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Option<AfterWrapMethodCompletions> {
+    let byte_offset = document
+        .line_index
+        .position_to_byte(&document.source, position)?;
+
+    let root = document.tree.root_node();
+    let prev = node_before_byte(root, document.source.as_bytes(), byte_offset)?;
+
+    let class_name = wrap_method_class_from_closing_paren(prev, &document.source)?;
+
+    let class_def = db.find_top_level(&class_name)?;
+    if class_def.symbol.kind != SymbolKind::Class {
+        return None;
+    }
+
+    let methods = db
+        .direct_members_of(&class_name, AccessLevel::Private)
+        .into_iter()
+        .filter(|def| matches!(def.symbol.kind, SymbolKind::Method | SymbolKind::Event))
+        .collect();
+
+    Some(AfterWrapMethodCompletions {
+        class_methods: methods,
+    })
+}
+
+fn wrap_method_class_from_closing_paren<'a>(node: Node, source: &'a str) -> Option<&'a str> {
+    if node.kind() != ")" {
+        return None;
+    }
+    let annotation = node.parent()?;
+    if annotation.kind() != "annotation" {
+        return None;
+    }
+    let annotation_name = annotation
+        .children(&mut annotation.walk())
+        .find(|c| c.kind() == "annotation_ident")
+        .map(|n| &source[n.start_byte()..n.end_byte()])?;
+    if annotation_name != "@wrapMethod" {
+        return None;
+    }
+    annotation
+        .children(&mut annotation.walk())
+        .find(|c| c.kind() == "ident")
+        .map(|n| &source[n.start_byte()..n.end_byte()])
 }
 
 pub fn extends_completions(

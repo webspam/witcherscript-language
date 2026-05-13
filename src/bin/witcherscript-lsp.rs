@@ -35,9 +35,10 @@ use witcherscript_parser::files::{collect_witcherscript_files, is_witcherscript_
 use witcherscript_parser::formatter::format_document;
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{
-    class_body_keyword_completions, completion_members, expression_completions,
-    extends_completions, find_references, hover_text, resolve_definition, statement_completions,
-    type_completions, Definition, SymbolDb, WorkspaceIndex, BUILTIN_TYPES,
+    after_wrap_method_completions, annotation_arg_completions, class_body_keyword_completions,
+    completion_members, expression_completions, extends_completions, find_references, hover_text,
+    resolve_definition, statement_completions, type_completions, Definition, SymbolDb,
+    WorkspaceIndex, BUILTIN_TYPES,
 };
 use witcherscript_parser::script_env::{parse_script_environment, ScriptEnvironment};
 use witcherscript_parser::semantic_tokens::{
@@ -608,6 +609,22 @@ impl LanguageServer for Backend {
                 .collect();
         if !member_items.is_empty() {
             return Ok(Some(CompletionResponse::Array(member_items)));
+        }
+
+        let annotation_arg = annotation_arg_completions(document, &db, pos);
+        if !annotation_arg.is_empty() {
+            return Ok(Some(CompletionResponse::Array(
+                annotation_arg.iter().map(type_completion_item).collect(),
+            )));
+        }
+
+        if let Some(wrap) = after_wrap_method_completions(document, &db, pos) {
+            let mut items = vec![keyword_snippet_item("function", "function")];
+            for def in &wrap.class_methods {
+                let params = db.parameters_of(&def.uri, def.symbol.id);
+                items.push(completion_item(def, &params));
+            }
+            return Ok(Some(CompletionResponse::Array(items)));
         }
 
         let extends = extends_completions(document, &db, pos);
