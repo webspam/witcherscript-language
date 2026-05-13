@@ -1047,6 +1047,7 @@ fn completion_item(definition: &Definition, params: &[String]) -> CompletionItem
         SymbolKind::Method | SymbolKind::Event => CompletionItemKind::METHOD,
         SymbolKind::Field => CompletionItemKind::FIELD,
         SymbolKind::Function => CompletionItemKind::FUNCTION,
+        SymbolKind::Variable | SymbolKind::Parameter => CompletionItemKind::VARIABLE,
         _ => CompletionItemKind::TEXT,
     });
     let detail = symbol
