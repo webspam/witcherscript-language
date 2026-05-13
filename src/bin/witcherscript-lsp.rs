@@ -1122,13 +1122,13 @@ fn this_super_item(name: &str) -> CompletionItem {
 
 fn class_body_kw_item(keyword: &str) -> CompletionItem {
     let (snippet, sort_prefix): (Option<&str>, &str) = match keyword {
-        "var" => (Some("var ${1:name} : ${2:Type};"), "0"),
-        "function" => (Some("function ${1:Name}() {\n\t$0\n}"), "0"),
-        "event" => (Some("event On${1:Name}() {\n\t$0\n}"), "0"),
+        "var" => (Some("var ${1:varName} : ${2:int};"), "0"),
+        "function" => (Some("function ${1:Name}($2) {\n\t$0\n}"), "0"),
+        "event" => (Some("event On${1:Name}($2) {\n\t$0\n}"), "0"),
         "autobind" => (Some("autobind ${1:name} : ${2:Type} = single;"), "0"),
-        "default" => (Some("default ${1:member} = ${2:value};"), "0"),
-        "defaults" => (Some("defaults {\n\t${1:member} = ${2:value};\n}"), "0"),
-        "hint" => (Some("hint ${1:member} = \"${2:tooltip}\";"), "0"),
+        "default" => (Some("default ${1:field} = ${2:value};"), "0"),
+        "defaults" => (Some("defaults {\n\t${1:field} = ${2:value};\n}"), "0"),
+        "hint" => (Some("hint ${1:field} = \"${2:tooltip}\";"), "0"),
         _ => (None, "1"),
     };
     CompletionItem {
