@@ -1450,7 +1450,7 @@ mod tests {
 
         assert_eq!(
             markdown,
-            "```witcherscript\n@wrapMethod(CR4Player)\nfunction OnSpawned(spawnData : SEntitySpawnData)\n```\n\nDefined in [fov.ws:2](file:///fov.ws#L2)"
+            "```witcherscript\n@wrapMethod(CR4Player)\nfunction OnSpawned(spawnData: SEntitySpawnData)\n```\n\nDefined in [fov.ws:2](file:///fov.ws#L2)"
         );
     }
 
@@ -1502,7 +1502,7 @@ mod tests {
 
         assert_eq!(
             markdown,
-            "```witcherscript\n(method) CExample.DoThing(x : int) : bool\n```\n\nDefined in [example.ws:2](file:///example.ws#L2)"
+            "```witcherscript\n(method) CExample.DoThing(x: int): bool\n```\n\nDefined in [example.ws:2](file:///example.ws#L2)"
         );
     }
 
