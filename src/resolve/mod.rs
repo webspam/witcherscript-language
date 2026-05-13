@@ -1071,6 +1071,17 @@ fn nodes_at_offset<'a>(root: Node<'a>, byte_offset: usize) -> Vec<Node<'a>> {
         .collect()
 }
 
+fn node_before_byte<'a>(root: Node<'a>, source: &[u8], byte_offset: usize) -> Option<Node<'a>> {
+    let p = source[..byte_offset]
+        .iter()
+        .rposition(|&b| !b.is_ascii_whitespace())?;
+    root.descendant_for_byte_range(p, p + 1)
+}
+
+fn is_statement_boundary(node: Node) -> bool {
+    !node.has_error() && matches!(node.kind(), "{" | "}" | ";")
+}
+
 pub const BUILTIN_TYPES: &[&str] = &["bool", "byte", "float", "int", "name", "string", "void"];
 
 pub fn type_completions(
@@ -1214,6 +1225,15 @@ fn is_after_extends_before_body(decl_node: Node, byte_offset: usize) -> bool {
     saw_extends
 }
 
+fn is_kind_or_error_wrapped_kind(node: Node, kinds: &[&str]) -> bool {
+    let effective = if node.is_error() && node.child_count() == 1 {
+        node.child(0).unwrap()
+    } else {
+        node
+    };
+    kinds.contains(&effective.kind())
+}
+
 fn node_contains_kind(node: Node, kind: &str) -> bool {
     let mut cursor = node.walk();
     let found = node.children(&mut cursor).any(|c| c.kind() == kind);
@@ -1275,17 +1295,25 @@ fn statement_completions_inner(
 
     let root = document.tree.root_node();
     let nodes = nodes_at_offset(root, byte_offset);
-    if nodes.iter().any(|n| {
-        find_ancestor_of_kind(
-            *n,
-            &[
-                "member_access_expr",
-                "incomplete_member_access_expr",
-                "ERROR",
-            ],
-        )
-        .is_some()
-    }) {
+
+    // Positive gate: only offer statement completions when we are confident the
+    // cursor is at the start of a new statement.
+    let prev = node_before_byte(root, document.source.as_bytes(), byte_offset);
+    let at_statement_start = prev.is_some_and(is_statement_boundary);
+    let writing_first_statement_part = nodes
+        .last()
+        .filter(|&n| {
+            is_kind_or_error_wrapped_kind(
+                *n,
+                &[
+                    "ident", "var", "this", "super", "if", "else", "do", "while", "for", "switch",
+                    "return",
+                ],
+            )
+        })
+        .and_then(|n| node_before_byte(root, document.source.as_bytes(), n.start_byte()))
+        .is_some_and(is_statement_boundary);
+    if !at_statement_start && !writing_first_statement_part {
         return None;
     }
 

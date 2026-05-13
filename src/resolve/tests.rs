@@ -2306,6 +2306,180 @@ fn parameter_name_yields_no_statement_completions() {
     }
 }
 
+// ── var-name position completions ───────────────────────────────────────────
+//
+// Invariant: completions must NOT fire when cursor is on the identifier being
+// declared as a new variable name.  They MUST fire for any other position in
+// the function body (bare identifier expressions, position after 'var' keyword,
+// etc.).
+//
+// CST observations (from dump_tree):
+//   "class C { function Foo(p : int) { v } }"
+//     → func_block > ERROR [ident(v)]               — bytes 34..35
+//   "class C { function Foo(p : int) { var } }"
+//     → func_block > ERROR [var]                    — var bytes 34..37
+//   "class C { function Foo(p : int) { var x } }"
+//     → func_block > ERROR [var, ident(x)]          — ident bytes 38..39
+//   "class C { function Foo(p : int) { var x : int } }"
+//     → func_block > local_var_decl_stmt [var, ident(x:names), ...]
+//                    (MISSING semicolon)             — ident bytes 38..39
+
+#[test]
+fn incomplete_ident_expr_in_method_body_gets_statement_completions() {
+    // "class C { function Foo(p : int) { v } }" — `v` at bytes 34..35
+    // CST: ERROR [ident(v)] — only an ident inside ERROR, not a var declaration.
+    // Completions must fire: this is an incomplete identifier reference, not a name being declared.
+    let source = "class C { function Foo(p : int) { v } }";
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let stmt = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 0,
+            character: 35,
+        },
+    );
+    assert!(
+        stmt.has_this,
+        "statement completions must fire for an incomplete identifier expression in a class method body"
+    );
+}
+
+#[test]
+fn var_keyword_alone_in_method_body_gets_statement_completions() {
+    // "class C { function Foo(p : int) { var } }" — var at bytes 34..37
+    // CST: ERROR [var] — only the keyword, no name typed yet.
+    // Completions must fire: the user hasn't started naming a variable yet.
+    let source = "class C { function Foo(p : int) { var } }";
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // col 36 = 'r' of 'var' — cursor is inside the ERROR-wrapped keyword.
+    let stmt = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 0,
+            character: 36,
+        },
+    );
+    assert!(
+        stmt.has_this,
+        "statement completions must fire when cursor is on the var keyword before any name is typed"
+    );
+}
+
+#[test]
+fn space_after_var_keyword_no_statement_completions() {
+    // "class A { function N() { var }}" — cursor in the space at byte 28,
+    // between `var` (bytes 25..28) and `}` (byte 29).
+    // CST: ERROR [var] — keyword only, no name started.
+    // Completions (this, super, globals) must be available at this position.
+    let source = "class A { function N() { var }}";
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let stmt = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 0,
+            character: 29,
+        },
+    );
+    assert!(
+        !stmt.has_this
+            && stmt.locals.is_empty()
+            && stmt.members.is_empty()
+            && stmt.globals.is_empty(),
+        "statement completions must not fire in the space after `var` — the user is about to declare a new name"
+    );
+}
+
+#[test]
+fn var_name_in_error_state_no_statement_completions() {
+    // "class C { function Foo(p : int) { var x } }" — ident `x` at bytes 38..39
+    // CST: ERROR [var, ident(x)] — incomplete var decl, no type annotation yet.
+    // Completions must NOT fire: cursor is on the name being declared.
+    let source = "class C { function Foo(p : int) { var x } }";
+    let doc = parse_document(source).expect("parse should succeed");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let stmt = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 0,
+            character: 38,
+        },
+    );
+    assert!(
+        !stmt.has_this
+            && stmt.locals.is_empty()
+            && stmt.members.is_empty()
+            && stmt.globals.is_empty(),
+        "statement completions must not fire at the name in an incomplete var declaration (ERROR state)"
+    );
+}
+
+#[test]
+fn local_var_name_in_method_body_yields_no_completions() {
+    // `    var localName : int;` is on line 11 (0-indexed) inside MethodBody::DoSomething.
+    // The fixture has MethodBody added at the bottom.
+    // col 8: start of `localName` — declaring a new symbol, not referencing one.
+    // CST: local_var_decl_stmt (complete, valid node, names field contains `localName`).
+    let source = include_str!("../../tests/fixtures/valid/completion_declaration_contexts.ws");
+    let doc = parse_document(source).expect("fixture should parse");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let pos = SourcePosition {
+        line: 11,
+        character: 8,
+    };
+
+    let members = super::completion_members("file:///test.ws", &doc, &db, pos);
+    assert!(
+        members.is_empty(),
+        "dot-access completions must not fire at a local var name declaration"
+    );
+
+    let types = super::type_completions(&doc, &db, pos);
+    assert!(
+        types.is_empty(),
+        "type completions must not fire at a local var name (not a type annotation)"
+    );
+
+    let stmt = super::statement_completions("file:///test.ws", &doc, &db, pos);
+    assert!(
+        stmt.locals.is_empty()
+            && stmt.members.is_empty()
+            && stmt.globals.is_empty()
+            && !stmt.has_this,
+        "statement completions must be all-empty when declaring a new local variable name"
+    );
+}
+
 // ── class_body_keyword_completions ──────────────────────────────────────────
 
 fn kw(doc: &crate::document::ParsedDocument, line: u32, character: u32) -> Vec<&'static str> {
