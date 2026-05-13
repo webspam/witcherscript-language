@@ -300,6 +300,25 @@ pub(crate) fn hover_markdown(definition: &Definition) -> String {
     markdown
 }
 
+pub(crate) fn annotation_name_items() -> Vec<CompletionItem> {
+    [
+        ("@wrapMethod", "@wrapMethod(${1:ClassName})"),
+        ("@addMethod", "@addMethod(${1:ClassName})"),
+        ("@replaceMethod", "@replaceMethod(${1:ClassName})"),
+        ("@addField", "@addField(${1:ClassName})"),
+    ]
+    .iter()
+    .map(|(label, snippet)| CompletionItem {
+        label: label.to_string(),
+        kind: Some(CompletionItemKind::KEYWORD),
+        insert_text: Some(snippet.to_string()),
+        insert_text_format: Some(InsertTextFormat::SNIPPET),
+        sort_text: Some(format!("0_{label}")),
+        ..CompletionItem::default()
+    })
+    .collect()
+}
+
 fn hover_location_markdown(definition: &Definition) -> String {
     let line = definition.symbol.selection_range.start.line + 1;
     let Ok(mut uri) = Url::parse(&definition.uri) else {

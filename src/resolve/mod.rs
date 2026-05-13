@@ -1207,6 +1207,29 @@ fn has_type_annot_ancestor(node: Node) -> bool {
     }
 }
 
+pub fn annotation_name_completions(document: &ParsedDocument, position: SourcePosition) -> bool {
+    let Some(byte_offset) = document
+        .line_index
+        .position_to_byte(&document.source, position)
+    else {
+        return false;
+    };
+    let root = document.tree.root_node();
+    if nodes_at_offset(root, byte_offset)
+        .iter()
+        .any(|n| n.kind() == "annotation_ident")
+    {
+        return true;
+    }
+    // Bare `@` (no following char yet) parses as ERROR/ERROR with no annotation_ident child.
+    // Remove this fallback once the grammar emits annotation_ident for standalone `@`.
+    bare_at_sign_fallback(&document.source, byte_offset)
+}
+
+fn bare_at_sign_fallback(source: &str, byte_offset: usize) -> bool {
+    source.as_bytes().get(byte_offset.wrapping_sub(1)) == Some(&b'@')
+}
+
 pub fn annotation_arg_completions(
     document: &ParsedDocument,
     db: &SymbolDb,

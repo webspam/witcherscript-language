@@ -1,5 +1,6 @@
 use super::super::{
-    after_wrap_method_completions, annotation_arg_completions, AfterWrapMethodCompletions,
+    after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
+    AfterWrapMethodCompletions,
 };
 use super::{make_doc, SymbolDb, WorkspaceIndex};
 use crate::line_index::SourcePosition;
@@ -330,5 +331,43 @@ fn after_wrap_method_stage2_none_when_function_not_preceded_by_wrap_method() {
     assert!(
         result.is_none(),
         "bare `function` should not trigger wrap method completions"
+    );
+}
+
+// --- annotation_name_completions ---
+
+#[test]
+fn annotation_name_completions_fires_while_typing_name() {
+    // Cursor is after `@w` — annotation_ident token is present, gate should fire.
+    let source = "@w\n";
+    let doc = make_doc(source);
+
+    assert!(
+        annotation_name_completions(
+            &doc,
+            SourcePosition {
+                line: 0,
+                character: 2
+            }
+        ),
+        "should fire while typing an annotation name"
+    );
+}
+
+#[test]
+fn annotation_name_completions_false_inside_parens() {
+    // Cursor is inside `(CPlayer)` — should not fire (annotation_arg territory).
+    let source = "@wrapMethod(CPlayer)\n";
+    let doc = make_doc(source);
+
+    assert!(
+        !annotation_name_completions(
+            &doc,
+            SourcePosition {
+                line: 0,
+                character: 12
+            }
+        ),
+        "should not fire when cursor is inside annotation parens"
     );
 }
