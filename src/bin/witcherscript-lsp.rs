@@ -37,8 +37,8 @@ use witcherscript_parser::line_index::{SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{
     after_wrap_method_completions, annotation_arg_completions, class_body_keyword_completions,
     completion_members, expression_completions, extends_completions, find_references, hover_text,
-    resolve_definition, statement_completions, type_completions, wrap_method_snippet,
-    AfterWrapMethodCompletions, Definition, SymbolDb, WorkspaceIndex, BUILTIN_TYPES,
+    resolve_definition, statement_completions, type_completions, AfterWrapMethodCompletions,
+    Definition, SymbolDb, WorkspaceIndex, BUILTIN_TYPES,
 };
 use witcherscript_parser::script_env::{parse_script_environment, ScriptEnvironment};
 use witcherscript_parser::semantic_tokens::{
@@ -1187,6 +1187,30 @@ fn completion_item(definition: &Definition, params: &[String]) -> CompletionItem
     }
 }
 
+fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String {
+    let params = db.full_parameters_of(&method.uri, method.symbol.id);
+    let param_list = params
+        .iter()
+        .map(|p| {
+            let mut s = String::new();
+            if p.is_optional {
+                s.push_str("optional ");
+            }
+            if p.is_out {
+                s.push_str("out ");
+            }
+            s.push_str(&p.name);
+            if let Some(ty) = &p.type_annotation {
+                s.push_str(" : ");
+                s.push_str(ty);
+            }
+            s
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{}({}) {{\n\t$0\n}}", method.symbol.name, param_list)
+}
+
 fn type_completion_item(definition: &Definition) -> CompletionItem {
     let symbol = &definition.symbol;
     let kind = Some(match symbol.kind {
@@ -1337,9 +1361,11 @@ mod tests {
     use witcherscript_parser::document::parse_document;
     use witcherscript_parser::line_index::SourcePosition;
     use witcherscript_parser::resolve::{resolve_definition, SymbolDb, WorkspaceIndex};
+    use witcherscript_parser::symbols::AccessLevel;
 
     use super::{
         completion_item, document_symbols, hover_markdown, lsp_diagnostics, read_script_file,
+        wrap_method_snippet,
     };
 
     fn encode_utf16le(s: &str) -> Vec<u8> {
@@ -1756,5 +1782,76 @@ mod tests {
             base_uris.contains(&definition.uri),
             "rename should be rejected: symbol is declared in a base script"
         );
+    }
+
+    #[test]
+    fn wrap_method_snippet_plain_params() {
+        let source = concat!(
+            "class CPlayer {\n",
+            "  public function CanParry(damage : int, attacker : CObject) : bool {}\n",
+            "}\n",
+        );
+        let doc = parse_document(source).expect("parse");
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &doc);
+        let empty = WorkspaceIndex::default();
+        let db = SymbolDb::new(&index, &empty);
+
+        let method = db
+            .members_of("CPlayer", AccessLevel::Public)
+            .into_iter()
+            .find(|d| d.symbol.name == "CanParry")
+            .expect("CanParry should be a member of CPlayer");
+
+        let snippet = wrap_method_snippet(&method, &db);
+        assert_eq!(
+            snippet,
+            "CanParry(damage : int, attacker : CObject) {\n\t$0\n}"
+        );
+    }
+
+    #[test]
+    fn wrap_method_snippet_optional_and_out_params() {
+        let source = concat!(
+            "class CPlayer {\n",
+            "  public function Foo(a : int, optional b : float, out c : string) {}\n",
+            "}\n",
+        );
+        let doc = parse_document(source).expect("parse");
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &doc);
+        let empty = WorkspaceIndex::default();
+        let db = SymbolDb::new(&index, &empty);
+
+        let method = db
+            .members_of("CPlayer", AccessLevel::Public)
+            .into_iter()
+            .find(|d| d.symbol.name == "Foo")
+            .expect("Foo should be a member");
+
+        let snippet = wrap_method_snippet(&method, &db);
+        assert_eq!(
+            snippet,
+            "Foo(a : int, optional b : float, out c : string) {\n\t$0\n}"
+        );
+    }
+
+    #[test]
+    fn wrap_method_snippet_no_params() {
+        let source = "class CPlayer {\n  public function OnSpawned() {}\n}\n";
+        let doc = parse_document(source).expect("parse");
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &doc);
+        let empty = WorkspaceIndex::default();
+        let db = SymbolDb::new(&index, &empty);
+
+        let method = db
+            .members_of("CPlayer", AccessLevel::Public)
+            .into_iter()
+            .find(|d| d.symbol.name == "OnSpawned")
+            .expect("OnSpawned should be a member");
+
+        let snippet = wrap_method_snippet(&method, &db);
+        assert_eq!(snippet, "OnSpawned() {\n\t$0\n}");
     }
 }

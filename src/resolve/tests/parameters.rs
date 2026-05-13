@@ -1,4 +1,3 @@
-use super::super::wrap_method_snippet;
 use super::{make_doc, SymbolDb, WorkspaceIndex};
 use crate::symbols::AccessLevel;
 
@@ -92,75 +91,4 @@ fn parameters_of_multi_name_group() {
     let params = db.parameters_of(&def.uri, def.symbol.id);
 
     assert_eq!(params, vec!["a", "b", "c"]);
-}
-
-#[test]
-fn wrap_method_snippet_plain_params() {
-    let source = concat!(
-        "class CPlayer {\n",
-        "  public function CanParry(damage : int, attacker : CObject) : bool {}\n",
-        "}\n",
-    );
-    let doc = make_doc(source);
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let method = db
-        .members_of("CPlayer", AccessLevel::Public)
-        .into_iter()
-        .find(|d| d.symbol.name == "CanParry")
-        .expect("CanParry should be a member of CPlayer");
-
-    let snippet = wrap_method_snippet(&method, &db);
-    assert_eq!(
-        snippet,
-        "CanParry(damage : int, attacker : CObject) {\n\t$0\n}"
-    );
-}
-
-#[test]
-fn wrap_method_snippet_optional_and_out_params() {
-    let source = concat!(
-        "class CPlayer {\n",
-        "  public function Foo(a : int, optional b : float, out c : string) {}\n",
-        "}\n",
-    );
-    let doc = make_doc(source);
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let method = db
-        .members_of("CPlayer", AccessLevel::Public)
-        .into_iter()
-        .find(|d| d.symbol.name == "Foo")
-        .expect("Foo should be a member");
-
-    let snippet = wrap_method_snippet(&method, &db);
-    assert_eq!(
-        snippet,
-        "Foo(a : int, optional b : float, out c : string) {\n\t$0\n}"
-    );
-}
-
-#[test]
-fn wrap_method_snippet_no_params() {
-    let source = "class CPlayer {\n  public function OnSpawned() {}\n}\n";
-    let doc = make_doc(source);
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let method = db
-        .members_of("CPlayer", AccessLevel::Public)
-        .into_iter()
-        .find(|d| d.symbol.name == "OnSpawned")
-        .expect("OnSpawned should be a member");
-
-    let snippet = wrap_method_snippet(&method, &db);
-    assert_eq!(snippet, "OnSpawned() {\n\t$0\n}");
 }

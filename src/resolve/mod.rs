@@ -1283,30 +1283,6 @@ pub fn after_wrap_method_completions(
     Some(AfterWrapMethodCompletions::FunctionKeyword)
 }
 
-pub fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String {
-    let params = db.full_parameters_of(&method.uri, method.symbol.id);
-    let param_list = params
-        .iter()
-        .map(|p| {
-            let mut s = String::new();
-            if p.is_optional {
-                s.push_str("optional ");
-            }
-            if p.is_out {
-                s.push_str("out ");
-            }
-            s.push_str(&p.name);
-            if let Some(ty) = &p.type_annotation {
-                s.push_str(" : ");
-                s.push_str(ty);
-            }
-            s
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("{}({}) {{\n\t$0\n}}", method.symbol.name, param_list)
-}
-
 fn direct_methods_of_class<'a>(class_name: &'a str, db: &SymbolDb) -> Option<Vec<Definition>> {
     let class_def = db.find_top_level(class_name)?;
     if class_def.symbol.kind != SymbolKind::Class {
