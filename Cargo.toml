@@ -19,7 +19,7 @@ clap = { version = "4.5.51", default-features = false, features = [
 tokio = { version = "1.48.0", features = ["io-std", "macros", "rt-multi-thread", "sync"] }
 tower-lsp = "0.20.0"
 tree-sitter = "=0.26.8"
-tree-sitter-witcherscript = { git = "https://github.com/webspam/tree-sitter-witcherscript.git", tag = "v0.14.0" }
+tree-sitter-witcherscript = { git = "https://github.com/webspam/tree-sitter-witcherscript.git", tag = "v0.14.1" }
 rayon = "1.10"
 serde_json = "1"
 tracing = "0.1"
