@@ -716,7 +716,7 @@ impl LanguageServer for Backend {
             for def in &expr.members {
                 let params = db.parameters_of(&def.uri, def.symbol.id);
                 let mut item = completion_item(def, &params);
-                item.sort_text = Some(format!("1_{}", def.symbol.name));
+                item.sort_text = Some(format!("0_{}", def.symbol.name));
                 items.push(item);
             }
             for def in &expr.globals {
