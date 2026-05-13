@@ -132,7 +132,7 @@ fn formats_empty_state() {
 fn formats_for_loop() {
     let input = "function F() { for(i=0;i<10;i+=1){a();} }";
     let output = fmt(input);
-    assert!(output.contains("for (i=0; i<10; i+=1) {"));
+    assert!(output.contains("for (i = 0; i < 10; i += 1) {"));
 }
 
 #[test]

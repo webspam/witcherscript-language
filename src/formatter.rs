@@ -1,70 +1,16 @@
 use tree_sitter::Node;
 
-fn normalize_expr(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    let mut prev_non_space: u8 = 0;
-
-    while i < bytes.len() {
-        let b = bytes[i];
-        match b {
-            b'"' => {
-                out.push(b'"');
-                i += 1;
-                while i < bytes.len() {
-                    let sb = bytes[i];
-                    out.push(sb);
-                    i += 1;
-                    if sb == b'\\' && i < bytes.len() {
-                        out.push(bytes[i]);
-                        i += 1;
-                    } else if sb == b'"' {
-                        break;
-                    }
-                }
-                prev_non_space = b'"';
-            }
-            b'\'' => {
-                out.push(b'\'');
-                i += 1;
-                while i < bytes.len() {
-                    let sb = bytes[i];
-                    out.push(sb);
-                    i += 1;
-                    if sb == b'\'' {
-                        break;
-                    }
-                }
-                prev_non_space = b'\'';
-            }
-            b if b.is_ascii_whitespace() => {
-                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
-                    i += 1;
-                }
-                if i >= bytes.len() {
-                    break;
-                }
-                let next = bytes[i];
-                let after_ident = prev_non_space.is_ascii_alphanumeric()
-                    || matches!(prev_non_space, b'_' | b')' | b']' | b'"' | b'\'');
-                let remove = (next == b'(' && after_ident)
-                    || prev_non_space == b'('
-                    || next == b')'
-                    || next == b'.'
-                    || prev_non_space == b'.';
-                if !remove {
-                    out.push(b' ');
-                }
-            }
-            b => {
-                out.push(b);
-                prev_non_space = b;
-                i += 1;
-            }
-        }
+fn render_expr(node: Node, source: &str) -> String {
+    Formatter {
+        source,
+        indent_unit: String::new(),
+        level: 0,
+        out: String::new(),
+        suppress_next_indent: false,
+        line_limit: usize::MAX,
+        compact_colon: false,
     }
-    String::from_utf8(out).unwrap_or_else(|_| s.to_string())
+    .render_node(node)
 }
 
 fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<(String, Option<&'static str>)>) {
@@ -90,10 +36,7 @@ fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<(String, Option<
             }
         }
     }
-    parts.push((
-        normalize_expr(&source[node.start_byte()..node.end_byte()]),
-        None,
-    ));
+    parts.push((render_expr(node, source), None));
 }
 
 fn split_binary_condition(node: Node, source: &str) -> Vec<(String, Option<&'static str>)> {
@@ -113,13 +56,13 @@ fn try_split_call_args(node: Node, source: &str) -> Option<(String, Vec<String>)
         args_node
             .children(&mut cursor)
             .filter(|c| c.kind() != ",")
-            .map(|c| normalize_expr(&source[c.start_byte()..c.end_byte()]))
+            .map(|c| render_expr(c, source))
             .collect()
     };
     if args.len() <= 1 {
         return None;
     }
-    let prefix = normalize_expr(&source[func.start_byte()..func.end_byte()]);
+    let prefix = render_expr(func, source);
     Some((prefix, args))
 }
 
@@ -283,10 +226,7 @@ impl<'a> Formatter<'a> {
             "while_stmt" | "do_while_stmt" | "for_stmt" => self.format_loop_stmt(node),
             "switch_stmt" => self.format_switch_stmt(node),
             "expr_stmt" => self.format_expr_stmt(node),
-            _ if is_expr_node(node.kind()) => {
-                let t = normalize_expr(self.text(node));
-                self.emit(&t);
-            }
+            _ if is_expr_node(node.kind()) => self.format_children(node),
             _ => self.format_children(node),
         }
     }
@@ -327,6 +267,12 @@ impl<'a> Formatter<'a> {
         if ak == "func_params" {
             return false;
         }
+        if ak == "(" || ak == "[" {
+            return false;
+        }
+        if ak == "." || bk == "." {
+            return false;
+        }
         if ak == ":" {
             match parent_kind {
                 "switch_case_label" | "switch_default_label" => return false,
@@ -352,9 +298,6 @@ impl<'a> Formatter<'a> {
         }
         if node.child_count() == 0 {
             return self.text(node).to_string();
-        }
-        if is_expr_node(node.kind()) {
-            return normalize_expr(self.text(node));
         }
         let children: Vec<Node> = {
             let mut c = node.walk();
@@ -1128,11 +1071,9 @@ impl<'a> Formatter<'a> {
         let body = node.child_by_field_name("body");
         let else_body = node.child_by_field_name("else");
 
-        let cond_text = cond
-            .map(|c| normalize_expr(self.text(c)))
-            .unwrap_or_default();
         let indent = self.level * self.indent_unit.len();
-        let cond_line = indent + 4 + cond_text.len() + 2;
+        let cond_len = cond.map(|c| self.render_node(c).len()).unwrap_or(0);
+        let cond_line = indent + 4 + cond_len + 2;
 
         if cond_line > self.line_limit {
             self.emit_indent();
@@ -1141,7 +1082,7 @@ impl<'a> Formatter<'a> {
             let parts = if let Some(c) = cond {
                 split_binary_condition(c, self.source)
             } else {
-                vec![(cond_text.clone(), None)]
+                vec![]
             };
             for (fragment, op) in parts {
                 self.emit_indent();
@@ -1159,7 +1100,9 @@ impl<'a> Formatter<'a> {
         } else {
             self.emit_indent();
             self.emit("if (");
-            self.emit(&cond_text);
+            if let Some(c) = cond {
+                self.format_node(c);
+            }
             self.emit(")");
             self.emit_if_body(body, force_block);
         }
@@ -1223,8 +1166,7 @@ impl<'a> Formatter<'a> {
         ) {
             if body.kind() != "func_block" {
                 let indent = self.level * self.indent_unit.len();
-                let line =
-                    indent + 4 + normalize_expr(self.text(cond)).len() + 2 + self.text(body).len();
+                let line = indent + 4 + self.render_node(cond).len() + 2 + self.text(body).len();
                 if line > self.line_limit {
                     return true;
                 }
@@ -1245,11 +1187,8 @@ impl<'a> Formatter<'a> {
                 ) {
                     if eb_body.kind() != "func_block" {
                         let indent = self.level * self.indent_unit.len();
-                        let line = indent
-                            + 9
-                            + normalize_expr(self.text(ec)).len()
-                            + 2
-                            + self.text(eb_body).len();
+                        let line =
+                            indent + 9 + self.render_node(ec).len() + 2 + self.text(eb_body).len();
                         if line > self.line_limit {
                             return true;
                         }
@@ -1283,8 +1222,7 @@ impl<'a> Formatter<'a> {
                 self.emit_indent();
                 self.emit("while (");
                 if let Some(cond) = node.child_by_field_name("cond") {
-                    let t = normalize_expr(self.text(cond));
-                    self.emit(&t);
+                    self.format_node(cond);
                 }
                 self.emit(")");
                 if let Some(b) = node.child_by_field_name("body") {
@@ -1313,8 +1251,7 @@ impl<'a> Formatter<'a> {
                     self.emit(" while (");
                 }
                 if let Some(cond) = node.child_by_field_name("cond") {
-                    let t = normalize_expr(self.text(cond));
-                    self.emit(&t);
+                    self.format_node(cond);
                 }
                 self.emit(")\n");
             }
@@ -1322,18 +1259,15 @@ impl<'a> Formatter<'a> {
                 self.emit_indent();
                 self.emit("for (");
                 if let Some(init) = node.child_by_field_name("init") {
-                    let t = normalize_expr(self.text(init));
-                    self.emit(&t);
+                    self.format_node(init);
                 }
                 self.emit("; ");
                 if let Some(cond) = node.child_by_field_name("cond") {
-                    let t = normalize_expr(self.text(cond));
-                    self.emit(&t);
+                    self.format_node(cond);
                 }
                 self.emit("; ");
                 if let Some(iter) = node.child_by_field_name("iter") {
-                    let t = normalize_expr(self.text(iter));
-                    self.emit(&t);
+                    self.format_node(iter);
                 }
                 self.emit(")");
                 if let Some(b) = node.child_by_field_name("body") {
@@ -1354,8 +1288,7 @@ impl<'a> Formatter<'a> {
         self.emit_indent();
         self.emit("switch (");
         if let Some(cond) = node.child_by_field_name("cond") {
-            let t = normalize_expr(self.text(cond));
-            self.emit(&t);
+            self.format_node(cond);
         }
         self.emit(") {\n");
         self.level += 1;
@@ -1391,9 +1324,8 @@ impl<'a> Formatter<'a> {
             result
         };
         if let Some(e) = expr {
-            let normalized = normalize_expr(self.text(e));
             let indent = self.level * self.indent_unit.len();
-            if indent + normalized.len() + 1 > self.line_limit {
+            if indent + self.render_node(e).len() + 1 > self.line_limit {
                 if let Some((prefix, args)) = try_split_call_args(e, self.source) {
                     self.emit(&prefix);
                     self.emit("(\n");
@@ -1417,7 +1349,7 @@ impl<'a> Formatter<'a> {
                     return;
                 }
             }
-            self.emit(&normalized);
+            self.format_node(e);
         }
         let semi = self.child_of_kind(node, ";");
         if semi.map(|n| !n.is_missing()).unwrap_or(false) {
