@@ -1283,7 +1283,7 @@ pub fn after_wrap_method_completions(
     Some(AfterWrapMethodCompletions::FunctionKeyword)
 }
 
-fn direct_methods_of_class<'a>(class_name: &'a str, db: &SymbolDb) -> Option<Vec<Definition>> {
+fn direct_methods_of_class(class_name: &str, db: &SymbolDb) -> Option<Vec<Definition>> {
     let class_def = db.find_top_level(class_name)?;
     if class_def.symbol.kind != SymbolKind::Class {
         return None;
