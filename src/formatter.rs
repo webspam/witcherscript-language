@@ -748,7 +748,8 @@ impl<'a> Formatter<'a> {
                     past_colon = true;
                 }
                 if past_colon && child.kind() == "type_annot" {
-                    result = format!(" : {}", self.text(*child));
+                    let colon = if self.compact_colon { ": " } else { " : " };
+                    result = format!("{}{}", colon, self.text(*child));
                     break;
                 }
             }
