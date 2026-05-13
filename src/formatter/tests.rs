@@ -136,6 +136,15 @@ fn formats_for_loop() {
 }
 
 #[test]
+fn spaces_around_binary_operators_in_for_header() {
+    // Operator spacing must be normalised regardless of source whitespace.
+    let compact = "function F() { for(i=0;i<count;i+=1){} }";
+    let spaced = "function F() { for ( i = 0 ; i < count ; i += 1 ) {} }";
+    assert!(fmt(compact).contains("for (i = 0; i < count; i += 1) {"));
+    assert!(fmt(spaced).contains("for (i = 0; i < count; i += 1) {"));
+}
+
+#[test]
 fn normalizes_expr_whitespace() {
     let input = "function F() { var x : int = SomeObj  .Method   (  ); }";
     let output = fmt(input);
