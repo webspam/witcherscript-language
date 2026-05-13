@@ -1,0 +1,137 @@
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::Arc;
+
+use tokio::sync::mpsc;
+use tower_lsp::lsp_types::MessageType;
+use tracing::field::{Field, Visit};
+use tracing_subscriber::Layer;
+
+pub(crate) const LEVEL_ERROR: u8 = 1;
+pub(crate) const LEVEL_WARN: u8 = 2;
+pub(crate) const LEVEL_INFO: u8 = 3;
+pub(crate) const LEVEL_DEBUG: u8 = 4;
+pub(crate) const LEVEL_TRACE: u8 = 5;
+
+pub(crate) const DEFAULT_LOG_LEVEL: tracing::Level = tracing::Level::WARN;
+
+pub(crate) fn level_to_u8(level: tracing::Level) -> u8 {
+    match level {
+        tracing::Level::ERROR => LEVEL_ERROR,
+        tracing::Level::WARN => LEVEL_WARN,
+        tracing::Level::INFO => LEVEL_INFO,
+        tracing::Level::DEBUG => LEVEL_DEBUG,
+        tracing::Level::TRACE => LEVEL_TRACE,
+    }
+}
+
+pub(crate) fn level_from_u8(n: u8) -> tracing::Level {
+    match n {
+        LEVEL_ERROR => tracing::Level::ERROR,
+        LEVEL_WARN => tracing::Level::WARN,
+        LEVEL_DEBUG => tracing::Level::DEBUG,
+        LEVEL_TRACE => tracing::Level::TRACE,
+        _ => DEFAULT_LOG_LEVEL,
+    }
+}
+
+pub(crate) fn level_from_str(s: &str) -> tracing::Level {
+    match s.to_ascii_lowercase().as_str() {
+        "error" => tracing::Level::ERROR,
+        "warn" | "warning" => tracing::Level::WARN,
+        "debug" => tracing::Level::DEBUG,
+        "trace" => tracing::Level::TRACE,
+        _ => DEFAULT_LOG_LEVEL,
+    }
+}
+
+/// Forwards tracing events to the LSP client's log_message via an async channel.
+/// The `min_level` atomic is updated at runtime when the user changes `witcherscript.logLevel`.
+pub(crate) struct LspLogSender {
+    pub(crate) sender: mpsc::UnboundedSender<(MessageType, String)>,
+    pub(crate) min_level: Arc<AtomicU8>,
+}
+
+impl<S: tracing::Subscriber> Layer<S> for LspLogSender {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let level = *event.metadata().level();
+        if level > level_from_u8(self.min_level.load(Ordering::Relaxed)) {
+            return;
+        }
+
+        let msg_type = match level {
+            tracing::Level::ERROR => MessageType::ERROR,
+            tracing::Level::WARN => MessageType::WARNING,
+            tracing::Level::INFO => MessageType::INFO,
+            _ => MessageType::LOG,
+        };
+
+        let mut visitor = EventVisitor::default();
+        event.record(&mut visitor);
+        let _ = self.sender.send((msg_type, visitor.finish()));
+    }
+}
+
+#[derive(Default)]
+struct EventVisitor {
+    message: String,
+    fields: String,
+}
+
+impl EventVisitor {
+    fn finish(self) -> String {
+        if self.fields.is_empty() {
+            self.message
+        } else {
+            format!("{} {}", self.message, self.fields)
+        }
+    }
+
+    fn push_field(&mut self, name: &str, value: &dyn std::fmt::Display) {
+        if !self.fields.is_empty() {
+            self.fields.push(' ');
+        }
+        self.fields.push_str(&format!("{name}={value}"));
+    }
+}
+
+impl Visit for EventVisitor {
+    fn record_str(&mut self, field: &Field, value: &str) {
+        if field.name() == "message" {
+            self.message = value.to_owned();
+        } else {
+            self.push_field(field.name(), &value);
+        }
+    }
+
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.message = format!("{value:?}");
+        } else {
+            self.push_field(field.name(), &format_args!("{value:?}"));
+        }
+    }
+
+    fn record_u64(&mut self, field: &Field, value: u64) {
+        self.push_field(field.name(), &value);
+    }
+
+    fn record_i64(&mut self, field: &Field, value: i64) {
+        self.push_field(field.name(), &value);
+    }
+
+    fn record_u128(&mut self, field: &Field, value: u128) {
+        self.push_field(field.name(), &value);
+    }
+
+    fn record_i128(&mut self, field: &Field, value: i128) {
+        self.push_field(field.name(), &value);
+    }
+
+    fn record_bool(&mut self, field: &Field, value: bool) {
+        self.push_field(field.name(), &value);
+    }
+}
