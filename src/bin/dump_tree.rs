@@ -12,8 +12,9 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let source = match args.next() {
-        Some(path) => std::fs::read_to_string(&path)?,
+    let source = match args.next().as_deref() {
+        Some("--string" | "-s") => args.next().ok_or("--string requires a value")?,
+        Some(path) => std::fs::read_to_string(path)?,
         None => {
             let mut buf = String::new();
             io::stdin().read_to_string(&mut buf)?;
