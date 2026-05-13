@@ -1089,7 +1089,17 @@ fn node_before_byte<'a>(root: Node<'a>, source: &[u8], byte_offset: usize) -> Op
 }
 
 fn is_statement_boundary(node: Node) -> bool {
-    !node.has_error() && matches!(node.kind(), "{" | "}" | ";")
+    if node.has_error() {
+        return false;
+    }
+    if matches!(node.kind(), "{" | "}" | ";") {
+        return true;
+    }
+    // `:` closing a switch case/default label is also a statement boundary.
+    node.kind() == ":"
+        && node
+            .parent()
+            .is_some_and(|p| matches!(p.kind(), "switch_case_label" | "switch_default_label"))
 }
 
 pub const BUILTIN_TYPES: &[&str] = &["bool", "byte", "float", "int", "name", "string", "void"];

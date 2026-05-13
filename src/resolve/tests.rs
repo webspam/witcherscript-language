@@ -1754,9 +1754,7 @@ fn statement_completions_empty_after_dot_in_class_method() {
 
 #[test]
 fn statement_completions_in_switch_true_at_switch_body_level() {
-    // tests/fixtures/valid/switch_stmt.ws, line 6 (0-indexed: 5), character 0.
-    // Blank line between `break;` (line 5) and `case 2:` (line 7), directly
-    // inside switch_block. Last non-whitespace token before cursor: `;` (byte 77).
+    // switch_stmt.ws line 7:0 — start of the `case 3:` line; prev token is `;`.
     let source = include_str!("../../tests/fixtures/valid/switch_stmt.ws");
     let doc = parse_document(source).expect("parse should succeed");
     let index = WorkspaceIndex::default();
@@ -1768,7 +1766,7 @@ fn statement_completions_in_switch_true_at_switch_body_level() {
         &doc,
         &db,
         SourcePosition {
-            line: 5,
+            line: 7,
             character: 0,
         },
     );
@@ -1779,11 +1777,9 @@ fn statement_completions_in_switch_true_at_switch_body_level() {
 }
 
 #[test]
-fn statement_completions_in_switch_false_inside_nested_block() {
-    // tests/fixtures/valid/switch_stmt.ws, line 9 (0-indexed: 8), character 0.
-    // Blank line inside the if body (func_block at bytes 109..119), which is
-    // itself nested inside the switch_block. Last non-whitespace before cursor:
-    // `{` at byte 109. in_switch must be false here.
+fn statement_completions_in_switch_true_after_fall_through_case_label() {
+    // switch_stmt.ws line 4:0 — blank line after `case 1:`; prev token is `:`
+    // from switch_case_label, which must be accepted as a statement boundary.
     let source = include_str!("../../tests/fixtures/valid/switch_stmt.ws");
     let doc = parse_document(source).expect("parse should succeed");
     let index = WorkspaceIndex::default();
@@ -1795,7 +1791,32 @@ fn statement_completions_in_switch_false_inside_nested_block() {
         &doc,
         &db,
         SourcePosition {
-            line: 8,
+            line: 4,
+            character: 0,
+        },
+    );
+    assert!(
+        result.in_switch,
+        "in_switch must be true on a blank line after a fall-through case label"
+    );
+}
+
+#[test]
+fn statement_completions_in_switch_false_inside_nested_block() {
+    // switch_stmt.ws line 9:0 — blank line inside the if body, nested inside
+    // the switch_block. Nearest enclosing block is func_block, not switch_block.
+    let source = include_str!("../../tests/fixtures/valid/switch_stmt.ws");
+    let doc = parse_document(source).expect("parse should succeed");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = super::statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 9,
             character: 0,
         },
     );
