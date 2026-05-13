@@ -657,19 +657,19 @@ impl LanguageServer for Backend {
             items.push(keyword_snippet_item("return", "return;"));
             items.push(keyword_snippet_item(
                 "for",
-                "for (${1:init}; ${2:condition}; ${3:increment})\n{\n\t$0\n}",
+                "for (${1:init}; ${2:condition}; ${3:increment}) {\n\t$0\n}",
             ));
             items.push(keyword_snippet_item(
                 "while",
-                "while (${1:condition})\n{\n\t$0\n}",
+                "while (${1:condition}) {\n\t$0\n}",
             ));
             items.push(keyword_snippet_item(
                 "do",
-                "do\n{\n\t$0\n} while (${1:condition});",
+                "do {\n\t$0\n} while (${1:condition});",
             ));
             items.push(keyword_snippet_item(
                 "switch",
-                "switch (${1:expr})\n{\n\tcase ${2:val}:\n\t\t$0\n\t\tbreak;\n}",
+                "switch (${1:expr}) {\n\tcase ${2:val}:\n\t\t$0\n\t\tbreak;\n}",
             ));
             for def in &stmt.locals {
                 let params = db.parameters_of(&def.uri, def.symbol.id);
