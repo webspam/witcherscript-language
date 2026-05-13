@@ -514,16 +514,6 @@ impl LanguageServer for Backend {
             )));
         }
 
-        let class_body_kws = class_body_keyword_completions(document, pos);
-        if !class_body_kws.is_empty() {
-            return Ok(Some(CompletionResponse::Array(
-                class_body_kws
-                    .iter()
-                    .map(|kw| class_body_kw_item(kw))
-                    .collect(),
-            )));
-        }
-
         let user_types = type_completions(document, &db, pos);
         if !user_types.is_empty() {
             let mut items: Vec<CompletionItem> = BUILTIN_TYPES
@@ -532,6 +522,16 @@ impl LanguageServer for Backend {
                 .collect();
             items.extend(user_types.iter().map(type_completion_item));
             return Ok(Some(CompletionResponse::Array(items)));
+        }
+
+        let class_body_kws = class_body_keyword_completions(document, pos);
+        if !class_body_kws.is_empty() {
+            return Ok(Some(CompletionResponse::Array(
+                class_body_kws
+                    .iter()
+                    .map(|kw| class_body_kw_item(kw))
+                    .collect(),
+            )));
         }
 
         let stmt = statement_completions(uri.as_str(), document, &db, pos);

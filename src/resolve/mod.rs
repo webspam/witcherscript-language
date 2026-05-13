@@ -1139,6 +1139,19 @@ fn is_statement_boundary(node: Node) -> bool {
             .is_some_and(|p| matches!(p.kind(), "switch_case_label" | "switch_default_label"))
 }
 
+fn is_type_annotation_boundary(node: Node) -> bool {
+    if node.has_error() {
+        return false;
+    }
+    node.kind() == ":"
+        && !node.parent().is_some_and(|p| {
+            matches!(
+                p.kind(),
+                "switch_case_label" | "switch_default_label" | "ternary_cond_expr"
+            )
+        })
+}
+
 pub const BUILTIN_TYPES: &[&str] = &["bool", "byte", "float", "int", "name", "string", "void"];
 
 pub fn type_completions(
@@ -1159,11 +1172,22 @@ fn type_completions_inner(
         .position_to_byte(&document.source, position)?;
 
     let root = document.tree.root_node();
-    let in_type_annot = nodes_at_offset(root, byte_offset)
-        .into_iter()
-        .any(has_type_annot_ancestor);
+    let nodes = nodes_at_offset(root, byte_offset);
+    let source = document.source.as_bytes();
 
-    if !in_type_annot {
+    let in_type_context =
+        // Gate 1: cursor immediately after a type-annotation colon
+        node_before_byte(root, source, byte_offset).is_some_and(is_type_annotation_boundary)
+        // Gate 2: cursor on/within an ident whose start follows a type-annotation colon
+        || nodes
+            .last()
+            .filter(|&n| is_kind_or_error_wrapped_kind(*n, &["ident"]))
+            .and_then(|n| node_before_byte(root, source, n.start_byte()))
+            .is_some_and(is_type_annotation_boundary)
+        // Gate 3: cursor already inside a type_annot subtree (generic type args, clean parses)
+        || nodes.iter().any(|n| has_type_annot_ancestor(*n));
+
+    if !in_type_context {
         return None;
     }
 

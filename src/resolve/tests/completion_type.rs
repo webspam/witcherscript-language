@@ -3,6 +3,35 @@ use super::{make_doc, SymbolDb, WorkspaceIndex};
 use crate::line_index::SourcePosition;
 
 #[test]
+fn type_completions_offered_right_after_colon_no_type_yet() {
+    // Cursor immediately after `:` — tree-sitter cannot produce a type_annot
+    // node yet (ERROR recovery), so the old ancestor check returns None.
+    let source = "class CTest {}\nclass C {var test:}";
+    // line 1: "class C {var test:}"
+    //          0         1
+    //          0123456789012345678
+    //                            ^ col 18 = right after ':'
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let types = type_completions(
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 18,
+        },
+    );
+    assert!(
+        !types.is_empty(),
+        "type completions must be offered right after ':' even before any type name is typed"
+    );
+}
+
+#[test]
 fn type_completions_offered_in_type_annotation() {
     // "var x : CP" with a complete statement on the next line gives tree-sitter
     // enough context to recover and emit a type_annot node for the partial name.
