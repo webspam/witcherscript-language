@@ -1266,19 +1266,27 @@ pub fn after_wrap_method_completions(
         .position_to_byte(&document.source, position)?;
 
     let root = document.tree.root_node();
-    let prev = node_before_byte(root, document.source.as_bytes(), byte_offset)?;
+    let source = document.source.as_bytes();
 
-    // Stage 2: prev is the `function` keyword that follows a @wrapMethod annotation.
-    if prev.kind() == "function" {
-        let before_fn = node_before_byte(root, document.source.as_bytes(), prev.start_byte())?;
+    // If the cursor is ON an ident or `function` token, step back to the node
+    // before that token's start; otherwise step back from the cursor directly.
+    let effective_prev = nodes_at_offset(root, byte_offset)
+        .last()
+        .filter(|n| matches!(n.kind(), "ident" | "function"))
+        .and_then(|n| node_before_byte(root, source, n.start_byte()))
+        .or_else(|| node_before_byte(root, source, byte_offset))?;
+
+    // Stage 2: `function` keyword is the boundary — cursor is after it or typing a name.
+    if effective_prev.kind() == "function" {
+        let before_fn = node_before_byte(root, source, effective_prev.start_byte())?;
         let class_name = wrap_method_class_from_closing_paren(before_fn, &document.source)?;
         return Some(AfterWrapMethodCompletions::MethodList(
             direct_methods_of_class(class_name, db)?,
         ));
     }
 
-    // Stage 1: prev is `)` closing a @wrapMethod(CClass) annotation.
-    let class_name = wrap_method_class_from_closing_paren(prev, &document.source)?;
+    // Stage 1: `)` of annotation is the boundary — `function` keyword not yet complete.
+    let class_name = wrap_method_class_from_closing_paren(effective_prev, &document.source)?;
     direct_methods_of_class(class_name, db)?;
     Some(AfterWrapMethodCompletions::FunctionKeyword)
 }
