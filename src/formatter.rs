@@ -67,79 +67,38 @@ fn normalize_expr(s: &str) -> String {
     String::from_utf8(out).unwrap_or_else(|_| s.to_string())
 }
 
-fn split_binary_condition(s: &str) -> Vec<(String, Option<&'static str>)> {
-    let mut parts: Vec<(String, Option<&'static str>)> = Vec::new();
-    let mut current = String::new();
-    let mut depth: i32 = 0;
-    let bytes = s.as_bytes();
-    let mut i = 0;
-
-    while i < bytes.len() {
-        match bytes[i] {
-            b'(' | b'[' => {
-                depth += 1;
-                current.push(bytes[i] as char);
-                i += 1;
-            }
-            b')' | b']' => {
-                depth -= 1;
-                current.push(bytes[i] as char);
-                i += 1;
-            }
-            b'"' => {
-                current.push('"');
-                i += 1;
-                while i < bytes.len() {
-                    let sb = bytes[i];
-                    current.push(sb as char);
-                    i += 1;
-                    if sb == b'\\' && i < bytes.len() {
-                        current.push(bytes[i] as char);
-                        i += 1;
-                    } else if sb == b'"' {
-                        break;
+fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<(String, Option<&'static str>)>) {
+    if node.kind() == "binary_op_expr" {
+        if let Some(op_node) = node.child_by_field_name("op") {
+            let op_str: Option<&'static str> = match op_node.kind() {
+                "binary_op_or" => Some("||"),
+                "binary_op_and" => Some("&&"),
+                _ => None,
+            };
+            if let Some(op) = op_str {
+                if let (Some(left), Some(right)) = (
+                    node.child_by_field_name("left"),
+                    node.child_by_field_name("right"),
+                ) {
+                    collect_bool_parts(left, source, parts);
+                    if let Some(last) = parts.last_mut() {
+                        last.1 = Some(op);
                     }
+                    collect_bool_parts(right, source, parts);
+                    return;
                 }
-            }
-            b'\'' => {
-                current.push('\'');
-                i += 1;
-                while i < bytes.len() {
-                    let sb = bytes[i];
-                    current.push(sb as char);
-                    i += 1;
-                    if sb == b'\'' {
-                        break;
-                    }
-                }
-            }
-            b'|' if depth == 0 && i + 1 < bytes.len() && bytes[i + 1] == b'|' => {
-                parts.push((current.trim_end().to_string(), Some("||")));
-                current = String::new();
-                i += 2;
-                while i < bytes.len() && bytes[i] == b' ' {
-                    i += 1;
-                }
-            }
-            b'&' if depth == 0 && i + 1 < bytes.len() && bytes[i + 1] == b'&' => {
-                parts.push((current.trim_end().to_string(), Some("&&")));
-                current = String::new();
-                i += 2;
-                while i < bytes.len() && bytes[i] == b' ' {
-                    i += 1;
-                }
-            }
-            b => {
-                current.push(b as char);
-                i += 1;
             }
         }
     }
+    parts.push((
+        normalize_expr(&source[node.start_byte()..node.end_byte()]),
+        None,
+    ));
+}
 
-    let last = current.trim().to_string();
-    if !last.is_empty() {
-        parts.push((last, None));
-    }
+fn split_binary_condition(node: Node, source: &str) -> Vec<(String, Option<&'static str>)> {
+    let mut parts = Vec::new();
+    collect_bool_parts(node, source, &mut parts);
     parts
 }
 
@@ -1259,7 +1218,12 @@ impl<'a> Formatter<'a> {
             self.emit_indent();
             self.emit("if (\n");
             self.level += 1;
-            for (fragment, op) in split_binary_condition(&cond_text) {
+            let parts = if let Some(c) = cond {
+                split_binary_condition(c, self.source)
+            } else {
+                vec![(cond_text.clone(), None)]
+            };
+            for (fragment, op) in parts {
                 self.emit_indent();
                 self.emit(&fragment);
                 if let Some(o) = op {
