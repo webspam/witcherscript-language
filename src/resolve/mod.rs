@@ -1500,7 +1500,16 @@ fn class_body_kw_candidates(ctx: &ClassBodyCtx) -> Vec<&'static str> {
         return kw;
     }
 
-    if !ctx.has_access {
+    // Access must be the first specifier (after import). Once any other
+    // specifier has been typed, access modifiers can no longer be added.
+    let non_access_seen = ctx.has_final
+        || ctx.has_latent
+        || ctx.has_editable
+        || ctx.has_saved
+        || ctx.has_const_
+        || ctx.has_inlined
+        || ctx.has_optional;
+    if !ctx.has_access && !non_access_seen {
         kw.extend_from_slice(&["private", "protected", "public"]);
     }
 

@@ -2414,6 +2414,11 @@ fn class_body_kw_after_editable_suppresses_func_keywords_and_const() {
         !result.contains(&"autobind"),
         "autobind invalid after editable"
     );
+    assert!(
+        !result.contains(&"private"),
+        "access cannot follow editable"
+    );
+    assert!(!result.contains(&"public"), "access cannot follow editable");
 }
 
 #[test]
@@ -2428,6 +2433,8 @@ fn class_body_kw_saved_is_terminal_no_more_var_specifiers() {
     );
     assert!(!result.contains(&"const"), "const cannot follow saved");
     assert!(!result.contains(&"inlined"), "inlined cannot follow saved");
+    assert!(!result.contains(&"private"), "access cannot follow saved");
+    assert!(!result.contains(&"public"), "access cannot follow saved");
 }
 
 #[test]
@@ -2482,6 +2489,33 @@ fn class_body_kw_after_final_suppresses_var_and_autobind() {
     assert!(
         !result.contains(&"editable"),
         "editable invalid after final"
+    );
+    assert!(!result.contains(&"private"), "access cannot follow final");
+    assert!(!result.contains(&"public"), "access cannot follow final");
+}
+
+#[test]
+fn class_body_kw_after_optional_no_access_only_autobind() {
+    let source = "class CExample {\n  optional \n}\n";
+    let doc = parse_document(source).expect("parse");
+    let result = kw(&doc, 1, 11);
+    assert!(
+        result.contains(&"autobind"),
+        "should offer autobind after optional"
+    );
+    assert!(
+        !result.contains(&"private"),
+        "access cannot follow optional"
+    );
+    assert!(
+        !result.contains(&"protected"),
+        "access cannot follow optional"
+    );
+    assert!(!result.contains(&"public"), "access cannot follow optional");
+    assert!(!result.contains(&"var"), "var invalid after optional");
+    assert!(
+        !result.contains(&"function"),
+        "function invalid after optional"
     );
 }
 
