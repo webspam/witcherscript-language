@@ -473,6 +473,115 @@ fn extends_completions_for_state_decl_returns_states_only() {
 }
 
 #[test]
+fn extends_completions_state_excludes_states_of_unrelated_owners() {
+    // A state in CPlayer must only be extendable by states whose owner is in
+    // CPlayer's class chain — not states owned by an unrelated class.
+    let source = concat!(
+        "class CPlayer {}\n",
+        "class CNpc {}\n",
+        "state PlayerIdle in CPlayer {}\n",
+        "state NpcIdle in CNpc {}\n",
+        "state Foo in CPlayer extends \n",
+    );
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = extends_completions(
+        &doc,
+        &db,
+        SourcePosition {
+            line: 4,
+            character: 29,
+        },
+    );
+    let names: Vec<&str> = result.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        names.contains(&"PlayerIdle"),
+        "must offer states owned by the same parent class"
+    );
+    assert!(
+        !names.contains(&"NpcIdle"),
+        "must not offer states owned by an unrelated class"
+    );
+}
+
+#[test]
+fn extends_completions_state_includes_states_of_superclasses() {
+    // A state in a subclass may extend states defined in any of its superclasses.
+    let source = concat!(
+        "class CRoot {}\n",
+        "class CMid extends CRoot {}\n",
+        "class CLeaf extends CMid {}\n",
+        "state RootIdle in CRoot {}\n",
+        "state MidIdle in CMid {}\n",
+        "state LeafIdle in CLeaf {}\n",
+        "state OtherIdle in CRoot {}\n",
+        "state Foo in CLeaf extends \n",
+    );
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = extends_completions(
+        &doc,
+        &db,
+        SourcePosition {
+            line: 7,
+            character: 27,
+        },
+    );
+    let names: Vec<&str> = result.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        names.contains(&"LeafIdle"),
+        "must offer states owned by the same class"
+    );
+    assert!(
+        names.contains(&"MidIdle"),
+        "must offer states owned by an intermediate superclass"
+    );
+    assert!(
+        names.contains(&"RootIdle"),
+        "must offer states owned by a root superclass"
+    );
+    assert!(
+        names.contains(&"OtherIdle"),
+        "must offer sibling states owned by the same superclass"
+    );
+}
+
+#[test]
+fn extends_completions_state_empty_when_owner_unknown() {
+    // When the owner class isn't in the index, no base states can be valid.
+    let source = "state Foo in CUnknown extends \n";
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = extends_completions(
+        &doc,
+        &db,
+        SourcePosition {
+            line: 0,
+            character: 30,
+        },
+    );
+    // CUnknown isn't loaded, but it still forms a single-element chain of itself,
+    // so any state owned by "CUnknown" would still match. No such state exists here.
+    let names: Vec<&str> = result.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        names.is_empty(),
+        "no candidates expected when owner has no in-chain states; got {names:?}"
+    );
+}
+
+#[test]
 fn extends_completions_excludes_enums_and_structs() {
     // Only Class and State symbols must appear — not Enum or Struct.
     let source = concat!(

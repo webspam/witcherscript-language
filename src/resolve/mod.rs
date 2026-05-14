@@ -57,6 +57,12 @@ impl<'a> SymbolDb<'a> {
             .or_else(|| self.base.find_top_level(name))
     }
 
+    pub fn superclass_of(&self, class_name: &str) -> Option<String> {
+        self.workspace
+            .superclass_of(class_name)
+            .or_else(|| self.base.superclass_of(class_name))
+    }
+
     pub fn find_member(
         &self,
         container: &str,
@@ -1318,21 +1324,39 @@ pub fn extends_completions(
     db: &SymbolDb,
     position: SourcePosition,
 ) -> Vec<Definition> {
-    let Some((state, kind)) = header_state_and_kind(document, position) else {
+    let Some(header) = header_state_and_kind(document, position) else {
         return Vec::new();
     };
-    if state != HeaderState::AfterExtendsKw {
+    if header.state != HeaderState::AfterExtendsKw {
         return Vec::new();
     }
-    let target_kind = match kind {
-        Some(HeaderDeclKind::Class) => SymbolKind::Class,
-        Some(HeaderDeclKind::State) => SymbolKind::State,
-        None => return Vec::new(),
-    };
-    db.all_types()
-        .into_iter()
-        .filter(|def| def.symbol.kind == target_kind)
-        .collect()
+    match header.kind {
+        Some(HeaderDeclKind::Class) => db
+            .all_types()
+            .into_iter()
+            .filter(|def| def.symbol.kind == SymbolKind::Class)
+            .collect(),
+        Some(HeaderDeclKind::State) => {
+            let Some(owner) = header.owner_name else {
+                return Vec::new();
+            };
+            let chain = class_chain(db, &owner);
+            if chain.is_empty() {
+                return Vec::new();
+            }
+            db.all_types()
+                .into_iter()
+                .filter(|def| def.symbol.kind == SymbolKind::State)
+                .filter(|def| {
+                    def.symbol
+                        .owner_class
+                        .as_deref()
+                        .is_some_and(|owner| chain.iter().any(|c| c == owner))
+                })
+                .collect()
+        }
+        None => Vec::new(),
+    }
 }
 
 pub fn state_owner_completions(
@@ -1340,10 +1364,10 @@ pub fn state_owner_completions(
     db: &SymbolDb,
     position: SourcePosition,
 ) -> Vec<Definition> {
-    let Some((state, _)) = header_state_and_kind(document, position) else {
+    let Some(header) = header_state_and_kind(document, position) else {
         return Vec::new();
     };
-    if state != HeaderState::AfterInKw {
+    if header.state != HeaderState::AfterInKw {
         return Vec::new();
     }
     db.all_types()
@@ -1356,14 +1380,30 @@ pub fn class_header_keyword_completions(
     document: &ParsedDocument,
     position: SourcePosition,
 ) -> Vec<&'static str> {
-    let Some((state, _)) = header_state_and_kind(document, position) else {
+    let Some(header) = header_state_and_kind(document, position) else {
         return Vec::new();
     };
-    match state {
+    match header.state {
         HeaderState::AfterClassName | HeaderState::AfterOwner => vec!["extends"],
         HeaderState::AfterStateName => vec!["in"],
         _ => Vec::new(),
     }
+}
+
+fn class_chain(db: &SymbolDb, start: &str) -> Vec<String> {
+    let mut chain: Vec<String> = Vec::new();
+    let mut current = start.to_string();
+    for _ in 0..=MAX_INHERITANCE_DEPTH {
+        if chain.iter().any(|c| c == &current) {
+            break;
+        }
+        chain.push(current.clone());
+        match db.superclass_of(&current) {
+            Some(next) => current = next,
+            None => break,
+        }
+    }
+    chain
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1386,10 +1426,16 @@ enum HeaderDeclKind {
     State,
 }
 
+struct HeaderContext {
+    state: HeaderState,
+    kind: Option<HeaderDeclKind>,
+    owner_name: Option<String>,
+}
+
 fn header_state_and_kind(
     document: &ParsedDocument,
     position: SourcePosition,
-) -> Option<(HeaderState, Option<HeaderDeclKind>)> {
+) -> Option<HeaderContext> {
     let byte_offset = document
         .line_index
         .position_to_byte(&document.source, position)?;
@@ -1411,10 +1457,18 @@ fn header_state_and_kind(
                 .and_then(enclosing_header_node)
         })?;
 
-    let mut state = HeaderState::Initial;
-    let mut decl_kind: Option<HeaderDeclKind> = None;
-    header_walk(header_node, byte_offset, &mut state, &mut decl_kind);
-    Some((state, decl_kind))
+    let mut ctx = HeaderContext {
+        state: HeaderState::Initial,
+        kind: None,
+        owner_name: None,
+    };
+    header_walk(
+        header_node,
+        byte_offset,
+        document.source.as_bytes(),
+        &mut ctx,
+    );
+    Some(ctx)
 }
 
 fn enclosing_header_node(start: Node) -> Option<Node> {
@@ -1438,41 +1492,39 @@ fn enclosing_header_node(start: Node) -> Option<Node> {
     }
 }
 
-fn header_walk(
-    node: Node,
-    byte_offset: usize,
-    state: &mut HeaderState,
-    decl_kind: &mut Option<HeaderDeclKind>,
-) {
+fn header_walk(node: Node, byte_offset: usize, source: &[u8], ctx: &mut HeaderContext) {
     let mut cur = node.walk();
     for child in node.children(&mut cur) {
         if child.start_byte() >= byte_offset {
             break;
         }
         let past = child.end_byte() < byte_offset;
-        match (*state, child.kind()) {
+        match (ctx.state, child.kind()) {
             (HeaderState::Initial, "class") => {
-                *state = HeaderState::AfterClassKw;
-                *decl_kind = Some(HeaderDeclKind::Class);
+                ctx.state = HeaderState::AfterClassKw;
+                ctx.kind = Some(HeaderDeclKind::Class);
             }
             (HeaderState::Initial, "state") => {
-                *state = HeaderState::AfterStateKw;
-                *decl_kind = Some(HeaderDeclKind::State);
+                ctx.state = HeaderState::AfterStateKw;
+                ctx.kind = Some(HeaderDeclKind::State);
             }
             (HeaderState::AfterClassKw, "ident") if past => {
-                *state = HeaderState::AfterClassName;
+                ctx.state = HeaderState::AfterClassName;
             }
             (HeaderState::AfterStateKw, "ident") if past => {
-                *state = HeaderState::AfterStateName;
+                ctx.state = HeaderState::AfterStateName;
             }
-            (HeaderState::AfterStateName, "in") => *state = HeaderState::AfterInKw,
-            (HeaderState::AfterInKw, "ident") if past => *state = HeaderState::AfterOwner,
+            (HeaderState::AfterStateName, "in") => ctx.state = HeaderState::AfterInKw,
+            (HeaderState::AfterInKw, "ident") if past => {
+                ctx.state = HeaderState::AfterOwner;
+                ctx.owner_name = child.utf8_text(source).ok().map(str::to_string);
+            }
             (HeaderState::AfterClassName | HeaderState::AfterOwner, "extends") => {
-                *state = HeaderState::AfterExtendsKw;
+                ctx.state = HeaderState::AfterExtendsKw;
             }
-            (HeaderState::AfterExtendsKw, "ident") if past => *state = HeaderState::AfterBase,
-            (_, "class_def" | "{") => *state = HeaderState::Body,
-            (_, "ERROR") => header_walk(child, byte_offset, state, decl_kind),
+            (HeaderState::AfterExtendsKw, "ident") if past => ctx.state = HeaderState::AfterBase,
+            (_, "class_def" | "{") => ctx.state = HeaderState::Body,
+            (_, "ERROR") => header_walk(child, byte_offset, source, ctx),
             _ => {}
         }
     }
