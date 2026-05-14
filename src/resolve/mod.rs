@@ -368,7 +368,15 @@ pub fn resolve_definition(
     let byte_offset = document
         .line_index
         .position_to_byte(&document.source, position)?;
+    resolve_definition_at_byte(uri, document, db, byte_offset)
+}
 
+pub fn resolve_definition_at_byte(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_offset: usize,
+) -> Option<Definition> {
     if let Some(def) = resolve_self_keyword(uri, document, db, byte_offset) {
         return Some(def);
     }
