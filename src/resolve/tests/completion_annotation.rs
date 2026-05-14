@@ -347,6 +347,71 @@ fn after_wrap_method_stage2_none_when_function_not_preceded_by_wrap_method() {
     );
 }
 
+#[test]
+fn after_replace_method_stage1_offers_only_function_keyword() {
+    let source = concat!(
+        "class CPlayer {\n",
+        "  public function OnSpawned() {}\n",
+        "}\n",
+        "@replaceMethod(CPlayer) \n",
+    );
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
+
+    let result = after_wrap_method_completions(
+        &doc,
+        &db,
+        SourcePosition {
+            line: 3,
+            character: 24,
+        },
+    );
+
+    assert!(
+        matches!(result, Some(AfterWrapMethodCompletions::FunctionKeyword)),
+        "stage 1 must yield FunctionKeyword for @replaceMethod, got {result:?}"
+    );
+}
+
+#[test]
+fn after_replace_method_stage2_offers_method_list() {
+    let source = concat!(
+        "class CPlayer {\n",
+        "  public function OnSpawned() {}\n",
+        "  public event OnDeath() {}\n",
+        "  public var mHp : int;\n",
+        "}\n",
+        "@replaceMethod(CPlayer)\n",
+        "function \n",
+    );
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
+
+    let result = after_wrap_method_completions(
+        &doc,
+        &db,
+        SourcePosition {
+            line: 6,
+            character: 9,
+        },
+    );
+
+    let methods = match result {
+        Some(AfterWrapMethodCompletions::MethodList(m)) => m,
+        other => panic!("expected MethodList, got {other:?}"),
+    };
+    let names: Vec<&str> = methods.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(names.contains(&"OnSpawned"), "method should be offered");
+    assert!(names.contains(&"OnDeath"), "event should be offered");
+    assert!(!names.contains(&"mHp"), "field must not be offered");
+}
+
 // --- annotation_name_completions ---
 
 #[test]

@@ -1530,7 +1530,7 @@ fn wrap_method_class_from_closing_paren<'a>(node: Node, source: &'a str) -> Opti
         .children(&mut annotation.walk())
         .find(|c| c.kind() == "annotation_ident")
         .map(|n| &source[n.start_byte()..n.end_byte()])?;
-    if annotation_name != "@wrapMethod" {
+    if !matches!(annotation_name, "@wrapMethod" | "@replaceMethod") {
         return None;
     }
     annotation
