@@ -396,6 +396,9 @@ impl LanguageServer for Backend {
         };
 
         let documents = self.documents.lock().await;
+        let workspace = self.workspace_index.lock().await;
+        let base_index = self.base_scripts_index.lock().await;
+        let script_env = self.script_env.lock().await;
         let workspace_docs = self.workspace_documents.lock().await;
         let base_docs = self.base_scripts_documents.lock().await;
 
@@ -407,9 +410,6 @@ impl LanguageServer for Backend {
             });
         }
 
-        let workspace = self.workspace_index.lock().await;
-        let base_index = self.base_scripts_index.lock().await;
-        let script_env = self.script_env.lock().await;
         let db = SymbolDb::new(&workspace, &base_index).with_script_env(&script_env);
 
         let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
