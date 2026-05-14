@@ -66,6 +66,16 @@ fn try_split_call_args(node: Node, source: &str) -> Option<(String, Vec<String>)
     Some((prefix, args))
 }
 
+fn child_nodes(node: Node) -> Vec<Node> {
+    let mut c = node.walk();
+    node.children(&mut c).collect()
+}
+
+fn named_child_nodes(node: Node) -> Vec<Node> {
+    let mut c = node.walk();
+    node.named_children(&mut c).collect()
+}
+
 fn is_expr_node(kind: &str) -> bool {
     matches!(
         kind,
@@ -231,10 +241,7 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_children(&mut self, node: Node) {
-        let children: Vec<Node> = {
-            let mut c = node.walk();
-            node.children(&mut c).collect()
-        };
+        let children = child_nodes(node);
         let mut prev: Option<Node> = None;
         for child in &children {
             if child.is_missing() {
@@ -298,10 +305,7 @@ impl<'a> Formatter<'a> {
         if node.child_count() == 0 {
             return self.text(node).to_string();
         }
-        let children: Vec<Node> = {
-            let mut c = node.walk();
-            node.children(&mut c).collect()
-        };
+        let children = child_nodes(node);
         let mut s = String::new();
         let mut prev: Option<Node> = None;
         for child in &children {
@@ -326,12 +330,10 @@ impl<'a> Formatter<'a> {
     // ---- Top level ----
 
     fn format_script(&mut self, node: Node) {
-        let children: Vec<Node> = {
-            let mut c = node.walk();
-            node.children(&mut c)
-                .filter(|n| n.is_named() && n.kind() != "nop")
-                .collect()
-        };
+        let children: Vec<Node> = child_nodes(node)
+            .into_iter()
+            .filter(|n| n.is_named() && n.kind() != "nop")
+            .collect();
         let mut prev_end_row: Option<usize> = None;
         let mut prev_was_comment = false;
         for child in &children {
@@ -366,10 +368,7 @@ impl<'a> Formatter<'a> {
         }
         self.emit_indent();
 
-        let children: Vec<Node> = {
-            let mut c = node.walk();
-            node.children(&mut c).collect()
-        };
+        let children = child_nodes(node);
         let mut prev: Option<Node> = None;
         let mut emitted_sig = false;
         for child in &children {
@@ -509,10 +508,7 @@ impl<'a> Formatter<'a> {
     // list is ever dropped when the signature is reprinted.
     fn collect_func_param_nodes<'t>(&self, func_node: Node<'t>) -> Vec<Node<'t>> {
         self.child_of_kind(func_node, "func_params")
-            .map(|params| {
-                let mut c = params.walk();
-                params.named_children(&mut c).collect()
-            })
+            .map(named_child_nodes)
             .unwrap_or_default()
     }
 
@@ -563,10 +559,7 @@ impl<'a> Formatter<'a> {
             self.nl();
         }
         self.emit_indent();
-        let children: Vec<Node> = {
-            let mut c = node.walk();
-            node.children(&mut c).collect()
-        };
+        let children = child_nodes(node);
         let mut prev: Option<Node> = None;
         for child in &children {
             if child.is_missing() {
@@ -591,10 +584,7 @@ impl<'a> Formatter<'a> {
 
     fn format_enum_decl(&mut self, node: Node) {
         self.emit_indent();
-        let children: Vec<Node> = {
-            let mut c = node.walk();
-            node.children(&mut c).collect()
-        };
+        let children = child_nodes(node);
         let mut prev: Option<Node> = None;
         for child in &children {
             if child.is_missing() {
@@ -621,10 +611,7 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_enum_def(&mut self, node: Node) {
-        let children: Vec<Node> = {
-            let mut c = node.walk();
-            node.children(&mut c).collect()
-        };
+        let children = child_nodes(node);
         // Exhaustive: all named children — enum_decl_variant AND comment extras.
         // Anonymous tokens ({, ,, }) are excluded by is_named() and handled directly.
         let members: Vec<Node> = children.iter().filter(|n| n.is_named()).cloned().collect();
@@ -676,10 +663,7 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_class_def(&mut self, node: Node) {
-        let children: Vec<Node> = {
-            let mut c = node.walk();
-            node.children(&mut c).collect()
-        };
+        let children = child_nodes(node);
         let members: Vec<Node> = children
             .iter()
             .filter(|n| n.is_named() && n.kind() != "nop")
@@ -770,10 +754,7 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_defaults_block(&mut self, node: Node) {
-        let children: Vec<Node> = {
-            let mut c = node.walk();
-            node.children(&mut c).collect()
-        };
+        let children = child_nodes(node);
         // Exhaustive: all named children — member_default_val_block_assign AND
         // comment extras. The `defaults` keyword and {/} braces are anonymous
         // tokens and are excluded by is_named(), then handled directly below.
@@ -835,10 +816,7 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_func_block_inner(&mut self, node: Node, trailing_nl: bool) {
-        let children: Vec<Node> = {
-            let mut c = node.walk();
-            node.children(&mut c).collect()
-        };
+        let children = child_nodes(node);
         // Pair each named statement with whether its next sibling is ";" (can happen for
         // error-recovery nodes where the semicolon is not captured inside the error node).
         let stmts: Vec<(Node, bool)> = children
@@ -1190,10 +1168,7 @@ impl<'a> Formatter<'a> {
         self.emit(") {\n");
         self.level += 1;
         if let Some(block) = self.child_of_kind(node, "switch_block") {
-            let children: Vec<Node> = {
-                let mut c = block.walk();
-                block.children(&mut c).collect()
-            };
+            let children = child_nodes(block);
             for child in &children {
                 match child.kind() {
                     "switch_case_label" | "switch_default_label" => {
@@ -1215,11 +1190,7 @@ impl<'a> Formatter<'a> {
 
     fn format_expr_stmt(&mut self, node: Node) {
         self.emit_indent();
-        let expr = {
-            let mut c = node.walk();
-            let result = node.named_children(&mut c).next();
-            result
-        };
+        let expr = named_child_nodes(node).into_iter().next();
         if let Some(e) = expr {
             let indent = self.level * self.indent_unit.len();
             if indent + self.render_node(e).len() + 1 > self.line_limit {
