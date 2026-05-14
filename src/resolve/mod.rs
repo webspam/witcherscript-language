@@ -1458,69 +1458,18 @@ fn statement_completions_inner(
     db: &SymbolDb,
     position: SourcePosition,
 ) -> Option<StatementCompletions> {
-    let byte_offset = document
-        .line_index
-        .position_to_byte(&document.source, position)?;
-
-    let root = document.tree.root_node();
-    let nodes = nodes_at_offset(root, byte_offset);
-
-    // Positive gate: only offer statement completions when we are confident the
-    // cursor is at the start of a new statement.
-    let prev = node_before_byte(root, document.source.as_bytes(), byte_offset);
-    let at_statement_start = prev.is_some_and(is_statement_boundary);
-    let writing_first_statement_part = nodes
-        .last()
-        .filter(|&n| {
-            is_kind_or_error_wrapped_kind(
-                *n,
-                &[
-                    "ident", "var", "this", "super", "if", "else", "do", "while", "for", "switch",
-                    "return", "case", "default",
-                ],
-            )
-        })
-        .and_then(|n| node_before_byte(root, document.source.as_bytes(), n.start_byte()))
-        .is_some_and(is_statement_boundary);
-    if !at_statement_start && !writing_first_statement_part {
-        return None;
-    }
-
-    let in_func_body = nodes
-        .iter()
-        .any(|n| find_ancestor_of_kind(*n, &["func_block"]).is_some());
-
-    if !in_func_body {
-        return None;
-    }
-
-    let callable = document.symbols.enclosing_symbol_at(
-        byte_offset,
-        &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
+    const STMT_WRITER_KINDS: &[&str] = &[
+        "ident", "var", "this", "super", "if", "else", "do", "while", "for", "switch", "return",
+        "case", "default",
+    ];
+    let (nodes, base) = function_body_completions(
+        uri,
+        document,
+        db,
+        position,
+        is_statement_boundary,
+        STMT_WRITER_KINDS,
     )?;
-
-    let locals: Vec<Definition> = document
-        .symbols
-        .children_of(Some(callable.id))
-        .filter(|sym| {
-            matches!(sym.kind, SymbolKind::Variable | SymbolKind::Parameter)
-                && sym.selection_byte_range.start <= byte_offset
-        })
-        .cloned()
-        .map(|symbol| Definition {
-            uri: uri.to_string(),
-            symbol,
-        })
-        .collect();
-
-    let current_type = current_type_symbol(document, byte_offset);
-
-    let members: Vec<Definition> = current_type
-        .map(|t| db.members_of(&t.name, AccessLevel::Private))
-        .unwrap_or_default();
-
-    let has_this = current_type.is_some();
-    let has_super = current_type.and_then(|t| t.base_class.as_deref()).is_some();
 
     let in_switch = nodes
         .iter()
@@ -1530,14 +1479,12 @@ fn statement_completions_inner(
         .iter()
         .any(|n| find_ancestor_of_kind(*n, &["for_stmt", "while_stmt", "do_while_stmt"]).is_some());
 
-    let globals = db.all_top_level_callables();
-
     Some(StatementCompletions {
-        locals,
-        members,
-        globals,
-        has_this,
-        has_super,
+        locals: base.locals,
+        members: base.members,
+        globals: base.globals,
+        has_this: base.has_this,
+        has_super: base.has_super,
         in_switch,
         in_loop,
     })
@@ -1602,6 +1549,40 @@ fn expression_completions_inner(
     db: &SymbolDb,
     position: SourcePosition,
 ) -> Option<ExpressionCompletions> {
+    let (_, base) = function_body_completions(
+        uri,
+        document,
+        db,
+        position,
+        is_expression_boundary,
+        &["ident"],
+    )?;
+
+    Some(ExpressionCompletions {
+        locals: base.locals,
+        members: base.members,
+        globals: base.globals,
+        has_this: base.has_this,
+        has_super: base.has_super,
+    })
+}
+
+struct FunctionBodyContext {
+    locals: Vec<Definition>,
+    members: Vec<Definition>,
+    globals: Vec<Definition>,
+    has_this: bool,
+    has_super: bool,
+}
+
+fn function_body_completions<'a>(
+    uri: &str,
+    document: &'a ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+    boundary: fn(Node) -> bool,
+    writer_kinds: &[&str],
+) -> Option<(Vec<Node<'a>>, FunctionBodyContext)> {
     let byte_offset = document
         .line_index
         .position_to_byte(&document.source, position)?;
@@ -1610,20 +1591,20 @@ fn expression_completions_inner(
     let nodes = nodes_at_offset(root, byte_offset);
 
     let prev = node_before_byte(root, document.source.as_bytes(), byte_offset);
-    let at_expr_start = prev.is_some_and(is_expression_boundary);
-    let writing_expr_token = nodes
+    let at_start = prev.is_some_and(boundary);
+    let writing_first = nodes
         .last()
-        .filter(|&n| is_kind_or_error_wrapped_kind(*n, &["ident"]))
+        .filter(|&n| is_kind_or_error_wrapped_kind(*n, writer_kinds))
         .and_then(|n| node_before_byte(root, document.source.as_bytes(), n.start_byte()))
-        .is_some_and(is_expression_boundary);
-    if !at_expr_start && !writing_expr_token {
+        .is_some_and(boundary);
+    if !at_start && !writing_first {
         return None;
     }
 
-    let in_func_body = nodes
+    if !nodes
         .iter()
-        .any(|n| find_ancestor_of_kind(*n, &["func_block"]).is_some());
-    if !in_func_body {
+        .any(|n| find_ancestor_of_kind(*n, &["func_block"]).is_some())
+    {
         return None;
     }
 
@@ -1647,23 +1628,24 @@ fn expression_completions_inner(
         .collect();
 
     let current_type = current_type_symbol(document, byte_offset);
-
     let members: Vec<Definition> = current_type
         .map(|t| db.members_of(&t.name, AccessLevel::Private))
         .unwrap_or_default();
-
     let has_this = current_type.is_some();
     let has_super = current_type.and_then(|t| t.base_class.as_deref()).is_some();
 
     let globals = db.all_top_level_callables();
 
-    Some(ExpressionCompletions {
-        locals,
-        members,
-        globals,
-        has_this,
-        has_super,
-    })
+    Some((
+        nodes,
+        FunctionBodyContext {
+            locals,
+            members,
+            globals,
+            has_this,
+            has_super,
+        },
+    ))
 }
 
 #[allow(dead_code)]
