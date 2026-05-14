@@ -1,4 +1,7 @@
-use super::super::{completion_members, extends_completions, type_completions};
+use super::super::{
+    class_header_keyword_completions, completion_members, extends_completions,
+    state_owner_completions, type_completions,
+};
 use super::{make_doc, SymbolDb, WorkspaceIndex};
 use crate::line_index::SourcePosition;
 
@@ -435,10 +438,15 @@ fn extends_completions_empty_at_class_name_position() {
 }
 
 #[test]
-fn extends_completions_fires_for_state_decl() {
-    // State declarations also support 'extends' for base state.
-    let source = "class CBase {}\nstate IdleState in CBase extends \n";
-    //            line 1: "state IdleState in CBase extends " (32 chars, cursor at 32)
+fn extends_completions_for_state_decl_returns_states_only() {
+    // `state X in Owner extends ` should offer states (other states to extend),
+    // not classes — a state can only extend another state.
+    let source = concat!(
+        "class CBase {}\n",
+        "state BaseState in CBase {}\n",
+        "state IdleState in CBase extends \n",
+    );
+    //            line 2: "state IdleState in CBase extends " (32 chars, cursor at 32)
     let doc = make_doc(source);
     let mut index = WorkspaceIndex::default();
     index.update_document("file:///test.ws", &doc);
@@ -449,14 +457,18 @@ fn extends_completions_fires_for_state_decl() {
         &doc,
         &db,
         SourcePosition {
-            line: 1,
+            line: 2,
             character: 32,
         },
     );
     let names: Vec<&str> = result.iter().map(|d| d.symbol.name.as_str()).collect();
     assert!(
-        names.contains(&"CBase"),
-        "extends completions must fire after 'extends' in a state declaration"
+        names.contains(&"BaseState"),
+        "state extends must offer other states as base"
+    );
+    assert!(
+        !names.contains(&"CBase"),
+        "state extends must not offer classes"
     );
 }
 
@@ -524,4 +536,201 @@ fn extends_completions_empty_between_extends_and_class_body() {
         names.contains(&"CExample"),
         "extends completions must fire when cursor is in whitespace between 'extends' and the class body, so the user can pick a base class"
     );
+}
+
+// --- class_header_keyword_completions ---
+
+#[test]
+fn header_kw_offers_extends_after_class_name() {
+    // `class Foo ` with trailing space and no body → offer `extends`.
+    let source = "class Foo \n";
+    let doc = make_doc(source);
+    let result = class_header_keyword_completions(
+        &doc,
+        SourcePosition {
+            line: 0,
+            character: 10,
+        },
+    );
+    assert_eq!(
+        result,
+        vec!["extends"],
+        "class with name and no body should offer the extends keyword"
+    );
+}
+
+#[test]
+fn header_kw_offers_in_after_state_name() {
+    // `state Foo ` with trailing space → offer `in`.
+    let source = "state Foo \n";
+    let doc = make_doc(source);
+    let result = class_header_keyword_completions(
+        &doc,
+        SourcePosition {
+            line: 0,
+            character: 10,
+        },
+    );
+    assert_eq!(
+        result,
+        vec!["in"],
+        "state with name and no parent should offer the in keyword"
+    );
+}
+
+#[test]
+fn header_kw_offers_extends_after_state_owner() {
+    // `state Foo in Bar ` → offer `extends`.
+    let source = "state Foo in Bar \n";
+    let doc = make_doc(source);
+    let result = class_header_keyword_completions(
+        &doc,
+        SourcePosition {
+            line: 0,
+            character: 17,
+        },
+    );
+    assert_eq!(
+        result,
+        vec!["extends"],
+        "state with owner and no base should offer the extends keyword"
+    );
+}
+
+#[test]
+fn header_kw_empty_inside_class_body() {
+    let source = "class Foo {\n  \n}\n";
+    let doc = make_doc(source);
+    let result = class_header_keyword_completions(
+        &doc,
+        SourcePosition {
+            line: 1,
+            character: 2,
+        },
+    );
+    assert!(result.is_empty(), "must not fire inside class body");
+}
+
+#[test]
+fn header_kw_empty_at_top_level_blank() {
+    let source = "\n";
+    let doc = make_doc(source);
+    let result = class_header_keyword_completions(
+        &doc,
+        SourcePosition {
+            line: 0,
+            character: 0,
+        },
+    );
+    assert!(
+        result.is_empty(),
+        "must not fire when no class/state header is in progress"
+    );
+}
+
+#[test]
+fn header_kw_empty_when_extends_already_typed() {
+    // `class Foo extends ` — past the extends keyword; the extends-target completion
+    // should handle this slot, not the header-keyword completion.
+    let source = "class Foo extends \n";
+    let doc = make_doc(source);
+    let result = class_header_keyword_completions(
+        &doc,
+        SourcePosition {
+            line: 0,
+            character: 18,
+        },
+    );
+    assert!(
+        result.is_empty(),
+        "must not re-offer 'extends' once it has been typed"
+    );
+}
+
+// --- state_owner_completions ---
+
+#[test]
+fn state_owner_offers_classes_after_in() {
+    // `state Foo in ` — offer classes (not states/structs/enums).
+    let source = concat!(
+        "class COwner {}\n",
+        "state SBase in COwner {}\n",
+        "struct SStruct {}\n",
+        "enum EEnum {}\n",
+        "state Foo in \n",
+    );
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = state_owner_completions(
+        &doc,
+        &db,
+        SourcePosition {
+            line: 4,
+            character: 13,
+        },
+    );
+    let names: Vec<&str> = result.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        names.contains(&"COwner"),
+        "state owner slot must offer classes"
+    );
+    assert!(
+        !names.contains(&"SBase"),
+        "state owner slot must not offer states"
+    );
+    assert!(
+        !names.contains(&"SStruct"),
+        "state owner slot must not offer structs"
+    );
+    assert!(
+        !names.contains(&"EEnum"),
+        "state owner slot must not offer enums"
+    );
+}
+
+#[test]
+fn state_owner_empty_after_owner_typed() {
+    // After the owner ident is fully typed, this completion no longer fires.
+    let source = "class COwner {}\nstate Foo in COwner \n";
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = state_owner_completions(
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 20,
+        },
+    );
+    assert!(result.is_empty());
+}
+
+#[test]
+fn state_owner_empty_inside_class_extends_slot() {
+    // `class Foo extends ` is the class extends slot — state_owner_completions
+    // must not fire here.
+    let source = "class CBase {}\nclass Foo extends \n";
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = state_owner_completions(
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 18,
+        },
+    );
+    assert!(result.is_empty());
 }

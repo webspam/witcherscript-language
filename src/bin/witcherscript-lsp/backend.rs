@@ -24,10 +24,10 @@ use witcherscript_parser::document::ParsedDocument;
 use witcherscript_parser::formatter::format_document;
 use witcherscript_parser::resolve::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
-    class_body_keyword_completions, completion_members, expression_completions,
-    extends_completions, find_references, resolve_definition, script_body_keyword_completions,
-    statement_completions, type_completions, AfterWrapMethodCompletions, SymbolDb, WorkspaceIndex,
-    BUILTIN_TYPES,
+    class_body_keyword_completions, class_header_keyword_completions, completion_members,
+    expression_completions, extends_completions, find_references, resolve_definition,
+    script_body_keyword_completions, state_owner_completions, statement_completions,
+    type_completions, AfterWrapMethodCompletions, SymbolDb, WorkspaceIndex, BUILTIN_TYPES,
 };
 use witcherscript_parser::script_env::ScriptEnvironment;
 use witcherscript_parser::semantic_tokens::{
@@ -518,6 +518,23 @@ impl LanguageServer for Backend {
         if !extends.is_empty() {
             return Ok(Some(CompletionResponse::Array(
                 extends.iter().map(type_completion_item).collect(),
+            )));
+        }
+
+        let state_owners = state_owner_completions(document, &db, pos);
+        if !state_owners.is_empty() {
+            return Ok(Some(CompletionResponse::Array(
+                state_owners.iter().map(type_completion_item).collect(),
+            )));
+        }
+
+        let header_kws = class_header_keyword_completions(document, pos);
+        if !header_kws.is_empty() {
+            return Ok(Some(CompletionResponse::Array(
+                header_kws
+                    .iter()
+                    .map(|kw| keyword_snippet_item(kw, &format!("{kw} ")))
+                    .collect(),
             )));
         }
 

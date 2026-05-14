@@ -1318,98 +1318,172 @@ pub fn extends_completions(
     db: &SymbolDb,
     position: SourcePosition,
 ) -> Vec<Definition> {
-    extends_completions_inner(document, db, position).unwrap_or_default()
+    let Some((state, kind)) = header_state_and_kind(document, position) else {
+        return Vec::new();
+    };
+    if state != HeaderState::AfterExtendsKw {
+        return Vec::new();
+    }
+    let target_kind = match kind {
+        Some(HeaderDeclKind::Class) => SymbolKind::Class,
+        Some(HeaderDeclKind::State) => SymbolKind::State,
+        None => return Vec::new(),
+    };
+    db.all_types()
+        .into_iter()
+        .filter(|def| def.symbol.kind == target_kind)
+        .collect()
 }
 
-fn extends_completions_inner(
+pub fn state_owner_completions(
     document: &ParsedDocument,
     db: &SymbolDb,
     position: SourcePosition,
-) -> Option<Vec<Definition>> {
+) -> Vec<Definition> {
+    let Some((state, _)) = header_state_and_kind(document, position) else {
+        return Vec::new();
+    };
+    if state != HeaderState::AfterInKw {
+        return Vec::new();
+    }
+    db.all_types()
+        .into_iter()
+        .filter(|def| def.symbol.kind == SymbolKind::Class)
+        .collect()
+}
+
+pub fn class_header_keyword_completions(
+    document: &ParsedDocument,
+    position: SourcePosition,
+) -> Vec<&'static str> {
+    let Some((state, _)) = header_state_and_kind(document, position) else {
+        return Vec::new();
+    };
+    match state {
+        HeaderState::AfterClassName | HeaderState::AfterOwner => vec!["extends"],
+        HeaderState::AfterStateName => vec!["in"],
+        _ => Vec::new(),
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum HeaderState {
+    Initial,
+    AfterClassKw,
+    AfterClassName,
+    AfterStateKw,
+    AfterStateName,
+    AfterInKw,
+    AfterOwner,
+    AfterExtendsKw,
+    AfterBase,
+    Body,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum HeaderDeclKind {
+    Class,
+    State,
+}
+
+fn header_state_and_kind(
+    document: &ParsedDocument,
+    position: SourcePosition,
+) -> Option<(HeaderState, Option<HeaderDeclKind>)> {
     let byte_offset = document
         .line_index
         .position_to_byte(&document.source, position)?;
-
     let root = document.tree.root_node();
 
-    // When the cursor sits in trailing whitespace (after the last token of an incomplete
-    // declaration), descendant_for_byte_range returns the root "script" node because
-    // whitespace is transparent in the AST. Filter those out, then fall back to finding
-    // the last top-level child whose byte range ends at or before the cursor — that child
-    // is the context we want to inspect.
     let direct: Vec<Node> = nodes_at_offset(root, byte_offset)
         .into_iter()
         .filter(|n| n.kind() != "script")
         .collect();
 
-    let in_extends = if !direct.is_empty() {
-        direct
-            .iter()
-            .any(|n| in_class_extends_position(*n, byte_offset))
-    } else {
-        let mut tc = root.walk();
-        root.children(&mut tc)
-            .take_while(|c| c.end_byte() <= byte_offset)
-            .last()
-            .is_some_and(|n| in_class_extends_position(n, byte_offset))
-    };
+    let header_node = direct
+        .iter()
+        .find_map(|n| enclosing_header_node(*n))
+        .or_else(|| {
+            let mut tc = root.walk();
+            root.children(&mut tc)
+                .take_while(|c| c.end_byte() <= byte_offset)
+                .last()
+                .and_then(enclosing_header_node)
+        })?;
 
-    if !in_extends {
-        return None;
-    }
-
-    Some(
-        db.all_types()
-            .into_iter()
-            .filter(|def| matches!(def.symbol.kind, SymbolKind::Class | SymbolKind::State))
-            .collect(),
-    )
+    let mut state = HeaderState::Initial;
+    let mut decl_kind: Option<HeaderDeclKind> = None;
+    header_walk(header_node, byte_offset, &mut state, &mut decl_kind);
+    Some((state, decl_kind))
 }
 
-fn in_class_extends_position(node: Node, byte_offset: usize) -> bool {
-    let mut current = node;
+fn enclosing_header_node(start: Node) -> Option<Node> {
+    let mut current = start;
     loop {
         match current.kind() {
-            "class_decl" | "state_decl" => {
-                return is_after_extends_before_body(current, byte_offset);
-            }
+            "class_decl" | "state_decl" => return Some(current),
             "ERROR" => {
-                if let Some(parent) = current.parent() {
-                    if matches!(parent.kind(), "class_decl" | "state_decl") {
-                        return is_after_extends_before_body(parent, byte_offset);
+                if let Some(p) = current.parent() {
+                    if matches!(p.kind(), "class_decl" | "state_decl") {
+                        return Some(p);
                     }
                 }
-                return error_node_has_class_extends(current, byte_offset);
+                if node_contains_kind_any(current, &["class", "state"]) {
+                    return Some(current);
+                }
             }
             _ => {}
         }
-        match current.parent() {
-            Some(p) => current = p,
-            None => return false,
-        }
+        current = current.parent()?;
     }
 }
 
-fn is_after_extends_before_body(decl_node: Node, byte_offset: usize) -> bool {
-    let mut cursor = decl_node.walk();
-    let mut saw_extends = false;
-    for child in decl_node.children(&mut cursor) {
+fn header_walk(
+    node: Node,
+    byte_offset: usize,
+    state: &mut HeaderState,
+    decl_kind: &mut Option<HeaderDeclKind>,
+) {
+    let mut cur = node.walk();
+    for child in node.children(&mut cur) {
         if child.start_byte() >= byte_offset {
             break;
         }
-        match child.kind() {
-            "extends" => saw_extends = true,
-            "class_def" => return false,
-            // When _class_base fails (extends without a following ident), tree-sitter
-            // wraps the stranded 'extends' keyword in an ERROR child of the decl node.
-            // Scan one level into that ERROR to detect the keyword.
-            "ERROR" if node_contains_kind(child, "extends") => {
-                saw_extends = true;
+        let past = child.end_byte() < byte_offset;
+        match (*state, child.kind()) {
+            (HeaderState::Initial, "class") => {
+                *state = HeaderState::AfterClassKw;
+                *decl_kind = Some(HeaderDeclKind::Class);
             }
+            (HeaderState::Initial, "state") => {
+                *state = HeaderState::AfterStateKw;
+                *decl_kind = Some(HeaderDeclKind::State);
+            }
+            (HeaderState::AfterClassKw, "ident") if past => {
+                *state = HeaderState::AfterClassName;
+            }
+            (HeaderState::AfterStateKw, "ident") if past => {
+                *state = HeaderState::AfterStateName;
+            }
+            (HeaderState::AfterStateName, "in") => *state = HeaderState::AfterInKw,
+            (HeaderState::AfterInKw, "ident") if past => *state = HeaderState::AfterOwner,
+            (HeaderState::AfterClassName | HeaderState::AfterOwner, "extends") => {
+                *state = HeaderState::AfterExtendsKw;
+            }
+            (HeaderState::AfterExtendsKw, "ident") if past => *state = HeaderState::AfterBase,
+            (_, "class_def" | "{") => *state = HeaderState::Body,
+            (_, "ERROR") => header_walk(child, byte_offset, state, decl_kind),
             _ => {}
         }
     }
-    saw_extends
+}
+
+fn node_contains_kind_any(node: Node, kinds: &[&str]) -> bool {
+    let mut cursor = node.walk();
+    let found = node
+        .children(&mut cursor)
+        .any(|c| kinds.contains(&c.kind()));
+    found
 }
 
 fn is_kind_or_error_wrapped_kind(node: Node, kinds: &[&str]) -> bool {
@@ -1419,32 +1493,6 @@ fn is_kind_or_error_wrapped_kind(node: Node, kinds: &[&str]) -> bool {
         node
     };
     kinds.contains(&effective.kind())
-}
-
-fn node_contains_kind(node: Node, kind: &str) -> bool {
-    let mut cursor = node.walk();
-    let found = node.children(&mut cursor).any(|c| c.kind() == kind);
-    found
-}
-
-fn error_node_has_class_extends(error_node: Node, byte_offset: usize) -> bool {
-    let mut cursor = error_node.walk();
-    let mut saw_class_kw = false;
-    let mut saw_extends = false;
-    for child in error_node.children(&mut cursor) {
-        if child.start_byte() >= byte_offset {
-            break;
-        }
-        match child.kind() {
-            "class" | "state" => saw_class_kw = true,
-            "extends" if saw_class_kw => {
-                saw_extends = true;
-            }
-            "{" => return false,
-            _ => {}
-        }
-    }
-    saw_extends
 }
 
 pub struct StatementCompletions {
