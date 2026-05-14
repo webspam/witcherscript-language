@@ -337,6 +337,10 @@ fn completion_item_method_has_method_kind() {
     assert_eq!(item.label, "DoThing");
     assert_eq!(item.kind, Some(CompletionItemKind::METHOD));
     assert_eq!(item.insert_text.as_deref(), Some("DoThing()"));
+    assert!(
+        item.command.is_none(),
+        "paramless callable should not trigger parameter hints"
+    );
 }
 
 #[test]
@@ -381,6 +385,11 @@ fn completion_item_snippet_includes_param_placeholders() {
     assert_eq!(
         item.insert_text.as_deref(),
         Some("Find(${1:findName}, ${2:range})$0")
+    );
+    assert_eq!(
+        item.command.as_ref().map(|c| c.command.as_str()),
+        Some("editor.action.triggerParameterHints"),
+        "callable with params should open signature help after insertion"
     );
 }
 

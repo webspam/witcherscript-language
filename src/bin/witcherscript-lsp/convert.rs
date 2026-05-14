@@ -2,10 +2,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic, DiagnosticSeverity,
-    DocumentSymbol, Documentation, InitializeParams, InsertTextFormat, MarkupContent, MarkupKind,
-    ParameterInformation, ParameterLabel, Position, Range, SignatureHelp, SignatureInformation,
-    TextEdit, Url,
+    Command, CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic,
+    DiagnosticSeverity, DocumentSymbol, Documentation, InitializeParams, InsertTextFormat,
+    MarkupContent, MarkupKind, ParameterInformation, ParameterLabel, Position, Range,
+    SignatureHelp, SignatureInformation, TextEdit, Url,
 };
 use tracing::warn;
 use witcherscript_parser::document::ParsedDocument;
@@ -194,6 +194,12 @@ pub(crate) fn completion_item(definition: &Definition, params: &[String]) -> Com
     } else {
         (None, None)
     };
+    // Open signature help once the snippet drops the cursor into the first placeholder.
+    let command = (is_callable && !params.is_empty()).then(|| Command {
+        title: "Trigger parameter hints".to_string(),
+        command: "editor.action.triggerParameterHints".to_string(),
+        arguments: None,
+    });
     CompletionItem {
         label: symbol.name.clone(),
         kind,
@@ -204,6 +210,7 @@ pub(crate) fn completion_item(definition: &Definition, params: &[String]) -> Com
         })),
         insert_text,
         insert_text_format,
+        command,
         ..CompletionItem::default()
     }
 }
