@@ -111,8 +111,10 @@ fn class_without_explicit_extends_defaults_to_cobject() {
     let doc = make_doc("class A {}");
     let mut index = WorkspaceIndex::default();
     index.update_document("file:///a.ws", &doc);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
     // CObject is not in the index; find_member must terminate without looping.
-    assert!(index
+    assert!(db
         .find_member("A", "someMethod", AccessLevel::Public)
         .is_none());
 }

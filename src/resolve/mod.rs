@@ -331,15 +331,6 @@ impl WorkspaceIndex {
             .collect()
     }
 
-    pub fn find_member(
-        &self,
-        container_name: &str,
-        name: &str,
-        min_access: AccessLevel,
-    ) -> Option<Definition> {
-        self.find_member_in_chain(container_name, name, 0, min_access)
-    }
-
     pub fn direct_member_of(
         &self,
         container_name: &str,
@@ -373,10 +364,6 @@ impl WorkspaceIndex {
         self.superclass_by_name.get(class_name).cloned()
     }
 
-    pub fn members_of(&self, container_name: &str, min_access: AccessLevel) -> Vec<Definition> {
-        self.members_of_chain(container_name, 0, min_access)
-    }
-
     pub fn parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<String> {
         let Some(symbols) = self.documents.get(uri) else {
             return vec![];
@@ -401,60 +388,6 @@ impl WorkspaceIndex {
             .filter(|s| s.kind == SymbolKind::Parameter && s.container == Some(callable_id))
             .cloned()
             .collect()
-    }
-
-    fn members_of_chain(
-        &self,
-        container_name: &str,
-        depth: usize,
-        min_access: AccessLevel,
-    ) -> Vec<Definition> {
-        if depth > 32 {
-            return vec![];
-        }
-        let mut result: Vec<Definition> = self
-            .member_by_type
-            .get(container_name)
-            .map(|m| {
-                m.values()
-                    .filter(|d| d.symbol.access >= min_access)
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default();
-        if let Some(superclass) = self.superclass_by_name.get(container_name).cloned() {
-            let deeper_min = min_access.max(AccessLevel::Protected);
-            for def in self.members_of_chain(&superclass, depth + 1, deeper_min) {
-                if !result.iter().any(|d| d.symbol.name == def.symbol.name) {
-                    result.push(def);
-                }
-            }
-        }
-        result
-    }
-
-    fn find_member_in_chain(
-        &self,
-        container_name: &str,
-        name: &str,
-        depth: usize,
-        min_access: AccessLevel,
-    ) -> Option<Definition> {
-        if depth > 32 {
-            return None;
-        }
-        let direct = self
-            .member_by_type
-            .get(container_name)
-            .and_then(|members| members.get(name))
-            .filter(|def| def.symbol.access >= min_access)
-            .cloned();
-        if direct.is_some() {
-            return direct;
-        }
-        let superclass = self.superclass_by_name.get(container_name)?.clone();
-        let deeper_min = min_access.max(AccessLevel::Protected);
-        self.find_member_in_chain(&superclass, name, depth + 1, deeper_min)
     }
 }
 
