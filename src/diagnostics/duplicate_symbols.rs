@@ -5,9 +5,6 @@ use crate::symbols::{Symbol, SymbolKind};
 
 use super::{RelatedLocation, WorkspaceDiagnostic};
 
-/// Flag any top-level declaration whose name collides with another top-level
-/// declaration anywhere in the workspace (class vs function, class vs class,
-/// same-file or cross-file). Returns the diagnostics keyed by document URI.
 pub fn collect_duplicate_symbol_diagnostics(
     index: &WorkspaceIndex,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
@@ -16,8 +13,7 @@ pub fn collect_duplicate_symbol_diagnostics(
         if !is_declaration_kind(sym.kind) {
             continue;
         }
-        // Modding-annotation functions (@addMethod/@wrapMethod/...) are member
-        // injections, not fresh global names.
+        // Annotated functions are @addMethod/@wrapMethod member injections, not fresh global names.
         if !sym.annotations.is_empty() {
             continue;
         }

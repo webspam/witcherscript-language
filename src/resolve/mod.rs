@@ -391,9 +391,7 @@ impl WorkspaceIndex {
             .collect()
     }
 
-    /// Every top-level symbol across all indexed documents, paired with its URI.
-    /// Unlike `top_level_by_name`, this does not dedup by name, so name
-    /// collisions remain visible to callers.
+    /// Unlike `top_level_by_name`, does not dedup by name — name collisions stay visible.
     pub fn all_top_level(&self) -> impl Iterator<Item = (&str, &Symbol)> {
         self.documents.iter().flat_map(|(uri, symbols)| {
             symbols
