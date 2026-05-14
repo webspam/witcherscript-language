@@ -217,8 +217,7 @@ impl<'a> Formatter<'a> {
         match node.kind() {
             "script" => self.format_script(node),
             "func_decl" | "event_decl" => self.format_func_decl(node),
-            "class_decl" | "struct_decl" => self.format_class_decl(node),
-            "state_decl" => self.format_state_decl(node),
+            "class_decl" | "struct_decl" | "state_decl" => self.format_class_decl(node),
             "enum_decl" => self.format_enum_decl(node),
             "class_def" | "struct_def" => self.format_class_def(node),
             "func_block" => self.format_func_block(node),
@@ -574,31 +573,6 @@ impl<'a> Formatter<'a> {
                 continue;
             }
             if child.kind() == "annotation" {
-                continue;
-            }
-            if let Some(p) = prev {
-                if self.gap_between(p, *child, node.kind()) {
-                    self.emit(" ");
-                }
-            }
-            if child.child_count() == 0 {
-                self.emit_verbatim(*child);
-            } else {
-                self.format_node(*child);
-            }
-            prev = Some(*child);
-        }
-    }
-
-    fn format_state_decl(&mut self, node: Node) {
-        self.emit_indent();
-        let children: Vec<Node> = {
-            let mut c = node.walk();
-            node.children(&mut c).collect()
-        };
-        let mut prev: Option<Node> = None;
-        for child in &children {
-            if child.is_missing() {
                 continue;
             }
             if let Some(p) = prev {
