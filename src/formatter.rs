@@ -229,6 +229,7 @@ impl<'a> Formatter<'a> {
             "func_decl" | "event_decl" => self.format_func_decl(node),
             "class_decl" | "struct_decl" | "state_decl" => self.format_class_decl(node),
             "enum_decl" => self.format_enum_decl(node),
+            "member_var_decl" => self.format_member_var_decl(node),
             "class_def" | "struct_def" => self.format_class_def(node),
             "func_block" => self.format_func_block(node),
             "if_stmt" => self.format_if_stmt(node),
@@ -244,7 +245,7 @@ impl<'a> Formatter<'a> {
         let children = child_nodes(node);
         let mut prev: Option<Node> = None;
         for child in &children {
-            if child.is_missing() {
+            if child.is_missing() || child.kind() == "annotation" {
                 continue;
             }
             if let Some(p) = prev {
@@ -359,12 +360,25 @@ impl<'a> Formatter<'a> {
 
     // ---- Declarations ----
 
+    fn emit_annotation(&mut self, ann: Node) {
+        let t = self.text(ann).to_string();
+        self.emit_indent();
+        self.emit(&t);
+        self.nl();
+    }
+
+    fn format_member_var_decl(&mut self, node: Node) {
+        if let Some(ann) = self.child_of_kind(node, "annotation") {
+            self.emit_annotation(ann);
+        }
+        self.emit_indent();
+        self.format_children(node);
+        self.nl();
+    }
+
     fn format_func_decl(&mut self, node: Node) {
         if let Some(ann) = self.child_of_kind(node, "annotation") {
-            let t = self.text(ann).to_string();
-            self.emit_indent();
-            self.emit(&t);
-            self.nl();
+            self.emit_annotation(ann);
         }
         self.emit_indent();
 
@@ -705,6 +719,7 @@ impl<'a> Formatter<'a> {
                 self.nl();
             }
             "member_default_val_block" => self.format_defaults_block(node),
+            "member_var_decl" => self.format_member_var_decl(node),
             _ => {
                 self.emit_indent();
                 self.format_children(node);

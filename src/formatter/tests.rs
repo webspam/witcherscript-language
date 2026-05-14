@@ -83,6 +83,30 @@ fn formats_simple_function() {
 }
 
 #[test]
+fn add_field_annotation_stays_on_own_line() {
+    let output = fmt("@addField(CR4Player) var foo : int;");
+    assert_eq!(output, "@addField(CR4Player)\nvar foo : int;\n");
+}
+
+#[test]
+fn annotation_sits_directly_above_declaration() {
+    let field = fmt("@addField(CR4Player)\n\n\nvar foo : int;");
+    assert_eq!(field, "@addField(CR4Player)\nvar foo : int;\n");
+
+    let method = fmt("@addMethod(CR4Player)\n\n\nfunction Foo() {}");
+    assert_eq!(method, "@addMethod(CR4Player)\nfunction Foo() {}\n");
+}
+
+#[test]
+fn blank_lines_after_annotated_decl_capped_at_one() {
+    let output = fmt("@addField(CR4Player)\nvar foo : int;\n\n\n\nvar bar : int;");
+    assert_eq!(
+        output,
+        "@addField(CR4Player)\nvar foo : int;\n\nvar bar : int;\n"
+    );
+}
+
+#[test]
 fn formats_if_else() {
     let input = "function F() { if(x){a();} else{b();} }";
     let output = fmt(input);
