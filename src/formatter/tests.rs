@@ -556,3 +556,15 @@ fn multiline_if_condition_is_idempotent() {
         "multiline if condition formatting should be idempotent"
     );
 }
+
+#[test]
+fn comment_between_params_keeps_source_comma_position() {
+    // /*f*/ appears before the comma in source; /*g*/ appears after. The formatter
+    // must not collapse both onto one side of the comma.
+    let input = "function lossy(   /*a*/   a   /*b*/  /*c*/  :/*d*//*e*/bool/*f*/,/*g*/i:int) {}";
+    let output = fmt(input);
+    assert!(
+        output.contains("/*f*/, /*g*/"),
+        "comma must sit between /*f*/ and /*g*/ as in source, got:\n{output}"
+    );
+}

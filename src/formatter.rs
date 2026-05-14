@@ -422,10 +422,17 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_func_sig(&mut self, func_node: Node) {
-        let param_nodes = self.collect_func_param_nodes(func_node);
-        // func_param_group → render via render_param_group (handles its own comment extras).
-        // Everything else (comment extras at the func_params level) → verbatim source text.
-        let rendered: Vec<String> = param_nodes
+        // Keep `,` tokens in the walk so comments land on the correct side.
+        let inner_nodes: Vec<Node> = self
+            .child_of_kind(func_node, "func_params")
+            .map(|fp| {
+                let mut c = fp.walk();
+                fp.children(&mut c)
+                    .filter(|n| !n.is_missing() && n.kind() != "(" && n.kind() != ")")
+                    .collect()
+            })
+            .unwrap_or_default();
+        let rendered: Vec<String> = inner_nodes
             .iter()
             .map(|n| {
                 if n.kind() == "func_param_group" {
@@ -438,39 +445,19 @@ impl<'a> Formatter<'a> {
 
         let ret_str = self.return_type_suffix(func_node);
 
-        // Build the inline string exhaustively. The comma is deferred: instead of
-        // appending it right after a group, we set a pending flag and flush it just
-        // before the *next* group. This keeps comment extras that trail a group (e.g.
-        // `a : bool /*note*/,`) on the correct side of the comma.
         let inline = {
             let mut s = String::from("(");
-            let mut needs_space = false;
-            let mut pending_comma = false;
             for (i, r) in rendered.iter().enumerate() {
-                let is_group = param_nodes[i].kind() == "func_param_group";
-                if is_group && pending_comma {
-                    s.push(',');
-                    pending_comma = false;
-                }
-                if needs_space {
+                if i > 0 && inner_nodes[i].kind() != "," {
                     s.push(' ');
                 }
                 s.push_str(r);
-                if is_group {
-                    let has_later_group = param_nodes[i + 1..]
-                        .iter()
-                        .any(|n| n.kind() == "func_param_group");
-                    if has_later_group {
-                        pending_comma = true;
-                    }
-                }
-                needs_space = true;
             }
             s.push(')');
             s
         };
 
-        let group_count = param_nodes
+        let group_count = inner_nodes
             .iter()
             .filter(|n| n.kind() == "func_param_group")
             .count();
@@ -484,7 +471,10 @@ impl<'a> Formatter<'a> {
             self.emit("(\n");
             self.level += 1;
             let mut emitted_groups = 0;
-            for (node, r) in param_nodes.iter().zip(rendered.iter()) {
+            for (node, r) in inner_nodes.iter().zip(rendered.iter()) {
+                if node.kind() == "," {
+                    continue;
+                }
                 self.emit_indent();
                 self.emit(r);
                 if node.kind() == "func_param_group" {
@@ -502,10 +492,6 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    // Returns ALL named children of func_params (func_param_group nodes AND
-    // comment extras). Named children only — anonymous tokens like `(`, `,`, `)`
-    // are excluded. This ensures no comment that appears inside the parameter
-    // list is ever dropped when the signature is reprinted.
     fn collect_func_param_nodes<'t>(&self, func_node: Node<'t>) -> Vec<Node<'t>> {
         self.child_of_kind(func_node, "func_params")
             .map(named_child_nodes)
