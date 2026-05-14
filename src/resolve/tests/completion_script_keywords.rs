@@ -84,7 +84,7 @@ fn script_kw_not_offered_inside_func_block() {
 fn script_kw_blank_offers_modding_annotations() {
     let doc = make_doc("\n");
     let result = kw(&doc, 0, 0);
-    for expected in &["addField", "addMethod", "wrapMethod", "replaceMethod"] {
+    for expected in &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"] {
         assert!(
             result.contains(expected),
             "blank script scope should offer annotation '{expected}', got {result:?}"
@@ -97,7 +97,7 @@ fn script_kw_annotations_not_offered_after_specifier() {
     for source in &["import \n", "final \n", "abstract \n", "statemachine \n"] {
         let doc = make_doc(source);
         let result = kw(&doc, 0, source.len() as u32 - 1);
-        for forbidden in &["addField", "addMethod", "wrapMethod", "replaceMethod"] {
+        for forbidden in &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"] {
             assert!(
                 !result.contains(forbidden),
                 "annotations must not follow a specifier in `{source:?}`, got {result:?}"

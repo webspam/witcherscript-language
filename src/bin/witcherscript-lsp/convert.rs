@@ -337,18 +337,20 @@ pub(crate) fn script_body_kw_item(keyword: &str) -> CompletionItem {
         "enum" => (Some("enum ${1:Name} {\n\t$0\n}"), "0"),
         "function" => (Some("function ${1:Name}($2) {\n\t$0\n}"), "0"),
         "var" => (Some("var ${1:name} : ${2:Type};"), "0"),
-        "addField" => (Some("@addField(${1:ClassName})"), "0"),
-        "addMethod" => (Some("@addMethod(${1:ClassName})"), "0"),
-        "wrapMethod" => (Some("@wrapMethod(${1:ClassName})"), "0"),
-        "replaceMethod" => (Some("@replaceMethod(${1:ClassName})"), "0"),
+        "@addField" => (Some("@addField(${1:ClassName})"), "0"),
+        "@addMethod" => (Some("@addMethod(${1:ClassName})"), "0"),
+        "@wrapMethod" => (Some("@wrapMethod(${1:ClassName})"), "0"),
+        "@replaceMethod" => (Some("@replaceMethod(${1:ClassName})"), "0"),
         _ => (None, "1"),
     };
+    let filter_text = keyword.strip_prefix('@').map(str::to_string);
     CompletionItem {
         label: keyword.to_string(),
         kind: Some(CompletionItemKind::KEYWORD),
         insert_text: snippet.map(str::to_string),
         insert_text_format: snippet.map(|_| InsertTextFormat::SNIPPET),
         sort_text: Some(format!("{sort_prefix}_{keyword}")),
+        filter_text,
         ..CompletionItem::default()
     }
 }

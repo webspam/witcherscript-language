@@ -25,7 +25,7 @@ struct TypeContext {
 
 const METHOD_INJECTING_ANNOTATIONS: &[&str] = &["addMethod", "wrapMethod", "replaceMethod"];
 
-const MODDING_ANNOTATIONS: &[&str] = &["addField", "addMethod", "wrapMethod", "replaceMethod"];
+const MODDING_ANNOTATIONS: &[&str] = &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"];
 
 fn annotation_target_class(symbol: &Symbol) -> Option<&str> {
     symbol
