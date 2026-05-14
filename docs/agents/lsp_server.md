@@ -67,12 +67,13 @@ Triggered during `initialized()` — runs after the client acknowledges `initial
 
 ```
 initialized()
-    ├─ index_workspace()
-    │      collect_witcherscript_files(&workspace_roots)
-    │      for each .ws file: parse → workspace_index.update_document
-    │
     ├─ fetch_config()
-    │      workspace/configuration request → witcherscript.gameDirectory + logLevel
+    │      workspace/configuration request → witcherscript.gameDirectory + logLevel + files.exclude
+    │
+    ├─ index_workspace()
+    │      collect_witcherscript_files(&workspace_roots, &files_exclude)
+    │        — walk honours .gitignore and the client's files.exclude globs
+    │      for each .ws file: parse → workspace_index.update_document
     │
     └─ index_base_scripts()
            find scripts at gameDirectory/content/content0/scripts/

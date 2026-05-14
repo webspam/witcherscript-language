@@ -89,11 +89,12 @@ impl Backend {
         if roots.is_empty() {
             return;
         }
+        let exclude_globs = self.files_exclude.lock().await.clone();
 
         info!(roots = ?roots, "indexing workspace");
         let start = Instant::now();
 
-        let Ok(files) = collect_witcherscript_files(&roots) else {
+        let Ok(files) = collect_witcherscript_files(&roots, &exclude_globs) else {
             warn!("failed to collect workspace files");
             return;
         };
@@ -167,6 +168,10 @@ impl Backend {
                 scope_uri: None,
                 section: Some("witcherscript.formatter.compactColon".to_string()),
             },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("files.exclude".to_string()),
+            },
         ];
         let Ok(values) = self.client.configuration(items).await else {
             warn!("workspace/configuration request failed");
@@ -192,6 +197,14 @@ impl Backend {
         if let Some(Value::Bool(compact)) = iter.next() {
             self.formatter_compact_colon
                 .store(compact, Ordering::Relaxed);
+        }
+        if let Some(Value::Object(map)) = iter.next() {
+            let globs: Vec<String> = map
+                .into_iter()
+                .filter(|(_, enabled)| matches!(enabled, Value::Bool(true)))
+                .map(|(glob, _)| glob)
+                .collect();
+            *self.files_exclude.lock().await = globs;
         }
     }
 
@@ -225,7 +238,7 @@ impl Backend {
         info!(path = %path.display(), "indexing base scripts");
         let start = Instant::now();
 
-        let Ok(files) = collect_witcherscript_files(&[path]) else {
+        let Ok(files) = collect_witcherscript_files(&[path], &[]) else {
             warn!("failed to collect base script files");
             return;
         };

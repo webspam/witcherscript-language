@@ -38,7 +38,7 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
-    let files = collect_witcherscript_files(&cli.paths)?;
+    let files = collect_witcherscript_files(&cli.paths, &[])?;
 
     if files.is_empty() {
         return Err("no .ws files found".into());

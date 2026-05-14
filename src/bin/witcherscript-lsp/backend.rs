@@ -95,6 +95,7 @@ pub(crate) struct Backend {
     pub(crate) workspace_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) workspace_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     pub(crate) workspace_roots: Arc<Mutex<Vec<PathBuf>>>,
+    pub(crate) files_exclude: Arc<Mutex<Vec<String>>>,
     pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
@@ -197,10 +198,10 @@ impl LanguageServer for Backend {
     async fn initialized(&self, _: InitializedParams) {
         let backend = self.clone();
         tokio::spawn(async move {
-            backend.index_workspace().await;
             // Pull witcherscript.gameDirectory from the client's settings. This may
             // override the value from initializationOptions.
             backend.fetch_config().await;
+            backend.index_workspace().await;
             backend.index_base_scripts().await;
         });
     }
@@ -229,6 +230,7 @@ impl LanguageServer for Backend {
 
     async fn did_change_configuration(&self, _: DidChangeConfigurationParams) {
         self.fetch_config().await;
+        self.index_workspace().await;
         self.index_base_scripts().await;
     }
 

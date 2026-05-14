@@ -55,6 +55,7 @@ async fn main() {
             workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             workspace_documents: Arc::new(Mutex::new(HashMap::new())),
             workspace_roots: Arc::new(Mutex::new(Vec::new())),
+            files_exclude: Arc::new(Mutex::new(Vec::new())),
             base_scripts_path: Arc::new(Mutex::new(None)),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
