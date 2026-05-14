@@ -1265,11 +1265,23 @@ fn nodes_at_offset<'a>(root: Node<'a>, byte_offset: usize) -> Vec<Node<'a>> {
         .collect()
 }
 
-fn node_before_byte<'a>(root: Node<'a>, source: &[u8], byte_offset: usize) -> Option<Node<'a>> {
-    let p = source[..byte_offset]
-        .iter()
-        .rposition(|&b| !b.is_ascii_whitespace())?;
-    root.descendant_for_byte_range(p, p + 1)
+/// Nearest node before `byte_offset`, skipping whitespace and comments.
+fn significant_node_before_byte<'a>(
+    root: Node<'a>,
+    source: &[u8],
+    byte_offset: usize,
+) -> Option<Node<'a>> {
+    let mut end = byte_offset;
+    loop {
+        let p = source[..end]
+            .iter()
+            .rposition(|&b| !b.is_ascii_whitespace())?;
+        let node = root.descendant_for_byte_range(p, p + 1)?;
+        if node.kind() != "comment" {
+            return Some(node);
+        }
+        end = node.start_byte();
+    }
 }
 
 fn is_statement_boundary(node: Node) -> bool {
@@ -1332,12 +1344,12 @@ fn type_completions_inner(
 
     let in_type_context =
         // Gate 1: cursor immediately after a type-annotation colon
-        node_before_byte(root, source, byte_offset).is_some_and(is_type_annotation_boundary)
+        significant_node_before_byte(root, source, byte_offset).is_some_and(is_type_annotation_boundary)
         // Gate 2: cursor on/within an ident whose start follows a type-annotation colon
         || nodes
             .last()
             .filter(|&n| is_kind_or_error_wrapped_kind(*n, &["ident"]))
-            .and_then(|n| node_before_byte(root, source, n.start_byte()))
+            .and_then(|n| significant_node_before_byte(root, source, n.start_byte()))
             .is_some_and(is_type_annotation_boundary)
         // Gate 3: cursor already inside a type_annot subtree (generic type args, clean parses)
         || nodes.iter().any(|n| has_type_annot_ancestor(*n));
@@ -1373,7 +1385,7 @@ pub fn annotation_name_completions(
     let nodes = nodes_at_offset(root, byte_offset);
 
     let node = nodes.iter().find(|n| n.kind() == "annotation_ident")?;
-    let prev = node_before_byte(root, document.source.as_bytes(), node.start_byte());
+    let prev = significant_node_before_byte(root, document.source.as_bytes(), node.start_byte());
     if prev.is_some_and(|p| !is_statement_boundary(p)) {
         return None;
     }
@@ -1486,12 +1498,12 @@ pub fn after_wrap_method_completions(
     let effective_prev = nodes_at_offset(root, byte_offset)
         .last()
         .filter(|n| matches!(n.kind(), "ident" | "function"))
-        .and_then(|n| node_before_byte(root, source, n.start_byte()))
-        .or_else(|| node_before_byte(root, source, byte_offset))?;
+        .and_then(|n| significant_node_before_byte(root, source, n.start_byte()))
+        .or_else(|| significant_node_before_byte(root, source, byte_offset))?;
 
     // Stage 2: `function` keyword is the boundary — cursor is after it or typing a name.
     if effective_prev.kind() == "function" {
-        let before_fn = node_before_byte(root, source, effective_prev.start_byte())?;
+        let before_fn = significant_node_before_byte(root, source, effective_prev.start_byte())?;
         let class_name = wrap_method_class_from_closing_paren(before_fn, &document.source)?;
         return Some(AfterWrapMethodCompletions::MethodList(
             direct_methods_of_class(class_name, db)?,
@@ -1941,12 +1953,14 @@ fn function_body_completions<'a>(
     let root = document.tree.root_node();
     let nodes = nodes_at_offset(root, byte_offset);
 
-    let prev = node_before_byte(root, document.source.as_bytes(), byte_offset);
+    let prev = significant_node_before_byte(root, document.source.as_bytes(), byte_offset);
     let at_start = prev.is_some_and(boundary);
     let writing_first = nodes
         .last()
         .filter(|&n| is_kind_or_error_wrapped_kind(*n, writer_kinds))
-        .and_then(|n| node_before_byte(root, document.source.as_bytes(), n.start_byte()))
+        .and_then(|n| {
+            significant_node_before_byte(root, document.source.as_bytes(), n.start_byte())
+        })
         .is_some_and(boundary);
     if !at_start && !writing_first {
         return None;

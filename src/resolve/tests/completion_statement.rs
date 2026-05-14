@@ -622,6 +622,36 @@ fn statement_completions_offered_after_if_condition() {
 }
 
 #[test]
+fn statement_completions_offered_after_a_comment() {
+    // A comment before the cursor must not hide the real boundary (the `{`).
+    let source = "function Test(owner : int) {\n  // a note\n  \n}\n";
+    let doc = make_doc(source);
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    // line 2, character 2 — blank line directly after the comment line
+    let result = statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 2,
+            character: 2,
+        },
+    );
+    let local_names: Vec<&str> = result
+        .locals
+        .iter()
+        .map(|d| d.symbol.name.as_str())
+        .collect();
+    assert!(
+        local_names.contains(&"owner"),
+        "a comment before the cursor must not suppress statement completions"
+    );
+}
+
+#[test]
 fn statement_completions_in_loop_true_inside_loop_bodies() {
     let source = include_str!("../../../tests/fixtures/valid/loop_stmts.ws");
     let doc = make_doc(source);
