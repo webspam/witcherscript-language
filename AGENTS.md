@@ -94,7 +94,7 @@ These are the non-obvious constraints that will cause silent bugs if violated:
 
 9. **Text sync is FULL.** Every file change sends the complete document text. There is no incremental tree reuse between edits.
 
-10. **Base script symbols are read-only.** `prepare_rename()` rejects symbols declared in `base_scripts_index` with an error message.
+10. **Base scripts are read-only.** `prepare_rename()` rejects symbols _declared_ in `base_scripts_index`. That guard only covers the definition — `rename()` must additionally drop any _reference_ that lands in a base script (via `rename_changes`), since a workspace symbol can still be referenced from base scripts (e.g. an `@addMethod` called inside its target class).
 
 ## Build
 
