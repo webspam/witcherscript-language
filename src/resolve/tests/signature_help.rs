@@ -4,6 +4,10 @@ use crate::line_index::SourcePosition;
 
 /// Runs `signature_help` with the cursor at the `|` marker in `source`.
 fn help(source: &str) -> Option<SignatureHelpInfo> {
+    help_with_colon(source, false)
+}
+
+fn help_with_colon(source: &str, compact_colon: bool) -> Option<SignatureHelpInfo> {
     let offset = source
         .find('|')
         .expect("source must contain a | cursor marker");
@@ -21,6 +25,7 @@ fn help(source: &str) -> Option<SignatureHelpInfo> {
         &doc,
         &SymbolDb::new(&index, &WorkspaceIndex::default()),
         SourcePosition { line, character },
+        compact_colon,
     )
 }
 
@@ -178,6 +183,24 @@ fn unclosed_call_still_produces_signature_help() {
 
     assert_eq!(info.label, "Find(name : string, range : float)");
     assert_eq!(info.active_parameter, Some(1));
+}
+
+#[test]
+fn compact_colon_setting_drops_spaces_around_colon() {
+    let info = help_with_colon(
+        concat!(
+            "function Find(name : string) : int {}\n",
+            "function Test() {\n",
+            "  Find(|);\n",
+            "}\n",
+        ),
+        true,
+    )
+    .expect("signature help with compact colon");
+
+    assert_eq!(info.label, "Find(name: string): int");
+    let (s0, e0) = info.parameters[0];
+    assert_eq!(&info.label[s0 as usize..e0 as usize], "name: string");
 }
 
 #[test]

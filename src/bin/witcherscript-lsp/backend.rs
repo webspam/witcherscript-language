@@ -279,11 +279,16 @@ impl LanguageServer for Backend {
         let base = self.base_scripts_index.lock().await;
         let script_env = self.script_env.lock().await;
         let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
+        let compact_colon = self.formatter_compact_colon.load(Ordering::Relaxed);
 
-        Ok(
-            signature_help(uri.as_str(), document, &db, source_position(position))
-                .map(signature_help_response),
+        Ok(signature_help(
+            uri.as_str(),
+            document,
+            &db,
+            source_position(position),
+            compact_colon,
         )
+        .map(signature_help_response))
     }
 
     async fn document_symbol(

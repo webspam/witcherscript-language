@@ -550,6 +550,7 @@ pub fn signature_help(
     document: &ParsedDocument,
     db: &SymbolDb,
     position: SourcePosition,
+    compact_colon: bool,
 ) -> Option<SignatureHelpInfo> {
     let byte_offset = document
         .line_index
@@ -578,6 +579,7 @@ pub fn signature_help(
     }
 
     let params = db.full_parameters_of(&definition.uri, definition.symbol.id);
+    let colon = if compact_colon { ": " } else { " : " };
 
     let mut label = String::new();
     label.push_str(&definition.symbol.name);
@@ -596,7 +598,7 @@ pub fn signature_help(
         }
         label.push_str(&param.name);
         if let Some(ty) = &param.type_annotation {
-            label.push_str(" : ");
+            label.push_str(colon);
             label.push_str(ty);
         }
         let end = label.encode_utf16().count() as u32;
@@ -605,7 +607,7 @@ pub fn signature_help(
     label.push(')');
     if let Some(ret) = &definition.symbol.type_annotation {
         if ret != "void" {
-            label.push_str(" : ");
+            label.push_str(colon);
             label.push_str(ret);
         }
     }
