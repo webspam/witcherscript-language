@@ -438,29 +438,7 @@ impl<'a> Formatter<'a> {
             })
             .collect();
 
-        let ret_str = {
-            let children: Vec<Node> = {
-                let mut c = func_node.walk();
-                func_node.children(&mut c).collect()
-            };
-            let mut past_params = false;
-            let mut past_colon = false;
-            let mut result = String::new();
-            for child in &children {
-                if child.kind() == "func_params" {
-                    past_params = true;
-                }
-                if past_params && child.kind() == ":" && !child.is_missing() {
-                    past_colon = true;
-                }
-                if past_colon && child.kind() == "type_annot" {
-                    let colon = if self.compact_colon { ": " } else { " : " };
-                    result = format!("{}{}", colon, self.text(*child));
-                    break;
-                }
-            }
-            result
-        };
+        let ret_str = self.return_type_suffix(func_node);
 
         // Build the inline string exhaustively. The comma is deferred: instead of
         // appending it right after a group, we set a pending flag and flush it just
@@ -543,6 +521,25 @@ impl<'a> Formatter<'a> {
         self.render_node(node)
     }
 
+    fn return_type_suffix(&self, func_node: Node) -> String {
+        let mut c = func_node.walk();
+        let mut past_params = false;
+        let mut past_colon = false;
+        for child in func_node.children(&mut c) {
+            if child.kind() == "func_params" {
+                past_params = true;
+            }
+            if past_params && child.kind() == ":" && !child.is_missing() {
+                past_colon = true;
+            }
+            if past_colon && child.kind() == "type_annot" {
+                let colon = if self.compact_colon { ": " } else { " : " };
+                return format!("{}{}", colon, self.text(child));
+            }
+        }
+        String::new()
+    }
+
     fn render_sig(&self, func_node: Node) -> Option<String> {
         let param_groups: Vec<String> = self
             .collect_func_param_nodes(func_node)
@@ -554,29 +551,7 @@ impl<'a> Formatter<'a> {
         // Guard: no func_params means this isn't a callable we can render.
         self.child_of_kind(func_node, "func_params")?;
 
-        let ret_str = {
-            let children: Vec<Node> = {
-                let mut c = func_node.walk();
-                func_node.children(&mut c).collect()
-            };
-            let mut past_params = false;
-            let mut past_colon = false;
-            let mut result = String::new();
-            for child in &children {
-                if child.kind() == "func_params" {
-                    past_params = true;
-                }
-                if past_params && child.kind() == ":" && !child.is_missing() {
-                    past_colon = true;
-                }
-                if past_colon && child.kind() == "type_annot" {
-                    let colon = if self.compact_colon { ": " } else { " : " };
-                    result = format!("{}{}", colon, self.text(*child));
-                    break;
-                }
-            }
-            result
-        };
+        let ret_str = self.return_type_suffix(func_node);
 
         Some(format!("({}){}", param_groups.join(", "), ret_str))
     }
