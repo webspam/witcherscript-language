@@ -538,34 +538,8 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_class_decl(&mut self, node: Node) {
-        if let Some(ann) = self.child_of_kind(node, "annotation") {
-            let t = self.text(ann).to_string();
-            self.emit_indent();
-            self.emit(&t);
-            self.nl();
-        }
         self.emit_indent();
-        let children = child_nodes(node);
-        let mut prev: Option<Node> = None;
-        for child in &children {
-            if child.is_missing() {
-                continue;
-            }
-            if child.kind() == "annotation" {
-                continue;
-            }
-            if let Some(p) = prev {
-                if self.gap_between(p, *child, node.kind()) {
-                    self.emit(" ");
-                }
-            }
-            if child.child_count() == 0 {
-                self.emit_verbatim(*child);
-            } else {
-                self.format_node(*child);
-            }
-            prev = Some(*child);
-        }
+        self.format_children(node);
     }
 
     fn format_enum_decl(&mut self, node: Node) {
