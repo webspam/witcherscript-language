@@ -1,10 +1,10 @@
-use super::super::script_body_keyword_completions;
+use super::super::script_body_completions;
 use super::make_doc;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 
 fn kw(doc: &ParsedDocument, line: u32, character: u32) -> Vec<&'static str> {
-    script_body_keyword_completions(doc, SourcePosition { line, character })
+    script_body_completions(doc, SourcePosition { line, character })
 }
 
 #[test]

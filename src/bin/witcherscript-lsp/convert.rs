@@ -329,7 +329,7 @@ pub(crate) fn class_body_kw_item(keyword: &str) -> CompletionItem {
     }
 }
 
-pub(crate) fn script_body_kw_item(keyword: &str) -> CompletionItem {
+pub(crate) fn script_body_item(keyword: &str) -> CompletionItem {
     let (snippet, sort_prefix): (Option<&str>, &str) = match keyword {
         "class" => (Some("class ${1:Name} {\n\t$0\n}"), "0"),
         "state" => (Some("state ${1:Name} in ${2:OwnerClass} {\n\t$0\n}"), "0"),

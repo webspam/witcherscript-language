@@ -27,7 +27,7 @@ use witcherscript_parser::resolve::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
     expression_completions, extends_completions, find_references, resolve_all_definitions,
-    resolve_definition, script_body_keyword_completions, signature_help, state_owner_completions,
+    resolve_definition, script_body_completions, signature_help, state_owner_completions,
     statement_completions, type_completions, AfterWrapMethodCompletions, SymbolDb, WorkspaceIndex,
     BUILTIN_TYPES,
 };
@@ -38,7 +38,7 @@ use witcherscript_parser::semantic_tokens::{
 
 use crate::convert::{
     annotation_name_items, builtin_type_item, class_body_kw_item, completion_item,
-    document_symbols, hover_markdown, keyword_snippet_item, lsp_range, script_body_kw_item,
+    document_symbols, hover_markdown, keyword_snippet_item, lsp_range, script_body_item,
     signature_help_response, source_position, source_range, this_super_item, type_completion_item,
     workspace_roots, wrap_method_snippet,
 };
@@ -608,12 +608,12 @@ impl LanguageServer for Backend {
             )));
         }
 
-        let script_body_kws = script_body_keyword_completions(document, pos);
+        let script_body_kws = script_body_completions(document, pos);
         if !script_body_kws.is_empty() {
             return Ok(Some(CompletionResponse::Array(
                 script_body_kws
                     .iter()
-                    .map(|kw| script_body_kw_item(kw))
+                    .map(|kw| script_body_item(kw))
                     .collect(),
             )));
         }

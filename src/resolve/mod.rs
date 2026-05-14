@@ -2484,14 +2484,14 @@ impl ScriptBodyCtx {
     }
 }
 
-pub fn script_body_keyword_completions(
+pub fn script_body_completions(
     document: &ParsedDocument,
     position: SourcePosition,
 ) -> Vec<&'static str> {
-    script_body_kw_inner(document, position).unwrap_or_default()
+    script_body_inner(document, position).unwrap_or_default()
 }
 
-fn script_body_kw_inner(
+fn script_body_inner(
     document: &ParsedDocument,
     position: SourcePosition,
 ) -> Option<Vec<&'static str>> {
@@ -2522,7 +2522,7 @@ fn script_body_kw_inner(
         return None;
     }
 
-    Some(script_body_kw_candidates(&ctx))
+    Some(script_body_candidates(&ctx))
 }
 
 fn collect_script_ctx(node: Node, source: &[u8], limit: usize, ctx: &mut ScriptBodyCtx) {
@@ -2596,7 +2596,7 @@ fn script_child_at_cursor(script: Node, byte_offset: usize) -> Option<Node> {
     result
 }
 
-fn script_body_kw_candidates(ctx: &ScriptBodyCtx) -> Vec<&'static str> {
+fn script_body_candidates(ctx: &ScriptBodyCtx) -> Vec<&'static str> {
     if let Some(member) = ctx.member_annotation {
         return member_annotation_candidates(member, ctx);
     }
