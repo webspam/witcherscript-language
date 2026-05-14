@@ -28,6 +28,7 @@ pub(crate) fn level_from_u8(n: u8) -> tracing::Level {
     match n {
         LEVEL_ERROR => tracing::Level::ERROR,
         LEVEL_WARN => tracing::Level::WARN,
+        LEVEL_INFO => tracing::Level::INFO,
         LEVEL_DEBUG => tracing::Level::DEBUG,
         LEVEL_TRACE => tracing::Level::TRACE,
         _ => DEFAULT_LOG_LEVEL,
@@ -133,5 +134,27 @@ impl Visit for EventVisitor {
 
     fn record_bool(&mut self, field: &Field, value: bool) {
         self.push_field(field.name(), &value);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn level_u8_round_trip_covers_every_level() {
+        for level in [
+            tracing::Level::ERROR,
+            tracing::Level::WARN,
+            tracing::Level::INFO,
+            tracing::Level::DEBUG,
+            tracing::Level::TRACE,
+        ] {
+            assert_eq!(
+                level_from_u8(level_to_u8(level)),
+                level,
+                "round-trip lost level {level}"
+            );
+        }
     }
 }
