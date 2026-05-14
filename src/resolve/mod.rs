@@ -75,16 +75,12 @@ impl<'a> SymbolDb<'a> {
         container_name: &str,
         min_access: AccessLevel,
     ) -> Vec<Definition> {
-        let mut seen: HashMap<String, Definition> = HashMap::new();
-        for def in self
-            .workspace
-            .direct_members_of(container_name, min_access)
-            .into_iter()
-            .chain(self.base.direct_members_of(container_name, min_access))
-        {
-            seen.entry(def.symbol.name.clone()).or_insert(def);
-        }
-        seen.into_values().collect()
+        dedup_by_name(
+            self.workspace
+                .direct_members_of(container_name, min_access)
+                .into_iter()
+                .chain(self.base.direct_members_of(container_name, min_access)),
+        )
     }
 
     pub fn members_of(&self, container: &str, min_access: AccessLevel) -> Vec<Definition> {
@@ -140,29 +136,21 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn all_types(&self) -> Vec<Definition> {
-        let mut seen: HashMap<String, Definition> = HashMap::new();
-        for def in self
-            .workspace
-            .all_types()
-            .into_iter()
-            .chain(self.base.all_types())
-        {
-            seen.entry(def.symbol.name.clone()).or_insert(def);
-        }
-        seen.into_values().collect()
+        dedup_by_name(
+            self.workspace
+                .all_types()
+                .into_iter()
+                .chain(self.base.all_types()),
+        )
     }
 
     pub fn all_top_level_callables(&self) -> Vec<Definition> {
-        let mut seen: HashMap<String, Definition> = HashMap::new();
-        for def in self
-            .workspace
-            .all_top_level_callables()
-            .into_iter()
-            .chain(self.base.all_top_level_callables())
-        {
-            seen.entry(def.symbol.name.clone()).or_insert(def);
-        }
-        seen.into_values().collect()
+        dedup_by_name(
+            self.workspace
+                .all_top_level_callables()
+                .into_iter()
+                .chain(self.base.all_top_level_callables()),
+        )
     }
 
     pub fn parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<String> {
@@ -856,6 +844,14 @@ pub fn find_references(
     }
 
     results
+}
+
+fn dedup_by_name(defs: impl Iterator<Item = Definition>) -> Vec<Definition> {
+    let mut seen: HashMap<String, Definition> = HashMap::new();
+    for def in defs {
+        seen.entry(def.symbol.name.clone()).or_insert(def);
+    }
+    seen.into_values().collect()
 }
 
 fn scan_ident_occurrences(
