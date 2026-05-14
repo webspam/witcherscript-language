@@ -40,6 +40,25 @@ use crate::convert::{
 };
 use crate::logging::{level_from_str, level_to_u8};
 
+// Open editor docs shadow workspace docs which shadow base docs — unsaved edits win.
+pub(crate) fn merge_documents<'a>(
+    base_docs: &'a HashMap<String, ParsedDocument>,
+    workspace_docs: &'a HashMap<String, ParsedDocument>,
+    open_documents: &'a HashMap<Url, ParsedDocument>,
+) -> HashMap<String, &'a ParsedDocument> {
+    let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
+    for (uri, doc) in base_docs.iter() {
+        merged.insert(uri.clone(), doc);
+    }
+    for (uri, doc) in workspace_docs.iter() {
+        merged.insert(uri.clone(), doc);
+    }
+    for (url, doc) in open_documents.iter() {
+        merged.insert(url.to_string(), doc);
+    }
+    merged
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Backend {
     pub(crate) client: Client,
@@ -318,18 +337,7 @@ impl LanguageServer for Backend {
         let workspace_docs = self.workspace_documents.lock().await;
         let base_docs = self.base_scripts_documents.lock().await;
 
-        // Merge all indexed documents; open documents take precedence over indexed ones
-        // so that unsaved edits are reflected in reference search results.
-        let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
-        for (uri, doc) in base_docs.iter() {
-            merged.insert(uri.clone(), doc);
-        }
-        for (uri, doc) in workspace_docs.iter() {
-            merged.insert(uri.clone(), doc);
-        }
-        for (url, doc) in documents.iter() {
-            merged.insert(url.to_string(), doc);
-        }
+        let merged = merge_documents(&base_docs, &workspace_docs, &documents);
 
         let definition_document = merged.get(&definition.uri).copied().unwrap_or(document);
 
@@ -412,16 +420,7 @@ impl LanguageServer for Backend {
 
         let db = SymbolDb::new(&workspace, &base_index).with_script_env(&script_env);
 
-        let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
-        for (uri, doc) in base_docs.iter() {
-            merged.insert(uri.clone(), doc);
-        }
-        for (uri, doc) in workspace_docs.iter() {
-            merged.insert(uri.clone(), doc);
-        }
-        for (url, doc) in documents.iter() {
-            merged.insert(url.to_string(), doc);
-        }
+        let merged = merge_documents(&base_docs, &workspace_docs, &documents);
 
         let Some(definition_document) = merged.get(&definition.uri).copied() else {
             return Ok(None);
