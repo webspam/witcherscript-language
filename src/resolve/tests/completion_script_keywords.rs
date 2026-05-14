@@ -81,6 +81,42 @@ fn script_kw_not_offered_inside_func_block() {
 }
 
 #[test]
+fn script_kw_blank_offers_modding_annotations() {
+    let doc = make_doc("\n");
+    let result = kw(&doc, 0, 0);
+    for expected in &["addField", "addMethod", "wrapMethod", "replaceMethod"] {
+        assert!(
+            result.contains(expected),
+            "blank script scope should offer annotation '{expected}', got {result:?}"
+        );
+    }
+}
+
+#[test]
+fn script_kw_annotations_not_offered_after_specifier() {
+    for source in &["import \n", "final \n", "abstract \n", "statemachine \n"] {
+        let doc = make_doc(source);
+        let result = kw(&doc, 0, source.len() as u32 - 1);
+        for forbidden in &["addField", "addMethod", "wrapMethod", "replaceMethod"] {
+            assert!(
+                !result.contains(forbidden),
+                "annotations must not follow a specifier in `{source:?}`, got {result:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn script_kw_annotations_not_offered_inside_class_body() {
+    let doc = make_doc("class C {\n  \n}\n");
+    let result = kw(&doc, 1, 2);
+    assert!(
+        result.is_empty(),
+        "annotations are script-scope only, must not appear in a class body, got {result:?}"
+    );
+}
+
+#[test]
 fn script_kw_after_import_filters_to_compatible_decls() {
     let doc = make_doc("import \n");
     let result = kw(&doc, 0, 7);

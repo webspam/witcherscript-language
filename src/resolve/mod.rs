@@ -25,6 +25,8 @@ struct TypeContext {
 
 const METHOD_INJECTING_ANNOTATIONS: &[&str] = &["addMethod", "wrapMethod", "replaceMethod"];
 
+const MODDING_ANNOTATIONS: &[&str] = &["addField", "addMethod", "wrapMethod", "replaceMethod"];
+
 fn annotation_target_class(symbol: &Symbol) -> Option<&str> {
     symbol
         .annotations
@@ -2436,6 +2438,10 @@ fn script_body_kw_candidates(ctx: &ScriptBodyCtx) -> Vec<&'static str> {
     }
     if can_var {
         kw.push("var");
+    }
+
+    if !ctx.has_any() {
+        kw.extend_from_slice(MODDING_ANNOTATIONS);
     }
 
     kw

@@ -308,6 +308,10 @@ pub(crate) fn script_body_kw_item(keyword: &str) -> CompletionItem {
         "enum" => (Some("enum ${1:Name} {\n\t$0\n}"), "0"),
         "function" => (Some("function ${1:Name}($2) {\n\t$0\n}"), "0"),
         "var" => (Some("var ${1:name} : ${2:Type};"), "0"),
+        "addField" => (Some("@addField(${1:ClassName})"), "0"),
+        "addMethod" => (Some("@addMethod(${1:ClassName})"), "0"),
+        "wrapMethod" => (Some("@wrapMethod(${1:ClassName})"), "0"),
+        "replaceMethod" => (Some("@replaceMethod(${1:ClassName})"), "0"),
         _ => (None, "1"),
     };
     CompletionItem {
