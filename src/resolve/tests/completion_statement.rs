@@ -1,5 +1,5 @@
-use super::super::statement_completions;
-use super::{make_doc, SymbolDb, WorkspaceIndex};
+use super::super::{expression_completions, statement_completions};
+use super::{make_doc, make_env, SymbolDb, WorkspaceIndex};
 use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
 
@@ -195,6 +195,56 @@ fn statement_completions_globals_contains_functions_from_indexed_documents() {
     assert!(
         global_names.contains(&"Beta"),
         "Beta from another document must appear in globals"
+    );
+}
+
+#[test]
+fn statement_completions_globals_includes_script_env_globals() {
+    let doc = make_doc("function Caller() {\n  \n}\n");
+    let env = make_env("theGame", "CR4Game");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base).with_script_env(&env);
+
+    let result = statement_completions(
+        "file:///c.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 2,
+        },
+    );
+    let global = result
+        .globals
+        .iter()
+        .find(|d| d.symbol.name == "theGame")
+        .expect("script env global must appear in statement completions");
+    assert_eq!(global.symbol.kind, SymbolKind::Variable);
+    assert_eq!(global.symbol.type_annotation.as_deref(), Some("CR4Game"));
+}
+
+#[test]
+fn expression_completions_globals_includes_script_env_globals() {
+    let doc = make_doc("function Caller() : int {\n  return \n}\n");
+    let env = make_env("theGame", "CR4Game");
+    let index = WorkspaceIndex::default();
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base).with_script_env(&env);
+
+    let result = expression_completions(
+        "file:///c.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 9,
+        },
+    )
+    .expect("expression completions should fire after `return `");
+    assert!(
+        result.globals.iter().any(|d| d.symbol.name == "theGame"),
+        "script env global must appear in expression completions"
     );
 }
 

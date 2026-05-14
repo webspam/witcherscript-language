@@ -153,6 +153,20 @@ impl<'a> SymbolDb<'a> {
         )
     }
 
+    pub fn all_script_globals(&self) -> Vec<Definition> {
+        self.script_env
+            .map(|env| {
+                env.globals
+                    .iter()
+                    .map(|g| Definition {
+                        uri: g.ini_uri.clone(),
+                        symbol: g.symbol.clone(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub fn parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<String> {
         let params = self.workspace.parameters_of(uri, callable_id);
         if !params.is_empty() {
@@ -1642,7 +1656,8 @@ fn function_body_completions<'a>(
     let has_this = current_type.is_some();
     let has_super = current_type.and_then(|t| t.base_class.as_deref()).is_some();
 
-    let globals = db.all_top_level_callables();
+    let mut globals = db.all_top_level_callables();
+    globals.extend(db.all_script_globals());
 
     Some((
         nodes,
