@@ -300,6 +300,26 @@ pub(crate) fn class_body_kw_item(keyword: &str) -> CompletionItem {
     }
 }
 
+pub(crate) fn script_body_kw_item(keyword: &str) -> CompletionItem {
+    let (snippet, sort_prefix): (Option<&str>, &str) = match keyword {
+        "class" => (Some("class ${1:Name} {\n\t$0\n}"), "0"),
+        "state" => (Some("state ${1:Name} in ${2:OwnerClass} {\n\t$0\n}"), "0"),
+        "struct" => (Some("struct ${1:Name} {\n\t$0\n}"), "0"),
+        "enum" => (Some("enum ${1:Name} {\n\t$0\n}"), "0"),
+        "function" => (Some("function ${1:Name}($2) {\n\t$0\n}"), "0"),
+        "var" => (Some("var ${1:name} : ${2:Type};"), "0"),
+        _ => (None, "1"),
+    };
+    CompletionItem {
+        label: keyword.to_string(),
+        kind: Some(CompletionItemKind::KEYWORD),
+        insert_text: snippet.map(str::to_string),
+        insert_text_format: snippet.map(|_| InsertTextFormat::SNIPPET),
+        sort_text: Some(format!("{sort_prefix}_{keyword}")),
+        ..CompletionItem::default()
+    }
+}
+
 pub(crate) fn keyword_snippet_item(label: &str, snippet: &str) -> CompletionItem {
     CompletionItem {
         label: label.to_string(),

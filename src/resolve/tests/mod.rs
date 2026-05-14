@@ -2,6 +2,7 @@ mod chaining;
 mod completion_annotation;
 mod completion_keywords;
 mod completion_members;
+mod completion_script_keywords;
 mod completion_statement;
 mod completion_type;
 mod definition;
