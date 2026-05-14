@@ -186,6 +186,10 @@ Fix late-local-var rule skipping nop statements
 3. If the handler needs new resolve logic, add it to `resolve.rs` (not the binary).
 4. Add a unit test in the `#[cfg(test)]` block at the bottom of `witcherscript-lsp.rs`.
 
+## Releasing
+
+Version bumps follow the process in [RELEASING.md](RELEASING.md).
+
 ## Dependencies
 
 - Do not add new dependencies without a clear reason. Prefer the standard library.
