@@ -52,12 +52,27 @@ pub(crate) struct LspLogSender {
     pub(crate) min_level: Arc<AtomicU8>,
 }
 
+const OWN_TARGET_PREFIXES: [&str; 2] = ["witcherscript_lsp", "witcherscript_parser"];
+
+fn is_own_target(target: &str) -> bool {
+    OWN_TARGET_PREFIXES.iter().any(|prefix| {
+        target == *prefix
+            || target
+                .strip_prefix(prefix)
+                .is_some_and(|rest| rest.starts_with("::"))
+    })
+}
+
 impl<S: tracing::Subscriber> Layer<S> for LspLogSender {
     fn on_event(
         &self,
         event: &tracing::Event<'_>,
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
+        if !is_own_target(event.metadata().target()) {
+            return;
+        }
+
         let level = *event.metadata().level();
         if level > level_from_u8(self.min_level.load(Ordering::Relaxed)) {
             return;
@@ -140,6 +155,16 @@ impl Visit for EventVisitor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn own_targets_pass_dependency_targets_are_rejected() {
+        assert!(is_own_target("witcherscript_lsp"));
+        assert!(is_own_target("witcherscript_lsp::indexing"));
+        assert!(is_own_target("witcherscript_parser::resolve"));
+        assert!(!is_own_target("tower_lsp::jsonrpc"));
+        assert!(!is_own_target("hyper::proto"));
+        assert!(!is_own_target("witcherscript_lsp_extra"));
+    }
 
     #[test]
     fn level_u8_round_trip_covers_every_level() {
