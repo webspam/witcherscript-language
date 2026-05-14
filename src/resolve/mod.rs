@@ -1132,11 +1132,19 @@ fn is_statement_boundary(node: Node) -> bool {
     if matches!(node.kind(), "{" | "}" | ";") {
         return true;
     }
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+    // `)` closing an if condition without a curly-brace body is a statement boundary.
+    let is_single_line_if = node.kind() == ")" && parent.kind() == "if_stmt";
+    if is_single_line_if {
+        return true;
+    }
+    if parent.kind() == "else_stmt" {
+        return true;
+    }
     // `:` closing a switch case/default label is also a statement boundary.
-    node.kind() == ":"
-        && node
-            .parent()
-            .is_some_and(|p| matches!(p.kind(), "switch_case_label" | "switch_default_label"))
+    node.kind() == ":" && matches!(parent.kind(), "switch_case_label" | "switch_default_label")
 }
 
 fn is_type_annotation_boundary(node: Node) -> bool {

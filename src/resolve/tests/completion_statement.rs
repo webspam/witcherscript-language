@@ -463,52 +463,27 @@ fn statement_completions_empty_after_dot_in_class_method() {
 }
 
 #[test]
-fn statement_completions_in_switch_true_at_switch_body_level() {
-    // switch_stmt.ws line 7:0 — start of the `case 3:` line; prev token is `;`.
+fn statement_completions_in_switch_true_inside_switch() {
     let source = include_str!("../../../tests/fixtures/valid/switch_stmt.ws");
     let doc = make_doc(source);
     let index = WorkspaceIndex::default();
     let base = WorkspaceIndex::default();
     let db = SymbolDb::new(&index, &base);
 
-    let result = statement_completions(
-        "file:///test.ws",
-        &doc,
-        &db,
-        SourcePosition {
-            line: 7,
-            character: 0,
-        },
-    );
-    assert!(
-        result.in_switch,
-        "in_switch must be true directly inside a switch block"
-    );
-}
-
-#[test]
-fn statement_completions_in_switch_true_after_fall_through_case_label() {
-    // switch_stmt.ws line 4:0 — blank line after `case 1:`; prev token is `:`
-    // from switch_case_label, which must be accepted as a statement boundary.
-    let source = include_str!("../../../tests/fixtures/valid/switch_stmt.ws");
-    let doc = make_doc(source);
-    let index = WorkspaceIndex::default();
-    let base = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &base);
-
-    let result = statement_completions(
-        "file:///test.ws",
-        &doc,
-        &db,
-        SourcePosition {
-            line: 4,
-            character: 0,
-        },
-    );
-    assert!(
-        result.in_switch,
-        "in_switch must be true on a blank line after a fall-through case label"
-    );
+    for (line, label) in [
+        // start of the `case 3:` line; prev token is `;` from `break;`
+        (7, "switch body level after semicolon"),
+        // blank line after fall-through `case 1:`; prev token is `:`
+        (4, "blank line after fall-through case label"),
+    ] {
+        let result = statement_completions(
+            "file:///test.ws",
+            &doc,
+            &db,
+            SourcePosition { line, character: 0 },
+        );
+        assert!(result.in_switch, "in_switch must be true at {label}");
+    }
 }
 
 #[test]
@@ -560,95 +535,68 @@ fn statement_completions_in_switch_false_outside_switch() {
 }
 
 #[test]
-fn statement_completions_in_loop_true_inside_for_body() {
-    // loop_stmts.ws line 3:0 — blank line inside for body; prev token is `{` at byte 67.
-    let source = include_str!("../../../tests/fixtures/valid/loop_stmts.ws");
+fn statement_completions_offered_after_if_condition() {
+    // if_stmt.ws:
+    //   line 2: `  if (x > 0)`       — braceless; prev token at (3,0) is `)` from if_stmt
+    //   line 4: `  if (x > 0) {`     — braced; prev token at (5,0) is `{`
+    let source = include_str!("../../../tests/fixtures/valid/if_stmt.ws");
     let doc = make_doc(source);
     let index = WorkspaceIndex::default();
     let base = WorkspaceIndex::default();
     let db = SymbolDb::new(&index, &base);
 
-    let result = statement_completions(
-        "file:///test.ws",
-        &doc,
-        &db,
-        SourcePosition {
-            line: 3,
-            character: 0,
-        },
-    );
-    assert!(result.in_loop, "in_loop must be true inside a for body");
+    for (line, character, label) in [
+        // start of `x = 1;`; prev is `)` closing braceless if condition
+        (3, 0, "braceless if body, next-line statement"),
+        // blank line inside braced if body; prev is `{`
+        (5, 0, "braced if body"),
+        // `return` keyword on same line as if; prev before its start is `)` closing if condition
+        (7, 24, "braceless if body, same-line return"),
+    ] {
+        let result = statement_completions(
+            "file:///test.ws",
+            &doc,
+            &db,
+            SourcePosition { line, character },
+        );
+        let local_names: Vec<&str> = result
+            .locals
+            .iter()
+            .map(|d| d.symbol.name.as_str())
+            .collect();
+        assert!(
+            local_names.contains(&"x"),
+            "{label}: local `x` must be visible (statement completions must fire)"
+        );
+    }
 }
 
 #[test]
-fn statement_completions_in_loop_true_inside_while_body() {
-    // loop_stmts.ws line 6:0 — blank line inside while body; prev token is `{` at byte 90.
+fn statement_completions_in_loop_true_inside_loop_bodies() {
     let source = include_str!("../../../tests/fixtures/valid/loop_stmts.ws");
     let doc = make_doc(source);
     let index = WorkspaceIndex::default();
     let base = WorkspaceIndex::default();
     let db = SymbolDb::new(&index, &base);
 
-    let result = statement_completions(
-        "file:///test.ws",
-        &doc,
-        &db,
-        SourcePosition {
-            line: 6,
-            character: 0,
-        },
-    );
-    assert!(result.in_loop, "in_loop must be true inside a while body");
-}
-
-#[test]
-fn statement_completions_in_loop_true_inside_do_while_body() {
-    // loop_stmts.ws line 9:0 — blank line inside do body; prev token is `{` at byte 102.
-    let source = include_str!("../../../tests/fixtures/valid/loop_stmts.ws");
-    let doc = make_doc(source);
-    let index = WorkspaceIndex::default();
-    let base = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &base);
-
-    let result = statement_completions(
-        "file:///test.ws",
-        &doc,
-        &db,
-        SourcePosition {
-            line: 9,
-            character: 0,
-        },
-    );
-    assert!(
-        result.in_loop,
-        "in_loop must be true inside a do-while body"
-    );
-}
-
-#[test]
-fn statement_completions_in_loop_true_inside_nested_if_in_loop() {
-    // loop_stmts.ws line 13:0 — blank line inside if body nested in a for loop.
-    // break/continue must still be offered because the enclosing loop is accessible.
-    // prev token is `{` at byte 171.
-    let source = include_str!("../../../tests/fixtures/valid/loop_stmts.ws");
-    let doc = make_doc(source);
-    let index = WorkspaceIndex::default();
-    let base = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &base);
-
-    let result = statement_completions(
-        "file:///test.ws",
-        &doc,
-        &db,
-        SourcePosition {
-            line: 13,
-            character: 0,
-        },
-    );
-    assert!(
-        result.in_loop,
-        "in_loop must be true inside an if nested within a for loop"
-    );
+    for (line, label) in [
+        // blank line inside for body
+        (3, "for body"),
+        // blank line inside while body
+        (6, "while body"),
+        // blank line inside do body
+        (9, "do-while body"),
+        // blank line inside if nested in a for loop; break/continue must still be offered
+        (13, "if nested within a for loop"),
+    ] {
+        let result = statement_completions(
+            "file:///test.ws",
+            &doc,
+            &db,
+            SourcePosition { line, character: 0 },
+        );
+        assert!(result.in_loop, "in_loop must be true inside {label}");
+    }
 }
 
 #[test]
