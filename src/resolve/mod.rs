@@ -340,17 +340,10 @@ impl WorkspaceIndex {
     }
 
     pub fn parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<String> {
-        let Some(symbols) = self.documents.get(uri) else {
-            return vec![];
-        };
-        symbols
-            .iter()
-            .filter(|s| {
-                s.kind == SymbolKind::Parameter
-                    && s.container == Some(callable_id)
-                    && !s.is_optional
-            })
-            .map(|s| s.name.clone())
+        self.full_parameters_of(uri, callable_id)
+            .into_iter()
+            .filter(|s| !s.is_optional)
+            .map(|s| s.name)
             .collect()
     }
 
