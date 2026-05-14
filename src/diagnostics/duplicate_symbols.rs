@@ -5,10 +5,12 @@ use crate::symbols::{Symbol, SymbolKind};
 
 use super::{RelatedLocation, WorkspaceDiagnostic};
 
+type Occurrences<'a> = HashMap<(&'a str, Option<&'a str>), Vec<(&'a str, &'a Symbol)>>;
+
 pub fn collect_duplicate_symbol_diagnostics(
     index: &WorkspaceIndex,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
-    let mut by_name: HashMap<&str, Vec<(&str, &Symbol)>> = HashMap::new();
+    let mut by_name: Occurrences = HashMap::new();
     for (uri, sym) in index.all_top_level() {
         if !is_declaration_kind(sym.kind) {
             continue;
@@ -17,14 +19,21 @@ pub fn collect_duplicate_symbol_diagnostics(
         if !sym.annotations.is_empty() {
             continue;
         }
+        // States are scoped to their statemachine, so two `state Combat in X`/`in Y`
+        // do not collide; only same-owner states share a name.
+        let owner = if sym.kind == SymbolKind::State {
+            sym.owner_class.as_deref()
+        } else {
+            None
+        };
         by_name
-            .entry(sym.name.as_str())
+            .entry((sym.name.as_str(), owner))
             .or_default()
             .push((uri, sym));
     }
 
     let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
-    for (name, occurrences) in by_name {
+    for ((name, _), occurrences) in by_name {
         if occurrences.len() < 2 {
             continue;
         }
@@ -122,6 +131,46 @@ mod tests {
         ]);
 
         assert!(collect_duplicate_symbol_diagnostics(&idx).is_empty());
+    }
+
+    #[test]
+    fn same_named_states_in_different_statemachines_are_not_duplicates() {
+        let idx = index(&[
+            ("file:///a.ws", "state Combat in CR4Player {}\n"),
+            ("file:///b.ws", "state Combat in W3MonsterAI {}\n"),
+        ]);
+
+        assert!(
+            collect_duplicate_symbol_diagnostics(&idx).is_empty(),
+            "states sharing a name across different statemachines are valid WitcherScript"
+        );
+    }
+
+    #[test]
+    fn same_named_states_in_same_statemachine_are_duplicates() {
+        let idx = index(&[(
+            "file:///a.ws",
+            "state Combat in CR4Player {}\nstate Combat in CR4Player {}\n",
+        )]);
+
+        let result = collect_duplicate_symbol_diagnostics(&idx);
+
+        let a = result.get("file:///a.ws").expect("a.ws should be flagged");
+        assert_eq!(a.len(), 2);
+        assert!(a.iter().all(|d| d.related.len() == 1));
+    }
+
+    #[test]
+    fn state_does_not_collide_with_same_named_class() {
+        let idx = index(&[
+            ("file:///a.ws", "class Combat {}\n"),
+            ("file:///b.ws", "state Combat in CR4Player {}\n"),
+        ]);
+
+        assert!(
+            collect_duplicate_symbol_diagnostics(&idx).is_empty(),
+            "a state is scoped to its statemachine and does not share the global name space"
+        );
     }
 
     #[test]
