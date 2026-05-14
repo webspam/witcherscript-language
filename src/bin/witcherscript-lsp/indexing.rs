@@ -148,9 +148,10 @@ impl Backend {
         self.publish_open_diagnostics().await;
     }
 
-    /// Pull `witcherscript.gameDirectory`, `witcherscript.logLevel`, and formatter
-    /// settings from the client via `workspace/configuration`.
-    pub(crate) async fn fetch_config(&self) {
+    pub(crate) async fn fetch_config(&self) -> bool {
+        let prev_base_scripts_path = self.base_scripts_path.lock().await.clone();
+        let prev_files_exclude = self.files_exclude.lock().await.clone();
+
         let items = vec![
             ConfigurationItem {
                 scope_uri: None,
@@ -175,7 +176,7 @@ impl Backend {
         ];
         let Ok(values) = self.client.configuration(items).await else {
             warn!("workspace/configuration request failed");
-            return;
+            return false;
         };
         let mut iter = values.into_iter();
         if let Some(Value::String(path_str)) = iter.next() {
@@ -206,6 +207,10 @@ impl Backend {
                 .collect();
             *self.files_exclude.lock().await = globs;
         }
+
+        let base_scripts_changed = *self.base_scripts_path.lock().await != prev_base_scripts_path;
+        let files_exclude_changed = *self.files_exclude.lock().await != prev_files_exclude;
+        base_scripts_changed || files_exclude_changed
     }
 
     pub(crate) async fn resolve_at(&self, uri: &Url, position: Position) -> Option<Definition> {

@@ -102,6 +102,7 @@ pub(crate) struct Backend {
     pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
     pub(crate) formatter_line_limit: Arc<AtomicU32>,
     pub(crate) formatter_compact_colon: Arc<AtomicBool>,
+    pub(crate) initial_index_done: Arc<Mutex<bool>>,
 }
 
 #[tower_lsp::async_trait]
@@ -198,11 +199,12 @@ impl LanguageServer for Backend {
     async fn initialized(&self, _: InitializedParams) {
         let backend = self.clone();
         tokio::spawn(async move {
-            // Pull witcherscript.gameDirectory from the client's settings. This may
-            // override the value from initializationOptions.
+            tracing::trace!("initialized: fetching config and indexing");
+            let mut initial_done = backend.initial_index_done.lock().await;
             backend.fetch_config().await;
             backend.index_workspace().await;
             backend.index_base_scripts().await;
+            *initial_done = true;
         });
     }
 
@@ -229,9 +231,21 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change_configuration(&self, _: DidChangeConfigurationParams) {
-        self.fetch_config().await;
-        self.index_workspace().await;
-        self.index_base_scripts().await;
+        let initial_done = self.initial_index_done.lock().await;
+        let changed = self.fetch_config().await;
+        if !*initial_done {
+            tracing::trace!("did_change_configuration: startup echo, skipping re-index");
+            return;
+        }
+        if changed {
+            tracing::trace!("did_change_configuration: index-relevant config changed, re-indexing");
+            self.index_workspace().await;
+            self.index_base_scripts().await;
+        } else {
+            tracing::trace!(
+                "did_change_configuration: no index-relevant config change, skipping re-index"
+            );
+        }
     }
 
     async fn goto_definition(
