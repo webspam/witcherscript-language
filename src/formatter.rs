@@ -882,6 +882,10 @@ impl<'a> Formatter<'a> {
     // ---- Function body ----
 
     fn format_func_block(&mut self, node: Node) {
+        self.format_func_block_inner(node, true);
+    }
+
+    fn format_func_block_inner(&mut self, node: Node, trailing_nl: bool) {
         let children: Vec<Node> = {
             let mut c = node.walk();
             node.children(&mut c).collect()
@@ -919,89 +923,33 @@ impl<'a> Formatter<'a> {
                     self.emit(&t);
                 }
             }
+            if trailing_nl {
+                self.nl();
+            }
+            return;
+        }
+        self.nl();
+        self.level += 1;
+        let mut prev_end_row: Option<usize> = None;
+        for (stmt, trailing_semi) in &stmts {
+            if let Some(prev) = prev_end_row {
+                if stmt.start_position().row.saturating_sub(prev) >= 2 {
+                    self.nl();
+                }
+            }
+            self.emit_stmt_in_block(*stmt, *trailing_semi);
+            prev_end_row = Some(stmt.end_position().row);
+        }
+        self.level -= 1;
+        self.emit_indent();
+        if let Some(cl) = close {
+            if !cl.is_missing() {
+                let t = self.text(*cl).to_string();
+                self.emit(&t);
+            }
+        }
+        if trailing_nl {
             self.nl();
-            return;
-        }
-        self.nl();
-        self.level += 1;
-        let mut prev_end_row: Option<usize> = None;
-        for (stmt, trailing_semi) in &stmts {
-            if let Some(prev) = prev_end_row {
-                if stmt.start_position().row.saturating_sub(prev) >= 2 {
-                    self.nl();
-                }
-            }
-            self.emit_stmt_in_block(*stmt, *trailing_semi);
-            prev_end_row = Some(stmt.end_position().row);
-        }
-        self.level -= 1;
-        self.emit_indent();
-        if let Some(cl) = close {
-            if !cl.is_missing() {
-                let t = self.text(*cl).to_string();
-                self.emit(&t);
-            }
-        }
-        self.nl();
-    }
-
-    fn format_func_block_no_nl(&mut self, node: Node) {
-        let children: Vec<Node> = {
-            let mut c = node.walk();
-            node.children(&mut c).collect()
-        };
-        let stmts: Vec<(Node, bool)> = children
-            .iter()
-            .enumerate()
-            .filter_map(|(i, child)| {
-                if child.is_named() && child.kind() != "nop" {
-                    let trailing_semi = children
-                        .get(i + 1)
-                        .map(|n| n.kind() == ";" || n.kind() == "nop")
-                        .unwrap_or(false);
-                    Some((*child, trailing_semi))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        let open = children.iter().find(|n| n.kind() == "{");
-        let close = children.iter().rfind(|n| n.kind() == "}");
-
-        if let Some(o) = open {
-            if !o.is_missing() {
-                let t = self.text(*o).to_string();
-                self.emit(&t);
-            }
-        }
-        if stmts.is_empty() {
-            if let Some(cl) = close {
-                if !cl.is_missing() {
-                    let t = self.text(*cl).to_string();
-                    self.emit(&t);
-                }
-            }
-            return;
-        }
-        self.nl();
-        self.level += 1;
-        let mut prev_end_row: Option<usize> = None;
-        for (stmt, trailing_semi) in &stmts {
-            if let Some(prev) = prev_end_row {
-                if stmt.start_position().row.saturating_sub(prev) >= 2 {
-                    self.nl();
-                }
-            }
-            self.emit_stmt_in_block(*stmt, *trailing_semi);
-            prev_end_row = Some(stmt.end_position().row);
-        }
-        self.level -= 1;
-        self.emit_indent();
-        if let Some(cl) = close {
-            if !cl.is_missing() {
-                let t = self.text(*cl).to_string();
-                self.emit(&t);
-            }
         }
     }
 
@@ -1237,7 +1185,7 @@ impl<'a> Formatter<'a> {
                 if let Some(b) = node.child_by_field_name("body") {
                     if b.kind() == "func_block" {
                         self.emit(" ");
-                        self.format_func_block_no_nl(b);
+                        self.format_func_block_inner(b, false);
                         self.emit(" while (");
                     } else {
                         self.nl();
