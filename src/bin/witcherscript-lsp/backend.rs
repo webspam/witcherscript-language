@@ -63,6 +63,29 @@ pub(crate) fn merge_documents<'a>(
     merged
 }
 
+// Base scripts are read-only: references found inside them must never become edits,
+// even when the renamed symbol's declaration lives in the workspace (e.g. an
+// @wrapMethod whose target's class-body declaration sits in a base script).
+pub(crate) fn rename_changes(
+    refs: &[(String, witcherscript_parser::line_index::SourceRange)],
+    new_name: &str,
+    base_docs: &HashMap<String, ParsedDocument>,
+) -> HashMap<Url, Vec<TextEdit>> {
+    let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
+    for (ref_uri, range) in refs {
+        if base_docs.contains_key(ref_uri) {
+            continue;
+        }
+        if let Ok(url) = Url::parse(ref_uri) {
+            changes.entry(url).or_default().push(TextEdit {
+                range: lsp_range(*range),
+                new_text: new_name.to_string(),
+            });
+        }
+    }
+    changes
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Backend {
     pub(crate) client: Client,
@@ -465,15 +488,7 @@ impl LanguageServer for Backend {
 
         let refs = find_references(&definition, definition_document, &search_docs, &db, true);
 
-        let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
-        for (ref_uri, range) in refs {
-            if let Ok(url) = Url::parse(&ref_uri) {
-                changes.entry(url).or_default().push(TextEdit {
-                    range: lsp_range(range),
-                    new_text: new_name.clone(),
-                });
-            }
-        }
+        let changes = rename_changes(&refs, &new_name, &base_docs);
 
         Ok(Some(WorkspaceEdit {
             changes: Some(changes),

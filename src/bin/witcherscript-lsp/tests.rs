@@ -464,6 +464,71 @@ fn rename_rejects_base_script_symbol() {
 }
 
 #[test]
+fn rename_does_not_edit_base_scripts() {
+    use std::collections::HashMap;
+    use witcherscript_parser::resolve::find_references;
+
+    use crate::backend::rename_changes;
+
+    // Base script declares CR4Player; one of its methods calls IsCiri()
+    // unqualified (implicit `this`). Since 8023ddf the workspace @addMethod is
+    // indexed as a real member of CR4Player, so this base call site resolves
+    // into the workspace symbol and find_references reports it.
+    let base_source = "class CR4Player {\n  function Foo() { IsCiri(); }\n}\n";
+    let base_doc = parse_document(base_source).expect("base should parse");
+    let base_doc_owned = parse_document(base_source).expect("base should parse");
+    let mut base_index = WorkspaceIndex::default();
+    base_index.update_document("file:///base/player.ws", &base_doc);
+    let mut base_docs: HashMap<String, _> = HashMap::new();
+    base_docs.insert("file:///base/player.ws".to_string(), base_doc_owned);
+
+    // Workspace mod adds IsCiri() to CR4Player via @addMethod.
+    let mod_source = "@addMethod(CR4Player)\nfunction IsCiri() {}\n";
+    let mod_doc = parse_document(mod_source).expect("mod should parse");
+    let mut workspace = WorkspaceIndex::default();
+    workspace.update_document("file:///mod/ciri.ws", &mod_doc);
+
+    let db = SymbolDb::new(&workspace, &base_index);
+
+    let definition = resolve_definition(
+        "file:///mod/ciri.ws",
+        &mod_doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 12,
+        },
+    )
+    .expect("@addMethod function name should resolve");
+    assert!(
+        !base_docs.contains_key(&definition.uri),
+        "definition is in the workspace, so the existing guard lets the rename through"
+    );
+
+    let search_docs = vec![
+        ("file:///base/player.ws", &base_doc),
+        ("file:///mod/ciri.ws", &mod_doc),
+    ];
+    let refs = find_references(&definition, &mod_doc, &search_docs, &db, true);
+    assert!(
+        refs.iter().any(|(uri, _)| uri == "file:///base/player.ws"),
+        "the base-script call site resolves into the @addMethod symbol"
+    );
+
+    let changes = rename_changes(&refs, "IsCiriRenamed", &base_docs);
+    assert!(
+        changes
+            .keys()
+            .all(|url| url.as_str() != "file:///base/player.ws"),
+        "rename must not emit edits for read-only base-script files"
+    );
+    assert!(
+        !changes.is_empty(),
+        "rename should still emit edits for the workspace declaration"
+    );
+}
+
+#[test]
 fn wrap_method_snippet_plain_params() {
     let source = concat!(
         "class CPlayer {\n",
