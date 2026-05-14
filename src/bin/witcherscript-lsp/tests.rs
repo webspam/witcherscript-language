@@ -1,12 +1,14 @@
-use tower_lsp::lsp_types::SymbolKind as LspSymbolKind;
+use tower_lsp::lsp_types::{ParameterLabel, SymbolKind as LspSymbolKind};
 use witcherscript_parser::document::parse_document;
 use witcherscript_parser::line_index::SourcePosition;
-use witcherscript_parser::resolve::{resolve_definition, SymbolDb, WorkspaceIndex};
+use witcherscript_parser::resolve::{
+    resolve_definition, SignatureHelpInfo, SymbolDb, WorkspaceIndex,
+};
 use witcherscript_parser::symbols::AccessLevel;
 
 use crate::convert::{
     completion_item, document_symbols, hover_markdown, lsp_diagnostics, read_script_file,
-    wrap_method_snippet,
+    signature_help_response, wrap_method_snippet,
 };
 
 fn encode_utf16le(s: &str) -> Vec<u8> {
@@ -79,6 +81,34 @@ fn maps_core_diagnostics_to_lsp_diagnostics() {
         diagnostics[0].message,
         "local variable declarations must precede executable statements"
     );
+}
+
+#[test]
+fn signature_help_response_maps_label_offsets_and_active_parameter() {
+    let info = SignatureHelpInfo {
+        label: "Find(name : string, range : float)".to_string(),
+        parameters: vec![(5, 18), (20, 33)],
+        active_parameter: Some(1),
+    };
+
+    let help = signature_help_response(info);
+
+    assert_eq!(help.signatures.len(), 1);
+    assert_eq!(help.active_signature, Some(0));
+    assert_eq!(help.active_parameter, Some(1));
+
+    let signature = &help.signatures[0];
+    assert_eq!(signature.label, "Find(name : string, range : float)");
+    let params = signature.parameters.as_ref().expect("parameters present");
+    assert_eq!(params.len(), 2);
+    assert!(matches!(
+        params[0].label,
+        ParameterLabel::LabelOffsets([5, 18])
+    ));
+    assert!(matches!(
+        params[1].label,
+        ParameterLabel::LabelOffsets([20, 33])
+    ));
 }
 
 #[test]

@@ -4,13 +4,14 @@ use std::path::PathBuf;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic, DiagnosticSeverity,
     DocumentSymbol, Documentation, InitializeParams, InsertTextFormat, MarkupContent, MarkupKind,
-    Position, Range, TextEdit, Url,
+    ParameterInformation, ParameterLabel, Position, Range, SignatureHelp, SignatureInformation,
+    TextEdit, Url,
 };
 use tracing::warn;
 use witcherscript_parser::document::ParsedDocument;
 use witcherscript_parser::files::is_witcherscript_file;
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
-use witcherscript_parser::resolve::{hover_text, Definition, SymbolDb};
+use witcherscript_parser::resolve::{hover_text, Definition, SignatureHelpInfo, SymbolDb};
 use witcherscript_parser::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
 
 /// Read a WitcherScript source file, handling UTF-16LE/BE BOMs produced by the
@@ -204,6 +205,27 @@ pub(crate) fn completion_item(definition: &Definition, params: &[String]) -> Com
         insert_text,
         insert_text_format,
         ..CompletionItem::default()
+    }
+}
+
+pub(crate) fn signature_help_response(info: SignatureHelpInfo) -> SignatureHelp {
+    let parameters = info
+        .parameters
+        .into_iter()
+        .map(|(start, end)| ParameterInformation {
+            label: ParameterLabel::LabelOffsets([start, end]),
+            documentation: None,
+        })
+        .collect();
+    SignatureHelp {
+        signatures: vec![SignatureInformation {
+            label: info.label,
+            documentation: None,
+            parameters: Some(parameters),
+            active_parameter: None,
+        }],
+        active_signature: Some(0),
+        active_parameter: info.active_parameter,
     }
 }
 

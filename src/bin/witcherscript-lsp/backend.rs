@@ -14,9 +14,10 @@ use tower_lsp::lsp_types::{
     MarkupContent, MarkupKind, OneOf, PrepareRenameResponse, ReferenceParams, RenameOptions,
     RenameParams, SemanticToken, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
     SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentPositionParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgressOptions,
-    WorkspaceEdit, WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
+    SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelp, SignatureHelpOptions,
+    SignatureHelpParams, TextDocumentPositionParams, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, Url, WorkDoneProgressOptions, WorkspaceEdit,
+    WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer};
 use tracing::info;
@@ -26,7 +27,7 @@ use witcherscript_parser::resolve::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
     expression_completions, extends_completions, find_references, resolve_all_definitions,
-    resolve_definition, script_body_keyword_completions, state_owner_completions,
+    resolve_definition, script_body_keyword_completions, signature_help, state_owner_completions,
     statement_completions, type_completions, AfterWrapMethodCompletions, SymbolDb, WorkspaceIndex,
     BUILTIN_TYPES,
 };
@@ -38,8 +39,8 @@ use witcherscript_parser::semantic_tokens::{
 use crate::convert::{
     annotation_name_items, builtin_type_item, class_body_kw_item, completion_item,
     document_symbols, hover_markdown, keyword_snippet_item, lsp_range, script_body_kw_item,
-    source_position, source_range, this_super_item, type_completion_item, workspace_roots,
-    wrap_method_snippet,
+    signature_help_response, source_position, source_range, this_super_item, type_completion_item,
+    workspace_roots, wrap_method_snippet,
 };
 use crate::logging::{level_from_str, level_to_u8};
 
@@ -123,6 +124,11 @@ impl LanguageServer for Backend {
                         "@".to_string(),
                     ]),
                     ..CompletionOptions::default()
+                }),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec!["(".to_string(), ",".to_string()]),
+                    retrigger_characters: Some(vec![",".to_string()]),
+                    work_done_progress_options: WorkDoneProgressOptions::default(),
                 }),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
@@ -260,6 +266,24 @@ impl LanguageServer for Backend {
             }),
             range: Some(lsp_range(definition.symbol.selection_range)),
         }))
+    }
+
+    async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+        let documents = self.documents.lock().await;
+        let Some(document) = documents.get(&uri) else {
+            return Ok(None);
+        };
+        let workspace = self.workspace_index.lock().await;
+        let base = self.base_scripts_index.lock().await;
+        let script_env = self.script_env.lock().await;
+        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
+
+        Ok(
+            signature_help(uri.as_str(), document, &db, source_position(position))
+                .map(signature_help_response),
+        )
     }
 
     async fn document_symbol(

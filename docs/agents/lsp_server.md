@@ -31,7 +31,8 @@ All fields are `Arc<Mutex<>>` for async-safe shared state across tokio tasks.
 | Capability | Details |
 |---|---|
 | Text document sync | `FULL` — complete document text on every change |
-| Completion | Trigger chars: `.` and `:` |
+| Completion | Trigger chars: `.`, `:`, `@` |
+| Signature help | Parameter hints at call sites; trigger chars `(` and `,`, retrigger `,` |
 | Go-to-definition | Resolves symbol at cursor |
 | Find references | Workspace-wide, with include_declaration option |
 | Rename | Prepare + execute; blocked for base script symbols |
@@ -132,6 +133,10 @@ Documentation includes a markdown code block (from `hover_text`) and a file:line
 
 1. `prepare_rename()` — resolve symbol at cursor; return error if symbol is declared in base scripts ("Cannot rename a symbol declared in a base script (read-only)").
 2. `rename()` — call `find_references()` across all documents; produce `WorkspaceEdit` with one `TextEdit` per occurrence.
+
+## Signature help
+
+`signature_help()` locates the innermost call site enclosing the cursor (both closed `func_call_expr` nodes and unclosed calls recovered as `ERROR`), resolves the callee, and returns a `SignatureHelpInfo` (label + per-parameter UTF-16 label offsets + active parameter index). `convert::signature_help_response()` maps it to `lsp_types::SignatureHelp` with a single signature.
 
 ## SymbolDb construction
 

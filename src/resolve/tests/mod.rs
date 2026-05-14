@@ -10,6 +10,7 @@ mod inheritance;
 mod parameters;
 mod references;
 mod script_globals;
+mod signature_help;
 
 use super::{SymbolDb, WorkspaceIndex};
 use crate::document::{parse_document, ParsedDocument};

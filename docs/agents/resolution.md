@@ -141,6 +141,14 @@ Called in class/struct/state body. Returns `Option<SymbolKind>`:
 - `Some(Class)` or `Some(State)` → in a class/state body (full member declarations)
 - `None` → not in a type body
 
+## signature_help
+
+`signature_help(uri, document, db, position)` powers `textDocument/signatureHelp`. It finds the innermost call site around the cursor — a closed `func_call_expr`, or an unclosed call that tree-sitter recovers as an `ERROR` node containing a callee, `(`, and optional `func_call_args` — resolves the callee via `resolve_definition_at_byte`, and builds a `SignatureHelpInfo`:
+
+- `label` — `Name(p1 : T1, optional p2 : T2) : Ret`, built from `db.full_parameters_of()` so **all** parameters (including optional/out, in order) appear.
+- `parameters` — `[start, end)` UTF-16 offsets of each parameter substring within `label`.
+- `active_parameter` — index derived by counting `,` tokens before the cursor, clamped to the last parameter; `None` when the callee takes no parameters.
+
 ## find_references
 
 ```rust
