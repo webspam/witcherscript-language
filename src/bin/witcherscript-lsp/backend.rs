@@ -274,21 +274,16 @@ impl LanguageServer for Backend {
         &self,
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
+        let uri = params.text_document.uri;
         let documents = self.documents.lock().await;
-        let Some(document) = documents.get(&params.text_document.uri) else {
+        let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
         let script_env = self.script_env.lock().await;
         let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
-        let data = collect_semantic_tokens(
-            document.tree.root_node(),
-            &document.source,
-            &document.line_index,
-            &document.symbols,
-            &db,
-        );
+        let data = collect_semantic_tokens(uri.as_str(), document, &db);
         let tokens: Vec<SemanticToken> = data
             .chunks_exact(5)
             .map(|c| SemanticToken {

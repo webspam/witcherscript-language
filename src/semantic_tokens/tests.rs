@@ -1,18 +1,8 @@
-use tree_sitter::Parser;
-
 use super::collect_semantic_tokens;
 use crate::document::parse_document;
-use crate::line_index::LineIndex;
 use crate::resolve::{SymbolDb, WorkspaceIndex};
-use crate::symbols::extract_symbols;
 
-fn parse(source: &str) -> tree_sitter::Tree {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&tree_sitter_witcherscript::language())
-        .expect("failed to load WitcherScript grammar");
-    parser.parse(source, None).expect("failed to parse source")
-}
+const TEST_URI: &str = "file:///semtok_test.ws";
 
 fn tokens_for(source: &str) -> Vec<u32> {
     let empty = WorkspaceIndex::default();
@@ -20,10 +10,8 @@ fn tokens_for(source: &str) -> Vec<u32> {
 }
 
 fn tokens_for_with_db(source: &str, db: &SymbolDb) -> Vec<u32> {
-    let tree = parse(source);
-    let index = LineIndex::new(source);
-    let symbols = extract_symbols(tree.root_node(), source, &index);
-    collect_semantic_tokens(tree.root_node(), source, &index, &symbols, db)
+    let document = parse_document(source).expect("parse");
+    collect_semantic_tokens(TEST_URI, &document, db)
 }
 
 #[test]
@@ -215,12 +203,10 @@ fn type_annotation_from_base_scripts_gets_class_token() {
     base.update_document("file:///base/CActor.ws", &base_doc);
 
     let source = "class SomeClass {\n  var actor : CActor;\n}\n";
-    let tree = parse(source);
-    let index = LineIndex::new(source);
-    let symbols = extract_symbols(tree.root_node(), source, &index);
+    let document = parse_document(source).expect("parse");
     let empty = WorkspaceIndex::default();
     let db = SymbolDb::new(&empty, &base);
-    let data = collect_semantic_tokens(tree.root_node(), source, &index, &symbols, &db);
+    let data = collect_semantic_tokens(TEST_URI, &document, &db);
     let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
     assert!(
         types.contains(&super::TT_CLASS),
