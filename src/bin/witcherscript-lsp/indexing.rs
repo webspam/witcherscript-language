@@ -6,7 +6,7 @@ use std::time::Instant;
 use rayon::prelude::*;
 use serde_json::Value;
 use tower_lsp::lsp_types::{ConfigurationItem, Position, Url};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 use witcherscript_parser::diagnostics::collect_duplicate_symbol_diagnostics;
 use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::collect_witcherscript_files;
@@ -51,20 +51,37 @@ impl Backend {
     }
 
     async fn publish_open_diagnostics(&self) {
+        let start = Instant::now();
         let dup_by_uri = {
             let index = self.workspace_index.lock().await;
             collect_duplicate_symbol_diagnostics(&index)
         };
+        let collect_us = start.elapsed().as_micros();
         let documents = self.documents.lock().await;
+        let mut published = self.published_diagnostics.lock().await;
+        let mut republished = 0;
         for (uri, document) in documents.iter() {
             let mut diagnostics = lsp_diagnostics(document);
             if let Some(dups) = dup_by_uri.get(uri.as_str()) {
                 diagnostics.extend(dups.iter().map(lsp_workspace_diagnostic));
             }
+            if published.get(uri) == Some(&diagnostics) {
+                continue;
+            }
             self.client
-                .publish_diagnostics(uri.clone(), diagnostics, None)
+                .publish_diagnostics(uri.clone(), diagnostics.clone(), None)
                 .await;
+            published.insert(uri.clone(), diagnostics);
+            republished += 1;
         }
+        trace!(
+            open_documents = documents.len(),
+            flagged_uris = dup_by_uri.len(),
+            republished,
+            collect_us,
+            total_us = start.elapsed().as_micros(),
+            "recomputed workspace diagnostics for open documents"
+        );
     }
 
     pub(crate) async fn index_workspace(&self) {

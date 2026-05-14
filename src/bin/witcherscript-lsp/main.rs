@@ -51,6 +51,7 @@ async fn main() {
             client,
             log_level,
             documents: Arc::new(Mutex::new(HashMap::new())),
+            published_diagnostics: Arc::new(Mutex::new(HashMap::new())),
             workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             workspace_documents: Arc::new(Mutex::new(HashMap::new())),
             workspace_roots: Arc::new(Mutex::new(Vec::new())),
