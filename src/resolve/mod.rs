@@ -1194,7 +1194,7 @@ fn annotation_arg_completions_inner(
     let root = document.tree.root_node();
     let in_annotation_arg = nodes_at_offset(root, byte_offset)
         .into_iter()
-        .any(|n| has_annotation_arg_ancestor(n, byte_offset));
+        .any(|n| has_annotation_arg_ancestor(n, byte_offset, &document.source));
 
     if !in_annotation_arg {
         return None;
@@ -1208,17 +1208,29 @@ fn annotation_arg_completions_inner(
     )
 }
 
-fn has_annotation_arg_ancestor(node: Node, byte_offset: usize) -> bool {
+const CLASS_ARG_ANNOTATIONS: &[&str] =
+    &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"];
+
+fn has_annotation_arg_ancestor(node: Node, byte_offset: usize, source: &str) -> bool {
     let mut current = node;
     loop {
         if current.kind() == "annotation" {
-            return is_inside_annotation_parens(current, byte_offset);
+            return takes_class_arg(current, source)
+                && is_inside_annotation_parens(current, byte_offset);
         }
         match current.parent() {
             Some(p) => current = p,
             None => return false,
         }
     }
+}
+
+fn takes_class_arg(annotation: Node, source: &str) -> bool {
+    annotation
+        .children(&mut annotation.walk())
+        .find(|c| c.kind() == "annotation_ident")
+        .map(|n| &source[n.start_byte()..n.end_byte()])
+        .is_some_and(|name| CLASS_ARG_ANNOTATIONS.contains(&name))
 }
 
 fn is_inside_annotation_parens(annotation: Node, byte_offset: usize) -> bool {
