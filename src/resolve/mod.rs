@@ -7,6 +7,9 @@ use crate::line_index::{SourcePosition, SourceRange};
 use crate::script_env::ScriptEnvironment;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
+// AGENTS.md key invariant #3.
+const MAX_INHERITANCE_DEPTH: usize = 32;
+
 #[derive(Debug, Clone)]
 pub struct Definition {
     pub uri: String,
@@ -60,32 +63,11 @@ impl<'a> SymbolDb<'a> {
         name: &str,
         min_access: AccessLevel,
     ) -> Option<Definition> {
-        self.find_member_chain_cross(container, name, 0, min_access)
-    }
-
-    fn find_member_chain_cross(
-        &self,
-        container_name: &str,
-        name: &str,
-        depth: usize,
-        min_access: AccessLevel,
-    ) -> Option<Definition> {
-        if depth > 32 {
-            return None;
-        }
-        let direct = self
-            .workspace
-            .direct_member_of(container_name, name, min_access)
-            .or_else(|| self.base.direct_member_of(container_name, name, min_access));
-        if direct.is_some() {
-            return direct;
-        }
-        let superclass = self
-            .workspace
-            .superclass_of(container_name)
-            .or_else(|| self.base.superclass_of(container_name))?;
-        let deeper_min = min_access.max(AccessLevel::Protected);
-        self.find_member_chain_cross(&superclass, name, depth + 1, deeper_min)
+        self.try_in_chain(container, min_access, |container, _depth, access| {
+            self.workspace
+                .direct_member_of(container, name, access)
+                .or_else(|| self.base.direct_member_of(container, name, access))
+        })
     }
 
     pub fn direct_members_of(
@@ -117,39 +99,44 @@ impl<'a> SymbolDb<'a> {
         container: &str,
         min_access: AccessLevel,
     ) -> Vec<(u8, Definition)> {
-        self.members_of_chain_cross(container, 0, min_access)
+        let mut seen: HashMap<String, (u8, Definition)> = HashMap::new();
+        self.try_in_chain::<(), _>(container, min_access, |container, depth, access| {
+            let tier = if depth == 0 { 0u8 } else { 1u8 };
+            for def in self
+                .workspace
+                .direct_members_of(container, access)
+                .into_iter()
+                .chain(self.base.direct_members_of(container, access))
+            {
+                seen.entry(def.symbol.name.clone()).or_insert((tier, def));
+            }
+            None
+        });
+        seen.into_values().collect()
     }
 
-    fn members_of_chain_cross(
-        &self,
-        container_name: &str,
-        depth: usize,
-        min_access: AccessLevel,
-    ) -> Vec<(u8, Definition)> {
-        if depth > 32 {
-            return vec![];
-        }
-        let tier = if depth == 0 { 0u8 } else { 1u8 };
-        let mut seen: HashMap<String, (u8, Definition)> = HashMap::new();
-        for def in self
-            .workspace
-            .direct_members_of(container_name, min_access)
-            .into_iter()
-            .chain(self.base.direct_members_of(container_name, min_access))
-        {
-            seen.entry(def.symbol.name.clone()).or_insert((tier, def));
-        }
-        let superclass = self
-            .workspace
-            .superclass_of(container_name)
-            .or_else(|| self.base.superclass_of(container_name));
-        if let Some(superclass) = superclass {
-            let deeper_min = min_access.max(AccessLevel::Protected);
-            for item in self.members_of_chain_cross(&superclass, depth + 1, deeper_min) {
-                seen.entry(item.1.symbol.name.clone()).or_insert(item);
+    fn try_in_chain<T, F>(&self, start: &str, min_access: AccessLevel, mut visit: F) -> Option<T>
+    where
+        F: FnMut(&str, usize, AccessLevel) -> Option<T>,
+    {
+        let mut current: String = start.to_string();
+        let mut depth: usize = 0;
+        let mut access = min_access;
+        loop {
+            if depth > MAX_INHERITANCE_DEPTH {
+                return None;
             }
+            if let Some(found) = visit(&current, depth, access) {
+                return Some(found);
+            }
+            let superclass = self
+                .workspace
+                .superclass_of(&current)
+                .or_else(|| self.base.superclass_of(&current))?;
+            depth += 1;
+            access = access.max(AccessLevel::Protected);
+            current = superclass;
         }
-        seen.into_values().collect()
     }
 
     pub fn all_types(&self) -> Vec<Definition> {
