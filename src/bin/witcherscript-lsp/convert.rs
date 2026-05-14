@@ -40,6 +40,11 @@ pub(crate) fn read_script_file(path: &std::path::Path) -> std::io::Result<String
     String::from_utf8(bytes).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
+pub(crate) fn canonical_uri(uri: &Url) -> Option<String> {
+    let path = uri.to_file_path().ok()?;
+    Url::from_file_path(path).ok().map(|url| url.to_string())
+}
+
 pub(crate) fn workspace_roots(params: InitializeParams) -> Vec<PathBuf> {
     if let Some(folders) = params.workspace_folders {
         return folders

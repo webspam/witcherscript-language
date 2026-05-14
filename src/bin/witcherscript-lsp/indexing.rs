@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
@@ -9,23 +10,37 @@ use tracing::{debug, error, info, warn};
 use witcherscript_parser::diagnostics::collect_duplicate_symbol_diagnostics;
 use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::collect_witcherscript_files;
-use witcherscript_parser::resolve::{resolve_definition, Definition, SymbolDb};
+use witcherscript_parser::resolve::{resolve_definition, Definition, SymbolDb, WorkspaceIndex};
 use witcherscript_parser::script_env::parse_script_environment;
 
 use crate::backend::Backend;
 use crate::convert::{
-    lsp_diagnostics, lsp_workspace_diagnostic, read_script_file, source_position,
+    canonical_uri, lsp_diagnostics, lsp_workspace_diagnostic, read_script_file, source_position,
 };
+
+pub(crate) fn index_open_document(
+    index: &mut WorkspaceIndex,
+    uri: &Url,
+    document: &ParsedDocument,
+) {
+    // index_workspace keys this file under the canonical spelling; drop that copy so it is not indexed twice.
+    if let Some(canonical) = canonical_uri(uri) {
+        if canonical != uri.as_str() {
+            index.remove_document(&canonical);
+        }
+    }
+    index.update_document(uri.as_str(), document);
+}
 use crate::logging::{level_from_str, level_to_u8};
 
 impl Backend {
     pub(crate) async fn update_open_document(&self, uri: Url, text: String) {
         match parse_document(text) {
             Ok(document) => {
-                self.workspace_index
-                    .lock()
-                    .await
-                    .update_document(uri.as_str(), &document);
+                {
+                    let mut index = self.workspace_index.lock().await;
+                    index_open_document(&mut index, &uri, &document);
+                }
                 self.documents.lock().await.insert(uri.clone(), document);
                 self.publish_open_diagnostics().await;
             }
@@ -35,9 +50,6 @@ impl Backend {
         }
     }
 
-    /// Publish merged diagnostics (syntactic + workspace-wide) for every open
-    /// document. Workspace diagnostics are computed across the whole index but
-    /// only published for files the editor currently has open.
     async fn publish_open_diagnostics(&self) {
         let dup_by_uri = {
             let index = self.workspace_index.lock().await;
@@ -88,13 +100,23 @@ impl Backend {
             })
             .collect();
 
-        let indexed = parsed.len();
+        // Skip files the editor has open; update_open_document keeps them indexed under the client spelling.
+        let open_canonical: HashSet<String> = {
+            let documents = self.documents.lock().await;
+            documents.keys().filter_map(canonical_uri).collect()
+        };
+
+        let mut indexed = 0;
         {
             let mut index = self.workspace_index.lock().await;
             let mut docs = self.workspace_documents.lock().await;
             for (uri, document) in parsed {
+                if open_canonical.contains(&uri) {
+                    continue;
+                }
                 index.update_document(uri.as_str(), &document);
                 docs.insert(uri, document);
+                indexed += 1;
             }
         }
 
@@ -105,8 +127,6 @@ impl Backend {
             "workspace indexed"
         );
 
-        // Files opened before indexing finished can now pick up cross-file
-        // workspace diagnostics.
         self.publish_open_diagnostics().await;
     }
 

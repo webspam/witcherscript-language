@@ -329,6 +329,36 @@ fn formats_class_hover_with_extends_on_single_line() {
 }
 
 #[test]
+#[cfg(windows)]
+fn opening_a_workspace_indexed_file_does_not_self_conflict() {
+    use crate::indexing::index_open_document;
+    use tower_lsp::lsp_types::Url;
+    use witcherscript_parser::diagnostics::collect_duplicate_symbol_diagnostics;
+
+    let document = parse_document("function Foo() {}\n").expect("document should parse");
+    let mut index = WorkspaceIndex::default();
+
+    // The editor opens the file under its own (percent-encoded) spelling, while
+    // index_workspace keys the same file via Url::from_file_path.
+    let opened = Url::parse("file:///c%3A/proj/foo.ws").expect("uri should parse");
+    let indexed_uri = Url::from_file_path(opened.to_file_path().unwrap())
+        .expect("path should convert back to a URI");
+    assert_ne!(
+        indexed_uri.as_str(),
+        opened.as_str(),
+        "test must exercise a real client-vs-canonical spelling mismatch"
+    );
+
+    index.update_document(indexed_uri.as_str(), &document);
+    index_open_document(&mut index, &opened, &document);
+
+    assert!(
+        collect_duplicate_symbol_diagnostics(&index).is_empty(),
+        "a workspace-indexed file that is then opened must not be flagged as a duplicate of itself"
+    );
+}
+
+#[test]
 fn workspace_diagnostic_carries_related_information() {
     use witcherscript_parser::diagnostics::{RelatedLocation, WorkspaceDiagnostic};
     use witcherscript_parser::line_index::SourceRange;
