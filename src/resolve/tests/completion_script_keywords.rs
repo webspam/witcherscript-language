@@ -107,6 +107,56 @@ fn script_kw_annotations_not_offered_after_specifier() {
 }
 
 #[test]
+fn script_kw_after_add_field_offers_access_modifiers() {
+    let doc = make_doc("@addField(CName)\n\n");
+    let result = kw(&doc, 1, 0);
+    for expected in &["private", "protected", "public"] {
+        assert!(
+            result.contains(expected),
+            "after @addField, access modifier '{expected}' must be offered, got {result:?}"
+        );
+    }
+}
+
+#[test]
+fn script_kw_after_add_method_offers_access_modifiers() {
+    let doc = make_doc("@addMethod(CName)\n\n");
+    let result = kw(&doc, 1, 0);
+    for expected in &["private", "protected", "public"] {
+        assert!(
+            result.contains(expected),
+            "after @addMethod, access modifier '{expected}' must be offered, got {result:?}"
+        );
+    }
+}
+
+#[test]
+fn script_kw_after_wrap_method_no_access_modifiers() {
+    for source in &["@wrapMethod(CName)\n\n", "@replaceMethod(CName)\n\n"] {
+        let doc = make_doc(source);
+        let result = kw(&doc, 1, 0);
+        for forbidden in &["private", "protected", "public"] {
+            assert!(
+                !result.contains(forbidden),
+                "{source:?} does not inject a member declaration; access modifiers must not appear, got {result:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn script_kw_access_modifiers_gated_off_after_a_specifier() {
+    let doc = make_doc("@addMethod(CName)\nfinal \n");
+    let result = kw(&doc, 1, 6);
+    for forbidden in &["private", "protected", "public"] {
+        assert!(
+            !result.contains(forbidden),
+            "access modifiers must precede other specifiers, got {result:?}"
+        );
+    }
+}
+
+#[test]
 fn script_kw_annotations_not_offered_inside_class_body() {
     let doc = make_doc("class C {\n  \n}\n");
     let result = kw(&doc, 1, 2);
@@ -276,10 +326,6 @@ fn script_kw_offered_after_annotation_on_next_line() {
             "should offer '{expected}' on the line following an annotation"
         );
     }
-    assert!(
-        !result.contains(&"private"),
-        "access modifiers are class-body only"
-    );
 }
 
 #[test]

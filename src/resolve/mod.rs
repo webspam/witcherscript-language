@@ -2282,6 +2282,7 @@ struct ScriptBodyCtx {
     has_final: bool,
     has_latent: bool,
     has_flavour: bool,
+    after_member_annotation: bool,
     saw_decl_keyword: bool,
 }
 
@@ -2355,6 +2356,16 @@ fn collect_script_ctx(node: Node, source: &[u8], limit: usize, ctx: &mut ScriptB
             "func_flavour" => ctx.has_flavour = true,
             "cleanup" | "entry" | "exec" | "quest" | "reward" | "storyscene" | "timer" => {
                 ctx.has_flavour = true;
+            }
+            // @addField/@addMethod inject a class member — member specifiers follow.
+            "annotation" => {
+                let name = ch
+                    .children(&mut ch.walk())
+                    .find(|c| c.kind() == "annotation_ident")
+                    .and_then(|n| n.utf8_text(source).ok());
+                if matches!(name, Some("@addField") | Some("@addMethod")) {
+                    ctx.after_member_annotation = true;
+                }
             }
             "class" | "state" | "struct" | "enum" | "function" | "var" => {
                 ctx.saw_decl_keyword = true;
@@ -2456,6 +2467,10 @@ fn script_body_kw_candidates(ctx: &ScriptBodyCtx) -> Vec<&'static str> {
 
     if !ctx.has_any() {
         kw.extend_from_slice(MODDING_ANNOTATIONS);
+    }
+
+    if ctx.after_member_annotation && !ctx.has_any() {
+        kw.extend_from_slice(&["private", "protected", "public"]);
     }
 
     kw
