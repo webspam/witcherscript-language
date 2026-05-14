@@ -1330,17 +1330,19 @@ pub fn extends_completions(
     if header.state != HeaderState::AfterExtendsKw {
         return Vec::new();
     }
+    let self_name = header.self_name.as_deref();
     match header.kind {
         Some(HeaderDeclKind::Class) => db
             .all_types()
             .into_iter()
             .filter(|def| def.symbol.kind == SymbolKind::Class)
+            .filter(|def| Some(def.symbol.name.as_str()) != self_name)
             .collect(),
         Some(HeaderDeclKind::State) => {
-            let Some(owner) = header.owner_name else {
+            let Some(owner) = header.owner_name.as_deref() else {
                 return Vec::new();
             };
-            let chain = class_chain(db, &owner);
+            let chain = class_chain(db, owner);
             if chain.is_empty() {
                 return Vec::new();
             }
@@ -1351,8 +1353,9 @@ pub fn extends_completions(
                     def.symbol
                         .owner_class
                         .as_deref()
-                        .is_some_and(|owner| chain.iter().any(|c| c == owner))
+                        .is_some_and(|o| chain.iter().any(|c| c == o))
                 })
+                .filter(|def| Some(def.symbol.name.as_str()) != self_name)
                 .collect()
         }
         None => Vec::new(),
@@ -1429,6 +1432,7 @@ enum HeaderDeclKind {
 struct HeaderContext {
     state: HeaderState,
     kind: Option<HeaderDeclKind>,
+    self_name: Option<String>,
     owner_name: Option<String>,
 }
 
@@ -1460,6 +1464,7 @@ fn header_state_and_kind(
     let mut ctx = HeaderContext {
         state: HeaderState::Initial,
         kind: None,
+        self_name: None,
         owner_name: None,
     };
     header_walk(
@@ -1510,9 +1515,11 @@ fn header_walk(node: Node, byte_offset: usize, source: &[u8], ctx: &mut HeaderCo
             }
             (HeaderState::AfterClassKw, "ident") if past => {
                 ctx.state = HeaderState::AfterClassName;
+                ctx.self_name = child.utf8_text(source).ok().map(str::to_string);
             }
             (HeaderState::AfterStateKw, "ident") if past => {
                 ctx.state = HeaderState::AfterStateName;
+                ctx.self_name = child.utf8_text(source).ok().map(str::to_string);
             }
             (HeaderState::AfterStateName, "in") => ctx.state = HeaderState::AfterInKw,
             (HeaderState::AfterInKw, "ident") if past => {

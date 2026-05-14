@@ -555,6 +555,69 @@ fn extends_completions_state_includes_states_of_superclasses() {
 }
 
 #[test]
+fn extends_completions_class_excludes_self() {
+    // The class being declared must not appear in its own extends list.
+    let source = "class CExample {}\nclass Foo extends \n";
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = extends_completions(
+        &doc,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 18,
+        },
+    );
+    let names: Vec<&str> = result.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        names.contains(&"CExample"),
+        "unrelated classes must still appear"
+    );
+    assert!(
+        !names.contains(&"Foo"),
+        "the class being declared must not appear in its own extends list"
+    );
+}
+
+#[test]
+fn extends_completions_state_excludes_self() {
+    // The state being declared must not appear in its own extends list,
+    // even though it lives in the owner's class chain.
+    let source = concat!(
+        "class CPlayer {}\n",
+        "state Sibling in CPlayer {}\n",
+        "state Foo in CPlayer extends \n",
+    );
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = extends_completions(
+        &doc,
+        &db,
+        SourcePosition {
+            line: 2,
+            character: 29,
+        },
+    );
+    let names: Vec<&str> = result.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        names.contains(&"Sibling"),
+        "sibling states in the same owner must still appear"
+    );
+    assert!(
+        !names.contains(&"Foo"),
+        "the state being declared must not appear in its own extends list"
+    );
+}
+
+#[test]
 fn extends_completions_state_empty_when_owner_unknown() {
     // When the owner class isn't in the index, no base states can be valid.
     let source = "state Foo in CUnknown extends \n";
