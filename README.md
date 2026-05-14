@@ -45,6 +45,10 @@ Current validation rules:
 
 - Local `var` declarations must precede executable statements within each function block.
   Blank lines, comments, and bare semicolons do not count as executable statements.
+- Duplicate top-level symbol names: a class, struct, enum, state, function, or event must
+  not share a name with another top-level declaration anywhere in the workspace. Each
+  conflicting declaration is flagged, with related-information links to the others.
+  Modding-annotation member injections (`@addMethod`/`@wrapMethod`/...) are exempt.
 
 `--dump-tree` prints a concrete syntax tree with node kinds plus line/column and byte
 ranges.
@@ -152,7 +156,7 @@ Parser fixtures live under `tests/fixtures/valid` and `tests/fixtures/invalid`. 
 files there when covering larger WitcherScript examples; the fixture tests discover those
 files automatically.
 
-Unit tests are embedded in `diagnostics.rs`, `symbols.rs`, `line_index.rs`, and
+Unit tests are embedded in `diagnostics/`, `symbols.rs`, `line_index.rs`, and
 `resolve.rs`. Integration tests for language features (symbol extraction, definition
 resolution) live in `tests/language_features.rs`.
 

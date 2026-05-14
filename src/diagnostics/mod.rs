@@ -3,6 +3,12 @@ use std::path::Path;
 
 use tree_sitter::{Node, Point};
 
+use crate::line_index::SourceRange;
+
+mod duplicate_symbols;
+
+pub use duplicate_symbols::collect_duplicate_symbol_diagnostics;
+
 #[derive(Debug, Clone)]
 pub struct ParseDiagnostic {
     pub kind: String,
@@ -11,6 +17,25 @@ pub struct ParseDiagnostic {
     pub end: Point,
     pub byte_range: Range<usize>,
     pub snippet: Option<String>,
+}
+
+/// A diagnostic produced from workspace-wide (cross-file) analysis rather than a
+/// single parse tree. Positions are already UTF-16 `SourceRange`s, so no
+/// `LineIndex` round-trip is needed when converting to LSP.
+#[derive(Debug, Clone)]
+pub struct WorkspaceDiagnostic {
+    pub kind: String,
+    pub message: String,
+    pub range: SourceRange,
+    pub related: Vec<RelatedLocation>,
+}
+
+/// A pointer to a related declaration, surfaced via LSP `relatedInformation`.
+#[derive(Debug, Clone)]
+pub struct RelatedLocation {
+    pub uri: String,
+    pub range: SourceRange,
+    pub message: String,
 }
 
 impl ParseDiagnostic {

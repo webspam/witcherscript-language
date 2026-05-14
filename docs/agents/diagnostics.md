@@ -1,6 +1,10 @@
 # Diagnostics and validation
 
-**File:** `src/diagnostics.rs`
+**Module:** `src/diagnostics/`
+
+- `src/diagnostics/mod.rs` — syntactic, single-document diagnostics (`ParseDiagnostic`,
+  `collect_diagnostics`, `format_tree`) plus the shared workspace-diagnostic types.
+- `src/diagnostics/duplicate_symbols.rs` — the first workspace-wide (cross-file) rule.
 
 ## ParseDiagnostic
 
@@ -57,13 +61,32 @@ message: "local variable declarations must precede executable statements"
 
 This rule only applies inside `func_block` nodes, not at file scope or in class bodies.
 
+## Workspace diagnostics
+
+Some checks need cross-file knowledge and cannot run off a single parse tree. These
+produce `WorkspaceDiagnostic` (with a `relatedInformation`-style `Vec<RelatedLocation>`)
+instead of `ParseDiagnostic`. Positions are already UTF-16 `SourceRange`s — taken from
+`Symbol.selection_range` — so no `LineIndex` round-trip is needed at conversion time.
+
+`collect_duplicate_symbol_diagnostics(&WorkspaceIndex) -> HashMap<uri, Vec<WorkspaceDiagnostic>>`
+flags any two top-level declarations (class/struct/enum/state/function/event) sharing a
+name. Symbols carrying modding annotations are skipped — `@addMethod`/`@wrapMethod`/etc.
+functions are member injections, not fresh global names. It enumerates raw symbols via
+`WorkspaceIndex::all_top_level()` because `top_level_by_name` dedups by name.
+
+The LSP computes workspace diagnostics across the whole index but only *publishes* them
+for open documents (`Backend::publish_open_diagnostics` in `indexing.rs`), merged with the
+document's syntactic `ParseDiagnostic`s.
+
 ## LSP conversion
 
 All diagnostics are published as:
 - Severity: `ERROR`
 - Code: the `kind` string
 - Source: `"witcherscript"`
-- Range: converted from `byte_range` via `line_index.byte_range_to_range(source, start, end)`
+- Range: `ParseDiagnostic` is converted from `byte_range` via
+  `line_index.byte_range_to_range(source, start, end)`; `WorkspaceDiagnostic` already
+  carries a UTF-16 `SourceRange` and converts directly via `lsp_range`.
 
 ## format_tree
 
@@ -80,11 +103,21 @@ Used by the CLI's `--dump-tree` flag.
 
 ## Adding a new validation rule
 
-1. Add a new `collect_*` function in `diagnostics.rs` that walks the tree for the target pattern.
+**Syntactic (single-document) rule:**
+
+1. Add a new `collect_*` function in `src/diagnostics/mod.rs` that walks the tree for the target pattern.
 2. Call it from `collect_diagnostics()`.
-3. Add a unit test in the `#[cfg(test)]` block in `diagnostics.rs`.
+3. Add a unit test in the `#[cfg(test)]` block in `src/diagnostics/mod.rs`.
 4. If the rule is complex, add a fixture under `tests/fixtures/invalid/` (file must produce at least one diagnostic).
 5. Document the rule in the "Diagnostics" section of `README.md`.
+
+**Workspace (cross-file) rule:**
+
+1. Add a new submodule under `src/diagnostics/` returning `HashMap<uri, Vec<WorkspaceDiagnostic>>`.
+2. Re-export its entry point from `src/diagnostics/mod.rs`.
+3. Call it from `Backend::publish_open_diagnostics` in `src/bin/witcherscript-lsp/indexing.rs`.
+4. Add unit tests in the submodule's `#[cfg(test)]` block (fixtures cannot express cross-file rules).
+5. Document the rule in `README.md`.
 
 ## Existing tests
 

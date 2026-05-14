@@ -13,7 +13,7 @@ This is a Rust crate (`witcherscript-parser`) that produces two binaries:
 | ------------------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------- |
 | `src/lib.rs`                   | Module declarations, public API surface                                        |                                                      |
 | `src/document.rs`              | `ParsedDocument`, parse entry points                                           |                                                      |
-| `src/diagnostics.rs`           | `ParseDiagnostic`, `collect_diagnostics`, `format_tree`                        | [diagnostics.md](docs/agents/diagnostics.md)         |
+| `src/diagnostics/`             | `ParseDiagnostic`/`collect_diagnostics` (syntactic), `WorkspaceDiagnostic` (cross-file) | [diagnostics.md](docs/agents/diagnostics.md)         |
 | `src/files.rs`                 | Recursive `.ws` file collection via `walkdir`                                  |                                                      |
 | `src/line_index.rs`            | Byte ↔ UTF-16 position mapping (LSP-compatible)                                |                                                      |
 | `src/script_env.rs`            | Script globals from `redscripts.ini`                                           |                                                      |
@@ -112,7 +112,7 @@ just test
 
 The test suite includes:
 
-- Embedded `#[cfg(test)]` modules in `diagnostics.rs`, `symbols.rs`, `line_index.rs`,
+- Embedded `#[cfg(test)]` modules in `diagnostics/`, `symbols.rs`, `line_index.rs`,
   `script_env.rs`, `resolve/tests.rs`, `semantic_tokens/tests.rs`, and `src/bin/witcherscript-lsp.rs`.
 - `tests/parser_fixtures.rs` — fixture-driven parse tests; discovers every `.ws` file
   under `tests/fixtures/valid/` (must parse cleanly) and `tests/fixtures/invalid/`

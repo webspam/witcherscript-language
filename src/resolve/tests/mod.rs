@@ -6,6 +6,7 @@ mod completion_script_keywords;
 mod completion_statement;
 mod completion_type;
 mod definition;
+mod index;
 mod inheritance;
 mod parameters;
 mod references;

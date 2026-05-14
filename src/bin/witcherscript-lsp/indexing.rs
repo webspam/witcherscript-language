@@ -6,32 +6,52 @@ use rayon::prelude::*;
 use serde_json::Value;
 use tower_lsp::lsp_types::{ConfigurationItem, Position, Url};
 use tracing::{debug, error, info, warn};
+use witcherscript_parser::diagnostics::collect_duplicate_symbol_diagnostics;
 use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::collect_witcherscript_files;
 use witcherscript_parser::resolve::{resolve_definition, Definition, SymbolDb};
 use witcherscript_parser::script_env::parse_script_environment;
 
 use crate::backend::Backend;
-use crate::convert::{lsp_diagnostics, read_script_file, source_position};
+use crate::convert::{
+    lsp_diagnostics, lsp_workspace_diagnostic, read_script_file, source_position,
+};
 use crate::logging::{level_from_str, level_to_u8};
 
 impl Backend {
     pub(crate) async fn update_open_document(&self, uri: Url, text: String) {
         match parse_document(text) {
             Ok(document) => {
-                let diagnostics = lsp_diagnostics(&document);
                 self.workspace_index
                     .lock()
                     .await
                     .update_document(uri.as_str(), &document);
                 self.documents.lock().await.insert(uri.clone(), document);
-                self.client
-                    .publish_diagnostics(uri, diagnostics, None)
-                    .await;
+                self.publish_open_diagnostics().await;
             }
             Err(err) => {
                 error!(uri = %uri, error = %err, "failed to parse document");
             }
+        }
+    }
+
+    /// Publish merged diagnostics (syntactic + workspace-wide) for every open
+    /// document. Workspace diagnostics are computed across the whole index but
+    /// only published for files the editor currently has open.
+    async fn publish_open_diagnostics(&self) {
+        let dup_by_uri = {
+            let index = self.workspace_index.lock().await;
+            collect_duplicate_symbol_diagnostics(&index)
+        };
+        let documents = self.documents.lock().await;
+        for (uri, document) in documents.iter() {
+            let mut diagnostics = lsp_diagnostics(document);
+            if let Some(dups) = dup_by_uri.get(uri.as_str()) {
+                diagnostics.extend(dups.iter().map(lsp_workspace_diagnostic));
+            }
+            self.client
+                .publish_diagnostics(uri.clone(), diagnostics, None)
+                .await;
         }
     }
 
@@ -84,6 +104,10 @@ impl Backend {
             elapsed_ms = start.elapsed().as_millis(),
             "workspace indexed"
         );
+
+        // Files opened before indexing finished can now pick up cross-file
+        // workspace diagnostics.
+        self.publish_open_diagnostics().await;
     }
 
     /// Pull `witcherscript.gameDirectory`, `witcherscript.logLevel`, and formatter

@@ -7,8 +7,8 @@ use witcherscript_parser::resolve::{
 use witcherscript_parser::symbols::AccessLevel;
 
 use crate::convert::{
-    completion_item, document_symbols, hover_markdown, lsp_diagnostics, read_script_file,
-    signature_help_response, wrap_method_snippet,
+    completion_item, document_symbols, hover_markdown, lsp_diagnostics, lsp_workspace_diagnostic,
+    read_script_file, signature_help_response, wrap_method_snippet,
 };
 
 fn encode_utf16le(s: &str) -> Vec<u8> {
@@ -326,6 +326,53 @@ fn formats_class_hover_with_extends_on_single_line() {
         text, "class X extends Y",
         "class hover should render the extends clause on a single line"
     );
+}
+
+#[test]
+fn workspace_diagnostic_carries_related_information() {
+    use witcherscript_parser::diagnostics::{RelatedLocation, WorkspaceDiagnostic};
+    use witcherscript_parser::line_index::SourceRange;
+
+    let range = SourceRange {
+        start: SourcePosition {
+            line: 0,
+            character: 6,
+        },
+        end: SourcePosition {
+            line: 0,
+            character: 9,
+        },
+    };
+    let diagnostic = WorkspaceDiagnostic {
+        kind: "duplicate_symbol".to_string(),
+        message: "A class or function with that name already exists.".to_string(),
+        range,
+        related: vec![RelatedLocation {
+            uri: "file:///other.ws".to_string(),
+            range,
+            message: "'Foo' also declared here".to_string(),
+        }],
+    };
+
+    let lsp = lsp_workspace_diagnostic(&diagnostic);
+
+    assert_eq!(
+        lsp.severity,
+        Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
+    );
+    assert_eq!(
+        lsp.code,
+        Some(tower_lsp::lsp_types::NumberOrString::String(
+            "duplicate_symbol".to_string()
+        ))
+    );
+    let related = lsp
+        .related_information
+        .expect("related_information should be present");
+    assert_eq!(related.len(), 1);
+    assert_eq!(related[0].location.uri.as_str(), "file:///other.ws");
+    assert_eq!(related[0].message, "'Foo' also declared here");
+    assert_eq!(related[0].location.range.start.character, 6);
 }
 
 #[test]

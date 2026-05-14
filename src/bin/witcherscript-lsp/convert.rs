@@ -3,11 +3,12 @@ use std::path::PathBuf;
 
 use tower_lsp::lsp_types::{
     Command, CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic,
-    DiagnosticSeverity, DocumentSymbol, Documentation, InitializeParams, InsertTextFormat,
-    MarkupContent, MarkupKind, ParameterInformation, ParameterLabel, Position, Range,
-    SignatureHelp, SignatureInformation, TextEdit, Url,
+    DiagnosticRelatedInformation, DiagnosticSeverity, DocumentSymbol, Documentation,
+    InitializeParams, InsertTextFormat, Location, MarkupContent, MarkupKind, ParameterInformation,
+    ParameterLabel, Position, Range, SignatureHelp, SignatureInformation, TextEdit, Url,
 };
 use tracing::warn;
+use witcherscript_parser::diagnostics::WorkspaceDiagnostic;
 use witcherscript_parser::document::ParsedDocument;
 use witcherscript_parser::files::is_witcherscript_file;
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
@@ -74,6 +75,40 @@ pub(crate) fn lsp_diagnostics(document: &ParsedDocument) -> Vec<Diagnostic> {
             ..Diagnostic::default()
         })
         .collect()
+}
+
+pub(crate) fn lsp_workspace_diagnostic(diagnostic: &WorkspaceDiagnostic) -> Diagnostic {
+    let related_information: Vec<DiagnosticRelatedInformation> = diagnostic
+        .related
+        .iter()
+        .filter_map(|related| {
+            Url::parse(&related.uri)
+                .ok()
+                .map(|uri| DiagnosticRelatedInformation {
+                    location: Location {
+                        uri,
+                        range: lsp_range(related.range),
+                    },
+                    message: related.message.clone(),
+                })
+        })
+        .collect();
+
+    Diagnostic {
+        range: lsp_range(diagnostic.range),
+        severity: Some(DiagnosticSeverity::ERROR),
+        code: Some(tower_lsp::lsp_types::NumberOrString::String(
+            diagnostic.kind.clone(),
+        )),
+        source: Some("witcherscript".to_string()),
+        message: diagnostic.message.clone(),
+        related_information: if related_information.is_empty() {
+            None
+        } else {
+            Some(related_information)
+        },
+        ..Diagnostic::default()
+    }
 }
 
 #[allow(deprecated)]
