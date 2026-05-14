@@ -131,6 +131,48 @@ fn script_kw_after_add_method_offers_access_modifiers() {
 }
 
 #[test]
+fn script_kw_after_add_field_offers_var_starters_only() {
+    let doc = make_doc("@addField(CName)\n\n");
+    let result = kw(&doc, 1, 0);
+    for expected in &["editable", "saved", "const", "inlined", "var"] {
+        assert!(
+            result.contains(expected),
+            "after @addField, field starter '{expected}' must be offered, got {result:?}"
+        );
+    }
+    assert!(
+        !result.contains(&"function"),
+        "after @addField, 'function' is not valid — it injects a field, got {result:?}"
+    );
+}
+
+#[test]
+fn script_kw_after_member_annotation_excludes_top_level_keywords() {
+    for source in &["@addField(CName)\n\n", "@addMethod(CName)\n\n"] {
+        let doc = make_doc(source);
+        let result = kw(&doc, 1, 0);
+        for forbidden in &[
+            "class",
+            "state",
+            "struct",
+            "enum",
+            "import",
+            "statemachine",
+            "abstract",
+            "addField",
+            "addMethod",
+            "wrapMethod",
+            "replaceMethod",
+        ] {
+            assert!(
+                !result.contains(forbidden),
+                "{source:?}: '{forbidden}' is not valid after a member-injecting annotation, got {result:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn script_kw_after_wrap_method_no_access_modifiers() {
     for source in &["@wrapMethod(CName)\n\n", "@replaceMethod(CName)\n\n"] {
         let doc = make_doc(source);

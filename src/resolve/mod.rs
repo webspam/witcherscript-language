@@ -2274,6 +2274,12 @@ fn class_body_kw_candidates(ctx: &ClassBodyCtx) -> Vec<&'static str> {
     kw
 }
 
+#[derive(Clone, Copy)]
+enum MemberAnnotation {
+    Field,
+    Method,
+}
+
 #[derive(Default)]
 struct ScriptBodyCtx {
     has_import: bool,
@@ -2282,7 +2288,7 @@ struct ScriptBodyCtx {
     has_final: bool,
     has_latent: bool,
     has_flavour: bool,
-    after_member_annotation: bool,
+    member_annotation: Option<MemberAnnotation>,
     saw_decl_keyword: bool,
 }
 
@@ -2363,8 +2369,10 @@ fn collect_script_ctx(node: Node, source: &[u8], limit: usize, ctx: &mut ScriptB
                     .children(&mut ch.walk())
                     .find(|c| c.kind() == "annotation_ident")
                     .and_then(|n| n.utf8_text(source).ok());
-                if matches!(name, Some("@addField") | Some("@addMethod")) {
-                    ctx.after_member_annotation = true;
+                match name {
+                    Some("@addField") => ctx.member_annotation = Some(MemberAnnotation::Field),
+                    Some("@addMethod") => ctx.member_annotation = Some(MemberAnnotation::Method),
+                    _ => {}
                 }
             }
             "class" | "state" | "struct" | "enum" | "function" | "var" => {
@@ -2408,6 +2416,10 @@ fn script_child_at_cursor(script: Node, byte_offset: usize) -> Option<Node> {
 }
 
 fn script_body_kw_candidates(ctx: &ScriptBodyCtx) -> Vec<&'static str> {
+    if let Some(member) = ctx.member_annotation {
+        return member_annotation_candidates(member, ctx);
+    }
+
     let mut kw: Vec<&'static str> = Vec::new();
 
     let in_func_path = ctx.has_final || ctx.has_latent || ctx.has_flavour;
@@ -2469,8 +2481,33 @@ fn script_body_kw_candidates(ctx: &ScriptBodyCtx) -> Vec<&'static str> {
         kw.extend_from_slice(MODDING_ANNOTATIONS);
     }
 
-    if ctx.after_member_annotation && !ctx.has_any() {
+    kw
+}
+
+fn member_annotation_candidates(
+    member: MemberAnnotation,
+    ctx: &ScriptBodyCtx,
+) -> Vec<&'static str> {
+    let mut kw: Vec<&'static str> = Vec::new();
+
+    // Access modifiers, when present, must come before any other specifier.
+    if !ctx.has_any() {
         kw.extend_from_slice(&["private", "protected", "public"]);
+    }
+
+    match member {
+        MemberAnnotation::Field => {
+            kw.extend_from_slice(&["editable", "saved", "const", "inlined", "var"]);
+        }
+        MemberAnnotation::Method => {
+            if !ctx.has_final {
+                kw.push("final");
+            }
+            if !ctx.has_latent {
+                kw.push("latent");
+            }
+            kw.extend_from_slice(&["function", "event"]);
+        }
     }
 
     kw
