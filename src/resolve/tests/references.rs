@@ -143,3 +143,159 @@ fn find_references_for_private_member_scoped_to_defining_file() {
         "sole reference must be in the defining file"
     );
 }
+
+// --- find_references unifies class-body + @wrapMethod/@replaceMethod declarations ---
+
+fn index_docs(docs: &[(&str, &crate::document::ParsedDocument)]) -> WorkspaceIndex {
+    let mut index = WorkspaceIndex::default();
+    for (uri, doc) in docs {
+        index.update_document(*uri, doc);
+    }
+    index
+}
+
+#[test]
+fn find_references_includes_class_body_and_wrap_declarations() {
+    let base = make_doc("class CPlayer {\n  public function OnSpawned() {}\n}\n");
+    let mod_a = make_doc("@wrapMethod(CPlayer)\nfunction OnSpawned() {}\n");
+    let caller = make_doc("function Caller() {\n  var p : CPlayer;\n  p.OnSpawned();\n}\n");
+    let index = index_docs(&[
+        ("file:///base.ws", &base),
+        ("file:///a.ws", &mod_a),
+        ("file:///caller.ws", &caller),
+    ]);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
+
+    // Definition resolved from the class-body declaration site.
+    let definition = resolve_definition(
+        "file:///base.ws",
+        &base,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 21,
+        },
+    )
+    .expect("class-body method should resolve");
+    assert_eq!(definition.symbol.kind, SymbolKind::Method);
+
+    let search_docs = vec![
+        ("file:///base.ws", &base),
+        ("file:///a.ws", &mod_a),
+        ("file:///caller.ws", &caller),
+    ];
+    let refs = find_references(&definition, &base, &search_docs, &db, true);
+
+    assert_eq!(refs.len(), 3, "two declarations plus one call site");
+    assert!(refs.iter().any(|(u, _)| u == "file:///base.ws"));
+    assert!(refs.iter().any(|(u, _)| u == "file:///a.ws"));
+    assert!(refs.iter().any(|(u, _)| u == "file:///caller.ws"));
+}
+
+#[test]
+fn find_references_from_wrap_function_name_unifies() {
+    let base = make_doc("class CPlayer {\n  public function OnSpawned() {}\n}\n");
+    let mod_a = make_doc("@wrapMethod(CPlayer)\nfunction OnSpawned() {}\n");
+    let caller = make_doc("function Caller() {\n  var p : CPlayer;\n  p.OnSpawned();\n}\n");
+    let index = index_docs(&[
+        ("file:///base.ws", &base),
+        ("file:///a.ws", &mod_a),
+        ("file:///caller.ws", &caller),
+    ]);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
+
+    // Definition resolved from the @wrapMethod function's own name.
+    let definition = resolve_definition(
+        "file:///a.ws",
+        &mod_a,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 12,
+        },
+    )
+    .expect("wrap function name should resolve");
+
+    let search_docs = vec![
+        ("file:///base.ws", &base),
+        ("file:///a.ws", &mod_a),
+        ("file:///caller.ws", &caller),
+    ];
+    let refs = find_references(&definition, &base, &search_docs, &db, true);
+
+    assert_eq!(
+        refs.len(),
+        3,
+        "querying from the wrap name yields the same set"
+    );
+    assert!(refs.iter().any(|(u, _)| u == "file:///base.ws"));
+    assert!(refs.iter().any(|(u, _)| u == "file:///a.ws"));
+}
+
+#[test]
+fn find_references_exclude_declaration_skips_both_decls() {
+    let base = make_doc("class CPlayer {\n  public function OnSpawned() {}\n}\n");
+    let mod_a = make_doc("@wrapMethod(CPlayer)\nfunction OnSpawned() {}\n");
+    let caller = make_doc("function Caller() {\n  var p : CPlayer;\n  p.OnSpawned();\n}\n");
+    let index = index_docs(&[
+        ("file:///base.ws", &base),
+        ("file:///a.ws", &mod_a),
+        ("file:///caller.ws", &caller),
+    ]);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
+
+    let definition = resolve_definition(
+        "file:///base.ws",
+        &base,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 21,
+        },
+    )
+    .expect("class-body method should resolve");
+
+    let search_docs = vec![
+        ("file:///base.ws", &base),
+        ("file:///a.ws", &mod_a),
+        ("file:///caller.ws", &caller),
+    ];
+    let refs = find_references(&definition, &base, &search_docs, &db, false);
+
+    assert_eq!(refs.len(), 1, "only the call site, neither declaration");
+    assert_eq!(refs[0].0, "file:///caller.ws");
+}
+
+#[test]
+fn find_references_private_method_with_wrap_searches_all_documents() {
+    let base = make_doc("class CPlayer {\n  private function Secret() {}\n}\n");
+    let mod_a = make_doc("@wrapMethod(CPlayer)\nfunction Secret() {}\n");
+    let index = index_docs(&[("file:///base.ws", &base), ("file:///a.ws", &mod_a)]);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
+
+    let definition = resolve_definition(
+        "file:///base.ws",
+        &base,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 20,
+        },
+    )
+    .expect("private class-body method should resolve");
+    assert_eq!(definition.symbol.kind, SymbolKind::Method);
+
+    let search_docs = vec![("file:///base.ws", &base), ("file:///a.ws", &mod_a)];
+    let refs = find_references(&definition, &base, &search_docs, &db, true);
+
+    // A wrapped private method must search across files, not just the defining one.
+    assert!(
+        refs.iter().any(|(u, _)| u == "file:///a.ws"),
+        "the @wrapMethod declaration in another file must be found"
+    );
+    assert!(refs.iter().any(|(u, _)| u == "file:///base.ws"));
+}

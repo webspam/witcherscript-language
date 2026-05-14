@@ -25,9 +25,10 @@ use witcherscript_parser::formatter::format_document;
 use witcherscript_parser::resolve::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
-    expression_completions, extends_completions, find_references, resolve_definition,
-    script_body_keyword_completions, state_owner_completions, statement_completions,
-    type_completions, AfterWrapMethodCompletions, SymbolDb, WorkspaceIndex, BUILTIN_TYPES,
+    expression_completions, extends_completions, find_references, resolve_all_definitions,
+    resolve_definition, script_body_keyword_completions, state_owner_completions,
+    statement_completions, type_completions, AfterWrapMethodCompletions, SymbolDb, WorkspaceIndex,
+    BUILTIN_TYPES,
 };
 use witcherscript_parser::script_env::ScriptEnvironment;
 use witcherscript_parser::semantic_tokens::{
@@ -215,19 +216,24 @@ impl LanguageServer for Backend {
         let base = self.base_scripts_index.lock().await;
         let script_env = self.script_env.lock().await;
         let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
-        let Some(definition) =
-            resolve_definition(uri.as_str(), document, &db, source_position(position))
-        else {
-            return Ok(None);
-        };
-        let Ok(target_uri) = Url::parse(&definition.uri) else {
-            return Ok(None);
-        };
+        let definitions =
+            resolve_all_definitions(uri.as_str(), document, &db, source_position(position));
 
-        Ok(Some(GotoDefinitionResponse::Scalar(Location {
-            uri: target_uri,
-            range: lsp_range(definition.symbol.selection_range),
-        })))
+        let locations: Vec<Location> = definitions
+            .into_iter()
+            .filter_map(|definition| {
+                Url::parse(&definition.uri).ok().map(|target_uri| Location {
+                    uri: target_uri,
+                    range: lsp_range(definition.symbol.selection_range),
+                })
+            })
+            .collect();
+
+        match locations.as_slice() {
+            [] => Ok(None),
+            [single] => Ok(Some(GotoDefinitionResponse::Scalar(single.clone()))),
+            _ => Ok(Some(GotoDefinitionResponse::Array(locations))),
+        }
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {

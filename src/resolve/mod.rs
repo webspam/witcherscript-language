@@ -16,6 +16,23 @@ pub struct Definition {
     pub symbol: Symbol,
 }
 
+#[derive(Debug, Clone)]
+struct TypeContext {
+    name: String,
+    base_class: Option<String>,
+    owner_class: Option<String>,
+}
+
+const METHOD_INJECTING_ANNOTATIONS: &[&str] = &["addMethod", "wrapMethod", "replaceMethod"];
+
+fn annotation_target_class(symbol: &Symbol) -> Option<&str> {
+    symbol
+        .annotations
+        .iter()
+        .find(|a| METHOD_INJECTING_ANNOTATIONS.contains(&a.name.as_str()))
+        .and_then(|a| a.argument.as_deref())
+}
+
 pub struct SymbolDb<'a> {
     workspace: &'a WorkspaceIndex,
     base: &'a WorkspaceIndex,
@@ -117,6 +134,23 @@ impl<'a> SymbolDb<'a> {
         seen.into_values().collect()
     }
 
+    /// Class-body declaration first, then annotation declarations.
+    fn all_member_declarations(&self, container: &str, name: &str) -> Vec<Definition> {
+        let mut decls: Vec<Definition> = Vec::new();
+        if let Some(class_body) = self.find_member(container, name, AccessLevel::Private) {
+            decls.push(class_body);
+        }
+        for def in self
+            .workspace
+            .annotated_members(container, name)
+            .into_iter()
+            .chain(self.base.annotated_members(container, name))
+        {
+            decls.push(def);
+        }
+        dedup_definitions(decls)
+    }
+
     fn try_in_chain<T, F>(&self, start: &str, min_access: AccessLevel, mut visit: F) -> Option<T>
     where
         F: FnMut(&str, usize, AccessLevel) -> Option<T>,
@@ -196,6 +230,7 @@ pub struct WorkspaceIndex {
     top_level_by_name: HashMap<String, Definition>,
     superclass_by_name: HashMap<String, String>,
     member_by_type: HashMap<String, HashMap<String, Definition>>,
+    annotated_members_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
     doc_idents: HashMap<String, HashMap<String, Vec<std::ops::Range<usize>>>>,
 }
 
@@ -258,6 +293,21 @@ impl WorkspaceIndex {
                 if is_type_like(sym.kind) {
                     self.superclass_by_name.remove(&sym.name);
                 }
+                if sym.kind == SymbolKind::Function {
+                    if let Some(target) = annotation_target_class(&sym) {
+                        if let Some(by_name) = self.annotated_members_by_type.get_mut(target) {
+                            if let Some(defs) = by_name.get_mut(&sym.name) {
+                                defs.retain(|d| d.uri != uri);
+                                if defs.is_empty() {
+                                    by_name.remove(&sym.name);
+                                }
+                            }
+                            if by_name.is_empty() {
+                                self.annotated_members_by_type.remove(target);
+                            }
+                        }
+                    }
+                }
             } else if let Some(cn) = &sym.container_name {
                 if let Some(members) = self.member_by_type.get_mut(cn) {
                     if members
@@ -289,6 +339,19 @@ impl WorkspaceIndex {
                     if let Some(superclass) = &sym.base_class {
                         self.superclass_by_name
                             .insert(sym.name.clone(), superclass.clone());
+                    }
+                }
+                if sym.kind == SymbolKind::Function {
+                    if let Some(target) = annotation_target_class(sym) {
+                        self.annotated_members_by_type
+                            .entry(target.to_string())
+                            .or_default()
+                            .entry(sym.name.clone())
+                            .or_default()
+                            .push(Definition {
+                                uri: uri.to_string(),
+                                symbol: sym.clone(),
+                            });
                     }
                 }
             } else if let Some(cn) = &sym.container_name {
@@ -335,6 +398,12 @@ impl WorkspaceIndex {
         self.member_by_type
             .get(container_name)
             .and_then(|members| members.get(name))
+            .or_else(|| {
+                self.annotated_members_by_type
+                    .get(container_name)
+                    .and_then(|members| members.get(name))
+                    .and_then(|defs| defs.first())
+            })
             .filter(|def| def.symbol.access >= min_access)
             .cloned()
     }
@@ -344,14 +413,27 @@ impl WorkspaceIndex {
         container_name: &str,
         min_access: AccessLevel,
     ) -> Vec<Definition> {
-        self.member_by_type
+        let class_body = self
+            .member_by_type
             .get(container_name)
-            .map(|m| {
-                m.values()
-                    .filter(|d| d.symbol.access >= min_access)
-                    .cloned()
-                    .collect()
-            })
+            .into_iter()
+            .flat_map(|m| m.values().cloned());
+        let annotated = self
+            .annotated_members_by_type
+            .get(container_name)
+            .into_iter()
+            .flat_map(|m| m.values().flatten().cloned());
+        class_body
+            .chain(annotated)
+            .filter(|d| d.symbol.access >= min_access)
+            .collect()
+    }
+
+    fn annotated_members(&self, container_name: &str, name: &str) -> Vec<Definition> {
+        self.annotated_members_by_type
+            .get(container_name)
+            .and_then(|m| m.get(name))
+            .cloned()
             .unwrap_or_default()
     }
 
@@ -419,6 +501,31 @@ pub fn resolve_definition_at_byte(
         .or_else(|| db.find_top_level(name))
         .or_else(|| db.find_script_global(name))
         .or_else(|| resolve_at_definition_site(uri, document, byte_offset, name))
+}
+
+/// All declaration sites at `position`, class-body declaration first.
+pub fn resolve_all_definitions(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Vec<Definition> {
+    let Some(primary) = resolve_definition(uri, document, db, position) else {
+        return Vec::new();
+    };
+
+    let Some((container, name)) = logical_member(&primary.symbol) else {
+        return vec![primary];
+    };
+
+    let mut decls = db.all_member_declarations(&container, &name);
+    if !decls
+        .iter()
+        .any(|d| definition_key(d) == definition_key(&primary))
+    {
+        decls.push(primary);
+    }
+    dedup_definitions(decls)
 }
 
 pub fn hover_text(definition: &Definition) -> String {
@@ -506,7 +613,7 @@ fn infer_expr_type(
             let name = node.utf8_text(document.source.as_bytes()).ok()?;
             resolve_local_or_parameter(uri, document, context_byte, name)
                 .or_else(|| {
-                    let current_type = current_type_name(document, context_byte)?;
+                    let current_type = current_type_name(document, db, context_byte)?;
                     resolve_document_member(
                         uri,
                         document,
@@ -549,7 +656,7 @@ fn infer_expr_type(
             .or_else(|| db.find_member(&container_type, member_name, AccessLevel::Public))?;
             def.symbol.type_annotation
         }
-        "this_expr" => current_type_name(document, context_byte),
+        "this_expr" => current_type_name(document, db, context_byte),
         _ => None,
     }
 }
@@ -569,12 +676,12 @@ fn resolve_member_access(
     let receiver = first_named_child(parent)?;
     match receiver.kind() {
         "this_expr" => {
-            let current_type = current_type_name(document, ident.start_byte())?;
+            let current_type = current_type_name(document, db, ident.start_byte())?;
             resolve_document_member(uri, document, &current_type, name, AccessLevel::Private)
                 .or_else(|| db.find_member(&current_type, name, AccessLevel::Private))
         }
         "super_expr" | "virtual_parent_expr" => {
-            let current_type = current_type_symbol(document, ident.start_byte())?;
+            let current_type = enclosing_type_context(document, db, ident.start_byte())?;
             db.find_member(
                 current_type.base_class.as_deref()?,
                 name,
@@ -582,7 +689,7 @@ fn resolve_member_access(
             )
         }
         "parent_expr" => {
-            let current_type = current_type_symbol(document, ident.start_byte())?;
+            let current_type = enclosing_type_context(document, db, ident.start_byte())?;
             db.find_member(
                 current_type.owner_class.as_deref()?,
                 name,
@@ -594,7 +701,7 @@ fn resolve_member_access(
             let type_name =
                 resolve_local_or_parameter(uri, document, ident.start_byte(), receiver_name)
                     .or_else(|| {
-                        let current_type = current_type_name(document, ident.start_byte())?;
+                        let current_type = current_type_name(document, db, ident.start_byte())?;
                         resolve_document_member(
                             uri,
                             document,
@@ -653,7 +760,7 @@ fn resolve_current_type_member(
     byte_offset: usize,
     name: &str,
 ) -> Option<Definition> {
-    let current_type = current_type_name(document, byte_offset)?;
+    let current_type = current_type_name(document, db, byte_offset)?;
     resolve_document_member(uri, document, &current_type, name, AccessLevel::Private)
         .or_else(|| db.find_member(&current_type, name, AccessLevel::Private))
 }
@@ -697,8 +804,12 @@ fn resolve_document_top_level(
         })
 }
 
-fn current_type_name(document: &ParsedDocument, byte_offset: usize) -> Option<String> {
-    current_type_symbol(document, byte_offset).map(|symbol| symbol.name.clone())
+fn current_type_name(
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_offset: usize,
+) -> Option<String> {
+    enclosing_type_context(document, db, byte_offset).map(|ctx| ctx.name)
 }
 
 fn current_type_symbol(document: &ParsedDocument, byte_offset: usize) -> Option<&Symbol> {
@@ -706,6 +817,36 @@ fn current_type_symbol(document: &ParsedDocument, byte_offset: usize) -> Option<
         byte_offset,
         &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
     )
+}
+
+/// Falls back to the annotation target when not syntactically inside a type.
+fn enclosing_type_context(
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_offset: usize,
+) -> Option<TypeContext> {
+    if let Some(symbol) = current_type_symbol(document, byte_offset) {
+        return Some(TypeContext {
+            name: symbol.name.clone(),
+            base_class: symbol.base_class.clone(),
+            owner_class: symbol.owner_class.clone(),
+        });
+    }
+
+    let callable = document.symbols.enclosing_symbol_at(
+        byte_offset,
+        &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
+    )?;
+    if callable.container.is_some() || callable.kind != SymbolKind::Function {
+        return None;
+    }
+    let target = annotation_target_class(callable)?;
+    let class = db.find_top_level(target);
+    Some(TypeContext {
+        name: target.to_string(),
+        base_class: class.as_ref().and_then(|def| def.symbol.base_class.clone()),
+        owner_class: class.and_then(|def| def.symbol.owner_class.clone()),
+    })
 }
 
 fn identifier_at(root: Node, byte_offset: usize) -> Option<Node> {
@@ -745,6 +886,44 @@ enum SearchScope {
     SingleFileRange(std::ops::Range<usize>),
 }
 
+/// The `(container, member name)` a symbol logically belongs to, resolving
+/// annotation functions to the class they target.
+fn logical_member(symbol: &Symbol) -> Option<(String, String)> {
+    match symbol.kind {
+        SymbolKind::Method | SymbolKind::Field => symbol
+            .container_name
+            .as_deref()
+            .map(|cn| (cn.to_string(), symbol.name.clone())),
+        SymbolKind::Function if symbol.container.is_none() => {
+            annotation_target_class(symbol).map(|t| (t.to_string(), symbol.name.clone()))
+        }
+        _ => None,
+    }
+}
+
+fn definition_key(definition: &Definition) -> (String, std::ops::Range<usize>) {
+    (
+        definition.uri.clone(),
+        definition.symbol.selection_byte_range.clone(),
+    )
+}
+
+/// Every declaration of the same logical member as `definition`, including
+/// `definition` itself.
+fn member_equivalence_set(definition: &Definition, db: &SymbolDb) -> Vec<Definition> {
+    let Some((container, name)) = logical_member(&definition.symbol) else {
+        return vec![definition.clone()];
+    };
+    let mut decls = db.all_member_declarations(&container, &name);
+    if !decls
+        .iter()
+        .any(|d| definition_key(d) == definition_key(definition))
+    {
+        decls.push(definition.clone());
+    }
+    dedup_definitions(decls)
+}
+
 fn definition_search_scope(
     definition: &Definition,
     definition_document: &ParsedDocument,
@@ -782,9 +961,20 @@ pub fn find_references(
     include_declaration: bool,
 ) -> Vec<(String, SourceRange)> {
     let name = &definition.symbol.name;
-    let scope = definition_search_scope(definition, definition_document);
+
+    // All declarations of the logical member count as one symbol.
+    let equiv = member_equivalence_set(definition, db);
+    let equiv_keys: Vec<(String, std::ops::Range<usize>)> =
+        equiv.iter().map(definition_key).collect();
+
+    let scope = if equiv.len() > 1 {
+        SearchScope::AllDocuments
+    } else {
+        definition_search_scope(definition, definition_document)
+    };
 
     let mut results = Vec::new();
+    let mut decl_found = vec![false; equiv.len()];
 
     for (uri, document) in search_documents {
         let scan_range: Option<&std::ops::Range<usize>> = match &scope {
@@ -842,18 +1032,16 @@ pub fn find_references(
                 .byte_to_position(&document.source, byte_range.start);
             let resolved = resolve_definition(uri, document, db, position);
             match resolved {
-                Some(ref r)
-                    if r.uri == definition.uri
-                        && r.symbol.selection_byte_range
-                            == definition.symbol.selection_byte_range => {}
+                Some(ref r) if equiv_keys.contains(&definition_key(r)) => {}
                 _ => continue,
             }
 
-            if !include_declaration
-                && *uri == definition.uri.as_str()
-                && byte_range == definition.symbol.selection_byte_range
-            {
-                continue;
+            let occurrence_key = (uri.to_string(), byte_range.clone());
+            if let Some(idx) = equiv_keys.iter().position(|k| *k == occurrence_key) {
+                decl_found[idx] = true;
+                if !include_declaration {
+                    continue;
+                }
             }
             let range = document.line_index.byte_range_to_range(
                 &document.source,
@@ -861,6 +1049,15 @@ pub fn find_references(
                 byte_range.end,
             );
             results.push((uri.to_string(), range));
+        }
+    }
+
+    // Catch declarations whose file was not in the search set.
+    if include_declaration {
+        for (idx, decl) in equiv.iter().enumerate() {
+            if !decl_found[idx] {
+                results.push((decl.uri.clone(), decl.symbol.selection_range));
+            }
         }
     }
 
@@ -873,6 +1070,21 @@ fn dedup_by_name(defs: impl Iterator<Item = Definition>) -> Vec<Definition> {
         seen.entry(def.symbol.name.clone()).or_insert(def);
     }
     seen.into_values().collect()
+}
+
+/// `Definition` has no `Eq`; identity is `(uri, selection byte range)`.
+fn dedup_definitions(defs: Vec<Definition>) -> Vec<Definition> {
+    let mut seen: Vec<(String, std::ops::Range<usize>)> = Vec::new();
+    let mut result = Vec::new();
+    for def in defs {
+        let key = (def.uri.clone(), def.symbol.selection_byte_range.clone());
+        if seen.contains(&key) {
+            continue;
+        }
+        seen.push(key);
+        result.push(def);
+    }
+    result
 }
 
 fn scan_ident_occurrences(
@@ -939,20 +1151,16 @@ fn resolve_self_keyword(
         .into_iter()
         .find_map(|n| find_ancestor_of_kind(n, &["this_expr", "super_expr", "parent_expr"]))?;
 
+    let current_type = enclosing_type_context(document, db, byte_offset)?;
     match node.kind() {
-        "this_expr" => {
-            let current_type = current_type_symbol(document, byte_offset)?;
-            resolve_document_top_level(uri, document, &current_type.name.clone())
-                .or_else(|| db.find_top_level(&current_type.name))
-        }
+        "this_expr" => resolve_document_top_level(uri, document, &current_type.name)
+            .or_else(|| db.find_top_level(&current_type.name)),
         "super_expr" => {
-            let current_type = current_type_symbol(document, byte_offset)?;
             let base_name = current_type.base_class.as_deref()?;
             resolve_document_top_level(uri, document, base_name)
                 .or_else(|| db.find_top_level(base_name))
         }
         "parent_expr" => {
-            let current_type = current_type_symbol(document, byte_offset)?;
             let owner_name = current_type.owner_class.as_deref()?;
             resolve_document_top_level(uri, document, owner_name)
                 .or_else(|| db.find_top_level(owner_name))
@@ -1014,12 +1222,12 @@ fn completion_members_inner(
 
     let type_name = match expr.kind() {
         "super_expr" | "super" => {
-            let current_type = current_type_symbol(document, context_byte)?;
-            current_type.base_class.as_deref()?.to_string()
+            let current_type = enclosing_type_context(document, db, context_byte)?;
+            current_type.base_class?
         }
         "parent_expr" | "parent" => {
-            let current_type = current_type_symbol(document, context_byte)?;
-            current_type.owner_class.as_deref()?.to_string()
+            let current_type = enclosing_type_context(document, db, context_byte)?;
+            current_type.owner_class?
         }
         _ => infer_expr_type(uri, document, db, expr, context_byte)?,
     };
@@ -1768,12 +1976,16 @@ fn function_body_completions<'a>(
         })
         .collect();
 
-    let current_type = current_type_symbol(document, byte_offset);
+    let current_type = enclosing_type_context(document, db, byte_offset);
     let members: Vec<Definition> = current_type
+        .as_ref()
         .map(|t| db.members_of(&t.name, AccessLevel::Private))
         .unwrap_or_default();
     let has_this = current_type.is_some();
-    let has_super = current_type.and_then(|t| t.base_class.as_deref()).is_some();
+    let has_super = current_type
+        .as_ref()
+        .and_then(|t| t.base_class.as_deref())
+        .is_some();
 
     let mut globals = db.all_top_level_callables();
     globals.extend(db.all_script_globals());
