@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::sync::mpsc;
 use tower_lsp::lsp_types::MessageType;
@@ -87,8 +88,22 @@ impl<S: tracing::Subscriber> Layer<S> for LspLogSender {
 
         let mut visitor = EventVisitor::default();
         event.record(&mut visitor);
-        let _ = self.sender.send((msg_type, visitor.finish()));
+        let message = if msg_type == MessageType::LOG {
+            format!("[{}] {}", utc_timestamp(), visitor.finish())
+        } else {
+            visitor.finish()
+        };
+        let _ = self.sender.send((msg_type, message));
     }
+}
+
+fn utc_timestamp() -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+    let (h, m, s) = ((secs / 3600) % 24, (secs / 60) % 60, secs % 60);
+    format!("{h:02}:{m:02}:{s:02}.{:03}", now.subsec_millis())
 }
 
 #[derive(Default)]
@@ -164,6 +179,20 @@ mod tests {
         assert!(!is_own_target("tower_lsp::jsonrpc"));
         assert!(!is_own_target("hyper::proto"));
         assert!(!is_own_target("witcherscript_lsp_extra"));
+    }
+
+    #[test]
+    fn utc_timestamp_has_millisecond_granularity() {
+        let ts = utc_timestamp();
+        assert_eq!(ts.len(), 12, "expected HH:MM:SS.mmm, got {ts}");
+        let (time, millis) = ts.split_once('.').expect("missing millisecond component");
+        assert_eq!(millis.len(), 3);
+        assert!(millis.chars().all(|c| c.is_ascii_digit()));
+        let parts: Vec<&str> = time.split(':').collect();
+        assert_eq!(parts.len(), 3);
+        assert!(parts
+            .iter()
+            .all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_digit())));
     }
 
     #[test]
