@@ -304,6 +304,31 @@ fn formats_field_hover_with_full_declaration() {
 }
 
 #[test]
+fn formats_class_hover_with_extends_on_single_line() {
+    let source = "class Y {}\nclass X extends Y {}\n";
+    let document = parse_document(source).expect("document should parse");
+    let mut workspace = WorkspaceIndex::default();
+    workspace.update_document("file:///example.ws", &document);
+
+    let definition = resolve_definition(
+        "file:///example.ws",
+        &document,
+        &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
+        SourcePosition {
+            line: 1,
+            character: 6,
+        },
+    )
+    .expect("class should resolve");
+
+    let text = witcherscript_parser::resolve::hover_text(&definition);
+    assert_eq!(
+        text, "class X extends Y",
+        "class hover should render the extends clause on a single line"
+    );
+}
+
+#[test]
 fn completion_item_method_has_method_kind() {
     use tower_lsp::lsp_types::CompletionItemKind;
     use witcherscript_parser::resolve::{completion_members, SymbolDb, WorkspaceIndex};

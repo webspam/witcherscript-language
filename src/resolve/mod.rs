@@ -776,7 +776,13 @@ pub fn hover_text(definition: &Definition) -> String {
                 lines.push(format!("{label} {}", symbol.name));
             }
             if let Some(detail) = &symbol.detail {
-                lines.push(detail.clone());
+                match lines.last_mut() {
+                    Some(last) => {
+                        last.push(' ');
+                        last.push_str(detail);
+                    }
+                    None => lines.push(detail.clone()),
+                }
             }
         }
     }
