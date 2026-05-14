@@ -553,7 +553,7 @@ fn resolve_member_access(
             resolve_document_member(uri, document, &current_type, name, AccessLevel::Private)
                 .or_else(|| db.find_member(&current_type, name, AccessLevel::Private))
         }
-        "super_expr" => {
+        "super_expr" | "virtual_parent_expr" => {
             let current_type = current_type_symbol(document, ident.start_byte())?;
             db.find_member(
                 current_type.base_class.as_deref()?,
