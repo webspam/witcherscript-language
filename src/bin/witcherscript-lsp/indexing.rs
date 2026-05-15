@@ -18,6 +18,12 @@ use crate::convert::{
     canonical_uri, lsp_diagnostics, lsp_workspace_diagnostic, read_script_file, source_position,
 };
 
+fn log_setting_change<T: PartialEq + std::fmt::Display>(setting: &str, prev: T, new: T) {
+    if prev != new {
+        trace!(setting, prev = %prev, new = %new, "setting changed");
+    }
+}
+
 pub(crate) fn index_open_document(
     index: &mut WorkspaceIndex,
     uri: &Url,
@@ -195,17 +201,29 @@ impl Backend {
         }
         if let Some(Value::Number(n)) = iter.next() {
             if let Some(limit) = n.as_u64() {
-                self.formatter_line_limit
-                    .store(limit as u32, Ordering::Relaxed);
+                log_setting_change(
+                    "formatter.lineLimit",
+                    self.formatter_line_limit
+                        .swap(limit as u32, Ordering::Relaxed),
+                    limit as u32,
+                );
             }
         }
         if let Some(Value::Bool(compact)) = iter.next() {
-            self.formatter_compact_colon
-                .store(compact, Ordering::Relaxed);
+            log_setting_change(
+                "formatter.compactColon",
+                self.formatter_compact_colon
+                    .swap(compact, Ordering::Relaxed),
+                compact,
+            );
         }
         if let Some(Value::Bool(align)) = iter.next() {
-            self.formatter_align_member_colons
-                .store(align, Ordering::Relaxed);
+            log_setting_change(
+                "formatter.alignMemberColons",
+                self.formatter_align_member_colons
+                    .swap(align, Ordering::Relaxed),
+                align,
+            );
         }
         if let Some(Value::Object(map)) = iter.next() {
             let globs: Vec<String> = map
@@ -218,6 +236,12 @@ impl Backend {
 
         let base_scripts_changed = *self.base_scripts_path.lock().await != prev_base_scripts_path;
         let files_exclude_changed = *self.files_exclude.lock().await != prev_files_exclude;
+        if base_scripts_changed {
+            trace!(setting = "gameDirectory", "setting changed");
+        }
+        if files_exclude_changed {
+            trace!(setting = "files.exclude", "setting changed");
+        }
         base_scripts_changed || files_exclude_changed
     }
 
