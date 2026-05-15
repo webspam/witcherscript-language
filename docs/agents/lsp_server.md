@@ -1,6 +1,15 @@
 # LSP server
 
-**File:** `src/bin/witcherscript-lsp.rs` (~1145 lines)
+**Module:** `src/bin/witcherscript-lsp/` (~2860 lines across 6 files)
+
+| File | Purpose |
+|---|---|
+| `main.rs` | Tokio entry point — wires the tracing layer + `LspLogSender`, constructs `Backend`, and serves over stdio. |
+| `backend.rs` | `Backend` struct, all `LanguageServer` handler impls (`initialize`, `did_open`, `completion`, `hover`, `rename`, …). |
+| `convert.rs` | LSP↔internal type conversion: `lsp_range`, `source_position`, `lsp_symbol_kind`, `completion_item`, `document_symbols`, `hover_markdown`, `read_script_file`, `workspace_roots`. |
+| `indexing.rs` | Workspace + base-script discovery and indexing helpers (game-directory scan, `modSharedImports` auto-load, settings refresh). |
+| `logging.rs` | `LspLogSender` tracing layer, level enum/parsing, `DEFAULT_LOG_LEVEL`. |
+| `tests.rs` | `#[cfg(test)]` LSP-specific tests: encoding, hover markdown, completion items, rename. |
 
 The binary is intentionally thin. All parse/resolve logic lives in the library (`witcherscript_parser::*`). The binary only:
 - Owns shared state in the `Backend` struct
@@ -169,4 +178,4 @@ Open `documents` (editor-open) take precedence over `workspace_documents` (backg
 1. Add the capability to `ServerCapabilities` in `initialize()`.
 2. Implement the handler method on `Backend` (`impl LanguageServer for Backend`).
 3. If the handler needs new resolve logic, add it to `resolve/mod.rs` as a `pub fn` — not in the binary.
-4. Add a `#[cfg(test)]` test at the bottom of `witcherscript-lsp.rs`.
+4. Add a `#[cfg(test)]` test in `src/bin/witcherscript-lsp/tests.rs`.

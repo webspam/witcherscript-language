@@ -132,6 +132,6 @@ The vec is the only storage; `SymbolId(n)` directly indexes `symbols[n]`. IDs ar
 1. Add variant to `SymbolKind` in `symbols.rs`.
 2. Handle the new grammar node in `visit()` in `SymbolExtractor`.
 3. Add mapping in `symbol_kind_to_token_type()` in `semantic_tokens/mod.rs`.
-4. Add mapping in `lsp_symbol_kind()` in `witcherscript-lsp.rs`.
+4. Add mapping in `lsp_symbol_kind()` in `src/bin/witcherscript-lsp/convert.rs`.
 5. Add mapping in `hover_text()` in `resolve/mod.rs` if the label text is different.
 6. Add tests.

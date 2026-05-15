@@ -5,7 +5,7 @@
 This is a Rust crate (`witcherscript-parser`) that produces two binaries:
 
 - `witcherscript-parser` — CLI syntax validator (`src/main.rs`)
-- `witcherscript-lsp` — LSP server (`src/bin/witcherscript-lsp.rs`)
+- `witcherscript-lsp` — LSP server (`src/bin/witcherscript-lsp/`)
 
 ## Module quick reference
 
@@ -23,7 +23,7 @@ This is a Rust crate (`witcherscript-parser`) that produces two binaries:
 | `src/semantic_tokens/mod.rs`   | `TOKEN_TYPES`, `collect_semantic_tokens`, classify                             | [semantic_tokens.md](docs/agents/semantic_tokens.md) |
 | `src/semantic_tokens/tests.rs` | Semantic token unit tests                                                      |                                                      |
 | `src/main.rs`                  | CLI binary entry point                                                         | [architecture.md](docs/agents/architecture.md)       |
-| `src/bin/witcherscript-lsp.rs` | LSP server — `Backend`, all handlers                                           | [lsp_server.md](docs/agents/lsp_server.md)           |
+| `src/bin/witcherscript-lsp/`   | LSP server — `Backend` + handlers (`backend.rs`), `main` (`main.rs`), LSP↔internal conversion (`convert.rs`), workspace/base-script indexing (`indexing.rs`), tracing layer (`logging.rs`), tests (`tests.rs`) | [lsp_server.md](docs/agents/lsp_server.md)           |
 
 Full architecture diagram and data flow: [docs/agents/architecture.md](docs/agents/architecture.md)
 
@@ -32,9 +32,9 @@ Full architecture diagram and data flow: [docs/agents/architecture.md](docs/agen
 | Task                                        | Files to modify                                                                                                                                                                                    |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Add a validation rule                       | `src/diagnostics.rs` + test + fixture under `tests/fixtures/invalid/` + README                                                                                                                     |
-| Add a new LSP capability                    | `src/bin/witcherscript-lsp.rs` + `src/resolve/mod.rs` if it needs new resolve logic                                                                                                                |
-| Add a new symbol kind                       | `src/symbols.rs` (SymbolKind enum), `src/resolve/mod.rs` (hover_text), `src/semantic_tokens/mod.rs` (symbol_kind_to_token_type + classify_ident), `src/bin/witcherscript-lsp.rs` (lsp_symbol_kind) |
-| Add a new completion context                | `src/resolve/mod.rs` (new pub fn) + `src/bin/witcherscript-lsp.rs` (completion() dispatch)                                                                                                         |
+| Add a new LSP capability                    | `src/bin/witcherscript-lsp/backend.rs` + `src/resolve/mod.rs` if it needs new resolve logic                                                                                                        |
+| Add a new symbol kind                       | `src/symbols.rs` (SymbolKind enum), `src/resolve/mod.rs` (hover_text), `src/semantic_tokens/mod.rs` (symbol_kind_to_token_type + classify_ident), `src/bin/witcherscript-lsp/convert.rs` (lsp_symbol_kind) |
+| Add a new completion context                | `src/resolve/mod.rs` (new pub fn) + `src/bin/witcherscript-lsp/backend.rs` (completion() dispatch)                                                                                                 |
 | Fix a resolution bug                        | `src/resolve/mod.rs` + the relevant file under `src/resolve/tests/`                                                                                                                                |
 | Change highlighting                         | `src/semantic_tokens/mod.rs` + `src/semantic_tokens/tests.rs`                                                                                                                                      |
 | Fix position/encoding bug                   | `src/line_index.rs` + its `#[cfg(test)]` block                                                                                                                                                     |
@@ -113,7 +113,7 @@ just test
 The test suite includes:
 
 - Embedded `#[cfg(test)]` modules in `diagnostics/`, `symbols.rs`, `line_index.rs`,
-  `script_env.rs`, `resolve/tests.rs`, `semantic_tokens/tests.rs`, and `src/bin/witcherscript-lsp.rs`.
+  `script_env.rs`, `resolve/tests/`, `semantic_tokens/tests.rs`, and `src/bin/witcherscript-lsp/tests.rs`.
 - `tests/parser_fixtures.rs` — fixture-driven parse tests; discovers every `.ws` file
   under `tests/fixtures/valid/` (must parse cleanly) and `tests/fixtures/invalid/`
   (must produce at least one tree-sitter diagnostic).
@@ -165,7 +165,7 @@ Fix late-local-var rule skipping nop statements
 - No `unwrap()` in library code; use `?` or `Option`/`Result` combinators. `unwrap()` is
   acceptable in tests.
 - No `pub` on symbols that do not need to be visible outside the module.
-- Keep the LSP binary (`witcherscript-lsp.rs`) thin: parse/resolve logic belongs in the
+- Keep the LSP binary (`src/bin/witcherscript-lsp/`) thin: parse/resolve logic belongs in the
   library, not in the binary.
 - `LineIndex` positions are always UTF-16 code-unit offsets to stay compatible with the
   LSP specification.
@@ -181,10 +181,10 @@ Fix late-local-var rule skipping nop statements
 
 ## Adding an LSP capability
 
-1. Enable the capability in `initialize` in `src/bin/witcherscript-lsp.rs`.
+1. Enable the capability in `initialize` in `src/bin/witcherscript-lsp/backend.rs`.
 2. Implement the handler method on `Backend`.
-3. If the handler needs new resolve logic, add it to `resolve.rs` (not the binary).
-4. Add a unit test in the `#[cfg(test)]` block at the bottom of `witcherscript-lsp.rs`.
+3. If the handler needs new resolve logic, add it to `resolve/mod.rs` (not the binary).
+4. Add a unit test in `src/bin/witcherscript-lsp/tests.rs`.
 
 ## Releasing
 

@@ -10,7 +10,7 @@
 | `src/script_env.rs` `#[cfg(test)]` | INI parsing, globals section, symbol positions |
 | `src/resolve/tests/` | Everything in `resolve/mod.rs` (~3400 lines across 11 files, most comprehensive) |
 | `src/semantic_tokens/tests.rs` | `collect_semantic_tokens()` — classify, resolve, encode |
-| `src/bin/witcherscript-lsp.rs` `#[cfg(test)]` | LSP-specific: encoding, hover markdown, completion items, rename |
+| `src/bin/witcherscript-lsp/tests.rs` | LSP-specific: encoding, hover markdown, completion items, rename |
 | `tests/parser_fixtures.rs` | Parametrized parse tests over all fixture files |
 | `tests/language_features.rs` | Integration tests for symbol extraction + resolution |
 
@@ -112,7 +112,7 @@ just ci        # cargo fmt --check + cargo clippy -D warnings + cargo test
 | New symbol kind | Test in `symbols.rs` `#[cfg(test)]` + cases in `resolve/tests.rs` |
 | New resolution case | Test in `resolve/tests.rs` (inline source) |
 | New completion case | Test in `resolve/tests.rs` or a new `language_features.rs` test |
-| New LSP handler | Test in `witcherscript-lsp.rs` `#[cfg(test)]` |
+| New LSP handler | Test in `src/bin/witcherscript-lsp/tests.rs` |
 | New semantic token | Test in `semantic_tokens/tests.rs` |
 
 ## assert_symbol helper

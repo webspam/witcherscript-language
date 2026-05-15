@@ -7,7 +7,14 @@ src/
 ├── lib.rs                          module declarations, public API surface
 ├── main.rs                         CLI binary (witcherscript-parser)
 ├── bin/
-│   └── witcherscript-lsp.rs       LSP server binary (~1145 lines)
+│   ├── dump_tree.rs               developer helper: prints a tree-sitter parse tree
+│   └── witcherscript-lsp/         LSP server binary (~2860 lines across 6 files)
+│       ├── main.rs                tokio entry point, tracing setup, Backend wiring
+│       ├── backend.rs             Backend struct + all LanguageServer handler impls
+│       ├── convert.rs             LSP↔internal conversion (ranges, completion items, hover, file reader)
+│       ├── indexing.rs            workspace + base-script indexing (game dir, modSharedImports, settings refresh)
+│       ├── logging.rs             LspLogSender tracing layer + level parsing
+│       └── tests.rs               #[cfg(test)] LSP-specific tests
 ├── document.rs                     parse orchestration, ParsedDocument
 ├── diagnostics.rs                  ParseDiagnostic, collect_diagnostics, format_tree
 ├── files.rs                        recursive .ws file discovery
@@ -47,7 +54,7 @@ semantic_tokens ──► line_index
 
 lib      ──► all of the above (re-exports)
 
-bin/witcherscript-lsp ──► witcherscript_parser::* (all library modules)
+bin/witcherscript-lsp/ ──► witcherscript_parser::* (all library modules)
 main                  ──► witcherscript_parser::* (document, files, diagnostics)
 ```
 
@@ -69,7 +76,7 @@ ParsedDocument { source, tree, line_index, diagnostics, symbols }
     │       inserts into top_level_by_name, member_by_type,
     │       superclass_by_name, doc_idents
     │
-    └─► LSP response handlers                        [bin/witcherscript-lsp.rs]
+    └─► LSP response handlers                        [bin/witcherscript-lsp/backend.rs]
             SymbolDb::new(workspace, base).with_script_env(env)
             resolve_definition / completion_members / statement_completions / …
 ```
@@ -112,7 +119,7 @@ When constructing a `SymbolDb` for a request:
 - Exit code: 0 (ok), 1 (diagnostics found), 2 (runtime error)
 - Flags: `--dump-tree`, `--max-diagnostics N`
 
-**`src/bin/witcherscript-lsp.rs`** — LSP server
+**`src/bin/witcherscript-lsp/`** — LSP server (module split across `main.rs`, `backend.rs`, `convert.rs`, `indexing.rs`, `logging.rs`, `tests.rs`)
 - Async Tokio runtime; tower-lsp framework over stdin/stdout
 - `Backend` struct holds all shared state behind `Arc<Mutex<>>`
 - All parse/resolve logic lives in the library; the binary only orchestrates
