@@ -27,3 +27,12 @@ build:
 # Build the optimised release binary.
 release:
     cargo build --release
+
+# Run the LSP server in TCP listen mode (default port 9257). Stderr -> target/lsp-tcp.log.
+# Uses `cmd /c` for the redirect because PowerShell's `2>` mangles native stderr
+# (UTF-16 + NativeCommandError wrapping); cmd does true fd-2 redirection.
+lsp-listen port='9257':
+    cargo build --bin witcherscript-lsp
+    if (Test-Path target/lsp-tcp.log) { Remove-Item target/lsp-tcp.log }
+    Write-Host "witcherscript-lsp listening on 127.0.0.1:{{port}} (logs -> target/lsp-tcp.log)"
+    cmd /c "target\debug\witcherscript-lsp.exe --listen {{port}} 2> target\lsp-tcp.log"
