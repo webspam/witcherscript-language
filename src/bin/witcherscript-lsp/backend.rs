@@ -38,9 +38,9 @@ use witcherscript_parser::semantic_tokens::{
 
 use crate::convert::{
     annotation_name_items, builtin_type_item, class_body_kw_item, completion_item,
-    document_symbols, hover_markdown, keyword_snippet_item, lsp_range, minimal_text_edits,
-    script_body_item, signature_help_response, source_position, source_range, this_super_item,
-    type_completion_item, workspace_roots, wrap_method_snippet,
+    document_symbols, hover_markdown, keyword_snippet_item, lsp_range, script_body_item,
+    signature_help_response, source_position, source_range, this_super_item, type_completion_item,
+    workspace_roots, wrap_method_snippet,
 };
 use crate::logging::{level_from_str, level_to_u8};
 
@@ -766,10 +766,15 @@ impl LanguageServer for Backend {
             return Ok(Some(Vec::new()));
         }
 
-        Ok(Some(minimal_text_edits(
+        let full_range = lsp_range(document.line_index.byte_range_to_range(
             &document.source,
-            &formatted,
-            &document.line_index,
-        )))
+            0,
+            document.source.len(),
+        ));
+
+        Ok(Some(vec![TextEdit {
+            range: full_range,
+            new_text: formatted,
+        }]))
     }
 }
