@@ -11,7 +11,7 @@ use tracing::warn;
 use witcherscript_parser::diagnostics::WorkspaceDiagnostic;
 use witcherscript_parser::document::ParsedDocument;
 use witcherscript_parser::files::is_witcherscript_file;
-use witcherscript_parser::line_index::{SourcePosition, SourceRange};
+use witcherscript_parser::line_index::{LineIndex, SourcePosition, SourceRange};
 use witcherscript_parser::resolve::{hover_text, Definition, SignatureHelpInfo, SymbolDb};
 use witcherscript_parser::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
 
@@ -462,4 +462,150 @@ fn hover_location_markdown(definition: &Definition) -> String {
     uri.set_fragment(Some(&format!("L{line}")));
 
     format!("[{label}:{line}]({uri})")
+}
+
+pub(crate) fn minimal_text_edits(
+    original: &str,
+    formatted: &str,
+    line_index: &LineIndex,
+) -> Vec<TextEdit> {
+    let mut edits = Vec::new();
+    let mut orig_pos = 0usize;
+    let mut hunk_start: Option<usize> = None;
+    let mut hunk_end = 0usize;
+    let mut hunk_insert = String::new();
+
+    for chunk in dissimilar::diff(original, formatted) {
+        match chunk {
+            dissimilar::Chunk::Equal(s) => {
+                if let Some(start) = hunk_start.take() {
+                    edits.push(TextEdit {
+                        range: lsp_range(line_index.byte_range_to_range(original, start, hunk_end)),
+                        new_text: std::mem::take(&mut hunk_insert),
+                    });
+                }
+                orig_pos += s.len();
+            }
+            dissimilar::Chunk::Delete(s) => {
+                if hunk_start.is_none() {
+                    hunk_start = Some(orig_pos);
+                }
+                orig_pos += s.len();
+                hunk_end = orig_pos;
+            }
+            dissimilar::Chunk::Insert(s) => {
+                if hunk_start.is_none() {
+                    hunk_start = Some(orig_pos);
+                    hunk_end = orig_pos;
+                }
+                hunk_insert.push_str(s);
+            }
+        }
+    }
+    if let Some(start) = hunk_start {
+        edits.push(TextEdit {
+            range: lsp_range(line_index.byte_range_to_range(original, start, hunk_end)),
+            new_text: hunk_insert,
+        });
+    }
+    edits
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn apply(original: &str, edits: &[TextEdit]) -> String {
+        let line_index = LineIndex::new(original);
+        let mut spans: Vec<(usize, usize, &str)> = edits
+            .iter()
+            .map(|e| {
+                let start = line_index
+                    .position_to_byte(
+                        original,
+                        SourcePosition {
+                            line: e.range.start.line,
+                            character: e.range.start.character,
+                        },
+                    )
+                    .unwrap();
+                let end = line_index
+                    .position_to_byte(
+                        original,
+                        SourcePosition {
+                            line: e.range.end.line,
+                            character: e.range.end.character,
+                        },
+                    )
+                    .unwrap();
+                (start, end, e.new_text.as_str())
+            })
+            .collect();
+        spans.sort_by_key(|s| std::cmp::Reverse(s.0));
+        let mut out = original.to_string();
+        for (start, end, new_text) in spans {
+            out.replace_range(start..end, new_text);
+        }
+        out
+    }
+
+    fn diff_edits(original: &str, formatted: &str) -> Vec<TextEdit> {
+        let line_index = LineIndex::new(original);
+        minimal_text_edits(original, formatted, &line_index)
+    }
+
+    #[test]
+    fn identical_inputs_produce_no_edits() {
+        let edits = diff_edits("abc\n", "abc\n");
+        assert!(edits.is_empty());
+    }
+
+    #[test]
+    fn edits_reconstruct_formatted_text() {
+        let original = "class C {\n    var x:int;\n    var someLongName:string;\n}\n";
+        let formatted =
+            "class C {\n    var x            : int;\n    var someLongName : string;\n}\n";
+        let edits = diff_edits(original, formatted);
+        assert!(!edits.is_empty());
+        assert_eq!(apply(original, &edits), formatted);
+    }
+
+    #[test]
+    fn unchanged_regions_are_not_touched() {
+        let original = "line1\nline2\nold middle\nline4\nline5\n";
+        let formatted = "line1\nline2\nnew middle\nline4\nline5\n";
+        let edits = diff_edits(original, formatted);
+        assert!(!edits.is_empty());
+        for edit in &edits {
+            assert_eq!(
+                edit.range.start.line, 2,
+                "edit touched line outside change: {edit:?}"
+            );
+            assert_eq!(
+                edit.range.end.line, 2,
+                "edit touched line outside change: {edit:?}"
+            );
+        }
+        assert_eq!(apply(original, &edits), formatted);
+    }
+
+    #[test]
+    fn pure_insertion_has_empty_range() {
+        let edits = diff_edits("abc", "abXYZc");
+        assert!(!edits.is_empty());
+        assert!(edits
+            .iter()
+            .any(|e| e.range.start == e.range.end && !e.new_text.is_empty()));
+        assert_eq!(apply("abc", &edits), "abXYZc");
+    }
+
+    #[test]
+    fn pure_deletion_has_empty_new_text() {
+        let edits = diff_edits("abXYZc", "abc");
+        assert!(!edits.is_empty());
+        assert!(edits
+            .iter()
+            .any(|e| e.new_text.is_empty() && e.range.start != e.range.end));
+        assert_eq!(apply("abXYZc", &edits), "abc");
+    }
 }
