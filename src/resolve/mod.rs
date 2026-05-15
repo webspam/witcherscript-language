@@ -401,6 +401,12 @@ impl WorkspaceIndex {
         })
     }
 
+    pub fn documents(&self) -> impl Iterator<Item = (&str, &[Symbol])> {
+        self.documents
+            .iter()
+            .map(|(uri, syms)| (uri.as_str(), syms.as_slice()))
+    }
+
     pub fn direct_member_of(
         &self,
         container_name: &str,
