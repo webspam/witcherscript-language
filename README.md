@@ -49,6 +49,10 @@ Current validation rules:
   not share a name with another top-level declaration anywhere in the workspace. Each
   conflicting declaration is flagged, with related-information links to the others.
   Modding-annotation member injections (`@addMethod`/`@wrapMethod`/...) are exempt.
+- Duplicate local declarations (error): two parameters, two local `var`s, or a parameter
+  and a local `var` with the same name inside one function. `@wrapMethod` and
+  `@replaceMethod` functions are exempt — they intentionally mirror the wrapped/replaced
+  signature.
 - Shadowing (warning): a parameter, local `var`, or member field whose name collides with
   a `redscripts.ini` `[globals]` entry; or a local `var` whose name collides with a field
   declared in the enclosing class/struct/state. `@wrapMethod` and `@replaceMethod`

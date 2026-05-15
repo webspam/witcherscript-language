@@ -9,7 +9,8 @@ use serde_json::Value;
 use tower_lsp::lsp_types::{ConfigurationItem, Position, Url};
 use tracing::{debug, error, info, trace, warn};
 use witcherscript_parser::diagnostics::{
-    collect_duplicate_symbol_diagnostics, collect_shadowing_diagnostics,
+    collect_duplicate_local_diagnostics, collect_duplicate_symbol_diagnostics,
+    collect_shadowing_diagnostics,
 };
 use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::collect_witcherscript_files;
@@ -114,12 +115,13 @@ impl Backend {
 
     async fn publish_open_diagnostics(&self) {
         let start = Instant::now();
-        let (dup_by_uri, shadow_by_uri) = {
+        let (dup_by_uri, shadow_by_uri, dup_local_by_uri) = {
             let index = self.workspace_index.lock().await;
             let env = self.script_env.lock().await;
             (
                 collect_duplicate_symbol_diagnostics(&index),
                 collect_shadowing_diagnostics(&index, &env),
+                collect_duplicate_local_diagnostics(&index),
             )
         };
         let collect_us = start.elapsed().as_micros();
@@ -134,6 +136,9 @@ impl Backend {
             if let Some(shadows) = shadow_by_uri.get(uri.as_str()) {
                 diagnostics.extend(shadows.iter().map(lsp_workspace_diagnostic));
             }
+            if let Some(dup_locals) = dup_local_by_uri.get(uri.as_str()) {
+                diagnostics.extend(dup_locals.iter().map(lsp_workspace_diagnostic));
+            }
             if published.get(uri) == Some(&diagnostics) {
                 continue;
             }
@@ -147,6 +152,7 @@ impl Backend {
             open_documents = documents.len(),
             flagged_uris = dup_by_uri.len(),
             shadow_uris = shadow_by_uri.len(),
+            dup_local_uris = dup_local_by_uri.len(),
             republished,
             collect_us,
             total_us = start.elapsed().as_micros(),
