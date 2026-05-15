@@ -720,3 +720,99 @@ fn wrap_method_snippet_event_uses_return_form() {
     let snippet = wrap_method_snippet(&method, &db);
     assert_eq!(snippet, "OnDeath() {\n\t$0\n\n\treturn wrappedMethod();\n}");
 }
+
+#[test]
+fn decl_only_check_accepts_pure_imports() {
+    let doc = parse_document("import function Foo() : void;\n").expect("parse");
+    assert!(!crate::indexing::has_top_level_func_body(&doc));
+}
+
+#[test]
+fn decl_only_check_accepts_class_with_method_bodies() {
+    let src = "class C { function M() { var x : int; x = 1; } }\n";
+    let doc = parse_document(src).expect("parse");
+    assert!(!crate::indexing::has_top_level_func_body(&doc));
+}
+
+#[test]
+fn decl_only_check_rejects_top_level_function_with_body() {
+    let doc = parse_document("function Foo() { var x : int; x = 1; }\n").expect("parse");
+    assert!(crate::indexing::has_top_level_func_body(&doc));
+}
+
+#[test]
+fn decl_only_check_rejects_mixed_file_when_any_top_level_has_body() {
+    let src = "import function A() : void;\nfunction B() { var x : int; x = 1; }\n";
+    let doc = parse_document(src).expect("parse");
+    assert!(crate::indexing::has_top_level_func_body(&doc));
+}
+
+#[test]
+fn build_index_segments_empty_inputs() {
+    let segments = crate::indexing::build_index_segments(None, &[], true);
+    assert!(segments.is_empty());
+}
+
+#[test]
+fn build_index_segments_game_dir_only() {
+    let game_dir = std::env::temp_dir().join("ws_test_segments_game_only");
+    let segments = crate::indexing::build_index_segments(Some(&game_dir), &[], true);
+    assert_eq!(segments.len(), 1);
+    assert_eq!(segments[0].0, "gameDirectory");
+    assert!(!segments[0].2);
+}
+
+#[test]
+fn build_index_segments_auto_loads_mod_shared_imports_when_present() {
+    let game_dir = std::env::temp_dir().join("ws_test_segments_msi_present");
+    let msi = game_dir.join("Mods").join("modSharedImports");
+    std::fs::create_dir_all(&msi).expect("mkdir mods");
+    let segments = crate::indexing::build_index_segments(Some(&game_dir), &[], true);
+    let labels: Vec<&str> = segments.iter().map(|(l, _, _)| *l).collect();
+    assert!(labels.contains(&"modSharedImports"));
+    let msi_seg = segments
+        .iter()
+        .find(|(l, _, _)| *l == "modSharedImports")
+        .unwrap();
+    assert!(
+        msi_seg.2,
+        "modSharedImports segment must be flagged as auto-loaded"
+    );
+    std::fs::remove_dir_all(game_dir.join("Mods")).ok();
+}
+
+#[test]
+fn build_index_segments_skips_mod_shared_imports_when_flag_off() {
+    let game_dir = std::env::temp_dir().join("ws_test_segments_msi_flag_off");
+    let msi = game_dir.join("Mods").join("modSharedImports");
+    std::fs::create_dir_all(&msi).expect("mkdir mods");
+    let segments = crate::indexing::build_index_segments(Some(&game_dir), &[], false);
+    let labels: Vec<&str> = segments.iter().map(|(l, _, _)| *l).collect();
+    assert!(!labels.contains(&"modSharedImports"));
+    std::fs::remove_dir_all(game_dir.join("Mods")).ok();
+}
+
+#[test]
+fn build_index_segments_skips_missing_extra_dir() {
+    let game_dir = std::env::temp_dir().join("ws_test_segments_extra_missing");
+    let missing = std::env::temp_dir().join("ws_test_segments_definitely_not_a_dir_xyz");
+    std::fs::remove_dir_all(&missing).ok();
+    let extras = vec![missing];
+    let segments = crate::indexing::build_index_segments(Some(&game_dir), &extras, false);
+    let labels: Vec<&str> = segments.iter().map(|(l, _, _)| *l).collect();
+    assert!(!labels.contains(&"additionalScriptDirectory"));
+}
+
+#[test]
+fn build_index_segments_dedups_extra_that_overlaps_mod_shared_imports() {
+    let game_dir = std::env::temp_dir().join("ws_test_segments_dedup");
+    let msi = game_dir.join("Mods").join("modSharedImports");
+    std::fs::create_dir_all(&msi).expect("mkdir mods");
+    let extras = vec![msi.clone()];
+    let segments = crate::indexing::build_index_segments(Some(&game_dir), &extras, true);
+    let msi_segs: Vec<_> = segments.iter().filter(|(_, p, _)| p == &msi).collect();
+    assert_eq!(msi_segs.len(), 1, "overlapping path must appear once");
+    assert_eq!(msi_segs[0].0, "modSharedImports");
+    assert!(msi_segs[0].2, "first-inserted (modSharedImports) wins");
+    std::fs::remove_dir_all(game_dir.join("Mods")).ok();
+}

@@ -79,11 +79,25 @@ open documents in sync as they are edited.
 
 ### LSP Configuration
 
-The server reads one user-configurable setting:
+The server reads the following user-configurable settings:
 
-| Key | Type | Description |
-|---|---|---|
-| `witcherscript.gameDirectory` | `string` | Absolute path to the Witcher 3 base scripts directory (e.g. `C:\The Witcher 3\content\content0\scripts`). All ~1,700 game scripts are parsed and their symbols made available globally. |
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `witcherscript.gameDirectory` | `string` | `""` | Absolute path to the Witcher 3 install root (e.g. `C:\GOG Games\The Witcher 3`). The server appends `content\content0\scripts` and indexes the ~1,700 base game scripts. It also loads engine globals from `bin\redscripts.ini`. |
+| `witcherscript.additionalScriptDirectories` | `string[]` | `[]` | Extra root directories to walk recursively for `.ws` files. Each entry is loaded as read-only base scripts: their symbols join the global namespace, but renames are rejected. Use this when writing co-dependent mods that need to see each other's declarations. |
+| `witcherscript.autoLoadModSharedImports` | `boolean` | `true` | Auto-load the **Shared Imports** mod (a specific community mod at `<gameDirectory>\Mods\modSharedImports` that most modern Witcher 3 mods depend on to avoid clashes between `import` declarations). When this flag is on and the directory exists, it is loaded automatically — see "Auto-loaded: the Shared Imports mod" below. |
+
+#### Auto-loaded: the Shared Imports mod
+
+Most modern Witcher 3 mods depend on a specific community mod called **Shared Imports**, installed at `<gameDirectory>\Mods\modSharedImports`. It carves out a shared set of `import function` headers so multiple mods do not redeclare clashing imports.
+
+Because that mod is a near-universal dependency, **the LSP loads it automatically** whenever `gameDirectory` is set and the `Mods\modSharedImports` directory exists. The user does not need to list it under `additionalScriptDirectories`.
+
+The auto-load has a safety gate: if any `.ws` file in the directory contains a top-level function *with a body* (e.g. `function Foo() { ... }` rather than `import function Foo() : T;`), the directory is rejected and a warning is logged. This stops accidental loading of any unrelated mod that happens to share the name.
+
+When the auto-load fires, the LSP log line carries `auto_loaded = true` and the message starts with `[auto-detected]`. Search the server log for `[auto-detected]` if you are surprised to see symbols you did not configure.
+
+To opt out entirely, set `witcherscript.autoLoadModSharedImports` to `false`.
 
 **How the server receives this value**
 
@@ -102,7 +116,7 @@ The server uses two complementary LSP mechanisms:
 
 **VS Code plugin integration**
 
-*`package.json` — declare the setting:*
+*`package.json` — declare the settings:*
 ```json
 "contributes": {
   "configuration": {
@@ -111,7 +125,18 @@ The server uses two complementary LSP mechanisms:
       "witcherscript.gameDirectory": {
         "type": "string",
         "default": "",
-        "description": "Absolute path to the Witcher 3 base scripts directory."
+        "description": "Absolute path to the Witcher 3 install root."
+      },
+      "witcherscript.additionalScriptDirectories": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [],
+        "description": "Extra root directories to walk recursively for .ws files. Each is indexed as read-only base scripts."
+      },
+      "witcherscript.autoLoadModSharedImports": {
+        "type": "boolean",
+        "default": true,
+        "description": "Auto-load <gameDirectory>\\Mods\\modSharedImports (the Shared Imports mod). See server README."
       }
     }
   }
@@ -120,11 +145,13 @@ The server uses two complementary LSP mechanisms:
 
 *Extension activation — pass as `initializationOptions` for a fast first start:*
 ```typescript
+const cfg = vscode.workspace.getConfiguration('witcherscript');
 const clientOptions: LanguageClientOptions = {
   documentSelector: [{ scheme: 'file', language: 'witcherscript' }],
   initializationOptions: {
-    gameDirectory:
-      vscode.workspace.getConfiguration('witcherscript').get<string>('gameDirectory') ?? '',
+    gameDirectory: cfg.get<string>('gameDirectory') ?? '',
+    additionalScriptDirectories: cfg.get<string[]>('additionalScriptDirectories') ?? [],
+    autoLoadModSharedImports: cfg.get<boolean>('autoLoadModSharedImports') ?? true,
   },
 };
 ```

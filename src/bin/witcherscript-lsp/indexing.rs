@@ -1,5 +1,6 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
@@ -22,6 +23,59 @@ fn log_setting_change<T: PartialEq + std::fmt::Display>(setting: &str, prev: T, 
     if prev != new {
         trace!(setting, prev = %prev, new = %new, "setting changed");
     }
+}
+
+pub(crate) fn has_top_level_func_body(document: &ParsedDocument) -> bool {
+    let root = document.tree.root_node();
+    let mut cursor = root.walk();
+    for child in root.children(&mut cursor).filter(|c| c.is_named()) {
+        if child.kind() == "func_decl" {
+            let mut inner = child.walk();
+            if child.children(&mut inner).any(|c| c.kind() == "func_block") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub(crate) fn build_index_segments(
+    game_dir: Option<&Path>,
+    extras: &[PathBuf],
+    auto_load_mod_shared_imports: bool,
+) -> Vec<(&'static str, PathBuf, bool)> {
+    let mut segments: Vec<(&'static str, PathBuf, bool)> = Vec::new();
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+
+    if let Some(gd) = game_dir {
+        let base = gd.join(r"content\content0\scripts");
+        if seen.insert(canon(&base)) {
+            segments.push(("gameDirectory", base, false));
+        }
+        if auto_load_mod_shared_imports {
+            let msi = gd.join(r"Mods\modSharedImports");
+            if msi.is_dir() {
+                let key = canon(&msi);
+                if !seen.contains(&key) {
+                    seen.insert(key);
+                    segments.push(("modSharedImports", msi, true));
+                }
+            }
+        }
+    }
+
+    for extra in extras {
+        if !extra.is_dir() {
+            warn!(path = %extra.display(), "additionalScriptDirectories entry is not a directory; skipping");
+            continue;
+        }
+        if seen.insert(canon(extra)) {
+            segments.push(("additionalScriptDirectory", extra.clone(), false));
+        }
+    }
+
+    segments
 }
 
 pub(crate) fn index_open_document(
@@ -157,6 +211,8 @@ impl Backend {
     pub(crate) async fn fetch_config(&self) -> bool {
         let prev_base_scripts_path = self.base_scripts_path.lock().await.clone();
         let prev_files_exclude = self.files_exclude.lock().await.clone();
+        let prev_additional = self.additional_script_dirs.lock().await.clone();
+        let prev_auto_load = self.auto_load_mod_shared_imports.load(Ordering::Relaxed);
 
         let items = vec![
             ConfigurationItem {
@@ -182,6 +238,14 @@ impl Backend {
             ConfigurationItem {
                 scope_uri: None,
                 section: Some("files.exclude".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.additionalScriptDirectories".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.autoLoadModSharedImports".to_string()),
             },
         ];
         let Ok(values) = self.client.configuration(items).await else {
@@ -233,16 +297,62 @@ impl Backend {
                 .collect();
             *self.files_exclude.lock().await = globs;
         }
+        match iter.next() {
+            Some(Value::Array(arr)) => {
+                let dirs: Vec<std::path::PathBuf> = arr
+                    .into_iter()
+                    .filter_map(|v| match v {
+                        Value::String(s) if !s.is_empty() => Some(std::path::PathBuf::from(s)),
+                        _ => None,
+                    })
+                    .collect();
+                *self.additional_script_dirs.lock().await = dirs;
+            }
+            _ => {
+                self.additional_script_dirs.lock().await.clear();
+            }
+        }
+        match iter.next() {
+            Some(Value::Bool(b)) => {
+                self.auto_load_mod_shared_imports
+                    .store(b, Ordering::Relaxed);
+            }
+            _ => {
+                self.auto_load_mod_shared_imports
+                    .store(true, Ordering::Relaxed);
+            }
+        }
 
         let base_scripts_changed = *self.base_scripts_path.lock().await != prev_base_scripts_path;
         let files_exclude_changed = *self.files_exclude.lock().await != prev_files_exclude;
+        let new_additional_len = self.additional_script_dirs.lock().await.len();
+        let additional_changed = new_additional_len != prev_additional.len()
+            || *self.additional_script_dirs.lock().await != prev_additional;
+        let new_auto_load = self.auto_load_mod_shared_imports.load(Ordering::Relaxed);
+        let auto_load_changed = new_auto_load != prev_auto_load;
         if base_scripts_changed {
             trace!(setting = "gameDirectory", "setting changed");
         }
         if files_exclude_changed {
             trace!(setting = "files.exclude", "setting changed");
         }
-        base_scripts_changed || files_exclude_changed
+        if additional_changed {
+            trace!(
+                setting = "additionalScriptDirectories",
+                prev = prev_additional.len(),
+                new = new_additional_len,
+                "setting changed"
+            );
+        }
+        if auto_load_changed {
+            trace!(
+                setting = "autoLoadModSharedImports",
+                prev = prev_auto_load,
+                new = new_auto_load,
+                "setting changed"
+            );
+        }
+        base_scripts_changed || files_exclude_changed || additional_changed || auto_load_changed
     }
 
     pub(crate) async fn resolve_at(&self, uri: &Url, position: Position) -> Option<Definition> {
@@ -255,59 +365,99 @@ impl Backend {
         resolve_definition(uri.as_str(), document, &db, source_position(position))
     }
 
-    /// Parse all `.ws` files under `base_scripts_path` in parallel and store their
-    /// symbols in `base_scripts_index`. No-ops if no path is configured.
     pub(crate) async fn index_base_scripts(&self) {
-        let game_dir = {
-            let guard = self.base_scripts_path.lock().await;
-            match guard.clone() {
-                Some(p) => p,
-                None => return,
-            }
-        };
+        let game_dir_opt = self.base_scripts_path.lock().await.clone();
+        let extras = self.additional_script_dirs.lock().await.clone();
+        let auto_load = self.auto_load_mod_shared_imports.load(Ordering::Relaxed);
 
-        if let Some(env) = parse_script_environment(&game_dir.join(r"bin\redscripts.ini")) {
-            *self.script_env.lock().await = env;
-        }
-
-        let path = game_dir.join(r"content\content0\scripts");
-
-        info!(path = %path.display(), "indexing base scripts");
-        let start = Instant::now();
-
-        let Ok(files) = collect_witcherscript_files(&[path], &[]) else {
-            warn!("failed to collect base script files");
-            return;
-        };
-
-        let file_count = files.len();
-
-        // Parse files in parallel; each rayon thread gets its own tree-sitter parser
-        // via parse_document(), so there is no shared mutable state.
-        let parsed: Vec<(String, ParsedDocument)> = files
-            .par_iter()
-            .filter_map(|path| {
-                let source = read_script_file(path).ok()?;
-                let document = parse_document(source).ok()?;
-                let uri = Url::from_file_path(path).ok()?;
-                Some((uri.to_string(), document))
-            })
-            .collect();
-
-        let indexed = parsed.len();
-        {
-            let mut index = self.base_scripts_index.lock().await;
+        if game_dir_opt.is_none() && extras.is_empty() {
+            let mut idx = self.base_scripts_index.lock().await;
             let mut docs = self.base_scripts_documents.lock().await;
-            for (uri, document) in parsed {
-                index.update_document(uri.as_str(), &document);
-                docs.insert(uri, document);
+            *idx = WorkspaceIndex::default();
+            docs.clear();
+            return;
+        }
+
+        if let Some(gd) = &game_dir_opt {
+            if let Some(env) = parse_script_environment(&gd.join(r"bin\redscripts.ini")) {
+                *self.script_env.lock().await = env;
             }
         }
 
-        let elapsed_ms = start.elapsed().as_millis();
+        let segments = build_index_segments(game_dir_opt.as_deref(), &extras, auto_load);
+
+        let mut new_index = WorkspaceIndex::default();
+        let mut new_docs: HashMap<String, ParsedDocument> = HashMap::new();
+        let total_start = Instant::now();
+        let mut total_indexed: usize = 0;
+
+        for (label, root, is_auto) in &segments {
+            let seg_start = Instant::now();
+            let Ok(files) = collect_witcherscript_files(std::slice::from_ref(root), &[]) else {
+                warn!(label, path = %root.display(), "failed to collect script files");
+                continue;
+            };
+            let parsed: Vec<(String, ParsedDocument)> = files
+                .par_iter()
+                .filter_map(|path| {
+                    let source = read_script_file(path).ok()?;
+                    let document = parse_document(source).ok()?;
+                    let uri = Url::from_file_path(path).ok()?;
+                    Some((uri.to_string(), document))
+                })
+                .collect();
+
+            if *label == "modSharedImports" {
+                if let Some((bad_uri, _)) = parsed.iter().find(|(_, d)| has_top_level_func_body(d))
+                {
+                    warn!(
+                        uri = %bad_uri,
+                        path = %root.display(),
+                        auto_loaded = true,
+                        "[auto-detected] modSharedImports has a top-level function with a body; skipping"
+                    );
+                    continue;
+                }
+            }
+
+            let count = parsed.len();
+            total_indexed += count;
+            for (uri, doc) in parsed {
+                new_index.update_document(uri.as_str(), &doc);
+                new_docs.insert(uri, doc);
+            }
+            let elapsed_ms = seg_start.elapsed().as_millis();
+            if *is_auto {
+                info!(
+                    label,
+                    path = %root.display(),
+                    indexed = count,
+                    elapsed_ms,
+                    auto_loaded = true,
+                    "[auto-detected] indexed modSharedImports"
+                );
+            } else {
+                info!(
+                    label,
+                    path = %root.display(),
+                    indexed = count,
+                    elapsed_ms,
+                    "indexed scripts segment"
+                );
+            }
+        }
+
+        {
+            let mut idx = self.base_scripts_index.lock().await;
+            let mut docs = self.base_scripts_documents.lock().await;
+            *idx = new_index;
+            *docs = new_docs;
+        }
+
+        let elapsed_ms = total_start.elapsed().as_millis();
         info!(
-            indexed,
-            file_count,
+            segments = segments.len(),
+            indexed = total_indexed,
             elapsed_ms,
             elapsed_secs = format!("{:.1}", elapsed_ms as f32 / 1000.0),
             "base scripts indexed"

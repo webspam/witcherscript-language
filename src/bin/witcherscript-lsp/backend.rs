@@ -97,6 +97,8 @@ pub(crate) struct Backend {
     pub(crate) workspace_roots: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) files_exclude: Arc<Mutex<Vec<String>>>,
     pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
+    pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
+    pub(crate) auto_load_mod_shared_imports: Arc<AtomicBool>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
@@ -117,6 +119,25 @@ impl LanguageServer for Backend {
                 if !p.is_empty() {
                     *self.base_scripts_path.lock().await = Some(PathBuf::from(p));
                 }
+            }
+            if let Some(arr) = opts
+                .get("additionalScriptDirectories")
+                .and_then(|v| v.as_array())
+            {
+                let dirs: Vec<PathBuf> = arr
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(PathBuf::from)
+                    .collect();
+                *self.additional_script_dirs.lock().await = dirs;
+            }
+            if let Some(b) = opts
+                .get("autoLoadModSharedImports")
+                .and_then(|v| v.as_bool())
+            {
+                self.auto_load_mod_shared_imports
+                    .store(b, Ordering::Relaxed);
             }
             if let Some(level_str) = opts.get("logLevel").and_then(|v| v.as_str()) {
                 self.log_level
