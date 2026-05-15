@@ -8,7 +8,7 @@ use tower_lsp::lsp_types::{
     ParameterLabel, Position, Range, SignatureHelp, SignatureInformation, TextEdit, Url,
 };
 use tracing::warn;
-use witcherscript_parser::diagnostics::WorkspaceDiagnostic;
+use witcherscript_parser::diagnostics::{Severity, WorkspaceDiagnostic};
 use witcherscript_parser::document::ParsedDocument;
 use witcherscript_parser::files::is_witcherscript_file;
 use witcherscript_parser::line_index::{SourcePosition, SourceRange};
@@ -101,7 +101,10 @@ pub(crate) fn lsp_workspace_diagnostic(diagnostic: &WorkspaceDiagnostic) -> Diag
 
     Diagnostic {
         range: lsp_range(diagnostic.range),
-        severity: Some(DiagnosticSeverity::ERROR),
+        severity: Some(match diagnostic.severity {
+            Severity::Error => DiagnosticSeverity::ERROR,
+            Severity::Warning => DiagnosticSeverity::WARNING,
+        }),
         code: Some(tower_lsp::lsp_types::NumberOrString::String(
             diagnostic.kind.clone(),
         )),

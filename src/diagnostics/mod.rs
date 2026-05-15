@@ -19,10 +19,18 @@ pub struct ParseDiagnostic {
     pub snippet: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Severity {
+    #[default]
+    Error,
+    Warning,
+}
+
 #[derive(Debug, Clone)]
 pub struct WorkspaceDiagnostic {
     pub kind: String,
     pub message: String,
+    pub severity: Severity,
     pub range: SourceRange,
     pub related: Vec<RelatedLocation>,
 }

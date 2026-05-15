@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::resolve::WorkspaceIndex;
 use crate::symbols::{Symbol, SymbolKind};
 
-use super::{RelatedLocation, WorkspaceDiagnostic};
+use super::{RelatedLocation, Severity, WorkspaceDiagnostic};
 
 type Occurrences<'a> = HashMap<(&'a str, Option<&'a str>), Vec<(&'a str, &'a Symbol)>>;
 
@@ -54,6 +54,7 @@ pub fn collect_duplicate_symbol_diagnostics(
                 .push(WorkspaceDiagnostic {
                     kind: "duplicate_symbol".to_string(),
                     message: "A class or function with that name already exists.".to_string(),
+                    severity: Severity::Error,
                     range: sym.selection_range,
                     related,
                 });

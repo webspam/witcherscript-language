@@ -360,7 +360,7 @@ fn opening_a_workspace_indexed_file_does_not_self_conflict() {
 
 #[test]
 fn workspace_diagnostic_carries_related_information() {
-    use witcherscript_parser::diagnostics::{RelatedLocation, WorkspaceDiagnostic};
+    use witcherscript_parser::diagnostics::{RelatedLocation, Severity, WorkspaceDiagnostic};
     use witcherscript_parser::line_index::SourceRange;
 
     let range = SourceRange {
@@ -376,6 +376,7 @@ fn workspace_diagnostic_carries_related_information() {
     let diagnostic = WorkspaceDiagnostic {
         kind: "duplicate_symbol".to_string(),
         message: "A class or function with that name already exists.".to_string(),
+        severity: Severity::Error,
         range,
         related: vec![RelatedLocation {
             uri: "file:///other.ws".to_string(),
