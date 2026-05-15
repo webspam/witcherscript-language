@@ -753,6 +753,7 @@ impl LanguageServer for Backend {
             use_tabs,
             line_limit,
             compact_colon,
+            false,
         );
 
         if formatted == document.source {

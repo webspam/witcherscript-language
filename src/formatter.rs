@@ -9,6 +9,8 @@ fn render_expr(node: Node, source: &str) -> String {
         suppress_next_indent: false,
         line_limit: usize::MAX,
         compact_colon: false,
+        align_member_colons: false,
+        colon_align_col: None,
     }
     .render_node(node)
 }
@@ -76,6 +78,15 @@ fn named_child_nodes(node: Node) -> Vec<Node> {
     node.named_children(&mut c).collect()
 }
 
+fn is_alignable_field(node: Node) -> bool {
+    if node.kind() != "member_var_decl" || node.is_error() {
+        return false;
+    }
+    let mut c = node.walk();
+    let has_comment = node.children(&mut c).any(|n| n.kind() == "comment");
+    !has_comment
+}
+
 fn is_expr_node(kind: &str) -> bool {
     matches!(
         kind,
@@ -117,6 +128,8 @@ pub fn render_callable_signature(node: Node, source: &str) -> Option<String> {
         suppress_next_indent: false,
         line_limit: usize::MAX,
         compact_colon: true,
+        align_member_colons: false,
+        colon_align_col: None,
     };
     f.render_sig(node)
 }
@@ -128,6 +141,7 @@ pub fn format_document(
     use_tabs: bool,
     line_limit: u32,
     compact_colon: bool,
+    align_member_colons: bool,
 ) -> String {
     let indent_unit = if use_tabs {
         "\t".to_string()
@@ -142,6 +156,8 @@ pub fn format_document(
         suppress_next_indent: false,
         line_limit: line_limit as usize,
         compact_colon,
+        align_member_colons,
+        colon_align_col: None,
     };
     f.format_node(root);
     while f.out.ends_with("\n\n") {
@@ -161,6 +177,8 @@ struct Formatter<'a> {
     suppress_next_indent: bool,
     line_limit: usize,
     compact_colon: bool,
+    align_member_colons: bool,
+    colon_align_col: Option<usize>,
 }
 
 impl<'a> Formatter<'a> {
@@ -229,7 +247,7 @@ impl<'a> Formatter<'a> {
             "func_decl" | "event_decl" => self.format_func_decl(node),
             "class_decl" | "struct_decl" | "state_decl" => self.format_class_decl(node),
             "enum_decl" => self.format_enum_decl(node),
-            "member_var_decl" => self.format_member_var_decl(node),
+            "member_var_decl" => self.format_member_var_decl(node, None),
             "class_def" | "struct_def" => self.format_class_def(node),
             "func_block" => self.format_func_block(node),
             "if_stmt" => self.format_if_stmt(node),
@@ -247,6 +265,15 @@ impl<'a> Formatter<'a> {
         for child in &children {
             if child.is_missing() || child.kind() == "annotation" {
                 continue;
+            }
+            if child.kind() == ":" {
+                if let Some(col) = self.colon_align_col.take() {
+                    let mut len = self.current_line_len();
+                    while len < col {
+                        self.emit(" ");
+                        len += 1;
+                    }
+                }
             }
             if let Some(p) = prev {
                 if self.gap_between(p, *child, node.kind()) {
@@ -367,13 +394,77 @@ impl<'a> Formatter<'a> {
         self.nl();
     }
 
-    fn format_member_var_decl(&mut self, node: Node) {
+    fn format_member_var_decl(&mut self, node: Node, colon_align_col: Option<usize>) {
         if let Some(ann) = self.child_of_kind(node, "annotation") {
             self.emit_annotation(ann);
         }
         self.emit_indent();
+        self.colon_align_col = colon_align_col;
         self.format_children(node);
+        self.colon_align_col = None;
         self.nl();
+    }
+
+    fn member_var_pre_colon_width(&self, node: Node) -> usize {
+        let children = child_nodes(node);
+        let Some(colon) = children.iter().position(|c| c.kind() == ":") else {
+            return 0;
+        };
+        let mut width = 0;
+        let mut prev: Option<Node> = None;
+        for child in &children[..colon] {
+            if child.is_missing() || child.kind() == "annotation" {
+                continue;
+            }
+            if let Some(p) = prev {
+                if self.gap_between(p, *child, node.kind()) {
+                    width += 1;
+                }
+            }
+            width += self.render_node(*child).len();
+            prev = Some(*child);
+        }
+        width
+    }
+
+    // Targets for colon-aligning runs of consecutive field declarations. A run is a
+    // maximal sequence of plain `member_var_decl` members separated by at most one
+    // newline (a blank line breaks the run). Single-member runs are left unaligned.
+    fn member_colon_targets(&self, members: &[Node]) -> Vec<Option<usize>> {
+        let mut targets = vec![None; members.len()];
+        if !self.align_member_colons {
+            return targets;
+        }
+        let indent_width = self.level * self.indent_unit.len();
+        let mut i = 0;
+        while i < members.len() {
+            if !is_alignable_field(members[i]) {
+                i += 1;
+                continue;
+            }
+            let mut j = i;
+            while j + 1 < members.len()
+                && is_alignable_field(members[j + 1])
+                && members[j + 1]
+                    .start_position()
+                    .row
+                    .saturating_sub(members[j].end_position().row)
+                    <= 1
+            {
+                j += 1;
+            }
+            if j > i {
+                let width = (i..=j)
+                    .map(|k| self.member_var_pre_colon_width(members[k]))
+                    .max()
+                    .unwrap_or(0);
+                for target in targets.iter_mut().take(j + 1).skip(i) {
+                    *target = Some(indent_width + width);
+                }
+            }
+            i = j + 1;
+        }
+        targets
     }
 
     fn format_func_decl(&mut self, node: Node) {
@@ -665,11 +756,12 @@ impl<'a> Formatter<'a> {
         self.nl();
         self.level += 1;
 
+        let colon_targets = self.member_colon_targets(&members);
         let open_row = node.start_position().row;
         let mut prev_end_row: Option<usize> = None;
         let mut prev_was_comment = false;
 
-        for member in &members {
+        for (idx, member) in members.iter().enumerate() {
             let child_row = member.start_position().row;
             let source_gap = match prev_end_row {
                 Some(prev) => child_row.saturating_sub(prev),
@@ -682,7 +774,7 @@ impl<'a> Formatter<'a> {
                 self.nl();
             }
             prev_was_comment = member.kind() == "comment";
-            self.format_class_member(*member);
+            self.format_class_member(*member, colon_targets[idx]);
             prev_end_row = Some(member.end_position().row);
         }
 
@@ -697,7 +789,7 @@ impl<'a> Formatter<'a> {
         self.nl();
     }
 
-    fn format_class_member(&mut self, node: Node) {
+    fn format_class_member(&mut self, node: Node, colon_align_col: Option<usize>) {
         let has_comment_child = {
             let mut wc = node.walk();
             let result = node.children(&mut wc).any(|n| n.kind() == "comment");
@@ -719,7 +811,7 @@ impl<'a> Formatter<'a> {
                 self.nl();
             }
             "member_default_val_block" => self.format_defaults_block(node),
-            "member_var_decl" => self.format_member_var_decl(node),
+            "member_var_decl" => self.format_member_var_decl(node, colon_align_col),
             _ => {
                 self.emit_indent();
                 self.format_children(node);

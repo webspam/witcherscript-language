@@ -2,12 +2,41 @@ use crate::document::parse_document;
 
 fn fmt(source: &str) -> String {
     let doc = parse_document(source).expect("should parse");
-    super::format_document(doc.tree.root_node(), &doc.source, 4, false, 100, false)
+    super::format_document(
+        doc.tree.root_node(),
+        &doc.source,
+        4,
+        false,
+        100,
+        false,
+        false,
+    )
 }
 
 fn fmt_compact_colon(source: &str) -> String {
     let doc = parse_document(source).expect("should parse");
-    super::format_document(doc.tree.root_node(), &doc.source, 4, false, 100, true)
+    super::format_document(
+        doc.tree.root_node(),
+        &doc.source,
+        4,
+        false,
+        100,
+        true,
+        false,
+    )
+}
+
+fn fmt_aligned(source: &str) -> String {
+    let doc = parse_document(source).expect("should parse");
+    super::format_document(
+        doc.tree.root_node(),
+        &doc.source,
+        4,
+        false,
+        100,
+        false,
+        true,
+    )
 }
 
 fn fmt_limit(source: &str, line_limit: u32) -> String {
@@ -18,6 +47,7 @@ fn fmt_limit(source: &str, line_limit: u32) -> String {
         4,
         false,
         line_limit,
+        false,
         false,
     )
 }
@@ -103,6 +133,71 @@ fn blank_lines_after_annotated_decl_capped_at_one() {
     assert_eq!(
         output,
         "@addField(CR4Player)\nvar foo : int;\n\nvar bar : int;\n"
+    );
+}
+
+#[test]
+fn member_colons_not_aligned_by_default() {
+    let output = fmt("class C { var x : int; var someLongName : string; }");
+    assert!(output.contains("    var x : int;"), "got:\n{output}");
+    assert!(
+        output.contains("    var someLongName : string;"),
+        "got:\n{output}"
+    );
+}
+
+#[test]
+fn aligns_consecutive_member_colons() {
+    let output = fmt_aligned("class C { var x : int; var someLongName : string; var ab : bool; }");
+    assert!(
+        output.contains("    var x            : int;"),
+        "got:\n{output}"
+    );
+    assert!(
+        output.contains("    var someLongName : string;"),
+        "got:\n{output}"
+    );
+    assert!(
+        output.contains("    var ab           : bool;"),
+        "got:\n{output}"
+    );
+}
+
+#[test]
+fn blank_line_breaks_alignment_run() {
+    let output = fmt_aligned("class C {\n    var x : int;\n    var someLongName : string;\n\n    var y : int;\n    var anotherLongOne : bool;\n}");
+    // First run aligns to `someLongName`.
+    assert!(
+        output.contains("    var x            : int;"),
+        "got:\n{output}"
+    );
+    // Second run aligns independently to `anotherLongOne`.
+    assert!(
+        output.contains("    var y              : int;"),
+        "got:\n{output}"
+    );
+    assert!(
+        output.contains("    var anotherLongOne : bool;"),
+        "got:\n{output}"
+    );
+}
+
+#[test]
+fn single_field_is_not_padded() {
+    let output = fmt_aligned("class C { var x : int; }");
+    assert!(output.contains("    var x : int;"), "got:\n{output}");
+}
+
+#[test]
+fn alignment_accounts_for_specifiers_and_name_lists() {
+    let output = fmt_aligned("class C {\n    private var a, bb : int;\n    var c : float;\n}");
+    assert!(
+        output.contains("    private var a, bb : int;"),
+        "got:\n{output}"
+    );
+    assert!(
+        output.contains("    var c             : float;"),
+        "got:\n{output}"
     );
 }
 
