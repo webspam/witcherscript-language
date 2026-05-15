@@ -6,8 +6,10 @@ use tree_sitter::{Node, Point};
 use crate::line_index::SourceRange;
 
 mod duplicate_symbols;
+mod shadowing;
 
 pub use duplicate_symbols::collect_duplicate_symbol_diagnostics;
+pub use shadowing::collect_shadowing_diagnostics;
 
 #[derive(Debug, Clone)]
 pub struct ParseDiagnostic {

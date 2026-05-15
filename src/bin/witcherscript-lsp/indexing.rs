@@ -8,7 +8,9 @@ use rayon::prelude::*;
 use serde_json::Value;
 use tower_lsp::lsp_types::{ConfigurationItem, Position, Url};
 use tracing::{debug, error, info, trace, warn};
-use witcherscript_parser::diagnostics::collect_duplicate_symbol_diagnostics;
+use witcherscript_parser::diagnostics::{
+    collect_duplicate_symbol_diagnostics, collect_shadowing_diagnostics,
+};
 use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::collect_witcherscript_files;
 use witcherscript_parser::resolve::{resolve_definition, Definition, SymbolDb, WorkspaceIndex};
@@ -112,9 +114,13 @@ impl Backend {
 
     async fn publish_open_diagnostics(&self) {
         let start = Instant::now();
-        let dup_by_uri = {
+        let (dup_by_uri, shadow_by_uri) = {
             let index = self.workspace_index.lock().await;
-            collect_duplicate_symbol_diagnostics(&index)
+            let env = self.script_env.lock().await;
+            (
+                collect_duplicate_symbol_diagnostics(&index),
+                collect_shadowing_diagnostics(&index, &env),
+            )
         };
         let collect_us = start.elapsed().as_micros();
         let documents = self.documents.lock().await;
@@ -124,6 +130,9 @@ impl Backend {
             let mut diagnostics = lsp_diagnostics(document);
             if let Some(dups) = dup_by_uri.get(uri.as_str()) {
                 diagnostics.extend(dups.iter().map(lsp_workspace_diagnostic));
+            }
+            if let Some(shadows) = shadow_by_uri.get(uri.as_str()) {
+                diagnostics.extend(shadows.iter().map(lsp_workspace_diagnostic));
             }
             if published.get(uri) == Some(&diagnostics) {
                 continue;
@@ -137,6 +146,7 @@ impl Backend {
         trace!(
             open_documents = documents.len(),
             flagged_uris = dup_by_uri.len(),
+            shadow_uris = shadow_by_uri.len(),
             republished,
             collect_us,
             total_us = start.elapsed().as_micros(),

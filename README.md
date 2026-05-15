@@ -49,6 +49,10 @@ Current validation rules:
   not share a name with another top-level declaration anywhere in the workspace. Each
   conflicting declaration is flagged, with related-information links to the others.
   Modding-annotation member injections (`@addMethod`/`@wrapMethod`/...) are exempt.
+- Shadowing (warning): a parameter, local `var`, or member field whose name collides with
+  a `redscripts.ini` `[globals]` entry; or a local `var` whose name collides with a field
+  declared in the enclosing class/struct/state. `@wrapMethod` and `@replaceMethod`
+  functions are exempt.
 
 `--dump-tree` prints a concrete syntax tree with node kinds plus line/column and byte
 ranges.
