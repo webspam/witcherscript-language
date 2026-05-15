@@ -102,6 +102,7 @@ pub(crate) struct Backend {
     pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
     pub(crate) formatter_line_limit: Arc<AtomicU32>,
     pub(crate) formatter_compact_colon: Arc<AtomicBool>,
+    pub(crate) formatter_align_member_colons: Arc<AtomicBool>,
     pub(crate) initial_index_done: Arc<Mutex<bool>>,
 }
 
@@ -129,6 +130,10 @@ impl LanguageServer for Backend {
                 if let Some(compact) = formatter.get("compactColon").and_then(|v| v.as_bool()) {
                     self.formatter_compact_colon
                         .store(compact, Ordering::Relaxed);
+                }
+                if let Some(align) = formatter.get("alignMemberColons").and_then(|v| v.as_bool()) {
+                    self.formatter_align_member_colons
+                        .store(align, Ordering::Relaxed);
                 }
             }
         }
@@ -745,6 +750,7 @@ impl LanguageServer for Backend {
 
         let line_limit = self.formatter_line_limit.load(Ordering::Relaxed);
         let compact_colon = self.formatter_compact_colon.load(Ordering::Relaxed);
+        let align_member_colons = self.formatter_align_member_colons.load(Ordering::Relaxed);
 
         let formatted = format_document(
             document.tree.root_node(),
@@ -753,7 +759,7 @@ impl LanguageServer for Backend {
             use_tabs,
             line_limit,
             compact_colon,
-            false,
+            align_member_colons,
         );
 
         if formatted == document.source {

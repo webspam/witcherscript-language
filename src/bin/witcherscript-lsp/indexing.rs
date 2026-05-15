@@ -171,6 +171,10 @@ impl Backend {
             },
             ConfigurationItem {
                 scope_uri: None,
+                section: Some("witcherscript.formatter.alignMemberColons".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
                 section: Some("files.exclude".to_string()),
             },
         ];
@@ -198,6 +202,10 @@ impl Backend {
         if let Some(Value::Bool(compact)) = iter.next() {
             self.formatter_compact_colon
                 .store(compact, Ordering::Relaxed);
+        }
+        if let Some(Value::Bool(align)) = iter.next() {
+            self.formatter_align_member_colons
+                .store(align, Ordering::Relaxed);
         }
         if let Some(Value::Object(map)) = iter.next() {
             let globs: Vec<String> = map
