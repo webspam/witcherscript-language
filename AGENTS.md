@@ -110,6 +110,11 @@ just build
 just test
 ```
 
+Tests run via [cargo-nextest](https://nexte.st), which produces a compact per-test
+status table instead of the verbose `cargo test` output. Install locally with
+`cargo binstall cargo-nextest` or `winget install nextest.cargo-nextest`. Config
+lives at `.config/nextest.toml`.
+
 The test suite includes:
 
 - Embedded `#[cfg(test)]` modules in `diagnostics/`, `symbols.rs`, `line_index.rs`,

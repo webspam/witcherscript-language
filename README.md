@@ -200,8 +200,10 @@ cross-file go-to-definition lookups.
 ## Tests
 
 ```powershell
-cargo test
+cargo nextest run
 ```
+
+Tests run via [cargo-nextest](https://nexte.st). Install with `cargo binstall cargo-nextest` or `winget install nextest.cargo-nextest`.
 
 Parser fixtures live under `tests/fixtures/valid` and `tests/fixtures/invalid`. Add `.ws`
 files there when covering larger WitcherScript examples; the fixture tests discover those

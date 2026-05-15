@@ -99,9 +99,13 @@ fn make_index(uri: &str, doc: &ParsedDocument) -> WorkspaceIndex {
 ## Running tests
 
 ```
-just test      # cargo fmt + cargo test (minimal output)
-just ci        # cargo fmt --check + cargo clippy -D warnings + cargo test
+just test      # cargo fmt + cargo clippy + cargo nextest run
+just ci        # cargo fmt --check + cargo clippy -D warnings + cargo nextest run
 ```
+
+Both recipes run tests via [cargo-nextest](https://nexte.st), which produces a compact per-test status table instead of the verbose `cargo test` output. Install locally with `cargo binstall cargo-nextest` or `winget install nextest.cargo-nextest`. Config lives at `.config/nextest.toml`.
+
+There are no doctests in this repo, so a separate `cargo test --doc` step is not needed.
 
 ## When to add what kind of test
 
