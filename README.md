@@ -72,6 +72,22 @@ cargo build --bin witcherscript-lsp --release
 
 The resulting binary is `target/release/witcherscript-lsp.exe`.
 
+### Debug mode (TCP)
+
+For diagnosing issues, run the server in TCP listen mode and attach your editor as a
+client:
+
+```powershell
+cargo run --bin witcherscript-lsp -- --listen 9257
+```
+
+The server binds `127.0.0.1:<port>` (loopback only — never the LAN), accepts a single
+client connection, and serves it until disconnect. Server logs go to stderr in the
+launching terminal; when `--listen` is set and `RUST_LOG` is unset, the default filter
+is `warn,witcherscript_lsp=trace,witcherscript_parser=trace` so own-crate trace events
+show up immediately and dependency crates stay quiet. Configure your editor's LSP
+client extension to connect to `127.0.0.1:9257` instead of spawning the binary.
+
 ### LSP capabilities
 
 | Capability | Detail |
