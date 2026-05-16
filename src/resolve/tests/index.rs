@@ -41,3 +41,23 @@ fn all_top_level_excludes_members() {
         "all_top_level must not yield methods or fields"
     );
 }
+
+#[test]
+fn generation_counter_bumps_on_mutation() {
+    let doc_a = make_doc("class Foo {}\n");
+    let doc_b = make_doc("class Bar {}\n");
+    let mut index = super::WorkspaceIndex::default();
+    let g0 = index.generation();
+
+    index.update_document("file:///a.ws", &doc_a);
+    let g1 = index.generation();
+    assert_ne!(g0, g1, "update_document should bump generation");
+
+    index.update_document("file:///b.ws", &doc_b);
+    let g2 = index.generation();
+    assert_ne!(g1, g2, "second update should bump again");
+
+    index.remove_document("file:///b.ws");
+    let g3 = index.generation();
+    assert_ne!(g2, g3, "remove_document should bump generation");
+}

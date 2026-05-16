@@ -234,9 +234,14 @@ pub struct WorkspaceIndex {
     member_by_type: HashMap<String, HashMap<String, Definition>>,
     annotated_members_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
     doc_idents: HashMap<String, HashMap<String, Vec<std::ops::Range<usize>>>>,
+    generation: u64,
 }
 
 impl WorkspaceIndex {
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
     pub fn update_document(&mut self, uri: impl Into<String>, document: &ParsedDocument) {
         let uri: String = uri.into();
         self.remove_from_indices(&uri);
@@ -246,12 +251,14 @@ impl WorkspaceIndex {
         self.doc_idents
             .insert(uri.clone(), scan_ident_occurrences(document));
         self.documents.insert(uri, all_symbols);
+        self.generation = self.generation.wrapping_add(1);
     }
 
     pub fn remove_document(&mut self, uri: &str) {
         self.remove_from_indices(uri);
         self.doc_idents.remove(uri);
         self.documents.remove(uri);
+        self.generation = self.generation.wrapping_add(1);
     }
 
     fn is_indexed(&self, uri: &str) -> bool {

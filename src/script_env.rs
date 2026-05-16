@@ -1,9 +1,16 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use tower_lsp::lsp_types::Url;
 
 use crate::line_index::{SourcePosition, SourceRange};
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+
+static SCRIPT_ENV_VERSION: AtomicU64 = AtomicU64::new(0);
+
+fn next_script_env_version() -> u64 {
+    SCRIPT_ENV_VERSION.fetch_add(1, Ordering::Relaxed)
+}
 
 #[derive(Debug)]
 pub struct ScriptGlobal {
@@ -13,12 +20,33 @@ pub struct ScriptGlobal {
     pub symbol: Symbol,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ScriptEnvironment {
     pub globals: Vec<ScriptGlobal>,
+    version: u64,
+}
+
+impl Default for ScriptEnvironment {
+    fn default() -> Self {
+        Self {
+            globals: Vec::new(),
+            version: next_script_env_version(),
+        }
+    }
 }
 
 impl ScriptEnvironment {
+    pub fn new(globals: Vec<ScriptGlobal>) -> Self {
+        Self {
+            globals,
+            version: next_script_env_version(),
+        }
+    }
+
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+
     pub fn find(&self, name: &str) -> Option<&ScriptGlobal> {
         self.globals.iter().find(|g| g.name == name)
     }
@@ -102,7 +130,7 @@ pub fn parse_script_environment(ini_path: &Path) -> Option<ScriptEnvironment> {
         });
     }
 
-    Some(ScriptEnvironment { globals })
+    Some(ScriptEnvironment::new(globals))
 }
 
 #[cfg(test)]

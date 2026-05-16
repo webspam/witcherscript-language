@@ -203,7 +203,7 @@ mod tests {
                 },
             })
             .collect();
-        ScriptEnvironment { globals }
+        ScriptEnvironment::new(globals)
     }
 
     fn dummy_range() -> SourceRange {
