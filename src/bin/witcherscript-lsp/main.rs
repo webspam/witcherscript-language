@@ -55,8 +55,9 @@ fn parse_listen_port() -> Option<u16> {
                 }
             }
         }
+        "--stdio" => None,
         "--help" | "-h" => {
-            eprintln!("Usage: witcherscript-lsp [--listen <port>]");
+            eprintln!("Usage: witcherscript-lsp [--stdio | --listen <port>]");
             std::process::exit(0);
         }
         other => {
