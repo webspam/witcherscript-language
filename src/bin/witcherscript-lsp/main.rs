@@ -1,5 +1,6 @@
 mod backend;
 mod convert;
+mod cst_cache;
 mod indexing;
 mod logging;
 #[cfg(test)]
@@ -123,6 +124,7 @@ fn build_service(
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
             script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
+            cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
             formatter_line_limit: Arc::new(AtomicU32::new(100)),
             formatter_compact_colon: Arc::new(AtomicBool::new(false)),
             formatter_align_member_colons: Arc::new(AtomicBool::new(false)),

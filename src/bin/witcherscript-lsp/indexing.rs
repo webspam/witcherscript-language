@@ -13,7 +13,7 @@ use tower_lsp::lsp_types::{
 use tracing::{debug, error, info, trace, warn};
 use witcherscript_parser::diagnostics::{
     collect_duplicate_local_diagnostics, collect_duplicate_symbol_diagnostics,
-    collect_shadowing_diagnostics, collect_unknown_method_diagnostics,
+    collect_shadowing_diagnostics,
 };
 use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::{
@@ -24,6 +24,7 @@ use witcherscript_parser::script_env::parse_script_environment;
 
 use crate::backend::Backend;
 use crate::convert::{canonical_uri, lsp_diagnostics, lsp_workspace_diagnostic, source_position};
+use crate::cst_cache::{cst_diagnostics_with_cache, DbFingerprint};
 use crate::logging::{level_from_str, level_to_u8};
 
 fn log_setting_change<T: PartialEq + std::fmt::Display>(setting: &str, prev: T, new: T) {
@@ -137,24 +138,27 @@ impl Backend {
         let start = Instant::now();
 
         let documents = self.documents.lock().await;
-        let doc_pairs: Vec<(&str, &ParsedDocument)> = documents
-            .iter()
-            .map(|(url, doc)| (url.as_str(), doc))
-            .collect();
 
-        let (dup_by_uri, shadow_by_uri, dup_local_by_uri, unknown_method_by_uri) = {
+        let (dup_by_uri, shadow_by_uri, dup_local_by_uri, cst_by_uri, cst_stats) = {
             let index = self.workspace_index.lock().await;
             let base = self.base_scripts_index.lock().await;
             let env = self.script_env.lock().await;
+            let mut cache = self.cst_diag_cache.lock().await;
 
             let db = SymbolDb::new(&index, &base).with_script_env(&env);
 
-            (
-                collect_duplicate_symbol_diagnostics(&index),
-                collect_shadowing_diagnostics(&index, &env),
-                collect_duplicate_local_diagnostics(&index),
-                collect_unknown_method_diagnostics(&doc_pairs, &db),
-            )
+            let dup = collect_duplicate_symbol_diagnostics(&index);
+            let shadow = collect_shadowing_diagnostics(&index, &env);
+            let dup_local = collect_duplicate_local_diagnostics(&index);
+
+            let fingerprint = DbFingerprint {
+                workspace: index.generation(),
+                base: base.generation(),
+                env: env.version(),
+            };
+            let (cst, stats) = cst_diagnostics_with_cache(&documents, &db, fingerprint, &mut cache);
+
+            (dup, shadow, dup_local, cst, stats)
         };
 
         let collect_us = start.elapsed().as_micros();
@@ -171,8 +175,8 @@ impl Backend {
             if let Some(dup_locals) = dup_local_by_uri.get(uri.as_str()) {
                 diagnostics.extend(dup_locals.iter().map(lsp_workspace_diagnostic));
             }
-            if let Some(unknown) = unknown_method_by_uri.get(uri.as_str()) {
-                diagnostics.extend(unknown.iter().map(lsp_workspace_diagnostic));
+            if let Some(cst) = cst_by_uri.get(uri.as_str()) {
+                diagnostics.extend(cst.iter().map(lsp_workspace_diagnostic));
             }
             if published.get(uri) == Some(&diagnostics) {
                 continue;
@@ -188,7 +192,9 @@ impl Backend {
             flagged_uris = dup_by_uri.len(),
             shadow_uris = shadow_by_uri.len(),
             dup_local_uris = dup_local_by_uri.len(),
-            unknown_method_uris = unknown_method_by_uri.len(),
+            cst_uris = cst_by_uri.len(),
+            cst_cache_hits = cst_stats.hits,
+            cst_cache_misses = cst_stats.misses,
             republished,
             collect_us,
             total_us = start.elapsed().as_micros(),

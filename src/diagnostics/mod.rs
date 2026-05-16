@@ -17,6 +17,20 @@ pub use duplicate_symbols::collect_duplicate_symbol_diagnostics;
 pub use shadowing::collect_shadowing_diagnostics;
 pub use unknown_method::collect_unknown_method_diagnostics;
 
+use crate::document::ParsedDocument;
+use crate::resolve::SymbolDb;
+use unknown_method::UnknownMethodRule;
+
+pub fn collect_cst_diagnostics_for_document(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+) -> Vec<WorkspaceDiagnostic> {
+    let rule = UnknownMethodRule;
+    let rules: Vec<&dyn CstRule> = vec![&rule];
+    run_rules_on_document(uri, document, db, &rules)
+}
+
 #[derive(Debug, Clone)]
 pub struct ParseDiagnostic {
     pub kind: String,

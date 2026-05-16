@@ -104,6 +104,7 @@ pub(crate) struct Backend {
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
+    pub(crate) cst_diag_cache: Arc<Mutex<HashMap<Url, crate::cst_cache::CstCacheEntry>>>,
     pub(crate) formatter_line_limit: Arc<AtomicU32>,
     pub(crate) formatter_compact_colon: Arc<AtomicBool>,
     pub(crate) formatter_align_member_colons: Arc<AtomicBool>,
