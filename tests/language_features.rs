@@ -1,3 +1,4 @@
+use witcherscript_parser::builtins::{load_builtins_index, BUILTIN_ARRAY_URI};
 use witcherscript_parser::document::parse_document;
 use witcherscript_parser::line_index::SourcePosition;
 use witcherscript_parser::resolve::{resolve_definition, SymbolDb, WorkspaceIndex};
@@ -182,6 +183,39 @@ fn class_name_used_as_receiver_does_not_resolve() {
         result.is_none(),
         "static-style member access must not resolve"
     );
+}
+
+#[test]
+fn builtin_array_methods_resolve_through_fixture() {
+    let source = include_str!("fixtures/valid/builtin_array_usage.ws");
+    let doc = parse_document(source).expect("fixture should parse");
+
+    let mut workspace = WorkspaceIndex::default();
+    workspace.update_document("file:///user/array_usage.ws", &doc);
+    let empty = WorkspaceIndex::default();
+    let builtins = load_builtins_index();
+    let db = SymbolDb::new(&workspace, &empty).with_builtins(&builtins);
+
+    let line = source
+        .lines()
+        .position(|l| l.contains("ints.PushBack"))
+        .unwrap();
+    let col = source.lines().nth(line).unwrap().find("PushBack").unwrap();
+    let def = resolve_definition(
+        "file:///user/array_usage.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: line as u32,
+            character: (col + 1) as u32,
+        },
+    )
+    .expect("PushBack should resolve");
+
+    assert_eq!(def.uri, BUILTIN_ARRAY_URI);
+    assert_eq!(def.symbol.name, "PushBack");
+    let sig = def.symbol.signature.as_deref().unwrap_or("");
+    assert!(sig.contains("param1: int"), "got signature: {sig}");
 }
 
 fn assert_symbol(

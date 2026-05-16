@@ -1,3 +1,4 @@
+mod builtin_array;
 mod chaining;
 mod completion_annotation;
 mod completion_keywords;
