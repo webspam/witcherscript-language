@@ -3,8 +3,16 @@
 **Module:** `src/diagnostics/`
 
 - `src/diagnostics/mod.rs` — syntactic, single-document diagnostics (`ParseDiagnostic`,
-  `collect_diagnostics`, `format_tree`) plus the shared workspace-diagnostic types.
-- `src/diagnostics/duplicate_symbols.rs` — the first workspace-wide (cross-file) rule.
+  `collect_diagnostics`, `format_tree`), the shared workspace-diagnostic types, and the
+  single-walk dispatcher `collect_cst_diagnostics_for_document`.
+- `src/diagnostics/duplicate_symbols.rs` — workspace-wide index-walking rule.
+- `src/diagnostics/duplicate_local.rs` — workspace-wide index-walking rule.
+- `src/diagnostics/shadowing.rs` — workspace-wide index-walking rule (warning severity).
+- `src/diagnostics/unknown_method.rs` — workspace-wide CST-walking rule registered via
+  `CstRule`.
+- `src/diagnostics/cst_walker.rs` — `CstRule` trait, `CstRuleCtx`, per-call `TypeMemo`,
+  `run_rules_on_document`. Any new rule needing to walk a document's CST must register
+  here rather than walking on its own.
 
 ## ParseDiagnostic
 
@@ -111,13 +119,36 @@ Used by the CLI's `--dump-tree` flag.
 4. If the rule is complex, add a fixture under `tests/fixtures/invalid/` (file must produce at least one diagnostic).
 5. Document the rule in the "Diagnostics" section of `README.md`.
 
-**Workspace (cross-file) rule:**
+**Workspace (cross-file), index-walking rule** (no CST traversal needed — operates over
+`WorkspaceIndex` / `ScriptEnvironment`):
 
 1. Add a new submodule under `src/diagnostics/` returning `HashMap<uri, Vec<WorkspaceDiagnostic>>`.
 2. Re-export its entry point from `src/diagnostics/mod.rs`.
 3. Call it from `Backend::publish_open_diagnostics` in `src/bin/witcherscript-lsp/indexing.rs`.
 4. Add unit tests in the submodule's `#[cfg(test)]` block (fixtures cannot express cross-file rules).
 5. Document the rule in `README.md`.
+
+**Workspace (cross-file), CST-walking rule** (needs to inspect the tree of each open
+document — e.g. unknown method/field access, type mismatch):
+
+1. Add a new submodule under `src/diagnostics/` containing a unit struct (e.g. `MyRule`)
+   that implements `CstRule` from `crate::diagnostics::cst_walker`.
+2. In `interested_in(kind)`, return `true` only for the node kinds the rule actually
+   inspects — the dispatcher uses this to short-circuit.
+3. In `visit(node, ctx)`, push `WorkspaceDiagnostic` values into `ctx.diagnostics`. Use
+   `infer_expr_type_memo(ctx.uri, ctx.document, ctx.db, node, byte, ctx.type_memo)`
+   for receiver-type inference so chained calls share work.
+4. Register the rule in `collect_cst_diagnostics_for_document` in `src/diagnostics/mod.rs`.
+5. The LSP server picks it up automatically — no edit to `publish_open_diagnostics`
+   needed. The per-document cache in `src/bin/witcherscript-lsp/cst_cache.rs` already
+   keys on `(parse_version, workspace_generation, base_generation, env_version)`, so
+   the rule re-runs only when the document is reparsed or workspace state changes.
+6. Add unit tests in the submodule's `#[cfg(test)]` block.
+7. Document the rule in `README.md`.
+
+Do not walk the tree yourself in a CST rule — register interest with `CstRule` so all
+rules share a single walk per document and the per-call `TypeMemo` survives across
+rule invocations.
 
 ## Existing tests
 

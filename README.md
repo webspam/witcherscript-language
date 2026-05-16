@@ -57,6 +57,12 @@ Current validation rules:
   a `redscripts.ini` `[globals]` entry; or a local `var` whose name collides with a field
   declared in the enclosing class/struct/state. `@wrapMethod` and `@replaceMethod`
   functions are exempt.
+- Unknown method on a known receiver type: a `receiver.Method()` call where `receiver`
+  resolves to a workspace `class`/`struct`/`state` but `Method` is not declared on that
+  type or any of its supertypes (inheritance traversed up to depth 32). Calls on
+  unknown/primitive receivers, on `super`/`parent`/`virtualParent`, on casts, or through
+  indexed/parenthesised expressions are skipped to avoid false positives. Private members
+  count as known.
 
 `--dump-tree` prints a concrete syntax tree with node kinds plus line/column and byte
 ranges.
