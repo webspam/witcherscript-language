@@ -18,6 +18,7 @@ This is a Rust crate (`witcherscript-parser`) that produces two binaries:
 | `src/line_index.rs`            | Byte ↔ UTF-16 position mapping (LSP-compatible)                                |                                                      |
 | `src/script_env.rs`            | Script globals from `redscripts.ini`                                           |                                                      |
 | `src/symbols.rs`               | `DocumentSymbols`, `Symbol`, `SymbolKind`, `extract_symbols`                   | [symbols.md](docs/agents/symbols.md)                 |
+| `src/builtins.rs` + `builtins/` | Synthetic engine types (`array<T>`) embedded from `.ws` files                  | [builtins.md](docs/agents/builtins.md)               |
 | `src/resolve/mod.rs`           | `WorkspaceIndex`, `SymbolDb`, `resolve_definition`, completions                | [resolution.md](docs/agents/resolution.md)           |
 | `src/resolve/tests/`           | ~3400-line test suite split across 11 focused files — use as pattern reference | [testing.md](docs/agents/testing.md)                 |
 | `src/semantic_tokens/mod.rs`   | `TOKEN_TYPES`, `collect_semantic_tokens`, classify                             | [semantic_tokens.md](docs/agents/semantic_tokens.md) |
@@ -40,6 +41,7 @@ Full architecture diagram and data flow: [docs/agents/architecture.md](docs/agen
 | Fix position/encoding bug                   | `src/line_index.rs` + its `#[cfg(test)]` block                                                                                                                                                     |
 | Add WitcherScript syntax support            | Grammar repo (`tree-sitter-witcherscript`) is external; pin new tag in `Cargo.toml`                                                                                                                |
 | Inspect grammar node kinds / rule structure | Read `../tree-sitter-witcherscript/grammar.js` (relative to repo root). Online: https://raw.githubusercontent.com/webspam/tree-sitter-witcherscript/refs/heads/master/grammar.js                   |
+| Add or edit a built-in method (e.g. `array.NewMethod`) | Edit `builtins/<name>.ws` + add a test under `src/resolve/tests/builtin_<name>.rs`                                                                                |
 
 ## WitcherScript language cheat sheet
 

@@ -40,23 +40,31 @@ all_top_level_callables()                         // all Function/Event, excludi
 
 ## SymbolDb
 
-A per-request view combining workspace + base indexes.
+A per-request view combining workspace + base + builtins indexes.
 
 ```rust
 pub struct SymbolDb<'a> {
     workspace: &'a WorkspaceIndex,
     base: &'a WorkspaceIndex,
+    builtins: Option<&'a WorkspaceIndex>,
     script_env: Option<&'a ScriptEnvironment>,
 }
 
 // Construction
 SymbolDb::new(&workspace_index, &base_scripts_index)
-    .with_script_env(&script_env)  // optional; adds INI globals
+    .with_script_env(&script_env)        // optional; adds INI globals
+    .with_builtins(&builtins_index)      // optional; engine-magic types like `array`
 
-// workspace always takes priority over base for same-name symbols
+// Precedence: workspace → base → builtins (for same-name symbols, first hit wins)
 ```
 
-`SymbolDb` mirrors most `WorkspaceIndex` queries but searches workspace first, then falls back to base. For member resolution it uses `find_member_chain_cross()` which can traverse inheritance across both indexes simultaneously.
+`SymbolDb` mirrors most `WorkspaceIndex` queries but searches workspace first, then base, then builtins. For member resolution it uses `find_member_chain_cross()` which can traverse inheritance across all three indexes simultaneously.
+
+### Generic type lookup (array<T>)
+
+When `find_member` / `members_of_tiered` / `direct_members_of` are called with a container like `array<int>`, `SymbolDb` extracts the constructor (`array`) and element (`int`) via `parse_generic_type()`, looks up members of `array` in the chain, and then substitutes the placeholder ident `T` with `int` in each returned `Definition`'s `type_annotation`, `signature`, `detail`, and `container_name`. Substitution is whole-ident only (`T` and `<T>` match, `TArray` does not). See [docs/agents/builtins.md](builtins.md) for the full story.
+
+`all_types()` deliberately omits the builtins index — we never want `array` to appear as a user-completable type name.
 
 ## resolve_definition priority chain
 
