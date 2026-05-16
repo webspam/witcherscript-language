@@ -87,6 +87,15 @@ fn is_alignable_field(node: Node) -> bool {
     !has_comment
 }
 
+fn is_bodiless_callable(node: Node) -> bool {
+    if !matches!(node.kind(), "func_decl" | "event_decl") {
+        return false;
+    }
+    let mut c = node.walk();
+    let has_block = node.children(&mut c).any(|n| n.kind() == "func_block");
+    !has_block
+}
+
 fn is_expr_node(kind: &str) -> bool {
     matches!(
         kind,
@@ -760,6 +769,7 @@ impl<'a> Formatter<'a> {
         let open_row = node.start_position().row;
         let mut prev_end_row: Option<usize> = None;
         let mut prev_was_comment = false;
+        let mut prev_member: Option<Node> = None;
 
         for (idx, member) in members.iter().enumerate() {
             let child_row = member.start_position().row;
@@ -768,14 +778,17 @@ impl<'a> Formatter<'a> {
                 None => child_row.saturating_sub(open_row),
             };
             let is_callable = matches!(member.kind(), "func_decl" | "event_decl");
-            let want_blank =
-                source_gap >= 2 || (is_callable && prev_end_row.is_some() && !prev_was_comment);
+            let both_bodiless = is_bodiless_callable(*member)
+                && prev_member.map(is_bodiless_callable).unwrap_or(false);
+            let want_blank = source_gap >= 2
+                || (is_callable && prev_end_row.is_some() && !prev_was_comment && !both_bodiless);
             if want_blank {
                 self.nl();
             }
             prev_was_comment = member.kind() == "comment";
             self.format_class_member(*member, colon_targets[idx]);
             prev_end_row = Some(member.end_position().row);
+            prev_member = Some(*member);
         }
 
         self.level -= 1;

@@ -409,6 +409,46 @@ fn no_blank_line_between_adjacent_class_fields() {
 }
 
 #[test]
+fn no_blank_line_between_adjacent_abstract_methods() {
+    let input = "abstract class C {\n    function Foo();\n    function Bar();\n}";
+    let output = fmt(input);
+    assert!(
+        !output.contains("function Foo();\n\n"),
+        "adjacent abstract methods should not gain a blank line, got:\n{output}"
+    );
+}
+
+#[test]
+fn blank_line_between_abstract_methods_preserved() {
+    let input = "abstract class C {\n    function Foo();\n\n    function Bar();\n}";
+    let output = fmt(input);
+    assert!(
+        output.contains("function Foo();\n\n    function Bar();"),
+        "explicit blank line between abstract methods should be preserved, got:\n{output}"
+    );
+}
+
+#[test]
+fn blank_line_forced_between_abstract_and_bodied_methods() {
+    let input = "abstract class C {\n    function Foo();\n    function Bar() {}\n}";
+    let output = fmt(input);
+    assert!(
+        output.contains("function Foo();\n\n    function Bar() {}"),
+        "bodied method following abstract one should still get a blank line, got:\n{output}"
+    );
+}
+
+#[test]
+fn blank_line_forced_between_bodied_and_abstract_methods() {
+    let input = "abstract class C {\n    function Foo() {}\n    function Bar();\n}";
+    let output = fmt(input);
+    assert!(
+        output.contains("function Foo() {}\n\n    function Bar();"),
+        "abstract method following bodied one should still get a blank line, got:\n{output}"
+    );
+}
+
+#[test]
 fn long_func_signature_splits_params() {
     let src = "function LongFuncName(paramOne:int,paramTwo:bool,paramThree:string):bool{}";
     let out = fmt_limit(src, 60);
