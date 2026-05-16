@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
@@ -8,30 +9,51 @@ use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::{Severity, WorkspaceDiagnostic};
 
+#[derive(Default)]
+struct ScanStats {
+    method_calls: usize,
+    typed_receivers: usize,
+}
+
 pub fn collect_unknown_method_diagnostics(
     documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
     let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
+    let mut totals = ScanStats::default();
 
     for (uri, document) in documents {
         let mut diagnostics = Vec::new();
-        check_document(uri, document, db, &mut diagnostics);
+        let mut stats = ScanStats::default();
+        walk_tree(
+            document.tree.root_node(),
+            uri,
+            document,
+            db,
+            &mut diagnostics,
+            &mut stats,
+        );
+        totals.method_calls += stats.method_calls;
+        totals.typed_receivers += stats.typed_receivers;
         if !diagnostics.is_empty() {
+            debug!(
+                uri = %uri,
+                count = diagnostics.len(),
+                "emitted unknown-method diagnostics"
+            );
             result.insert(uri.to_string(), diagnostics);
         }
     }
 
-    result
-}
+    trace!(
+        documents = documents.len(),
+        method_calls = totals.method_calls,
+        typed_receivers = totals.typed_receivers,
+        flagged_uris = result.len(),
+        "scanned for unknown method calls"
+    );
 
-fn check_document(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    diagnostics: &mut Vec<WorkspaceDiagnostic>,
-) {
-    walk_tree(document.tree.root_node(), uri, document, db, diagnostics);
+    result
 }
 
 fn walk_tree(
@@ -40,14 +62,15 @@ fn walk_tree(
     document: &ParsedDocument,
     db: &SymbolDb,
     diagnostics: &mut Vec<WorkspaceDiagnostic>,
+    stats: &mut ScanStats,
 ) {
     if node.kind() == "func_call_expr" {
-        let _ = check_method_call(node, uri, document, db, diagnostics);
+        let _ = check_method_call(node, uri, document, db, diagnostics, stats);
     }
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_tree(child, uri, document, db, diagnostics);
+        walk_tree(child, uri, document, db, diagnostics, stats);
     }
 }
 
@@ -57,6 +80,7 @@ fn check_method_call(
     document: &ParsedDocument,
     db: &SymbolDb,
     diagnostics: &mut Vec<WorkspaceDiagnostic>,
+    stats: &mut ScanStats,
 ) -> Option<()> {
     let func = node.child_by_field_name("func").or_else(|| {
         let mut cursor = node.walk();
@@ -67,6 +91,8 @@ fn check_method_call(
     if func.kind() != "member_access_expr" {
         return None;
     }
+
+    stats.method_calls += 1;
 
     let receiver = {
         let mut cursor = func.walk();
@@ -87,6 +113,7 @@ fn check_method_call(
     let method_name = method_ident.utf8_text(document.source.as_bytes()).ok()?;
 
     let receiver_type = infer_expr_type(uri, document, db, receiver, method_ident.start_byte())?;
+    stats.typed_receivers += 1;
 
     let top = db.find_top_level(&receiver_type)?;
 
