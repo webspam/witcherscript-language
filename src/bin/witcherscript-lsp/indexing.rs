@@ -6,14 +6,19 @@ use std::time::Instant;
 
 use rayon::prelude::*;
 use serde_json::Value;
-use tower_lsp::lsp_types::{ConfigurationItem, Position, Url};
+use tower_lsp::lsp_types::{
+    ConfigurationItem, DidChangeWatchedFilesRegistrationOptions, FileChangeType, FileEvent,
+    FileSystemWatcher, GlobPattern, Position, Registration, Url,
+};
 use tracing::{debug, error, info, trace, warn};
 use witcherscript_parser::diagnostics::{
     collect_duplicate_local_diagnostics, collect_duplicate_symbol_diagnostics,
     collect_shadowing_diagnostics,
 };
 use witcherscript_parser::document::{parse_document, ParsedDocument};
-use witcherscript_parser::files::collect_witcherscript_files;
+use witcherscript_parser::files::{
+    collect_witcherscript_files, is_witcherscript_file, ExcludeFilter,
+};
 use witcherscript_parser::resolve::{resolve_definition, Definition, SymbolDb, WorkspaceIndex};
 use witcherscript_parser::script_env::parse_script_environment;
 
@@ -79,6 +84,37 @@ pub(crate) fn index_open_document(
         }
     }
     index.update_document(uri.as_str(), document);
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum WatchedEvent {
+    Upsert { canonical: String, path: PathBuf },
+    Remove { canonical: String },
+}
+
+pub(crate) fn classify_watched_event(
+    event: &FileEvent,
+    open_canonical: &HashSet<String>,
+    filter: &ExcludeFilter,
+) -> Option<WatchedEvent> {
+    let path = event.uri.to_file_path().ok()?;
+    if !is_witcherscript_file(&path) {
+        return None;
+    }
+    let canonical = canonical_uri(&event.uri)?;
+    if open_canonical.contains(&canonical) {
+        return None;
+    }
+    match event.typ {
+        FileChangeType::DELETED => Some(WatchedEvent::Remove { canonical }),
+        FileChangeType::CREATED | FileChangeType::CHANGED => {
+            if filter.matches(&path) {
+                return None;
+            }
+            Some(WatchedEvent::Upsert { canonical, path })
+        }
+        _ => None,
+    }
 }
 use crate::logging::{level_from_str, level_to_u8};
 
@@ -206,6 +242,87 @@ impl Backend {
             elapsed_ms = start.elapsed().as_millis(),
             "workspace indexed"
         );
+
+        self.publish_open_diagnostics().await;
+    }
+
+    pub(crate) async fn register_file_watchers(&self) {
+        let watcher = FileSystemWatcher {
+            glob_pattern: GlobPattern::String("**/*.ws".to_string()),
+            kind: None,
+        };
+        let options = DidChangeWatchedFilesRegistrationOptions {
+            watchers: vec![watcher],
+        };
+        let registration = Registration {
+            id: "witcherscript-ws-files".to_string(),
+            method: "workspace/didChangeWatchedFiles".to_string(),
+            register_options: serde_json::to_value(options).ok(),
+        };
+        if let Err(err) = self.client.register_capability(vec![registration]).await {
+            warn!(
+                error = %err,
+                "failed to register file watcher; workspace index may go stale on external file changes"
+            );
+        }
+    }
+
+    pub(crate) async fn apply_watched_file_events(&self, events: Vec<FileEvent>) {
+        let open_canonical: HashSet<String> = {
+            let documents = self.documents.lock().await;
+            documents.keys().filter_map(canonical_uri).collect()
+        };
+        let roots = self.workspace_roots.lock().await.clone();
+        let filter = ExcludeFilter::new(&roots, &self.files_exclude.lock().await.clone());
+
+        let mut updates: Vec<(String, ParsedDocument)> = Vec::new();
+        let mut removals: Vec<String> = Vec::new();
+        for event in &events {
+            let Some(decision) = classify_watched_event(event, &open_canonical, &filter) else {
+                continue;
+            };
+            match decision {
+                WatchedEvent::Upsert { canonical, path } => {
+                    let source = match read_script_file(&path) {
+                        Ok(s) => s,
+                        Err(err) => {
+                            warn!(path = %path.display(), error = %err, "failed to read watched file");
+                            continue;
+                        }
+                    };
+                    let document = match parse_document(source) {
+                        Ok(d) => d,
+                        Err(err) => {
+                            warn!(path = %path.display(), error = %err, "failed to parse watched file");
+                            continue;
+                        }
+                    };
+                    debug!(canonical = %canonical, "watched file upserted");
+                    updates.push((canonical, document));
+                }
+                WatchedEvent::Remove { canonical } => {
+                    debug!(canonical = %canonical, "watched file removed");
+                    removals.push(canonical);
+                }
+            }
+        }
+
+        if updates.is_empty() && removals.is_empty() {
+            return;
+        }
+
+        {
+            let mut index = self.workspace_index.lock().await;
+            let mut docs = self.workspace_documents.lock().await;
+            for (canonical, document) in updates {
+                index.update_document(canonical.as_str(), &document);
+                docs.insert(canonical, document);
+            }
+            for canonical in removals {
+                index.remove_document(&canonical);
+                docs.remove(&canonical);
+            }
+        }
 
         self.publish_open_diagnostics().await;
     }

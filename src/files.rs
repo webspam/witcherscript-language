@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-use ignore::overrides::OverrideBuilder;
+use ignore::overrides::{Override, OverrideBuilder};
 use ignore::WalkBuilder;
 
 pub fn collect_witcherscript_files(
@@ -53,6 +53,42 @@ pub fn is_witcherscript_file(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| extension.eq_ignore_ascii_case("ws"))
+}
+
+pub struct ExcludeFilter {
+    per_root: Vec<(PathBuf, Override)>,
+}
+
+impl ExcludeFilter {
+    pub fn new(roots: &[PathBuf], exclude_globs: &[String]) -> Self {
+        if exclude_globs.is_empty() {
+            return Self {
+                per_root: Vec::new(),
+            };
+        }
+        let per_root = roots
+            .iter()
+            .filter_map(|root| {
+                let mut builder = OverrideBuilder::new(root);
+                for glob in exclude_globs {
+                    builder.add(&format!("!{glob}")).ok()?;
+                }
+                Some((root.clone(), builder.build().ok()?))
+            })
+            .collect();
+        Self { per_root }
+    }
+
+    pub fn matches(&self, path: &Path) -> bool {
+        for (root, overrides) in &self.per_root {
+            if let Ok(rel) = path.strip_prefix(root) {
+                if overrides.matched(rel, false).is_ignore() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
 }
 
 #[cfg(test)]
