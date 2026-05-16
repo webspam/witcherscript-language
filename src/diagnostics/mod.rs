@@ -5,11 +5,13 @@ use tree_sitter::{Node, Point};
 
 use crate::line_index::SourceRange;
 
+mod cst_walker;
 mod duplicate_local;
 mod duplicate_symbols;
 mod shadowing;
 mod unknown_method;
 
+pub(crate) use cst_walker::{run_rules_on_document, CstRule, CstRuleCtx};
 pub use duplicate_local::collect_duplicate_local_diagnostics;
 pub use duplicate_symbols::collect_duplicate_symbol_diagnostics;
 pub use shadowing::collect_shadowing_diagnostics;

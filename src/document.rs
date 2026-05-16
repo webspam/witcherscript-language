@@ -1,11 +1,18 @@
 use std::error::Error;
 use std::fmt;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use tree_sitter::{Parser, Tree};
 
 use crate::diagnostics::{collect_diagnostics, ParseDiagnostic};
 use crate::line_index::{LineIndex, SourceRange};
 use crate::symbols::{extract_symbols, DocumentSymbols};
+
+static PARSE_VERSION: AtomicU64 = AtomicU64::new(0);
+
+fn next_parse_version() -> u64 {
+    PARSE_VERSION.fetch_add(1, Ordering::Relaxed)
+}
 
 #[derive(Debug)]
 pub struct ParsedDocument {
@@ -14,6 +21,7 @@ pub struct ParsedDocument {
     pub line_index: LineIndex,
     pub diagnostics: Vec<ParseDiagnostic>,
     pub symbols: DocumentSymbols,
+    pub parse_version: u64,
 }
 
 #[derive(Debug)]
@@ -61,6 +69,7 @@ pub fn parse_document_with_parser(
         line_index,
         diagnostics,
         symbols,
+        parse_version: next_parse_version(),
     })
 }
 

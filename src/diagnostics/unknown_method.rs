@@ -4,51 +4,45 @@ use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
-use crate::resolve::{infer_expr_type, SymbolDb};
+use crate::resolve::{infer_expr_type_memo, SymbolDb};
 use crate::symbols::{AccessLevel, SymbolKind};
 
-use super::{Severity, WorkspaceDiagnostic};
+use super::{run_rules_on_document, CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic};
 
-#[derive(Default)]
-struct ScanStats {
-    method_calls: usize,
-    typed_receivers: usize,
+pub(crate) struct UnknownMethodRule;
+
+impl CstRule for UnknownMethodRule {
+    fn interested_in(&self, kind: &str) -> bool {
+        kind == "func_call_expr"
+    }
+
+    fn visit<'tree>(&self, node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
+        let _ = check_method_call(node, ctx);
+    }
 }
 
 pub fn collect_unknown_method_diagnostics(
     documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
+    let rule = UnknownMethodRule;
+    let rules: Vec<&dyn CstRule> = vec![&rule];
     let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
-    let mut totals = ScanStats::default();
 
     for (uri, document) in documents {
-        let mut diagnostics = Vec::new();
-        let mut stats = ScanStats::default();
-        walk_tree(
-            document.tree.root_node(),
-            uri,
-            document,
-            db,
-            &mut diagnostics,
-            &mut stats,
-        );
-        totals.method_calls += stats.method_calls;
-        totals.typed_receivers += stats.typed_receivers;
+        let diagnostics = run_rules_on_document(uri, document, db, &rules);
         if !diagnostics.is_empty() {
             debug!(
                 uri = %uri,
                 count = diagnostics.len(),
                 "emitted unknown-method diagnostics"
             );
-            result.insert(uri.to_string(), diagnostics);
+            result.insert((*uri).to_string(), diagnostics);
         }
     }
 
     trace!(
         documents = documents.len(),
-        method_calls = totals.method_calls,
-        typed_receivers = totals.typed_receivers,
         flagged_uris = result.len(),
         "scanned for unknown method calls"
     );
@@ -56,32 +50,7 @@ pub fn collect_unknown_method_diagnostics(
     result
 }
 
-fn walk_tree(
-    node: Node,
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    diagnostics: &mut Vec<WorkspaceDiagnostic>,
-    stats: &mut ScanStats,
-) {
-    if node.kind() == "func_call_expr" {
-        let _ = check_method_call(node, uri, document, db, diagnostics, stats);
-    }
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        walk_tree(child, uri, document, db, diagnostics, stats);
-    }
-}
-
-fn check_method_call(
-    node: Node,
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    diagnostics: &mut Vec<WorkspaceDiagnostic>,
-    stats: &mut ScanStats,
-) -> Option<()> {
+fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {
     let func = node.child_by_field_name("func").or_else(|| {
         let mut cursor = node.walk();
         let child = node.named_children(&mut cursor).next()?;
@@ -92,13 +61,8 @@ fn check_method_call(
         return None;
     }
 
-    stats.method_calls += 1;
-
-    let receiver = {
-        let mut cursor = func.walk();
-        let child = func.named_children(&mut cursor).next()?;
-        child
-    };
+    let mut receiver_cursor = func.walk();
+    let receiver = func.named_children(&mut receiver_cursor).next()?;
 
     let method_ident = func.child_by_field_name("member").or_else(|| {
         let mut cursor = func.walk();
@@ -110,12 +74,20 @@ fn check_method_call(
         return None;
     }
 
-    let method_name = method_ident.utf8_text(document.source.as_bytes()).ok()?;
+    let method_name = method_ident
+        .utf8_text(ctx.document.source.as_bytes())
+        .ok()?;
 
-    let receiver_type = infer_expr_type(uri, document, db, receiver, method_ident.start_byte())?;
-    stats.typed_receivers += 1;
+    let receiver_type = infer_expr_type_memo(
+        ctx.uri,
+        ctx.document,
+        ctx.db,
+        receiver,
+        method_ident.start_byte(),
+        ctx.type_memo,
+    )?;
 
-    let top = db.find_top_level(&receiver_type)?;
+    let top = ctx.db.find_top_level(&receiver_type)?;
 
     if !matches!(
         top.symbol.kind,
@@ -124,20 +96,21 @@ fn check_method_call(
         return None;
     }
 
-    if db
+    if ctx
+        .db
         .find_member(&receiver_type, method_name, AccessLevel::Private)
         .is_some()
     {
         return None;
     }
 
-    let range = document.line_index.byte_range_to_range(
-        &document.source,
+    let range = ctx.document.line_index.byte_range_to_range(
+        &ctx.document.source,
         method_ident.start_byte(),
         method_ident.end_byte(),
     );
 
-    diagnostics.push(WorkspaceDiagnostic {
+    ctx.diagnostics.push(WorkspaceDiagnostic {
         kind: "unknown_method".to_string(),
         message: format!("no method '{method_name}' on type '{receiver_type}'"),
         severity: Severity::Error,

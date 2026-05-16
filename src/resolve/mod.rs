@@ -806,6 +806,23 @@ pub fn hover_text(definition: &Definition) -> String {
     lines.join("\n")
 }
 
+pub fn infer_expr_type_memo(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    node: Node,
+    context_byte: usize,
+    memo: &mut HashMap<(usize, usize), Option<String>>,
+) -> Option<String> {
+    let key = (node.start_byte(), node.end_byte());
+    if let Some(cached) = memo.get(&key) {
+        return cached.clone();
+    }
+    let value = infer_expr_type(uri, document, db, node, context_byte);
+    memo.insert(key, value.clone());
+    value
+}
+
 pub(crate) fn infer_expr_type(
     uri: &str,
     document: &ParsedDocument,
