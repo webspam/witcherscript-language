@@ -582,5 +582,7 @@ impl Backend {
             elapsed_secs = format!("{:.1}", elapsed_ms as f32 / 1000.0),
             "base scripts indexed"
         );
+
+        self.publish_open_diagnostics().await;
     }
 }
