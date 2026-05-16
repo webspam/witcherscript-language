@@ -38,6 +38,7 @@ fn annotation_target_class(symbol: &Symbol) -> Option<&str> {
 pub struct SymbolDb<'a> {
     workspace: &'a WorkspaceIndex,
     base: &'a WorkspaceIndex,
+    builtins: Option<&'a WorkspaceIndex>,
     script_env: Option<&'a ScriptEnvironment>,
 }
 
@@ -46,12 +47,18 @@ impl<'a> SymbolDb<'a> {
         Self {
             workspace,
             base,
+            builtins: None,
             script_env: None,
         }
     }
 
     pub fn with_script_env(mut self, env: &'a ScriptEnvironment) -> Self {
         self.script_env = Some(env);
+        self
+    }
+
+    pub fn with_builtins(mut self, builtins: &'a WorkspaceIndex) -> Self {
+        self.builtins = Some(builtins);
         self
     }
 
@@ -74,12 +81,14 @@ impl<'a> SymbolDb<'a> {
         self.workspace
             .find_top_level(name)
             .or_else(|| self.base.find_top_level(name))
+            .or_else(|| self.builtins.and_then(|b| b.find_top_level(name)))
     }
 
     pub fn superclass_of(&self, class_name: &str) -> Option<String> {
         self.workspace
             .superclass_of(class_name)
             .or_else(|| self.base.superclass_of(class_name))
+            .or_else(|| self.builtins.and_then(|b| b.superclass_of(class_name)))
     }
 
     pub fn find_member(
@@ -88,11 +97,20 @@ impl<'a> SymbolDb<'a> {
         name: &str,
         min_access: AccessLevel,
     ) -> Option<Definition> {
-        self.try_in_chain(container, min_access, |container, _depth, access| {
+        let (lookup, element) = generic_lookup_target(container);
+        let def = self.try_in_chain(lookup, min_access, |container, _depth, access| {
             self.workspace
                 .direct_member_of(container, name, access)
                 .or_else(|| self.base.direct_member_of(container, name, access))
-        })
+                .or_else(|| {
+                    self.builtins
+                        .and_then(|b| b.direct_member_of(container, name, access))
+                })
+        });
+        match (def, element) {
+            (Some(d), Some(elem)) => Some(substitute_in_definition(d, container, elem)),
+            (d, _) => d,
+        }
     }
 
     pub fn direct_members_of(
@@ -100,12 +118,25 @@ impl<'a> SymbolDb<'a> {
         container_name: &str,
         min_access: AccessLevel,
     ) -> Vec<Definition> {
-        dedup_by_name(
+        let (lookup, element) = generic_lookup_target(container_name);
+        let raw = dedup_by_name(
             self.workspace
-                .direct_members_of(container_name, min_access)
+                .direct_members_of(lookup, min_access)
                 .into_iter()
-                .chain(self.base.direct_members_of(container_name, min_access)),
-        )
+                .chain(self.base.direct_members_of(lookup, min_access))
+                .chain(
+                    self.builtins
+                        .map(|b| b.direct_members_of(lookup, min_access))
+                        .unwrap_or_default(),
+                ),
+        );
+        match element {
+            Some(elem) => raw
+                .into_iter()
+                .map(|d| substitute_in_definition(d, container_name, elem))
+                .collect(),
+            None => raw,
+        }
     }
 
     pub fn members_of(&self, container: &str, min_access: AccessLevel) -> Vec<Definition> {
@@ -120,20 +151,32 @@ impl<'a> SymbolDb<'a> {
         container: &str,
         min_access: AccessLevel,
     ) -> Vec<(u8, Definition)> {
+        let (lookup, element) = generic_lookup_target(container);
         let mut seen: HashMap<String, (u8, Definition)> = HashMap::new();
-        self.try_in_chain::<(), _>(container, min_access, |container, depth, access| {
+        self.try_in_chain::<(), _>(lookup, min_access, |c, depth, access| {
             let tier = if depth == 0 { 0u8 } else { 1u8 };
             for def in self
                 .workspace
-                .direct_members_of(container, access)
+                .direct_members_of(c, access)
                 .into_iter()
-                .chain(self.base.direct_members_of(container, access))
+                .chain(self.base.direct_members_of(c, access))
+                .chain(
+                    self.builtins
+                        .map(|b| b.direct_members_of(c, access))
+                        .unwrap_or_default(),
+                )
             {
                 seen.entry(def.symbol.name.clone()).or_insert((tier, def));
             }
             None
         });
-        seen.into_values().collect()
+        match element {
+            Some(elem) => seen
+                .into_values()
+                .map(|(t, d)| (t, substitute_in_definition(d, container, elem)))
+                .collect(),
+            None => seen.into_values().collect(),
+        }
     }
 
     /// Class-body declaration first, then annotation declarations.
@@ -147,6 +190,11 @@ impl<'a> SymbolDb<'a> {
             .annotated_members(container, name)
             .into_iter()
             .chain(self.base.annotated_members(container, name))
+            .chain(
+                self.builtins
+                    .map(|b| b.annotated_members(container, name))
+                    .unwrap_or_default(),
+            )
         {
             decls.push(def);
         }
@@ -170,7 +218,8 @@ impl<'a> SymbolDb<'a> {
             let superclass = self
                 .workspace
                 .superclass_of(&current)
-                .or_else(|| self.base.superclass_of(&current))?;
+                .or_else(|| self.base.superclass_of(&current))
+                .or_else(|| self.builtins.and_then(|b| b.superclass_of(&current)))?;
             depth += 1;
             access = access.max(AccessLevel::Protected);
             current = superclass;
@@ -214,7 +263,13 @@ impl<'a> SymbolDb<'a> {
         if !params.is_empty() {
             return params;
         }
-        self.base.parameters_of(uri, callable_id)
+        let params = self.base.parameters_of(uri, callable_id);
+        if !params.is_empty() {
+            return params;
+        }
+        self.builtins
+            .map(|b| b.parameters_of(uri, callable_id))
+            .unwrap_or_default()
     }
 
     pub fn full_parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<Symbol> {
@@ -222,8 +277,82 @@ impl<'a> SymbolDb<'a> {
         if !params.is_empty() {
             return params;
         }
-        self.base.full_parameters_of(uri, callable_id)
+        let params = self.base.full_parameters_of(uri, callable_id);
+        if !params.is_empty() {
+            return params;
+        }
+        self.builtins
+            .map(|b| b.full_parameters_of(uri, callable_id))
+            .unwrap_or_default()
     }
+}
+
+pub fn parse_generic_type(s: &str) -> Option<(&str, &str)> {
+    let trimmed = s.trim();
+    let lt = trimmed.find('<')?;
+    if !trimmed.ends_with('>') {
+        return None;
+    }
+    let ctor = trimmed[..lt].trim();
+    let element = trimmed[lt + 1..trimmed.len() - 1].trim();
+    if ctor.is_empty() || element.is_empty() {
+        return None;
+    }
+    Some((ctor, element))
+}
+
+fn generic_lookup_target(container: &str) -> (&str, Option<&str>) {
+    match parse_generic_type(container) {
+        Some((ctor, elem)) => (ctor, Some(elem)),
+        None => (container, None),
+    }
+}
+
+fn substitute_placeholder(s: &str, placeholder: &str, replacement: &str) -> String {
+    let bytes = s.as_bytes();
+    let plen = placeholder.len();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i..].starts_with(placeholder.as_bytes()) {
+            let before_ok = i == 0 || !is_ident_byte(bytes[i - 1]);
+            let after_idx = i + plen;
+            let after_ok = after_idx >= bytes.len() || !is_ident_byte(bytes[after_idx]);
+            if before_ok && after_ok {
+                out.push_str(replacement);
+                i += plen;
+                continue;
+            }
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
+}
+
+fn is_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+fn substitute_in_definition(
+    mut def: Definition,
+    container_instance: &str,
+    element: &str,
+) -> Definition {
+    let p = crate::builtins::GENERIC_ELEMENT_PLACEHOLDER;
+    if let Some(t) = def.symbol.type_annotation.take() {
+        def.symbol.type_annotation = Some(substitute_placeholder(&t, p, element));
+    }
+    if let Some(s) = def.symbol.signature.take() {
+        def.symbol.signature = Some(substitute_placeholder(&s, p, element));
+    }
+    if let Some(d) = def.symbol.detail.take() {
+        def.symbol.detail = Some(substitute_placeholder(&d, p, element));
+    }
+    if def.symbol.container_name.is_some() {
+        def.symbol.container_name = Some(container_instance.to_string());
+    }
+    def
 }
 
 #[derive(Debug, Clone, Default)]
