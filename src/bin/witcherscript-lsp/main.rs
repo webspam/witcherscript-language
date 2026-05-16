@@ -6,6 +6,7 @@ mod logging;
 mod tests;
 
 use std::collections::HashMap;
+use std::io::IsTerminal;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8};
 use std::sync::Arc;
 
@@ -86,6 +87,7 @@ fn init_tracing(
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(std::io::stderr)
+                .with_ansi(std::io::stderr().is_terminal())
                 .with_filter(env_filter),
         )
         .with(LspLogSender {
