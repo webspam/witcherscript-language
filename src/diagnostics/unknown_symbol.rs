@@ -69,6 +69,10 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
 
     let name = ident.utf8_text(ctx.document.source.as_bytes()).ok()?;
 
+    if name == "wrappedMethod" && is_inside_wrap_method(ident, ctx) {
+        return None;
+    }
+
     match role {
         IdentRole::Declaration => None,
         IdentRole::TypeRef => {
@@ -244,6 +248,16 @@ fn is_type_reference(ident: Node, parent: Node) -> bool {
         }
         _ => false,
     }
+}
+
+fn is_inside_wrap_method<'tree>(ident: Node<'tree>, ctx: &CstRuleCtx<'_, 'tree>) -> bool {
+    let Some(enclosing) = ctx.document.symbols.enclosing_symbol_at(
+        ident.start_byte(),
+        &[SymbolKind::Function, SymbolKind::Method],
+    ) else {
+        return false;
+    };
+    enclosing.annotations.iter().any(|a| a.name == "wrapMethod")
 }
 
 fn has_error_or_incomplete_ancestor(node: Node) -> bool {
@@ -639,5 +653,42 @@ mod tests {
         let (idx, docs) =
             index_and_docs(&[("file:///t.ws", "function F() { x +=== bogus = ; }\n")]);
         let _ = check(&idx, &docs);
+    }
+
+    #[test]
+    fn wrapped_method_call_inside_wrap_method_not_flagged() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "class Foo {} \
+             @wrapMethod(Foo) function W() { wrappedMethod(); }\n",
+        )]);
+        let result = check(&idx, &docs);
+        assert!(
+            result.is_empty(),
+            "wrappedMethod inside @wrapMethod should not be flagged, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn wrapped_method_call_outside_wrap_method_still_flagged() {
+        let (idx, docs) =
+            index_and_docs(&[("file:///t.ws", "function F() { wrappedMethod(); }\n")]);
+        let result = check(&idx, &docs);
+        let diags = result.get("file:///t.ws").unwrap();
+        assert_eq!(kinds(diags), vec!["unknown_function"]);
+        assert!(diags[0].message.contains("wrappedMethod"));
+    }
+
+    #[test]
+    fn wrapped_method_in_add_method_still_flagged() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "class Foo {} \
+             @addMethod(Foo) function A() { wrappedMethod(); }\n",
+        )]);
+        let result = check(&idx, &docs);
+        let diags = result.get("file:///t.ws").unwrap();
+        assert_eq!(kinds(diags), vec!["unknown_function"]);
+        assert!(diags[0].message.contains("wrappedMethod"));
     }
 }
