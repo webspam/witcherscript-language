@@ -3,6 +3,7 @@ set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
 alias b := build
 alias r := release
 alias t := test
+alias serve := lsp-listen
 
 # Show available recipes.
 default:
