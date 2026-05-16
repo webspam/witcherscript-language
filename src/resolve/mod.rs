@@ -806,7 +806,7 @@ pub fn hover_text(definition: &Definition) -> String {
     lines.join("\n")
 }
 
-fn infer_expr_type(
+pub(crate) fn infer_expr_type(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,

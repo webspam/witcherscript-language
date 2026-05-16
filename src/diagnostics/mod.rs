@@ -8,10 +8,12 @@ use crate::line_index::SourceRange;
 mod duplicate_local;
 mod duplicate_symbols;
 mod shadowing;
+mod unknown_method;
 
 pub use duplicate_local::collect_duplicate_local_diagnostics;
 pub use duplicate_symbols::collect_duplicate_symbol_diagnostics;
 pub use shadowing::collect_shadowing_diagnostics;
+pub use unknown_method::collect_unknown_method_diagnostics;
 
 #[derive(Debug, Clone)]
 pub struct ParseDiagnostic {
