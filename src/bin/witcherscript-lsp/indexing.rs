@@ -145,7 +145,9 @@ impl Backend {
             let env = self.script_env.lock().await;
             let mut cache = self.cst_diag_cache.lock().await;
 
-            let db = SymbolDb::new(&index, &base).with_script_env(&env);
+            let db = SymbolDb::new(&index, &base)
+                .with_script_env(&env)
+                .with_builtins(&self.builtins_index);
 
             let dup = collect_duplicate_symbol_diagnostics(&index);
             let shadow = collect_shadowing_diagnostics(&index, &env);
@@ -500,7 +502,9 @@ impl Backend {
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
         let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
+        let db = SymbolDb::new(&workspace, &base)
+            .with_script_env(&script_env)
+            .with_builtins(&self.builtins_index);
         resolve_definition(uri.as_str(), document, &db, source_position(position))
     }
 

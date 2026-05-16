@@ -17,6 +17,7 @@ use tower_lsp::{ClientSocket, LspService, Server};
 use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
+use witcherscript_parser::builtins::load_builtins_index;
 use witcherscript_parser::resolve::WorkspaceIndex;
 use witcherscript_parser::script_env::ScriptEnvironment;
 
@@ -123,6 +124,7 @@ fn build_service(
             auto_load_mod_shared_imports: Arc::new(AtomicBool::new(true)),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
+            builtins_index: Arc::new(load_builtins_index()),
             script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
             cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
             formatter_line_limit: Arc::new(AtomicU32::new(100)),

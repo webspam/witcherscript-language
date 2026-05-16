@@ -22,6 +22,7 @@ use tower_lsp::lsp_types::{
 };
 use tower_lsp::{Client, LanguageServer};
 use tracing::{error, info};
+use witcherscript_parser::builtins::builtin_source;
 use witcherscript_parser::document::{apply_content_change, ParsedDocument};
 use witcherscript_parser::formatter::format_document;
 use witcherscript_parser::line_index::LineIndex;
@@ -75,7 +76,7 @@ pub(crate) fn rename_changes(
 ) -> HashMap<Url, Vec<TextEdit>> {
     let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
     for (ref_uri, range) in refs {
-        if base_docs.contains_key(ref_uri) {
+        if base_docs.contains_key(ref_uri) || builtin_source(ref_uri).is_some() {
             continue;
         }
         if let Ok(url) = Url::parse(ref_uri) {
@@ -103,6 +104,7 @@ pub(crate) struct Backend {
     pub(crate) auto_load_mod_shared_imports: Arc<AtomicBool>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
+    pub(crate) builtins_index: Arc<WorkspaceIndex>,
     pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
     pub(crate) cst_diag_cache: Arc<Mutex<HashMap<Url, crate::cst_cache::CstCacheEntry>>>,
     pub(crate) formatter_line_limit: Arc<AtomicU32>,
@@ -321,7 +323,9 @@ impl LanguageServer for Backend {
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
         let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
+        let db = SymbolDb::new(&workspace, &base)
+            .with_script_env(&script_env)
+            .with_builtins(&self.builtins_index);
         let definitions =
             resolve_all_definitions(uri.as_str(), document, &db, source_position(position));
 
@@ -352,7 +356,9 @@ impl LanguageServer for Backend {
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
         let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
+        let db = SymbolDb::new(&workspace, &base)
+            .with_script_env(&script_env)
+            .with_builtins(&self.builtins_index);
         let Some(definition) =
             resolve_definition(uri.as_str(), document, &db, source_position(position))
         else {
@@ -378,7 +384,9 @@ impl LanguageServer for Backend {
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
         let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
+        let db = SymbolDb::new(&workspace, &base)
+            .with_script_env(&script_env)
+            .with_builtins(&self.builtins_index);
         let compact_colon = self.formatter_compact_colon.load(Ordering::Relaxed);
 
         Ok(signature_help(
@@ -419,7 +427,9 @@ impl LanguageServer for Backend {
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
         let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
+        let db = SymbolDb::new(&workspace, &base)
+            .with_script_env(&script_env)
+            .with_builtins(&self.builtins_index);
         let data = collect_semantic_tokens(uri.as_str(), document, &db);
         let tokens: Vec<SemanticToken> = data
             .chunks_exact(5)
@@ -449,7 +459,9 @@ impl LanguageServer for Backend {
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
         let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
+        let db = SymbolDb::new(&workspace, &base)
+            .with_script_env(&script_env)
+            .with_builtins(&self.builtins_index);
 
         let ws_kb = workspace.doc_idents_bytes() / 1024;
         let base_kb = base.doc_idents_bytes() / 1024;
@@ -518,6 +530,13 @@ impl LanguageServer for Backend {
                 data: None,
             });
         }
+        if builtin_source(&definition.uri).is_some() {
+            return Err(Error {
+                code: ErrorCode::InvalidRequest,
+                message: "Cannot rename a built-in symbol".into(),
+                data: None,
+            });
+        }
 
         Ok(Some(PrepareRenameResponse::DefaultBehavior {
             default_behavior: true,
@@ -549,8 +568,17 @@ impl LanguageServer for Backend {
                 data: None,
             });
         }
+        if builtin_source(&definition.uri).is_some() {
+            return Err(Error {
+                code: ErrorCode::InvalidRequest,
+                message: "Cannot rename a built-in symbol".into(),
+                data: None,
+            });
+        }
 
-        let db = SymbolDb::new(&workspace, &base_index).with_script_env(&script_env);
+        let db = SymbolDb::new(&workspace, &base_index)
+            .with_script_env(&script_env)
+            .with_builtins(&self.builtins_index);
 
         let merged = merge_documents(&base_docs, &workspace_docs, &documents);
 
@@ -583,7 +611,9 @@ impl LanguageServer for Backend {
         let workspace = self.workspace_index.lock().await;
         let base = self.base_scripts_index.lock().await;
         let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base).with_script_env(&script_env);
+        let db = SymbolDb::new(&workspace, &base)
+            .with_script_env(&script_env)
+            .with_builtins(&self.builtins_index);
 
         let pos = source_position(position);
 
