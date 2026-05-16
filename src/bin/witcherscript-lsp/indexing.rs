@@ -28,20 +28,6 @@ fn log_setting_change<T: PartialEq + std::fmt::Display>(setting: &str, prev: T, 
     }
 }
 
-pub(crate) fn has_top_level_func_body(document: &ParsedDocument) -> bool {
-    let root = document.tree.root_node();
-    let mut cursor = root.walk();
-    for child in root.children(&mut cursor).filter(|c| c.is_named()) {
-        if child.kind() == "func_decl" {
-            let mut inner = child.walk();
-            if child.children(&mut inner).any(|c| c.kind() == "func_block") {
-                return true;
-            }
-        }
-    }
-    false
-}
-
 pub(crate) fn build_index_segments(
     game_dir: Option<&Path>,
     extras: &[PathBuf],
@@ -422,19 +408,6 @@ impl Backend {
                     Some((uri.to_string(), document))
                 })
                 .collect();
-
-            if *label == "modSharedImports" {
-                if let Some((bad_uri, _)) = parsed.iter().find(|(_, d)| has_top_level_func_body(d))
-                {
-                    warn!(
-                        uri = %bad_uri,
-                        path = %root.display(),
-                        auto_loaded = true,
-                        "[auto-detected] modSharedImports has a top-level function with a body; skipping"
-                    );
-                    continue;
-                }
-            }
 
             let count = parsed.len();
             total_indexed += count;

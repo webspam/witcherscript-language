@@ -117,8 +117,6 @@ Most modern Witcher 3 mods depend on a specific community mod called **Shared Im
 
 Because that mod is a near-universal dependency, **the LSP loads it automatically** whenever `gameDirectory` is set and the `Mods\modSharedImports` directory exists. The user does not need to list it under `additionalScriptDirectories`.
 
-The auto-load has a safety gate: if any `.ws` file in the directory contains a top-level function *with a body* (e.g. `function Foo() { ... }` rather than `import function Foo() : T;`), the directory is rejected and a warning is logged. This stops accidental loading of any unrelated mod that happens to share the name.
-
 When the auto-load fires, the LSP log line carries `auto_loaded = true` and the message starts with `[auto-detected]`. Search the server log for `[auto-detected]` if you are surprised to see symbols you did not configure.
 
 To opt out entirely, set `witcherscript.autoLoadModSharedImports` to `false`.

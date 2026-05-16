@@ -723,32 +723,6 @@ fn wrap_method_snippet_event_uses_return_form() {
 }
 
 #[test]
-fn decl_only_check_accepts_pure_imports() {
-    let doc = parse_document("import function Foo() : void;\n").expect("parse");
-    assert!(!crate::indexing::has_top_level_func_body(&doc));
-}
-
-#[test]
-fn decl_only_check_accepts_class_with_method_bodies() {
-    let src = "class C { function M() { var x : int; x = 1; } }\n";
-    let doc = parse_document(src).expect("parse");
-    assert!(!crate::indexing::has_top_level_func_body(&doc));
-}
-
-#[test]
-fn decl_only_check_rejects_top_level_function_with_body() {
-    let doc = parse_document("function Foo() { var x : int; x = 1; }\n").expect("parse");
-    assert!(crate::indexing::has_top_level_func_body(&doc));
-}
-
-#[test]
-fn decl_only_check_rejects_mixed_file_when_any_top_level_has_body() {
-    let src = "import function A() : void;\nfunction B() { var x : int; x = 1; }\n";
-    let doc = parse_document(src).expect("parse");
-    assert!(crate::indexing::has_top_level_func_body(&doc));
-}
-
-#[test]
 fn build_index_segments_empty_inputs() {
     let segments = crate::indexing::build_index_segments(None, &[], true);
     assert!(segments.is_empty());
