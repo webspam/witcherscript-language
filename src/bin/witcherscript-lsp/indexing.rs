@@ -17,15 +17,13 @@ use witcherscript_parser::diagnostics::{
 };
 use witcherscript_parser::document::{parse_document, ParsedDocument};
 use witcherscript_parser::files::{
-    collect_witcherscript_files, is_witcherscript_file, ExcludeFilter,
+    collect_witcherscript_files, is_witcherscript_file, read_script_file, ExcludeFilter,
 };
 use witcherscript_parser::resolve::{resolve_definition, Definition, SymbolDb, WorkspaceIndex};
 use witcherscript_parser::script_env::parse_script_environment;
 
 use crate::backend::Backend;
-use crate::convert::{
-    canonical_uri, lsp_diagnostics, lsp_workspace_diagnostic, read_script_file, source_position,
-};
+use crate::convert::{canonical_uri, lsp_diagnostics, lsp_workspace_diagnostic, source_position};
 use crate::logging::{level_from_str, level_to_u8};
 
 fn log_setting_change<T: PartialEq + std::fmt::Display>(setting: &str, prev: T, new: T) {

@@ -1,5 +1,6 @@
 use tower_lsp::lsp_types::{ParameterLabel, SymbolKind as LspSymbolKind};
 use witcherscript_parser::document::parse_document;
+use witcherscript_parser::files::read_script_file;
 use witcherscript_parser::line_index::SourcePosition;
 use witcherscript_parser::resolve::{
     resolve_definition, SignatureHelpInfo, SymbolDb, WorkspaceIndex,
@@ -8,7 +9,7 @@ use witcherscript_parser::symbols::AccessLevel;
 
 use crate::convert::{
     completion_item, document_symbols, hover_markdown, lsp_diagnostics, lsp_workspace_diagnostic,
-    read_script_file, signature_help_response, wrap_method_snippet,
+    signature_help_response, wrap_method_snippet,
 };
 
 fn encode_utf16le(s: &str) -> Vec<u8> {
