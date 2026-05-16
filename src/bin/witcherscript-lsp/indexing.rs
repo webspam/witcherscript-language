@@ -135,17 +135,19 @@ impl Backend {
 
     async fn publish_open_diagnostics(&self) {
         let start = Instant::now();
+
+        let documents = self.documents.lock().await;
+        let doc_pairs: Vec<(&str, &ParsedDocument)> = documents
+            .iter()
+            .map(|(url, doc)| (url.as_str(), doc))
+            .collect();
+
         let (dup_by_uri, shadow_by_uri, dup_local_by_uri, unknown_method_by_uri) = {
             let index = self.workspace_index.lock().await;
             let base = self.base_scripts_index.lock().await;
             let env = self.script_env.lock().await;
-            let documents = self.documents.lock().await;
 
             let db = SymbolDb::new(&index, &base).with_script_env(&env);
-            let doc_pairs: Vec<(&str, &ParsedDocument)> = documents
-                .iter()
-                .map(|(url, doc)| (url.as_str(), doc))
-                .collect();
 
             (
                 collect_duplicate_symbol_diagnostics(&index),
@@ -154,8 +156,8 @@ impl Backend {
                 collect_unknown_method_diagnostics(&doc_pairs, &db),
             )
         };
+
         let collect_us = start.elapsed().as_micros();
-        let documents = self.documents.lock().await;
         let mut published = self.published_diagnostics.lock().await;
         let mut republished = 0;
         for (uri, document) in documents.iter() {
