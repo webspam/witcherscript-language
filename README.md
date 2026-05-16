@@ -63,6 +63,22 @@ Current validation rules:
   unknown/primitive receivers, on `super`/`parent`/`virtualParent`, on casts, or through
   indexed/parenthesised expressions are skipped to avoid false positives. Private members
   count as known.
+- Unknown type (`unknown_type`): a type-position identifier that doesn't resolve to a
+  workspace `class`/`struct`/`enum`/`state` or a built-in primitive. Covers `extends Foo`,
+  `state S in Foo`, `: Foo` annotations (including nested generics), `new Foo in owner`,
+  `(Foo) value` casts, and `@addMethod(Foo)` / `@addField(Foo)` annotation arguments.
+- Unknown member (`unknown_member`): `receiver.field` on a known workspace type where
+  `field` is not a member of that type or any supertype. Also fires inside `default
+  field = …;`, `defaults { field = …; }`, and `hint field = "…";` blocks when the
+  enclosing class/struct/state has no such field. Skipped when the receiver type can't be
+  inferred (cascading) or is primitive; method-call cases are owned by `unknown_method`.
+- Unknown function (`unknown_function`): a bare `Foo()` call where `Foo` doesn't resolve
+  to a top-level function, a method on `this` (this-shorthand, including up the
+  inheritance chain), or a script-environment global.
+- Unknown identifier (`unknown_identifier`): a bare identifier used as a value that
+  doesn't resolve to a local, parameter, field via this-shorthand, top-level symbol, or
+  script-environment global. Idents inside tree-sitter error/missing subtrees and inside
+  `incomplete_member_access_expr` are suppressed to avoid noise while typing.
 
 `--dump-tree` prints a concrete syntax tree with node kinds plus line/column and byte
 ranges.

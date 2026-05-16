@@ -10,6 +10,11 @@
 - `src/diagnostics/shadowing.rs` — workspace-wide index-walking rule (warning severity).
 - `src/diagnostics/unknown_method.rs` — workspace-wide CST-walking rule registered via
   `CstRule`.
+- `src/diagnostics/unknown_symbol.rs` — workspace-wide CST-walking rule covering every
+  ident-as-use. Dispatches to one of four kinds based on the parent grammar context:
+  `unknown_type`, `unknown_member`, `unknown_function`, `unknown_identifier`. Skips
+  declaration sites, `BUILTIN_TYPES`, tree-sitter error/missing subtrees, and idents
+  already owned by `unknown_method` (member-access calls).
 - `src/diagnostics/cst_walker.rs` — `CstRule` trait, `CstRuleCtx`, per-call `TypeMemo`,
   `run_rules_on_document`. Any new rule needing to walk a document's CST must register
   here rather than walking on its own.
