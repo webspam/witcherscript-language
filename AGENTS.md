@@ -92,7 +92,7 @@ These are the non-obvious constraints that will cause silent bugs if violated:
 
 8. **Private members are scoped to their defining file** during `find_references` and semantic token resolution. Do not search or highlight private members across file boundaries.
 
-9. **Text sync is FULL.** Every file change sends the complete document text. There is no incremental tree reuse between edits.
+9. **Text sync is INCREMENTAL at the wire layer, FULL internally.** `did_change` applies range-based diffs to the stored source string before reparsing. The tree-sitter parse tree is still rebuilt from scratch each time — there is no internal tree reuse.
 
 10. **Base scripts are read-only.** `prepare_rename()` rejects symbols _declared_ in `base_scripts_index`. That guard only covers the definition — `rename()` must additionally drop any _reference_ that lands in a base script (via `rename_changes`), since a workspace symbol can still be referenced from base scripts (e.g. an `@addMethod` called inside its target class).
 

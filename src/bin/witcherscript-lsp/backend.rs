@@ -21,9 +21,10 @@ use tower_lsp::lsp_types::{
     WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer};
-use tracing::info;
-use witcherscript_parser::document::ParsedDocument;
+use tracing::{error, info};
+use witcherscript_parser::document::{apply_content_change, ParsedDocument};
 use witcherscript_parser::formatter::format_document;
+use witcherscript_parser::line_index::LineIndex;
 use witcherscript_parser::resolve::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
@@ -168,7 +169,7 @@ impl LanguageServer for Backend {
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::FULL,
+                    TextDocumentSyncKind::INCREMENTAL,
                 )),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(vec![
@@ -246,10 +247,36 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        if let Some(change) = params.content_changes.into_iter().next() {
-            self.update_open_document(params.text_document.uri, change.text)
-                .await;
+        let uri = params.text_document.uri;
+        let prior = self
+            .documents
+            .lock()
+            .await
+            .get(&uri)
+            .map(|d| (d.source.clone(), d.line_index.clone()));
+
+        let Some((mut source, mut line_index)) = prior else {
+            error!(uri = %uri, "did_change before did_open");
+            return;
+        };
+
+        for change in params.content_changes {
+            let range = change
+                .range
+                .map(|r| source_range(source_position(r.start), source_position(r.end)));
+            match apply_content_change(&source, &line_index, range, &change.text) {
+                Some(next) => {
+                    line_index = LineIndex::new(&next);
+                    source = next;
+                }
+                None => {
+                    error!(uri = %uri, "out-of-range incremental change; dropping batch");
+                    return;
+                }
+            }
         }
+
+        self.update_open_document(uri, source).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
