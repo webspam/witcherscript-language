@@ -26,6 +26,7 @@ use crate::backend::Backend;
 use crate::convert::{
     canonical_uri, lsp_diagnostics, lsp_workspace_diagnostic, read_script_file, source_position,
 };
+use crate::logging::{level_from_str, level_to_u8};
 
 fn log_setting_change<T: PartialEq + std::fmt::Display>(setting: &str, prev: T, new: T) {
     if prev != new {
@@ -116,7 +117,6 @@ pub(crate) fn classify_watched_event(
         _ => None,
     }
 }
-use crate::logging::{level_from_str, level_to_u8};
 
 impl Backend {
     pub(crate) async fn update_open_document(&self, uri: Url, text: String) {
