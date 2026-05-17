@@ -87,6 +87,9 @@ Current validation rules:
 - Duplicate wrapped-method call (`duplicate_wrapped_method`): every bare
   `wrappedMethod(...)` call after the first inside the same `@wrapMethod` body. Only
   the first call is expanded by the compiler.
+- Ternary expression (`ternary_cond_expr`): the grammar accepts `cond ? a : b`, but the
+  compiler always evaluates it to `0` / `false` / `void`. Flagged so the construct is
+  rewritten as an `if`/`else` before it silently returns wrong values.
 
 `--dump-tree` prints a concrete syntax tree with node kinds plus line/column and byte
 ranges.
@@ -261,9 +264,6 @@ pass.
 - This tool reports Tree-sitter parse errors plus a small set of explicit validation rules.
   It does not reject every construct that the WitcherScript compiler or this repo's style
   rules may reject.
-- The current grammar accepts ternary expressions, even though this project treats
-  ternaries as invalid WitcherScript. That is deliberately documented rather than patched
-  in this prototype.
 - The grammar dependency is pinned to the `webspam` fork so future grammar fixes can be
   made outside this repo and consumed by retargeting the Cargo dependency.
 - Definition resolution does not yet follow inheritance chains (e.g. resolving a member

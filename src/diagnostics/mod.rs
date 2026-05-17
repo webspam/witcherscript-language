@@ -118,6 +118,9 @@ fn collect_walk(node: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>
     if node.kind() == "incomplete_member_access_expr" {
         diagnostics.push(incomplete_member_access_diagnostic(node, source));
     }
+    if node.kind() == "ternary_cond_expr" {
+        diagnostics.push(ternary_expr_diagnostic(node, source));
+    }
     if node.kind() == "func_block" {
         collect_late_local_vars_in_block(node, source, diagnostics);
     }
@@ -132,6 +135,19 @@ fn incomplete_member_access_diagnostic(node: Node, source: &str) -> ParseDiagnos
     ParseDiagnostic {
         kind: "incomplete_member_access_expr".to_string(),
         message: "incomplete member access: expected identifier after '.'".to_string(),
+        start: node.start_position(),
+        end: node.end_position(),
+        byte_range: node.start_byte()..node.end_byte(),
+        snippet: line_snippet(source, node.start_position().row),
+    }
+}
+
+fn ternary_expr_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
+    ParseDiagnostic {
+        kind: "ternary_cond_expr".to_string(),
+        message: "ternary expression is not supported: WitcherScript parses `cond ? a : b` \
+                  but always evaluates it to 0 / false / void"
+            .to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),
@@ -258,6 +274,33 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].kind, "late_local_var_decl");
+    }
+
+    #[test]
+    fn reports_ternary_expression() {
+        let source = "function Pick() {\n  var x : int;\n  x = true ? 1 : 2;\n}\n";
+        let tree = parse(source);
+
+        let diagnostics = collect_diagnostics(tree.root_node(), source);
+
+        let ternary = diagnostics.iter().find(|d| d.kind == "ternary_cond_expr");
+        assert!(
+            ternary.is_some(),
+            "expected ternary_cond_expr diagnostic, got: {diagnostics:#?}"
+        );
+        let d = ternary.unwrap();
+        assert_eq!(d.start.row, 2);
+        assert_eq!(d.start.row, d.end.row);
+    }
+
+    #[test]
+    fn accepts_non_ternary_expression() {
+        let source = "function Ok() {\n  var x : int;\n  x = 1;\n}\n";
+        let tree = parse(source);
+
+        let diagnostics = collect_diagnostics(tree.root_node(), source);
+
+        assert!(diagnostics.is_empty(), "got: {diagnostics:#?}");
     }
 
     #[test]
