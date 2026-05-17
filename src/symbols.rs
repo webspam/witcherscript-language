@@ -379,7 +379,7 @@ impl SymbolExtractor<'_> {
         };
         let mut cursor = node.walk();
 
-        for child in node.children(&mut cursor) {
+        for child in node.children_by_field_name("names", &mut cursor) {
             if child.kind() == "ident" {
                 let id = self.push_symbol(
                     node,
@@ -544,6 +544,39 @@ mod tests {
             .all()
             .iter()
             .any(|symbol| symbol.name == "count" && symbol.kind == SymbolKind::Variable));
+    }
+
+    #[test]
+    fn var_decl_initializer_ident_is_not_recorded_as_local() {
+        let cases: &[(&str, &str, &[&str])] = &[
+            (
+                "single name with ident initializer",
+                "function F() { var x : int = name; }\n",
+                &["x"],
+            ),
+            (
+                "multi-name decl with ident initializer",
+                "function F() { var x, y : int = name; }\n",
+                &["x", "y"],
+            ),
+            (
+                "initializer references a prior local",
+                "function F() {\n var source : int;\n var x : int = source;\n}\n",
+                &["source", "x"],
+            ),
+        ];
+
+        for (msg, source, expected) in cases {
+            let tree = parse(source);
+            let symbols = extract_symbols(tree.root_node(), source, &LineIndex::new(source));
+            let vars: Vec<&str> = symbols
+                .all()
+                .iter()
+                .filter(|s| s.kind == SymbolKind::Variable)
+                .map(|s| s.name.as_str())
+                .collect();
+            assert_eq!(&vars[..], *expected, "{msg}");
+        }
     }
 
     fn parse(source: &str) -> tree_sitter::Tree {

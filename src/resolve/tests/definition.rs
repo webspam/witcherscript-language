@@ -206,6 +206,78 @@ fn resolves_parameter_before_top_level() {
     assert_eq!(definition.symbol.kind, SymbolKind::Parameter);
 }
 
+#[test]
+fn goto_def_on_var_initializer_ident_does_not_self_resolve() {
+    type Case = (
+        &'static str,
+        &'static str,
+        SourcePosition,
+        Option<(&'static str, SymbolKind, u32)>,
+    );
+    let cases: &[Case] = &[
+        (
+            "initializer references a prior local — resolves to prior decl",
+            concat!(
+                "function Test() {\n",
+                "  var source : int;\n",
+                "  var x : int = source;\n",
+                "}\n",
+            ),
+            SourcePosition {
+                line: 2,
+                character: 16,
+            },
+            Some(("source", SymbolKind::Variable, 1)),
+        ),
+        (
+            "initializer references a parameter — resolves to parameter",
+            "function Test(p : int) {\n  var x : int = p;\n}\n",
+            SourcePosition {
+                line: 1,
+                character: 16,
+            },
+            Some(("p", SymbolKind::Parameter, 0)),
+        ),
+        (
+            "initializer is undeclared — no fake local self-resolves",
+            "function Test() {\n  var x : int = ghost;\n}\n",
+            SourcePosition {
+                line: 1,
+                character: 16,
+            },
+            None,
+        ),
+    ];
+
+    for (msg, source, position, expected) in cases.iter().copied() {
+        let doc = make_doc(source);
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &doc);
+        let empty = WorkspaceIndex::default();
+        let db = SymbolDb::new(&index, &empty);
+
+        match (
+            resolve_definition("file:///test.ws", &doc, &db, position),
+            expected,
+        ) {
+            (Some(def), Some((name, kind, decl_line))) => {
+                assert_eq!(def.symbol.name, name, "{msg}: name");
+                assert_eq!(def.symbol.kind, kind, "{msg}: kind");
+                assert_eq!(
+                    def.symbol.selection_range.start.line, decl_line,
+                    "{msg}: should point at declaration site, not the initializer use"
+                );
+            }
+            (None, None) => {}
+            (Some(def), None) => panic!(
+                "{msg}: expected no resolution, got `{}` at line {}",
+                def.symbol.name, def.symbol.selection_range.start.line
+            ),
+            (None, Some(_)) => panic!("{msg}: expected a resolution, got None"),
+        }
+    }
+}
+
 // --- resolve_all_definitions: multi-declaration go-to-definition ---
 
 fn index_docs(docs: &[(&str, &ParsedDocument)]) -> WorkspaceIndex {
