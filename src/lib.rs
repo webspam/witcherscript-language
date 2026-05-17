@@ -5,6 +5,7 @@ pub mod files;
 pub mod formatter;
 pub mod line_index;
 pub mod resolve;
+pub mod scope_index;
 pub mod script_env;
 pub mod semantic_tokens;
 pub mod symbols;

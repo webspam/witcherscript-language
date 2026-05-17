@@ -55,10 +55,14 @@ pub fn collect_wrapped_method_diagnostics(
 }
 
 fn check_func_decl<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {
-    let symbol = ctx.document.symbols.enclosing_symbol_at(
-        node.start_byte(),
-        &[SymbolKind::Function, SymbolKind::Method],
-    )?;
+    let symbol_id = ctx
+        .document
+        .scope_index
+        .enclosing_callable(node.start_byte())?;
+    let symbol = ctx.document.symbols.by_id(symbol_id)?;
+    if !matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
+        return None;
+    }
     if !symbol.annotations.iter().any(|a| a.name == "wrapMethod") {
         return None;
     }

@@ -6,6 +6,7 @@ use tree_sitter::{Parser, Tree};
 
 use crate::diagnostics::{collect_diagnostics, ParseDiagnostic};
 use crate::line_index::{LineIndex, SourceRange};
+use crate::scope_index::DocScopeIndex;
 use crate::symbols::{extract_symbols, DocumentSymbols};
 
 static PARSE_VERSION: AtomicU64 = AtomicU64::new(0);
@@ -21,6 +22,7 @@ pub struct ParsedDocument {
     pub line_index: LineIndex,
     pub diagnostics: Vec<ParseDiagnostic>,
     pub symbols: DocumentSymbols,
+    pub scope_index: DocScopeIndex,
     pub parse_version: u64,
 }
 
@@ -62,6 +64,7 @@ pub fn parse_document_with_parser(
     let line_index = LineIndex::new(&source);
     let diagnostics = collect_diagnostics(root, &source);
     let symbols = extract_symbols(root, &source, &line_index);
+    let scope_index = DocScopeIndex::build(&symbols);
 
     Ok(ParsedDocument {
         source,
@@ -69,6 +72,7 @@ pub fn parse_document_with_parser(
         line_index,
         diagnostics,
         symbols,
+        scope_index,
         parse_version: next_parse_version(),
     })
 }

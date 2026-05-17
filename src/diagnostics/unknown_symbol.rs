@@ -4,7 +4,7 @@ use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
-use crate::resolve::{infer_expr_type_memo, resolve_definition_at_byte, SymbolDb, BUILTIN_TYPES};
+use crate::resolve::{infer_expr_type_memo, resolve_definition_at_ident, SymbolDb, BUILTIN_TYPES};
 use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::{run_rules_on_document, CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic};
@@ -84,9 +84,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 return None;
             }
             ctx.telemetry.definition_resolutions += 1;
-            if resolve_definition_at_byte(ctx.uri, ctx.document, ctx.db, ident.start_byte())
-                .is_some()
-            {
+            if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
                 return None;
             }
             push(ctx, ident, "unknown_type", format!("unknown type '{name}'"));
@@ -127,10 +125,11 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             Some(())
         }
         IdentRole::MemberOfDefault => {
-            let enclosing = ctx.document.symbols.enclosing_symbol_at(
-                ident.start_byte(),
-                &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
-            )?;
+            let enclosing_id = ctx
+                .document
+                .scope_index
+                .enclosing_type(ident.start_byte())?;
+            let enclosing = ctx.document.symbols.by_id(enclosing_id)?;
             let container_name = enclosing.name.clone();
             ctx.telemetry.member_lookups += 1;
             if ctx
@@ -150,9 +149,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
         }
         IdentRole::FuncBareCall => {
             ctx.telemetry.definition_resolutions += 1;
-            if resolve_definition_at_byte(ctx.uri, ctx.document, ctx.db, ident.start_byte())
-                .is_some()
-            {
+            if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
                 return None;
             }
             push(
@@ -165,9 +162,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
         }
         IdentRole::Bare => {
             ctx.telemetry.definition_resolutions += 1;
-            if resolve_definition_at_byte(ctx.uri, ctx.document, ctx.db, ident.start_byte())
-                .is_some()
-            {
+            if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
                 return None;
             }
             push(
@@ -262,12 +257,19 @@ fn is_type_reference(ident: Node, parent: Node) -> bool {
 }
 
 fn is_inside_wrap_method<'tree>(ident: Node<'tree>, ctx: &CstRuleCtx<'_, 'tree>) -> bool {
-    let Some(enclosing) = ctx.document.symbols.enclosing_symbol_at(
-        ident.start_byte(),
-        &[SymbolKind::Function, SymbolKind::Method],
-    ) else {
+    let Some(enclosing_id) = ctx
+        .document
+        .scope_index
+        .enclosing_callable(ident.start_byte())
+    else {
         return false;
     };
+    let Some(enclosing) = ctx.document.symbols.by_id(enclosing_id) else {
+        return false;
+    };
+    if !matches!(enclosing.kind, SymbolKind::Function | SymbolKind::Method) {
+        return false;
+    }
     enclosing.annotations.iter().any(|a| a.name == "wrapMethod")
 }
 
