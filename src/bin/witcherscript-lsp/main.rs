@@ -14,6 +14,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tower_lsp::lsp_types::MessageType;
 use tower_lsp::{ClientSocket, LspService, Server};
+use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
@@ -90,6 +91,7 @@ fn init_tracing(
             tracing_subscriber::fmt::layer()
                 .with_writer(std::io::stderr)
                 .with_ansi(std::io::stderr().is_terminal())
+                .with_span_events(FmtSpan::CLOSE)
                 .with_filter(env_filter),
         )
         .with(LspLogSender {

@@ -283,6 +283,7 @@ impl LanguageServer for Backend {
             .await;
     }
 
+    #[tracing::instrument(skip_all, fields(uri = %params.text_document.uri), level = "debug")]
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
         if builtin_source(uri.as_str()).is_some() {

@@ -78,6 +78,7 @@ pub(crate) fn build_index_segments(
     segments
 }
 
+#[tracing::instrument(skip(index, document), fields(uri = %uri), level = "debug")]
 pub(crate) fn index_open_document(
     index: &mut WorkspaceIndex,
     uri: &Url,
@@ -124,8 +125,10 @@ pub(crate) fn classify_watched_event(
 }
 
 impl Backend {
+    #[tracing::instrument(skip(self, text), fields(uri = %uri, bytes = text.len()), level = "debug")]
     pub(crate) async fn update_open_document(&self, uri: Url, text: String) {
-        match parse_document(text) {
+        let parsed = tracing::debug_span!("parse_document").in_scope(|| parse_document(text));
+        match parsed {
             Ok(document) => {
                 {
                     let mut index = self.workspace_index.lock().await;
@@ -140,6 +143,7 @@ impl Backend {
         }
     }
 
+    #[tracing::instrument(skip(self), level = "debug")]
     pub(crate) async fn publish_open_diagnostics(&self) {
         if !self.diagnostics_enabled.load(Ordering::Relaxed) {
             return;
@@ -164,16 +168,20 @@ impl Backend {
                 .with_script_env(&env)
                 .with_builtins(&self.builtins_index);
 
-            let dup = collect_duplicate_symbol_diagnostics(&index);
-            let shadow = collect_shadowing_diagnostics(&index, &env);
-            let dup_local = collect_duplicate_local_diagnostics(&index);
+            let dup = tracing::debug_span!("dup_symbols")
+                .in_scope(|| collect_duplicate_symbol_diagnostics(&index));
+            let shadow = tracing::debug_span!("shadowing")
+                .in_scope(|| collect_shadowing_diagnostics(&index, &env));
+            let dup_local = tracing::debug_span!("dup_locals")
+                .in_scope(|| collect_duplicate_local_diagnostics(&index));
 
             let fingerprint = DbFingerprint {
                 workspace_surface: index.surface_hash(),
                 base_surface: base.surface_hash(),
                 env: env.version(),
             };
-            let (cst, stats) = cst_diagnostics_with_cache(&documents, &db, fingerprint, &mut cache);
+            let (cst, stats) = tracing::debug_span!("cst_diagnostics", open_docs = documents.len())
+                .in_scope(|| cst_diagnostics_with_cache(&documents, &db, fingerprint, &mut cache));
 
             (dup, shadow, dup_local, cst, stats)
         };
