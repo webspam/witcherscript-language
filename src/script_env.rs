@@ -129,7 +129,54 @@ pub fn parse_script_environment(ini_path: &Path) -> Option<ScriptEnvironment> {
         });
     }
 
+    apply_engine_overrides(&mut globals, &ini_uri);
+
     Some(ScriptEnvironment::new(globals))
+}
+
+// Engine injects these globals at runtime; if customised, leave them
+fn apply_engine_overrides(globals: &mut Vec<ScriptGlobal>, ini_uri: &str) {
+    inject_if_absent(globals, ini_uri, "theCamera", "CCameraDirector");
+    inject_if_absent(globals, ini_uri, "theTelemetry", "CR4TelemetryScriptProxy");
+}
+
+fn inject_if_absent(globals: &mut Vec<ScriptGlobal>, ini_uri: &str, name: &str, type_name: &str) {
+    if globals.iter().any(|g| g.name == name) {
+        return;
+    }
+    let zero = SourcePosition {
+        line: 0,
+        character: 0,
+    };
+    let range = SourceRange {
+        start: zero,
+        end: zero,
+    };
+    globals.push(ScriptGlobal {
+        name: name.to_string(),
+        type_name: type_name.to_string(),
+        ini_uri: ini_uri.to_string(),
+        symbol: Symbol {
+            id: SymbolId(0),
+            name: name.to_string(),
+            kind: SymbolKind::Variable,
+            range,
+            selection_range: range,
+            byte_range: 0..0,
+            selection_byte_range: 0..0,
+            container: None,
+            container_name: None,
+            type_annotation: Some(type_name.to_string()),
+            signature: None,
+            base_class: None,
+            owner_class: None,
+            flavour: None,
+            annotations: Vec::new(),
+            access: AccessLevel::Public,
+            is_optional: false,
+            is_out: false,
+        },
+    });
 }
 
 #[cfg(test)]
@@ -149,9 +196,8 @@ mod tests {
             "[globals]\ntheGame=CR4Game\nthePlayer=CR4Player\n",
         );
         let env = parse_script_environment(&path).unwrap();
-        assert_eq!(env.globals.len(), 2);
-        assert_eq!(env.globals[0].name, "theGame");
-        assert_eq!(env.globals[0].type_name, "CR4Game");
+        assert_eq!(env.find("theGame").unwrap().type_name, "CR4Game");
+        assert_eq!(env.find("thePlayer").unwrap().type_name, "CR4Player");
     }
 
     #[test]
@@ -161,18 +207,87 @@ mod tests {
             "[other]\nfoo=Bar\n[globals]\n; skip\ntheGame=CR4Game\n[more]\nbaz=Qux\n",
         );
         let env = parse_script_environment(&path).unwrap();
-        assert_eq!(env.globals.len(), 1);
-        assert_eq!(env.globals[0].name, "theGame");
+        assert!(env.find("theGame").is_some());
+        assert!(env.find("foo").is_none());
+        assert!(env.find("baz").is_none());
     }
 
     #[test]
     fn symbol_has_correct_position() {
         let path = write_temp("se_test3.ini", "[globals]\ntheGame=CR4Game\n");
         let env = parse_script_environment(&path).unwrap();
-        let sym = &env.globals[0].symbol;
+        let sym = &env.find("theGame").unwrap().symbol;
         assert_eq!(sym.selection_range.start.line, 1);
         assert_eq!(sym.selection_range.start.character, 0);
         assert_eq!(sym.type_annotation.as_deref(), Some("CR4Game"));
         assert_eq!(sym.kind, SymbolKind::Variable);
+    }
+
+    #[test]
+    fn camera_injected_when_absent_from_ini() {
+        let path = write_temp("se_camera1.ini", "[globals]\ntheGame=CR4Game\n");
+        let env = parse_script_environment(&path).unwrap();
+        let camera = env.find("theCamera").expect("theCamera injected");
+        assert_eq!(camera.type_name, "CCameraDirector");
+        assert_eq!(
+            camera.symbol.type_annotation.as_deref(),
+            Some("CCameraDirector")
+        );
+    }
+
+    #[test]
+    fn camera_left_alone_when_ini_already_has_it() {
+        struct Case {
+            name: &'static str,
+            ini_type: &'static str,
+        }
+        let cases = [
+            Case {
+                name: "stock CCamera entry",
+                ini_type: "CCamera",
+            },
+            Case {
+                name: "mod retyped",
+                ini_type: "MyCustomCamera",
+            },
+        ];
+        for (idx, c) in cases.iter().enumerate() {
+            let path = write_temp(
+                &format!("se_camera_alone{idx}.ini"),
+                &format!("[globals]\ntheCamera={}\n", c.ini_type),
+            );
+            let env = parse_script_environment(&path).unwrap();
+            assert_eq!(
+                env.find("theCamera").unwrap().type_name,
+                c.ini_type,
+                "case {}: theCamera should be untouched",
+                c.name,
+            );
+        }
+    }
+
+    #[test]
+    fn telemetry_is_appended_even_without_ini_entry() {
+        let path = write_temp("se_telemetry1.ini", "[globals]\ntheGame=CR4Game\n");
+        let env = parse_script_environment(&path).unwrap();
+        let tel = env.find("theTelemetry").expect("theTelemetry injected");
+        assert_eq!(tel.type_name, "CR4TelemetryScriptProxy");
+        assert_eq!(tel.symbol.kind, SymbolKind::Variable);
+    }
+
+    #[test]
+    fn telemetry_ini_entry_is_not_overwritten() {
+        let path = write_temp(
+            "se_telemetry2.ini",
+            "[globals]\ntheTelemetry=SomeOtherTelemetry\n",
+        );
+        let env = parse_script_environment(&path).unwrap();
+        let matches: Vec<_> = env
+            .globals
+            .iter()
+            .filter(|g| g.name == "theTelemetry")
+            .collect();
+        assert_eq!(matches.len(), 1, "should not duplicate theTelemetry");
+        assert_eq!(matches[0].type_name, "SomeOtherTelemetry");
     }
 }

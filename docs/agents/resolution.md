@@ -213,6 +213,17 @@ When resolving a name like `theGame`:
 
 Script globals are the last resort in the priority chain (after workspace and base).
 
+### Engine-injected overrides
+
+The game engine injects a small, fixed set of globals at runtime independently of `redscripts.ini`. `apply_engine_overrides` adds them after the INI parse, but only when the INI does not already mention them — any existing entry is treated as deliberate customisation and left alone.
+
+| Global | Injected type |
+| --- | --- |
+| `theCamera` | `CCameraDirector` |
+| `theTelemetry` | `CR4TelemetryScriptProxy` |
+
+This list is closed — do not add more entries without confirming the engine actually injects the global.
+
 ## Key constraints
 
 - Exec/quest functions are **excluded** from `all_top_level_callables()` and therefore from statement completions. Their signatures start with `"exec "` or `"quest "`.
