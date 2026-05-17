@@ -33,6 +33,12 @@ fn log_setting_change<T: PartialEq + std::fmt::Display>(setting: &str, prev: T, 
     }
 }
 
+#[derive(Default, Debug, Clone, Copy)]
+pub(crate) struct ConfigChange {
+    pub(crate) needs_reindex: bool,
+    pub(crate) diagnostics_toggled: bool,
+}
+
 pub(crate) fn build_index_segments(
     game_dir: Option<&Path>,
     extras: &[PathBuf],
@@ -135,6 +141,10 @@ impl Backend {
     }
 
     async fn publish_open_diagnostics(&self) {
+        if !self.diagnostics_enabled.load(Ordering::Relaxed) {
+            return;
+        }
+
         let start = Instant::now();
 
         let documents = self.documents.lock().await;
@@ -202,6 +212,22 @@ impl Backend {
             total_us = start.elapsed().as_micros(),
             "recomputed workspace diagnostics for open documents"
         );
+    }
+
+    pub(crate) async fn apply_diagnostics_toggle(&self) {
+        if self.diagnostics_enabled.load(Ordering::Relaxed) {
+            self.publish_open_diagnostics().await;
+        } else {
+            let uris: Vec<Url> = {
+                let mut published = self.published_diagnostics.lock().await;
+                let keys: Vec<Url> = published.keys().cloned().collect();
+                published.clear();
+                keys
+            };
+            for uri in uris {
+                self.client.publish_diagnostics(uri, Vec::new(), None).await;
+            }
+        }
     }
 
     pub(crate) async fn index_workspace(&self) {
@@ -349,11 +375,12 @@ impl Backend {
         self.publish_open_diagnostics().await;
     }
 
-    pub(crate) async fn fetch_config(&self) -> bool {
+    pub(crate) async fn fetch_config(&self) -> ConfigChange {
         let prev_base_scripts_path = self.base_scripts_path.lock().await.clone();
         let prev_files_exclude = self.files_exclude.lock().await.clone();
         let prev_additional = self.additional_script_dirs.lock().await.clone();
         let prev_auto_load = self.auto_load_mod_shared_imports.load(Ordering::Relaxed);
+        let prev_diag_enabled = self.diagnostics_enabled.load(Ordering::Relaxed);
 
         let items = vec![
             ConfigurationItem {
@@ -388,10 +415,14 @@ impl Backend {
                 scope_uri: None,
                 section: Some("witcherscript.autoLoadModSharedImports".to_string()),
             },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.diagnostics.enable".to_string()),
+            },
         ];
         let Ok(values) = self.client.configuration(items).await else {
             warn!("workspace/configuration request failed");
-            return false;
+            return ConfigChange::default();
         };
         let mut iter = values.into_iter();
         if let Some(Value::String(path_str)) = iter.next() {
@@ -463,6 +494,14 @@ impl Backend {
                     .store(true, Ordering::Relaxed);
             }
         }
+        match iter.next() {
+            Some(Value::Bool(b)) => {
+                self.diagnostics_enabled.store(b, Ordering::Relaxed);
+            }
+            _ => {
+                self.diagnostics_enabled.store(true, Ordering::Relaxed);
+            }
+        }
 
         let base_scripts_changed = *self.base_scripts_path.lock().await != prev_base_scripts_path;
         let files_exclude_changed = *self.files_exclude.lock().await != prev_files_exclude;
@@ -471,6 +510,8 @@ impl Backend {
             || *self.additional_script_dirs.lock().await != prev_additional;
         let new_auto_load = self.auto_load_mod_shared_imports.load(Ordering::Relaxed);
         let auto_load_changed = new_auto_load != prev_auto_load;
+        let new_diag_enabled = self.diagnostics_enabled.load(Ordering::Relaxed);
+        let diagnostics_toggled = new_diag_enabled != prev_diag_enabled;
         if base_scripts_changed {
             trace!(setting = "gameDirectory", "setting changed");
         }
@@ -493,7 +534,21 @@ impl Backend {
                 "setting changed"
             );
         }
-        base_scripts_changed || files_exclude_changed || additional_changed || auto_load_changed
+        if diagnostics_toggled {
+            trace!(
+                setting = "diagnostics.enable",
+                prev = prev_diag_enabled,
+                new = new_diag_enabled,
+                "setting changed"
+            );
+        }
+        ConfigChange {
+            needs_reindex: base_scripts_changed
+                || files_exclude_changed
+                || additional_changed
+                || auto_load_changed,
+            diagnostics_toggled,
+        }
     }
 
     pub(crate) async fn resolve_at(&self, uri: &Url, position: Position) -> Option<Definition> {
@@ -594,5 +649,59 @@ impl Backend {
         );
 
         self.publish_open_diagnostics().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ConfigChange;
+
+    #[test]
+    fn config_change_default_is_no_op() {
+        let c = ConfigChange::default();
+        struct Case {
+            name: &'static str,
+            change: ConfigChange,
+            expect_any_action: bool,
+        }
+        let cases = [
+            Case {
+                name: "default → nothing to do",
+                change: c,
+                expect_any_action: false,
+            },
+            Case {
+                name: "reindex only",
+                change: ConfigChange {
+                    needs_reindex: true,
+                    diagnostics_toggled: false,
+                },
+                expect_any_action: true,
+            },
+            Case {
+                name: "diagnostics toggle only",
+                change: ConfigChange {
+                    needs_reindex: false,
+                    diagnostics_toggled: true,
+                },
+                expect_any_action: true,
+            },
+            Case {
+                name: "both at once",
+                change: ConfigChange {
+                    needs_reindex: true,
+                    diagnostics_toggled: true,
+                },
+                expect_any_action: true,
+            },
+        ];
+        for c in cases {
+            let any = c.change.needs_reindex || c.change.diagnostics_toggled;
+            assert_eq!(
+                any, c.expect_any_action,
+                "case {}: action predicate wrong",
+                c.name
+            );
+        }
     }
 }

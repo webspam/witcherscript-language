@@ -143,6 +143,7 @@ The server reads the following user-configurable settings:
 | `witcherscript.gameDirectory` | `string` | `""` | Absolute path to the Witcher 3 install root (e.g. `C:\GOG Games\The Witcher 3`). The server appends `content\content0\scripts` and indexes the ~1,700 base game scripts. It also loads engine globals from `bin\redscripts.ini`. |
 | `witcherscript.additionalScriptDirectories` | `string[]` | `[]` | Extra root directories to walk recursively for `.ws` files. Each entry is loaded as read-only base scripts: their symbols join the global namespace, but renames are rejected. Use this when writing co-dependent mods that need to see each other's declarations. |
 | `witcherscript.autoLoadModSharedImports` | `boolean` | `true` | Auto-load the **Shared Imports** mod (a specific community mod at `<gameDirectory>\Mods\modSharedImports` that most modern Witcher 3 mods depend on to avoid clashes between `import` declarations). When this flag is on and the directory exists, it is loaded automatically — see "Auto-loaded: the Shared Imports mod" below. |
+| `witcherscript.diagnostics.enable` | `boolean` | `true` | Master switch for all diagnostics (parse errors, duplicate symbols, shadowing warnings, late-local-var, etc.). Set to `false` to suppress every diagnostic the server would otherwise publish — useful when reviewing partial-port or legacy mod source where squiggles are noise. Live-toggleable: flipping it off clears any visible diagnostics; flipping it back on republishes them. |
 
 #### Auto-loaded: the Shared Imports mod
 
@@ -192,6 +193,11 @@ The server uses two complementary LSP mechanisms:
         "type": "boolean",
         "default": true,
         "description": "Auto-load <gameDirectory>\\Mods\\modSharedImports (the Shared Imports mod). See server README."
+      },
+      "witcherscript.diagnostics.enable": {
+        "type": "boolean",
+        "default": true,
+        "description": "Master switch for WitcherScript diagnostics. Set to false to suppress every diagnostic the server publishes."
       }
     }
   }
@@ -207,6 +213,7 @@ const clientOptions: LanguageClientOptions = {
     gameDirectory: cfg.get<string>('gameDirectory') ?? '',
     additionalScriptDirectories: cfg.get<string[]>('additionalScriptDirectories') ?? [],
     autoLoadModSharedImports: cfg.get<boolean>('autoLoadModSharedImports') ?? true,
+    diagnostics: { enable: cfg.get<boolean>('diagnostics.enable') ?? true },
   },
 };
 ```

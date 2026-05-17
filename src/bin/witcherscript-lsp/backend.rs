@@ -119,6 +119,7 @@ pub(crate) struct Backend {
     pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) auto_load_mod_shared_imports: Arc<AtomicBool>,
+    pub(crate) diagnostics_enabled: Arc<AtomicBool>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     pub(crate) builtins_index: Arc<WorkspaceIndex>,
@@ -168,6 +169,11 @@ impl LanguageServer for Backend {
             {
                 self.auto_load_mod_shared_imports
                     .store(b, Ordering::Relaxed);
+            }
+            if let Some(diag) = opts.get("diagnostics") {
+                if let Some(b) = diag.get("enable").and_then(|v| v.as_bool()) {
+                    self.diagnostics_enabled.store(b, Ordering::Relaxed);
+                }
             }
             if let Some(level_str) = opts.get("logLevel").and_then(|v| v.as_str()) {
                 self.log_level
@@ -325,12 +331,12 @@ impl LanguageServer for Backend {
 
     async fn did_change_configuration(&self, _: DidChangeConfigurationParams) {
         let initial_done = self.initial_index_done.lock().await;
-        let changed = self.fetch_config().await;
+        let change = self.fetch_config().await;
         if !*initial_done {
             tracing::trace!("did_change_configuration: startup echo, skipping re-index");
             return;
         }
-        if changed {
+        if change.needs_reindex {
             tracing::trace!("did_change_configuration: index-relevant config changed, re-indexing");
             self.index_workspace().await;
             self.index_base_scripts().await;
@@ -338,6 +344,10 @@ impl LanguageServer for Backend {
             tracing::trace!(
                 "did_change_configuration: no index-relevant config change, skipping re-index"
             );
+        }
+        if change.diagnostics_toggled {
+            tracing::trace!("did_change_configuration: diagnostics toggle changed, applying");
+            self.apply_diagnostics_toggle().await;
         }
     }
 

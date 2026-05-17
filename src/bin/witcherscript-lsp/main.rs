@@ -122,6 +122,7 @@ fn build_service(
             base_scripts_path: Arc::new(Mutex::new(None)),
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
             auto_load_mod_shared_imports: Arc::new(AtomicBool::new(true)),
+            diagnostics_enabled: Arc::new(AtomicBool::new(true)),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
             builtins_index: Arc::new(load_builtins_index()),
