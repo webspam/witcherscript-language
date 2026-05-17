@@ -88,9 +88,8 @@ fn resolves_definition_site_of_enum_variant() {
 
 #[test]
 fn resolves_enum_variant_reference_in_expression() {
-    let document = make_doc(
-        "enum EColor { ERed = 0, EBlue = 1 }\nfunction F() { var c : EColor; c = ERed; }\n",
-    );
+    let document =
+        make_doc("enum EColor { ERed = 0, EBlue = 1 }\nfunction F() { var c : EColor = ERed; }\n");
     let index = make_index("file:///test.ws", &document);
 
     let definition = resolve_definition(
@@ -99,7 +98,7 @@ fn resolves_enum_variant_reference_in_expression() {
         &SymbolDb::new(&index, &WorkspaceIndex::default()),
         SourcePosition {
             line: 1,
-            character: 36,
+            character: 33,
         },
     )
     .expect("enum variant reference in expression should resolve");
