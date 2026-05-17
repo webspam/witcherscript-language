@@ -88,6 +88,29 @@ fn surface_hash_stable_under_text_only_edits() {
 }
 
 #[test]
+fn surface_hash_ignores_local_variable_and_parameter_churn() {
+    let baseline = make_doc("class A { function F() { var x : int; } }\n");
+    let mut index = super::WorkspaceIndex::default();
+    index.update_document("file:///a.ws", &baseline);
+    let h0 = index.surface_hash();
+
+    let mid_typing_locals = [
+        "class A { function F() { var x : int; var y : float; } }\n",
+        "class A { function F() { var x : int; var y : float; var z : string; } }\n",
+        "class A { function F() { var renamed : int; } }\n",
+        "class A { function F() {} }\n",
+    ];
+    for src in mid_typing_locals {
+        index.update_document("file:///a.ws", &make_doc(src));
+        assert_eq!(
+            h0,
+            index.surface_hash(),
+            "local-var churn should not change surface hash: {src}"
+        );
+    }
+}
+
+#[test]
 fn surface_hash_changes_on_structural_edit() {
     struct Case {
         name: &'static str,

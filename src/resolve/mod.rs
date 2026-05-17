@@ -1521,8 +1521,11 @@ fn doc_surface_hash(uri: &str, symbols: &[Symbol]) -> u64 {
 
     let mut h = DefaultHasher::new();
     uri.hash(&mut h);
-    h.write_usize(symbols.len());
-    for s in symbols {
+    let externally_visible = symbols
+        .iter()
+        .filter(|s| !matches!(s.kind, SymbolKind::Variable | SymbolKind::Parameter));
+    h.write_usize(externally_visible.clone().count());
+    for s in externally_visible {
         s.name.hash(&mut h);
         (s.kind as u8).hash(&mut h);
         s.container_name.hash(&mut h);
