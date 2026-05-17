@@ -3,7 +3,7 @@ use crate::resolve::WorkspaceIndex;
 
 const ARRAY_WS: &str = include_str!("../builtins/array.ws");
 
-pub const BUILTIN_ARRAY_URI: &str = "witcherscript-builtin:///array.ws";
+pub const BUILTIN_ARRAY_URI: &str = "witcherscript-builtin:/array.ws";
 
 pub const GENERIC_ELEMENT_PLACEHOLDER: &str = "T";
 

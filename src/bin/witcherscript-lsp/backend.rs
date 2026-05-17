@@ -22,7 +22,7 @@ use tower_lsp::lsp_types::{
     WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer};
-use tracing::{error, info};
+use tracing::{error, info, trace};
 use witcherscript_parser::builtins::builtin_source;
 use witcherscript_parser::document::{apply_content_change, ParsedDocument};
 use witcherscript_parser::formatter::format_document;
@@ -133,6 +133,7 @@ pub(crate) struct Backend {
 impl Backend {
     pub(crate) async fn handle_builtin_source(&self, params: Value) -> Result<Value> {
         let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("");
+        trace!(uri = uri, "witcherscript/builtinSource request");
         builtin_source_response(uri)
     }
 }
