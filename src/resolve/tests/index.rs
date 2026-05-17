@@ -61,3 +61,121 @@ fn generation_counter_bumps_on_mutation() {
     let g3 = index.generation();
     assert_ne!(g2, g3, "remove_document should bump generation");
 }
+
+#[test]
+fn surface_hash_stable_under_text_only_edits() {
+    let original = make_doc("class A { function F() { var x : int; } }\n");
+    let with_comment = make_doc("class A { function F() { var x : int; /* hi */ } }\n");
+    let with_body_change = make_doc("class A { function F() { var x : int; x = 42; } }\n");
+
+    let mut index = super::WorkspaceIndex::default();
+    index.update_document("file:///a.ws", &original);
+    let h0 = index.surface_hash();
+
+    index.update_document("file:///a.ws", &with_comment);
+    assert_eq!(
+        h0,
+        index.surface_hash(),
+        "comment-only edit must not change surface hash"
+    );
+
+    index.update_document("file:///a.ws", &with_body_change);
+    assert_eq!(
+        h0,
+        index.surface_hash(),
+        "function-body edit must not change surface hash"
+    );
+}
+
+#[test]
+fn surface_hash_changes_on_structural_edit() {
+    struct Case {
+        name: &'static str,
+        before: &'static str,
+        after: &'static str,
+    }
+    let cases = [
+        Case {
+            name: "rename class",
+            before: "class A {}\n",
+            after: "class B {}\n",
+        },
+        Case {
+            name: "add method",
+            before: "class A { function F() {} }\n",
+            after: "class A { function F() {} function G() {} }\n",
+        },
+        Case {
+            name: "change member access",
+            before: "class A { public function F() {} }\n",
+            after: "class A { private function F() {} }\n",
+        },
+        Case {
+            name: "change base class",
+            before: "class A extends Foo {}\n",
+            after: "class A extends Bar {}\n",
+        },
+        Case {
+            name: "change parameter signature",
+            before: "function F(x : int) {}\n",
+            after: "function F(x : float) {}\n",
+        },
+    ];
+    for c in cases {
+        let mut index = super::WorkspaceIndex::default();
+        index.update_document("file:///x.ws", &make_doc(c.before));
+        let h_before = index.surface_hash();
+        index.update_document("file:///x.ws", &make_doc(c.after));
+        let h_after = index.surface_hash();
+        assert_ne!(
+            h_before, h_after,
+            "case `{}`: surface hash should change",
+            c.name
+        );
+    }
+}
+
+#[test]
+fn surface_hash_does_not_self_cancel_for_identical_docs() {
+    let doc = make_doc("class A {}\n");
+    let mut index = super::WorkspaceIndex::default();
+    index.update_document("file:///a.ws", &doc);
+    index.update_document("file:///b.ws", &doc);
+    assert_ne!(
+        0,
+        index.surface_hash(),
+        "two identical-content docs under different URIs must not XOR to 0"
+    );
+}
+
+#[test]
+fn surface_hash_recovers_after_revert() {
+    let original = make_doc("class A {}\n");
+    let edited = make_doc("class B {}\n");
+    let mut index = super::WorkspaceIndex::default();
+    index.update_document("file:///a.ws", &original);
+    let h0 = index.surface_hash();
+    index.update_document("file:///a.ws", &edited);
+    assert_ne!(h0, index.surface_hash());
+    index.update_document("file:///a.ws", &original);
+    assert_eq!(
+        h0,
+        index.surface_hash(),
+        "reverting should restore prior surface hash"
+    );
+}
+
+#[test]
+fn surface_hash_returns_to_zero_after_removing_only_doc() {
+    let doc = make_doc("class A {}\n");
+    let mut index = super::WorkspaceIndex::default();
+    assert_eq!(0, index.surface_hash());
+    index.update_document("file:///a.ws", &doc);
+    assert_ne!(0, index.surface_hash());
+    index.remove_document("file:///a.ws");
+    assert_eq!(
+        0,
+        index.surface_hash(),
+        "removing the only indexed doc should restore empty hash"
+    );
+}

@@ -9,8 +9,8 @@ use witcherscript_parser::resolve::SymbolDb;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DbFingerprint {
-    pub workspace: u64,
-    pub base: u64,
+    pub workspace_surface: u64,
+    pub base_surface: u64,
     pub env: u64,
 }
 
@@ -96,8 +96,8 @@ mod tests {
         documents.insert(url("file:///a.ws"), doc_a);
         documents.insert(url("file:///b.ws"), doc_b);
         let fp = DbFingerprint {
-            workspace: idx.generation(),
-            base: 0,
+            workspace_surface: idx.surface_hash(),
+            base_surface: 0,
             env: 0,
         };
 
@@ -109,6 +109,46 @@ mod tests {
         let (_, stats2) = cst_diagnostics_with_cache(&documents, &db, fp, &mut cache);
         assert_eq!(stats2.hits, 2);
         assert_eq!(stats2.misses, 0);
+    }
+
+    #[test]
+    fn text_only_edit_to_doc_keeps_others_hot() {
+        let mut idx = WorkspaceIndex::default();
+        let doc_a = make_doc("class A {}\n");
+        let doc_b = make_doc("class B {}\n");
+        idx.update_document("file:///a.ws", &doc_a);
+        idx.update_document("file:///b.ws", &doc_b);
+        let base = WorkspaceIndex::default();
+        let db = SymbolDb::new(&idx, &base);
+
+        let mut documents: HashMap<Url, ParsedDocument> = HashMap::new();
+        documents.insert(url("file:///a.ws"), doc_a);
+        documents.insert(url("file:///b.ws"), doc_b);
+
+        let fp0 = DbFingerprint {
+            workspace_surface: idx.surface_hash(),
+            base_surface: 0,
+            env: 0,
+        };
+        let mut cache: HashMap<Url, CstCacheEntry> = HashMap::new();
+        let _ = cst_diagnostics_with_cache(&documents, &db, fp0, &mut cache);
+
+        let fresh_a = make_doc("class A {} // comment-only edit\n");
+        idx.update_document("file:///a.ws", &fresh_a);
+        documents.insert(url("file:///a.ws"), fresh_a);
+
+        let db = SymbolDb::new(&idx, &base);
+        let fp1 = DbFingerprint {
+            workspace_surface: idx.surface_hash(),
+            base_surface: 0,
+            env: 0,
+        };
+        let (_, stats) = cst_diagnostics_with_cache(&documents, &db, fp1, &mut cache);
+        assert_eq!(stats.hits, 1, "doc b should still be a cache hit");
+        assert_eq!(
+            stats.misses, 1,
+            "only doc a (parse_version changed) should miss"
+        );
     }
 
     #[test]
@@ -125,8 +165,8 @@ mod tests {
         documents.insert(url("file:///a.ws"), doc_a);
         documents.insert(url("file:///b.ws"), doc_b);
         let fp = DbFingerprint {
-            workspace: idx.generation(),
-            base: 0,
+            workspace_surface: idx.surface_hash(),
+            base_surface: 0,
             env: 0,
         };
 
@@ -155,8 +195,8 @@ mod tests {
         documents.insert(url("file:///a.ws"), doc_a);
         documents.insert(url("file:///b.ws"), doc_b);
         let fp = DbFingerprint {
-            workspace: idx.generation(),
-            base: 0,
+            workspace_surface: idx.surface_hash(),
+            base_surface: 0,
             env: 0,
         };
 
@@ -164,8 +204,8 @@ mod tests {
         let _ = cst_diagnostics_with_cache(&documents, &db, fp, &mut cache);
 
         let fp_bumped = DbFingerprint {
-            workspace: fp.workspace.wrapping_add(1),
-            base: 0,
+            workspace_surface: fp.workspace_surface.wrapping_add(1),
+            base_surface: 0,
             env: 0,
         };
         let (_, stats) = cst_diagnostics_with_cache(&documents, &db, fp_bumped, &mut cache);
@@ -187,8 +227,8 @@ mod tests {
         documents.insert(url("file:///a.ws"), doc_a);
         documents.insert(url("file:///b.ws"), doc_b);
         let fp = DbFingerprint {
-            workspace: idx.generation(),
-            base: 0,
+            workspace_surface: idx.surface_hash(),
+            base_surface: 0,
             env: 0,
         };
 

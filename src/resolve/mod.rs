@@ -378,12 +378,18 @@ pub struct WorkspaceIndex {
     member_by_type: HashMap<String, HashMap<String, Definition>>,
     annotated_members_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
     doc_idents: HashMap<String, HashMap<String, Vec<std::ops::Range<usize>>>>,
+    doc_surface_hashes: HashMap<String, u64>,
+    surface_hash: u64,
     generation: u64,
 }
 
 impl WorkspaceIndex {
     pub fn generation(&self) -> u64 {
         self.generation
+    }
+
+    pub fn surface_hash(&self) -> u64 {
+        self.surface_hash
     }
 
     pub fn update_document(&mut self, uri: impl Into<String>, document: &ParsedDocument) {
@@ -394,6 +400,13 @@ impl WorkspaceIndex {
         self.insert_into_indices(&uri, &all_symbols);
         self.doc_idents
             .insert(uri.clone(), scan_ident_occurrences(document));
+
+        let new_hash = doc_surface_hash(&uri, &all_symbols);
+        if let Some(old_hash) = self.doc_surface_hashes.insert(uri.clone(), new_hash) {
+            self.surface_hash ^= old_hash;
+        }
+        self.surface_hash ^= new_hash;
+
         self.documents.insert(uri, all_symbols);
         self.generation = self.generation.wrapping_add(1);
     }
@@ -402,6 +415,9 @@ impl WorkspaceIndex {
         self.remove_from_indices(uri);
         self.doc_idents.remove(uri);
         self.documents.remove(uri);
+        if let Some(old_hash) = self.doc_surface_hashes.remove(uri) {
+            self.surface_hash ^= old_hash;
+        }
         self.generation = self.generation.wrapping_add(1);
     }
 
@@ -1497,6 +1513,34 @@ fn dedup_definitions(defs: Vec<Definition>) -> Vec<Definition> {
         result.push(def);
     }
     result
+}
+
+fn doc_surface_hash(uri: &str, symbols: &[Symbol]) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut h = DefaultHasher::new();
+    uri.hash(&mut h);
+    h.write_usize(symbols.len());
+    for s in symbols {
+        s.name.hash(&mut h);
+        (s.kind as u8).hash(&mut h);
+        s.container_name.hash(&mut h);
+        s.type_annotation.hash(&mut h);
+        s.signature.hash(&mut h);
+        s.base_class.hash(&mut h);
+        s.owner_class.hash(&mut h);
+        s.flavour.hash(&mut h);
+        h.write_usize(s.annotations.len());
+        for a in &s.annotations {
+            a.name.hash(&mut h);
+            a.argument.hash(&mut h);
+        }
+        (s.access as u8).hash(&mut h);
+        s.is_optional.hash(&mut h);
+        s.is_out.hash(&mut h);
+    }
+    h.finish()
 }
 
 fn scan_ident_occurrences(

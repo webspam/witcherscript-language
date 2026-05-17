@@ -169,8 +169,8 @@ impl Backend {
             let dup_local = collect_duplicate_local_diagnostics(&index);
 
             let fingerprint = DbFingerprint {
-                workspace: index.generation(),
-                base: base.generation(),
+                workspace_surface: index.surface_hash(),
+                base_surface: base.surface_hash(),
                 env: env.version(),
             };
             let (cst, stats) = cst_diagnostics_with_cache(&documents, &db, fingerprint, &mut cache);
