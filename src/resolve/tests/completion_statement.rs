@@ -1067,3 +1067,37 @@ fn local_var_name_in_method_body_yields_no_completions() {
         "statement completions must be all-empty when declaring a new local variable name"
     );
 }
+
+#[test]
+fn statement_globals_include_enum_variants() {
+    let source = "enum EColor { ERed = 0, EBlue = 1 }\nfunction F() {\n  \n}\n";
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let result = statement_completions(
+        "file:///test.ws",
+        &doc,
+        &db,
+        SourcePosition {
+            line: 2,
+            character: 2,
+        },
+    );
+
+    let has_variant = result
+        .globals
+        .iter()
+        .any(|d| d.symbol.name == "ERed" && d.symbol.kind == SymbolKind::EnumVariant);
+    assert!(
+        has_variant,
+        "enum variants must appear in statement-context globals; got {:?}",
+        result
+            .globals
+            .iter()
+            .map(|d| d.symbol.name.as_str())
+            .collect::<Vec<_>>()
+    );
+}

@@ -1,5 +1,5 @@
 use super::super::{resolve_all_definitions, resolve_definition};
-use super::{make_doc, SymbolDb, WorkspaceIndex};
+use super::{make_doc, make_index, SymbolDb, WorkspaceIndex};
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
@@ -83,6 +83,52 @@ fn resolves_definition_site_of_enum_variant() {
     .expect("definition should resolve from enum variant definition site");
 
     assert_eq!(definition.symbol.name, "VALUE_A");
+    assert_eq!(definition.symbol.kind, SymbolKind::EnumVariant);
+}
+
+#[test]
+fn resolves_enum_variant_reference_in_expression() {
+    let document = make_doc(
+        "enum EColor { ERed = 0, EBlue = 1 }\nfunction F() { var c : EColor; c = ERed; }\n",
+    );
+    let index = make_index("file:///test.ws", &document);
+
+    let definition = resolve_definition(
+        "file:///test.ws",
+        &document,
+        &SymbolDb::new(&index, &WorkspaceIndex::default()),
+        SourcePosition {
+            line: 1,
+            character: 36,
+        },
+    )
+    .expect("enum variant reference in expression should resolve");
+
+    assert_eq!(definition.symbol.name, "ERed");
+    assert_eq!(definition.symbol.kind, SymbolKind::EnumVariant);
+    assert_eq!(definition.symbol.selection_range.start.line, 0);
+}
+
+#[test]
+fn resolves_enum_variant_defined_in_other_document() {
+    let enum_doc = make_doc("enum EColor { ERed = 0 }\n");
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///enums.ws", &enum_doc);
+
+    let user_doc = make_doc("function F() { var c : EColor; c = ERed; }\n");
+    let definition = resolve_definition(
+        "file:///user.ws",
+        &user_doc,
+        &SymbolDb::new(&index, &WorkspaceIndex::default()),
+        SourcePosition {
+            line: 0,
+            character: 36,
+        },
+    )
+    .expect("cross-document enum variant reference should resolve");
+
+    assert_eq!(definition.uri, "file:///enums.ws");
+    assert_eq!(definition.symbol.name, "ERed");
     assert_eq!(definition.symbol.kind, SymbolKind::EnumVariant);
 }
 

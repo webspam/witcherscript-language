@@ -84,6 +84,22 @@ impl<'a> SymbolDb<'a> {
             .or_else(|| self.builtins.and_then(|b| b.find_top_level(name)))
     }
 
+    pub fn find_enum_variant(&self, name: &str) -> Option<Definition> {
+        self.workspace
+            .find_enum_variant(name)
+            .or_else(|| self.base.find_enum_variant(name))
+            .or_else(|| self.builtins.and_then(|b| b.find_enum_variant(name)))
+    }
+
+    pub fn all_enum_variants(&self) -> Vec<Definition> {
+        dedup_by_name(
+            self.workspace
+                .all_enum_variants()
+                .into_iter()
+                .chain(self.base.all_enum_variants()),
+        )
+    }
+
     pub fn superclass_of(&self, class_name: &str) -> Option<String> {
         self.workspace
             .superclass_of(class_name)
@@ -359,6 +375,7 @@ fn substitute_in_definition(
 pub struct WorkspaceIndex {
     documents: HashMap<String, Vec<Symbol>>,
     top_level_by_name: HashMap<String, Definition>,
+    enum_variant_by_name: HashMap<String, Definition>,
     superclass_by_name: HashMap<String, String>,
     member_by_type: HashMap<String, HashMap<String, Definition>>,
     annotated_members_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
@@ -459,6 +476,15 @@ impl WorkspaceIndex {
                         self.member_by_type.remove(cn);
                     }
                 }
+                if sym.kind == SymbolKind::EnumVariant
+                    && self
+                        .enum_variant_by_name
+                        .get(&sym.name)
+                        .map(|d| d.uri == uri)
+                        .unwrap_or(false)
+                {
+                    self.enum_variant_by_name.remove(&sym.name);
+                }
             }
         }
     }
@@ -500,12 +526,29 @@ impl WorkspaceIndex {
                         symbol: sym.clone(),
                     },
                 );
+                if sym.kind == SymbolKind::EnumVariant {
+                    self.enum_variant_by_name.insert(
+                        sym.name.clone(),
+                        Definition {
+                            uri: uri.to_string(),
+                            symbol: sym.clone(),
+                        },
+                    );
+                }
             }
         }
     }
 
     pub fn find_top_level(&self, name: &str) -> Option<Definition> {
         self.top_level_by_name.get(name).cloned()
+    }
+
+    pub fn find_enum_variant(&self, name: &str) -> Option<Definition> {
+        self.enum_variant_by_name.get(name).cloned()
+    }
+
+    pub fn all_enum_variants(&self) -> Vec<Definition> {
+        self.enum_variant_by_name.values().cloned().collect()
     }
 
     pub fn all_types(&self) -> Vec<Definition> {
@@ -653,6 +696,7 @@ pub fn resolve_definition_at_byte(
         .or_else(|| resolve_current_type_member(uri, document, db, byte_offset, name))
         .or_else(|| resolve_document_top_level(uri, document, name))
         .or_else(|| db.find_top_level(name))
+        .or_else(|| db.find_enum_variant(name))
         .or_else(|| db.find_script_global(name))
         .or_else(|| resolve_at_definition_site(uri, document, byte_offset, name))
 }
@@ -983,7 +1027,16 @@ pub(crate) fn infer_expr_type(
                 })
                 .or_else(|| resolve_document_top_level(uri, document, name))
                 .or_else(|| db.find_top_level(name))
-                .and_then(|def| def.symbol.type_annotation)
+                .or_else(|| db.find_enum_variant(name))
+                .and_then(|def| {
+                    def.symbol.type_annotation.clone().or_else(|| {
+                        if def.symbol.kind == SymbolKind::EnumVariant {
+                            def.symbol.container_name.clone()
+                        } else {
+                            None
+                        }
+                    })
+                })
                 .or_else(|| db.script_global_type(name))
         }
         "func_call_expr" => {
@@ -2361,6 +2414,7 @@ fn function_body_completions<'a>(
 
     let mut globals = db.all_top_level_callables();
     globals.extend(db.all_script_globals());
+    globals.extend(db.all_enum_variants());
 
     Some((
         nodes,
