@@ -11,6 +11,7 @@ mod duplicate_symbols;
 mod shadowing;
 mod unknown_method;
 mod unknown_symbol;
+mod wrapped_method;
 
 pub(crate) use cst_walker::{run_rules_on_document, CstRule, CstRuleCtx};
 pub use duplicate_local::collect_duplicate_local_diagnostics;
@@ -18,11 +19,13 @@ pub use duplicate_symbols::collect_duplicate_symbol_diagnostics;
 pub use shadowing::collect_shadowing_diagnostics;
 pub use unknown_method::collect_unknown_method_diagnostics;
 pub use unknown_symbol::collect_unknown_symbol_diagnostics;
+pub use wrapped_method::collect_wrapped_method_diagnostics;
 
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use unknown_method::UnknownMethodRule;
 use unknown_symbol::UnknownSymbolRule;
+use wrapped_method::WrappedMethodRule;
 
 pub fn collect_cst_diagnostics_for_document(
     uri: &str,
@@ -31,7 +34,8 @@ pub fn collect_cst_diagnostics_for_document(
 ) -> Vec<WorkspaceDiagnostic> {
     let method_rule = UnknownMethodRule;
     let symbol_rule = UnknownSymbolRule;
-    let rules: Vec<&dyn CstRule> = vec![&method_rule, &symbol_rule];
+    let wrapped_rule = WrappedMethodRule;
+    let rules: Vec<&dyn CstRule> = vec![&method_rule, &symbol_rule, &wrapped_rule];
     run_rules_on_document(uri, document, db, &rules)
 }
 
