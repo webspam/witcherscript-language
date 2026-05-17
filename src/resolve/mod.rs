@@ -363,9 +363,6 @@ fn substitute_in_definition(
     if let Some(s) = def.symbol.signature.take() {
         def.symbol.signature = Some(substitute_placeholder(&s, p, element));
     }
-    if let Some(d) = def.symbol.detail.take() {
-        def.symbol.detail = Some(substitute_placeholder(&d, p, element));
-    }
     if def.symbol.container_name.is_some() {
         def.symbol.container_name = Some(container_instance.to_string());
     }
@@ -972,13 +969,13 @@ pub fn hover_text(definition: &Definition) -> String {
             } else {
                 lines.push(format!("{label} {}", symbol.name));
             }
-            if let Some(detail) = &symbol.detail {
+            if let Some(detail) = symbol.display_detail() {
                 match lines.last_mut() {
                     Some(last) => {
                         last.push(' ');
-                        last.push_str(detail);
+                        last.push_str(&detail);
                     }
-                    None => lines.push(detail.clone()),
+                    None => lines.push(detail),
                 }
             }
         }

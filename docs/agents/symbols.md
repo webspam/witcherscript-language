@@ -38,20 +38,20 @@ pub struct Symbol {
     pub type_annotation: Option<String>,      // "int", "CR4Player", etc.
     pub signature: Option<String>,            // Full text from flavour/event keyword to "{" for callables;
                                               // full node text for Fields
-    pub detail: Option<String>,               // "extends ClassName" for Class/Struct/State;
-                                              // "in OwnerClass" for State
+    pub base_class: Option<String>,           // Raw superclass name for Class/Struct/State
+    pub owner_class: Option<String>,          // Raw owner class name for State (second ident in state_decl)
     pub annotations: Vec<Annotation>,        // @addField, @wrapMethod, etc.
     pub access: AccessLevel,                  // default: Public
     pub is_optional: bool,                    // true if specifier "optional" present (Parameters only)
 }
 ```
 
-**`detail` field format:**
+**`Symbol::display_detail()`** renders the human-readable detail string used in hover popups and the document outline. It reads from `base_class` / `owner_class`:
 - Class/Struct: `"extends BaseClass"` (or `None` if no base)
-- State: `"in OwnerClass"` (second `ident` in the state_decl node)
+- State: `"in OwnerClass"`, `"in OwnerClass extends BaseState"`, `"extends BaseState"`, or `None`
 - All others: `None`
 
-This string is parsed by `WorkspaceIndex` to build `superclass_by_name` and by resolve to determine inheritance chains.
+Structural queries (e.g. building `superclass_by_name`, walking inheritance chains) read `base_class` / `owner_class` directly. The rendered detail string is display-only.
 
 ## AccessLevel
 

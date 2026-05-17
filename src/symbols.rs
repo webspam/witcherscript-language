@@ -47,7 +47,6 @@ pub struct Symbol {
     pub container_name: Option<String>,
     pub type_annotation: Option<String>,
     pub signature: Option<String>,
-    pub detail: Option<String>,
     pub base_class: Option<String>,
     pub owner_class: Option<String>,
     pub flavour: Option<String>,
@@ -55,6 +54,17 @@ pub struct Symbol {
     pub access: AccessLevel,
     pub is_optional: bool,
     pub is_out: bool,
+}
+
+impl Symbol {
+    pub fn display_detail(&self) -> Option<String> {
+        match (self.base_class.as_deref(), self.owner_class.as_deref()) {
+            (Some(b), Some(o)) => Some(format!("in {o} extends {b}")),
+            (Some(b), None) => Some(format!("extends {b}")),
+            (None, Some(o)) => Some(format!("in {o}")),
+            (None, None) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -183,7 +193,6 @@ impl SymbolExtractor<'_> {
             return;
         };
         let base_class = base_type(node, self.source);
-        let detail = base_class.as_deref().map(|b| format!("extends {b}"));
         let id = self.push_symbol(
             node,
             name_node,
@@ -192,7 +201,6 @@ impl SymbolExtractor<'_> {
             kind,
             None,
             None,
-            detail,
             base_class,
             None,
             None,
@@ -224,7 +232,6 @@ impl SymbolExtractor<'_> {
             None,
             None,
             None,
-            None,
             AccessLevel::Public,
         );
 
@@ -242,7 +249,6 @@ impl SymbolExtractor<'_> {
                         Some(enum_id),
                         Vec::new(),
                         SymbolKind::EnumVariant,
-                        None,
                         None,
                         None,
                         None,
@@ -272,12 +278,6 @@ impl SymbolExtractor<'_> {
         let base_class = node
             .child_by_field_name("base")
             .map(|n| node_text(n, self.source));
-        let detail = match (&owner_class, &base_class) {
-            (Some(o), Some(b)) => Some(format!("in {o} extends {b}")),
-            (Some(o), None) => Some(format!("in {o}")),
-            (None, Some(b)) => Some(format!("extends {b}")),
-            (None, None) => None,
-        };
         let id = self.push_symbol(
             node,
             name_node,
@@ -286,7 +286,6 @@ impl SymbolExtractor<'_> {
             SymbolKind::State,
             None,
             None,
-            detail,
             base_class,
             owner_class,
             None,
@@ -325,7 +324,6 @@ impl SymbolExtractor<'_> {
             kind,
             type_annotation,
             signature,
-            None,
             None,
             None,
             flavour,
@@ -400,7 +398,6 @@ impl SymbolExtractor<'_> {
                     None,
                     None,
                     None,
-                    None,
                     access,
                 );
                 if is_optional {
@@ -442,7 +439,6 @@ impl SymbolExtractor<'_> {
         kind: SymbolKind,
         type_annotation: Option<String>,
         signature: Option<String>,
-        detail: Option<String>,
         base_class: Option<String>,
         owner_class: Option<String>,
         flavour: Option<String>,
@@ -471,7 +467,6 @@ impl SymbolExtractor<'_> {
             container_name,
             type_annotation,
             signature,
-            detail,
             base_class,
             owner_class,
             flavour,

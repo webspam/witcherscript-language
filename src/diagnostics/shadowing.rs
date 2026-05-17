@@ -192,7 +192,6 @@ mod tests {
                     container_name: None,
                     type_annotation: Some(ty.to_string()),
                     signature: None,
-                    detail: None,
                     base_class: None,
                     owner_class: None,
                     flavour: None,

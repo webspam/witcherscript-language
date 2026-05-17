@@ -59,7 +59,6 @@ pub(super) fn make_env(name: &str, type_name: &str) -> ScriptEnvironment {
             container_name: None,
             type_annotation: Some(type_name.to_string()),
             signature: None,
-            detail: None,
             base_class: None,
             owner_class: None,
             flavour: None,

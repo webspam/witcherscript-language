@@ -117,8 +117,7 @@ pub(crate) fn document_symbols(
         .map(|symbol| DocumentSymbol {
             name: symbol.name.clone(),
             detail: symbol
-                .detail
-                .clone()
+                .display_detail()
                 .or_else(|| symbol.type_annotation.clone()),
             kind: lsp_symbol_kind(symbol.kind),
             tags: None,
@@ -303,7 +302,7 @@ pub(crate) fn type_completion_item(definition: &Definition) -> CompletionItem {
     CompletionItem {
         label: symbol.name.clone(),
         kind,
-        detail: symbol.detail.clone(),
+        detail: symbol.display_detail(),
         ..CompletionItem::default()
     }
 }
