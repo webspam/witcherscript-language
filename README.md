@@ -78,7 +78,15 @@ Current validation rules:
 - Unknown identifier (`unknown_identifier`): a bare identifier used as a value that
   doesn't resolve to a local, parameter, field via this-shorthand, top-level symbol, or
   script-environment global. Idents inside tree-sitter error/missing subtrees and inside
-  `incomplete_member_access_expr` are suppressed to avoid noise while typing.
+  `incomplete_member_access_expr` are suppressed to avoid noise while typing. The
+  `wrappedMethod` modding macro is recognised as a valid call site when it appears
+  inside the body of an `@wrapMethod`-annotated function and is therefore not flagged.
+- Missing wrapped-method call (`missing_wrapped_method`): an `@wrapMethod`-annotated
+  function whose body does not contain a bare `wrappedMethod(...)` call. The mod
+  compiler refuses to link such a function.
+- Duplicate wrapped-method call (`duplicate_wrapped_method`): every bare
+  `wrappedMethod(...)` call after the first inside the same `@wrapMethod` body. Only
+  the first call is expanded by the compiler.
 
 `--dump-tree` prints a concrete syntax tree with node kinds plus line/column and byte
 ranges.
