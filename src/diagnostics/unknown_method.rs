@@ -17,7 +17,7 @@ impl CstRule for UnknownMethodRule {
     }
 
     fn visit<'tree>(&self, node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
-        let _ = check_method_call(node, ctx);
+        check_method_call(node, ctx);
     }
 }
 
@@ -50,50 +50,63 @@ pub fn collect_unknown_method_diagnostics(
     result
 }
 
-fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {
-    let func = node.child_by_field_name("func").or_else(|| {
+fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
+    let Some(func) = node.child_by_field_name("func").or_else(|| {
         let mut cursor = node.walk();
-        let child = node.named_children(&mut cursor).next()?;
-        Some(child)
-    })?;
+        let child = node.named_children(&mut cursor).next();
+        child
+    }) else {
+        return;
+    };
 
     if func.kind() != "member_access_expr" {
-        return None;
+        return;
     }
 
-    let mut receiver_cursor = func.walk();
-    let receiver = func.named_children(&mut receiver_cursor).next()?;
-
-    let method_ident = func.child_by_field_name("member").or_else(|| {
+    let Some(receiver) = ({
         let mut cursor = func.walk();
-        let child = func.named_children(&mut cursor).nth(1)?;
-        Some(child)
-    })?;
+        let child = func.named_children(&mut cursor).next();
+        child
+    }) else {
+        return;
+    };
+
+    let Some(method_ident) = func.child_by_field_name("member").or_else(|| {
+        let mut cursor = func.walk();
+        let child = func.named_children(&mut cursor).nth(1);
+        child
+    }) else {
+        return;
+    };
 
     if method_ident.kind() != "ident" {
-        return None;
+        return;
     }
 
-    let method_name = method_ident
-        .utf8_text(ctx.document.source.as_bytes())
-        .ok()?;
+    let Ok(method_name) = method_ident.utf8_text(ctx.document.source.as_bytes()) else {
+        return;
+    };
 
-    let receiver_type = infer_expr_type_memo(
+    let Some(receiver_type) = infer_expr_type_memo(
         ctx.uri,
         ctx.document,
         ctx.db,
         receiver,
         method_ident.start_byte(),
         ctx.type_memo,
-    )?;
+    ) else {
+        return;
+    };
 
-    let top = ctx.db.find_top_level(&receiver_type)?;
+    let Some(top) = ctx.db.find_top_level(&receiver_type) else {
+        return;
+    };
 
     if !matches!(
         top.symbol.kind,
         SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
     ) {
-        return None;
+        return;
     }
 
     if ctx
@@ -101,7 +114,7 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         .find_member(&receiver_type, method_name, AccessLevel::Private)
         .is_some()
     {
-        return None;
+        return;
     }
 
     let range = ctx.document.line_index.byte_range_to_range(
@@ -117,8 +130,6 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         range,
         related: vec![],
     });
-
-    Some(())
 }
 
 #[cfg(test)]
