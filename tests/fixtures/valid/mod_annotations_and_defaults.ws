@@ -24,7 +24,7 @@ class CParserFixtureParams extends IParserFixtureParams {
     }
 }
 
-@adField(CGameplayEntity) public var parserFixtureParams : CParserFixtureParams;
+@addField(CGameplayEntity) public var parserFixtureParams : CParserFixtureParams;
 
 @wrapMethod(CR4Player)
 protected function ParserFixtureWrapped(spawnData : SEntitySpawnData) {
