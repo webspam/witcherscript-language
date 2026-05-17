@@ -131,7 +131,7 @@ fn build_service(
             formatter_line_limit: Arc::new(AtomicU32::new(100)),
             formatter_compact_colon: Arc::new(AtomicBool::new(false)),
             formatter_align_member_colons: Arc::new(AtomicBool::new(false)),
-            initial_index_done: Arc::new(Mutex::new(false)),
+            initial_index_done: Arc::new(AtomicBool::new(false)),
         }
     })
     .custom_method(

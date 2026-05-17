@@ -140,8 +140,13 @@ impl Backend {
         }
     }
 
-    async fn publish_open_diagnostics(&self) {
+    pub(crate) async fn publish_open_diagnostics(&self) {
         if !self.diagnostics_enabled.load(Ordering::Relaxed) {
+            return;
+        }
+
+        if !self.initial_index_done.load(Ordering::Acquire) {
+            self.publish_syntactic_only().await;
             return;
         }
 
@@ -212,6 +217,21 @@ impl Backend {
             total_us = start.elapsed().as_micros(),
             "recomputed workspace diagnostics for open documents"
         );
+    }
+
+    async fn publish_syntactic_only(&self) {
+        let documents = self.documents.lock().await;
+        let mut published = self.published_diagnostics.lock().await;
+        for (uri, document) in documents.iter() {
+            let diagnostics = lsp_diagnostics(document);
+            if published.get(uri) == Some(&diagnostics) {
+                continue;
+            }
+            self.client
+                .publish_diagnostics(uri.clone(), diagnostics.clone(), None)
+                .await;
+            published.insert(uri.clone(), diagnostics);
+        }
     }
 
     pub(crate) async fn apply_diagnostics_toggle(&self) {

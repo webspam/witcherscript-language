@@ -128,7 +128,7 @@ pub(crate) struct Backend {
     pub(crate) formatter_line_limit: Arc<AtomicU32>,
     pub(crate) formatter_compact_colon: Arc<AtomicBool>,
     pub(crate) formatter_align_member_colons: Arc<AtomicBool>,
-    pub(crate) initial_index_done: Arc<Mutex<bool>>,
+    pub(crate) initial_index_done: Arc<AtomicBool>,
 }
 
 impl Backend {
@@ -262,12 +262,12 @@ impl LanguageServer for Backend {
         let backend = self.clone();
         tokio::spawn(async move {
             tracing::trace!("initialized: fetching config and indexing");
-            let mut initial_done = backend.initial_index_done.lock().await;
             backend.fetch_config().await;
             backend.index_workspace().await;
             backend.register_file_watchers().await;
             backend.index_base_scripts().await;
-            *initial_done = true;
+            backend.initial_index_done.store(true, Ordering::Release);
+            backend.publish_open_diagnostics().await;
         });
     }
 
@@ -330,9 +330,9 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change_configuration(&self, _: DidChangeConfigurationParams) {
-        let initial_done = self.initial_index_done.lock().await;
+        let initial_done = self.initial_index_done.load(Ordering::Acquire);
         let change = self.fetch_config().await;
-        if !*initial_done {
+        if !initial_done {
             tracing::trace!("did_change_configuration: startup echo, skipping re-index");
             return;
         }
