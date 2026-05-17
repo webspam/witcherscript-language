@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Instant;
 
 use tracing::{debug, trace};
 use tree_sitter::Node;
@@ -65,7 +66,7 @@ enum IdentRole<'tree> {
 }
 
 fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {
-    if has_error_or_incomplete_ancestor(ident) {
+    if ctx.in_error_subtree {
         return None;
     }
 
@@ -77,21 +78,28 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
         return None;
     }
 
-    match role {
+    let branch_start = Instant::now();
+    let result = match role {
         IdentRole::Declaration => None,
         IdentRole::TypeRef => {
             if BUILTIN_TYPES.contains(&name) {
                 return None;
             }
             ctx.telemetry.definition_resolutions += 1;
-            if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
-                return None;
-            }
-            push(ctx, ident, "unknown_type", format!("unknown type '{name}'"));
-            Some(())
+            let r = if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
+                None
+            } else {
+                push(ctx, ident, "unknown_type", format!("unknown type '{name}'"));
+                Some(())
+            };
+            ctx.telemetry.branch_type_ref_us +=
+                branch_start.elapsed().as_micros() as u64;
+            ctx.telemetry.branch_type_ref_visits += 1;
+            r
         }
         IdentRole::MemberOfAccess(receiver) => {
             ctx.telemetry.type_inferences += 1;
+            let infer_start = Instant::now();
             let receiver_type = infer_expr_type_memo(
                 ctx.uri,
                 ctx.document,
@@ -99,81 +107,110 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 receiver,
                 ident.start_byte(),
                 ctx.type_memo,
-            )?;
-            ctx.telemetry.top_level_lookups += 1;
-            let top = ctx.db.find_top_level(&receiver_type)?;
-            if !matches!(
-                top.symbol.kind,
-                SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
-            ) {
-                return None;
-            }
-            ctx.telemetry.member_lookups += 1;
-            if ctx
-                .db
-                .find_member(&receiver_type, name, AccessLevel::Private)
-                .is_some()
-            {
-                return None;
-            }
-            push(
-                ctx,
-                ident,
-                "unknown_member",
-                format!("no member '{name}' on type '{receiver_type}'"),
             );
-            Some(())
+            ctx.telemetry.member_access_infer_us +=
+                infer_start.elapsed().as_micros() as u64;
+            let r = (|| {
+                let receiver_type = receiver_type?;
+                ctx.telemetry.top_level_lookups += 1;
+                let top = ctx.db.find_top_level(&receiver_type)?;
+                if !matches!(
+                    top.symbol.kind,
+                    SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
+                ) {
+                    return None;
+                }
+                ctx.telemetry.member_lookups += 1;
+                let member_start = Instant::now();
+                let found = ctx
+                    .db
+                    .find_member(&receiver_type, name, AccessLevel::Private)
+                    .is_some();
+                ctx.telemetry.member_access_member_us +=
+                    member_start.elapsed().as_micros() as u64;
+                if found {
+                    return None;
+                }
+                push(
+                    ctx,
+                    ident,
+                    "unknown_member",
+                    format!("no member '{name}' on type '{receiver_type}'"),
+                );
+                Some(())
+            })();
+            ctx.telemetry.branch_member_access_us +=
+                branch_start.elapsed().as_micros() as u64;
+            ctx.telemetry.branch_member_access_visits += 1;
+            r
         }
         IdentRole::MemberOfDefault => {
-            let enclosing_id = ctx
-                .document
-                .scope_index
-                .enclosing_type(ident.start_byte())?;
-            let enclosing = ctx.document.symbols.by_id(enclosing_id)?;
-            let container_name = enclosing.name.clone();
-            ctx.telemetry.member_lookups += 1;
-            if ctx
-                .db
-                .find_member(&container_name, name, AccessLevel::Private)
-                .is_some()
-            {
-                return None;
-            }
-            push(
-                ctx,
-                ident,
-                "unknown_member",
-                format!("no member '{name}' on type '{container_name}'"),
-            );
-            Some(())
+            let r = (|| {
+                let enclosing_id = ctx
+                    .document
+                    .scope_index
+                    .enclosing_type(ident.start_byte())?;
+                let enclosing = ctx.document.symbols.by_id(enclosing_id)?;
+                let container_name = enclosing.name.clone();
+                ctx.telemetry.member_lookups += 1;
+                if ctx
+                    .db
+                    .find_member(&container_name, name, AccessLevel::Private)
+                    .is_some()
+                {
+                    return None;
+                }
+                push(
+                    ctx,
+                    ident,
+                    "unknown_member",
+                    format!("no member '{name}' on type '{container_name}'"),
+                );
+                Some(())
+            })();
+            ctx.telemetry.branch_member_default_us +=
+                branch_start.elapsed().as_micros() as u64;
+            ctx.telemetry.branch_member_default_visits += 1;
+            r
         }
         IdentRole::FuncBareCall => {
             ctx.telemetry.definition_resolutions += 1;
-            if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
-                return None;
-            }
-            push(
-                ctx,
-                ident,
-                "unknown_function",
-                format!("unknown function '{name}'"),
-            );
-            Some(())
+            let r = if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
+                None
+            } else {
+                push(
+                    ctx,
+                    ident,
+                    "unknown_function",
+                    format!("unknown function '{name}'"),
+                );
+                Some(())
+            };
+            ctx.telemetry.branch_func_bare_call_us +=
+                branch_start.elapsed().as_micros() as u64;
+            ctx.telemetry.branch_func_bare_call_visits += 1;
+            r
         }
         IdentRole::Bare => {
             ctx.telemetry.definition_resolutions += 1;
-            if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
-                return None;
-            }
-            push(
-                ctx,
-                ident,
-                "unknown_identifier",
-                format!("unknown identifier '{name}'"),
-            );
-            Some(())
+            let r = if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
+                None
+            } else {
+                push(
+                    ctx,
+                    ident,
+                    "unknown_identifier",
+                    format!("unknown identifier '{name}'"),
+                );
+                Some(())
+            };
+            ctx.telemetry.branch_bare_us +=
+                branch_start.elapsed().as_micros() as u64;
+            ctx.telemetry.branch_bare_visits += 1;
+            r
         }
-    }
+    };
+    result
 }
 
 fn classify(ident: Node<'_>) -> Option<IdentRole<'_>> {
@@ -271,20 +308,6 @@ fn is_inside_wrap_method<'tree>(ident: Node<'tree>, ctx: &CstRuleCtx<'_, 'tree>)
         return false;
     }
     enclosing.annotations.iter().any(|a| a.name == "wrapMethod")
-}
-
-fn has_error_or_incomplete_ancestor(node: Node) -> bool {
-    let mut current = node;
-    while let Some(parent) = current.parent() {
-        if parent.is_error() || parent.is_missing() {
-            return true;
-        }
-        if parent.kind() == "incomplete_member_access_expr" {
-            return true;
-        }
-        current = parent;
-    }
-    false
 }
 
 fn push<'tree>(ctx: &mut CstRuleCtx<'_, 'tree>, ident: Node<'tree>, kind: &str, message: String) {

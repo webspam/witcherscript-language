@@ -18,6 +18,18 @@ pub(crate) struct RuleTelemetry {
     pub enum_variant_lookups: usize,
     pub type_inferences: usize,
     pub definition_resolutions: usize,
+    pub branch_type_ref_us: u64,
+    pub branch_member_access_us: u64,
+    pub branch_member_default_us: u64,
+    pub branch_func_bare_call_us: u64,
+    pub branch_bare_us: u64,
+    pub branch_type_ref_visits: u64,
+    pub branch_member_access_visits: u64,
+    pub branch_member_default_visits: u64,
+    pub branch_func_bare_call_visits: u64,
+    pub branch_bare_visits: u64,
+    pub member_access_infer_us: u64,
+    pub member_access_member_us: u64,
 }
 
 pub(crate) struct CstRuleCtx<'a, 'tree> {
@@ -27,6 +39,7 @@ pub(crate) struct CstRuleCtx<'a, 'tree> {
     pub type_memo: &'a mut TypeMemo,
     pub telemetry: &'a mut RuleTelemetry,
     pub diagnostics: &'a mut Vec<WorkspaceDiagnostic>,
+    pub in_error_subtree: bool,
     pub _tree: PhantomData<&'tree ()>,
 }
 
@@ -56,6 +69,7 @@ pub(crate) fn run_rules_on_document(
         &mut telemetry,
         &mut rule_times,
         &mut diagnostics,
+        false,
     );
     for ((elapsed, visits), rule) in rule_times.iter().zip(rules.iter()) {
         tracing::debug!(
@@ -74,6 +88,21 @@ pub(crate) fn run_rules_on_document(
         memo_size = memo.len(),
         "cst lookup counts"
     );
+    tracing::debug!(
+        type_ref_us = telemetry.branch_type_ref_us,
+        type_ref_visits = telemetry.branch_type_ref_visits,
+        member_access_us = telemetry.branch_member_access_us,
+        member_access_visits = telemetry.branch_member_access_visits,
+        member_access_infer_us = telemetry.member_access_infer_us,
+        member_access_member_us = telemetry.member_access_member_us,
+        member_default_us = telemetry.branch_member_default_us,
+        member_default_visits = telemetry.branch_member_default_visits,
+        func_bare_call_us = telemetry.branch_func_bare_call_us,
+        func_bare_call_visits = telemetry.branch_func_bare_call_visits,
+        bare_us = telemetry.branch_bare_us,
+        bare_visits = telemetry.branch_bare_visits,
+        "unknown_symbol branch timing"
+    );
     diagnostics
 }
 
@@ -88,8 +117,13 @@ fn walk<'tree>(
     telemetry: &mut RuleTelemetry,
     rule_times: &mut [(Duration, usize)],
     diagnostics: &mut Vec<WorkspaceDiagnostic>,
+    in_error_subtree: bool,
 ) {
     let kind = node.kind();
+    let in_error_subtree = in_error_subtree
+        || node.is_error()
+        || node.is_missing()
+        || kind == "incomplete_member_access_expr";
     for (i, rule) in rules.iter().enumerate() {
         if rule.interested_in(kind) {
             let start = Instant::now();
@@ -100,6 +134,7 @@ fn walk<'tree>(
                 type_memo: memo,
                 telemetry,
                 diagnostics,
+                in_error_subtree,
                 _tree: PhantomData,
             };
             rule.visit(node, &mut ctx);
@@ -119,6 +154,7 @@ fn walk<'tree>(
             telemetry,
             rule_times,
             diagnostics,
+            in_error_subtree,
         );
     }
 }
