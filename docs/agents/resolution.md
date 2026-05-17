@@ -218,5 +218,5 @@ Script globals are the last resort in the priority chain (after workspace and ba
 - Exec/quest functions are **excluded** from `all_top_level_callables()` and therefore from statement completions. Their signatures start with `"exec "` or `"quest "`.
 - `parameters_of()` excludes parameters where `is_optional == true`.
 - The inheritance depth cap is **32** in both `WorkspaceIndex` (single-index chain) and `SymbolDb` (cross-index chain).
-- Superclass is stored in `Symbol.detail` as `"extends ClassName"`. The string is stripped of the prefix to get the class name.
-- State owner is stored as `"in OwnerClass"` in `detail`; for `parent` keyword resolution this is parsed to find the owner, and only `Public` members of the owner are accessible.
+- Superclass is stored in `Symbol.base_class` (used for classes, structs, and states' `extends` clause). It is mirrored into `Symbol.detail` for display as `"extends ClassName"` — never parse `detail` for structural queries, use the typed field.
+- State owner is stored in `Symbol.owner_class`; mirrored into `detail` as `"in OwnerClass"` (or `"in OwnerClass extends BaseState"` when the state also extends another state). For `parent` keyword resolution only `Public` members of the owner are accessible.

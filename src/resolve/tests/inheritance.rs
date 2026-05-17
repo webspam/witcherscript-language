@@ -394,3 +394,35 @@ fn state_parent_dot_cannot_see_protected_owner_method() {
         "parent.X in a state must not resolve protected members of the owner class"
     );
 }
+
+#[test]
+fn state_method_resolves_through_extends_chain() {
+    let source = concat!(
+        "statemachine class Owner {}\n",
+        "state Base in Owner { function Help() {} }\n",
+        "state Mid in Owner extends Base {}\n",
+        "state Leaf in Owner extends Mid {\n",
+        "  entry function Run() {\n",
+        "    Help();\n",
+        "  }\n",
+        "}\n",
+    );
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+
+    // cursor on 'Help' inside Leaf.Run (line 5, col 4)
+    let definition = resolve_definition(
+        "file:///test.ws",
+        &doc,
+        &SymbolDb::new(&index, &WorkspaceIndex::default()),
+        SourcePosition {
+            line: 5,
+            character: 4,
+        },
+    )
+    .expect("unqualified call to a method inherited via state extends should resolve");
+
+    assert_eq!(definition.symbol.name, "Help");
+    assert_eq!(definition.symbol.container_name.as_deref(), Some("Base"));
+}

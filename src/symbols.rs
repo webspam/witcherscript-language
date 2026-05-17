@@ -269,7 +269,15 @@ impl SymbolExtractor<'_> {
             return;
         };
         let owner_class = nth_child_kind(node, "ident", 1).map(|n| node_text(n, self.source));
-        let detail = owner_class.as_deref().map(|o| format!("in {o}"));
+        let base_class = node
+            .child_by_field_name("base")
+            .map(|n| node_text(n, self.source));
+        let detail = match (&owner_class, &base_class) {
+            (Some(o), Some(b)) => Some(format!("in {o} extends {b}")),
+            (Some(o), None) => Some(format!("in {o}")),
+            (None, Some(b)) => Some(format!("extends {b}")),
+            (None, None) => None,
+        };
         let id = self.push_symbol(
             node,
             name_node,
@@ -279,7 +287,7 @@ impl SymbolExtractor<'_> {
             None,
             None,
             detail,
-            None,
+            base_class,
             owner_class,
             None,
             AccessLevel::Public,

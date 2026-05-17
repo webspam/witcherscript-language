@@ -84,7 +84,7 @@ These are the non-obvious constraints that will cause silent bugs if violated:
 
 3. **Inheritance traversal hard-caps at depth 32.** Both `WorkspaceIndex::find_member_in_chain` and `SymbolDb::find_member_chain_cross` return `None`/empty at depth > 32. This prevents infinite loops from circular or missing base class declarations.
 
-4. **Base/owner class stored in typed fields.** `Symbol.base_class` holds the raw superclass name for classes/structs; `Symbol.owner_class` holds the raw owner class name for states. `Symbol.detail` still contains the human-readable `"extends ClassName"` / `"in OwnerClass"` string for LSP display only — never parse it for structural queries.
+4. **Base/owner class stored in typed fields.** `Symbol.base_class` holds the raw superclass name for classes/structs/states (states use it for `extends`); `Symbol.owner_class` holds the raw owner class name for states. `Symbol.detail` still contains the human-readable `"extends ClassName"` / `"in OwnerClass"` / `"in OwnerClass extends BaseState"` string for LSP display only — never parse it for structural queries.
 
 5. **Optional parameters are excluded from `parameters_of()`.** `is_optional = true` symbols are skipped when building completion snippet parameter lists. Do not change this — optional params should not appear as required snippet slots.
 

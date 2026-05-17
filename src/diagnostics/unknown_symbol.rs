@@ -659,6 +659,22 @@ mod tests {
     }
 
     #[test]
+    fn state_method_inherited_through_extends_chain() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "statemachine class Owner {} \
+             state Base in Owner { function Help() {} } \
+             state Mid in Owner extends Base {} \
+             state Leaf in Owner extends Mid { entry function Run() { Help(); } }\n",
+        )]);
+        let result = check(&idx, &docs);
+        assert!(
+            result.is_empty(),
+            "unqualified call to a method inherited via state extends must not be flagged, got {result:?}"
+        );
+    }
+
+    #[test]
     fn array_generic_produces_noise() {
         let (idx, docs) = index_and_docs(&[(
             "file:///t.ws",
