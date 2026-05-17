@@ -12,6 +12,10 @@ use super::{run_rules_on_document, CstRule, CstRuleCtx, Severity, WorkspaceDiagn
 pub(crate) struct WrappedMethodRule;
 
 impl CstRule for WrappedMethodRule {
+    fn name(&self) -> &'static str {
+        "wrapped_method"
+    }
+
     fn interested_in(&self, kind: &str) -> bool {
         kind == "func_decl"
     }

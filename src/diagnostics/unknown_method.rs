@@ -12,6 +12,10 @@ use super::{run_rules_on_document, CstRule, CstRuleCtx, Severity, WorkspaceDiagn
 pub(crate) struct UnknownMethodRule;
 
 impl CstRule for UnknownMethodRule {
+    fn name(&self) -> &'static str {
+        "unknown_method"
+    }
+
     fn interested_in(&self, kind: &str) -> bool {
         kind == "func_call_expr"
     }
@@ -87,6 +91,7 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         return;
     };
 
+    ctx.telemetry.type_inferences += 1;
     let Some(receiver_type) = infer_expr_type_memo(
         ctx.uri,
         ctx.document,
@@ -98,6 +103,7 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         return;
     };
 
+    ctx.telemetry.top_level_lookups += 1;
     let Some(top) = ctx.db.find_top_level(&receiver_type) else {
         return;
     };
@@ -109,6 +115,7 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         return;
     }
 
+    ctx.telemetry.member_lookups += 1;
     if ctx
         .db
         .find_member(&receiver_type, method_name, AccessLevel::Private)

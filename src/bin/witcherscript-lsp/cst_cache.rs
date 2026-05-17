@@ -45,7 +45,9 @@ pub(crate) fn cst_diagnostics_with_cache(
             cache.get(url).unwrap().diagnostics.clone()
         } else {
             stats.misses += 1;
-            let d = collect_cst_diagnostics_for_document(url.as_str(), document, db);
+            let d =
+                tracing::debug_span!("cst_doc", uri = url.as_str(), bytes = document.source.len())
+                    .in_scope(|| collect_cst_diagnostics_for_document(url.as_str(), document, db));
             cache.insert(
                 url.clone(),
                 CstCacheEntry {

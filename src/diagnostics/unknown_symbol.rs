@@ -12,6 +12,10 @@ use super::{run_rules_on_document, CstRule, CstRuleCtx, Severity, WorkspaceDiagn
 pub(crate) struct UnknownSymbolRule;
 
 impl CstRule for UnknownSymbolRule {
+    fn name(&self) -> &'static str {
+        "unknown_symbol"
+    }
+
     fn interested_in(&self, kind: &str) -> bool {
         kind == "ident"
     }
@@ -79,6 +83,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             if BUILTIN_TYPES.contains(&name) {
                 return None;
             }
+            ctx.telemetry.definition_resolutions += 1;
             if resolve_definition_at_byte(ctx.uri, ctx.document, ctx.db, ident.start_byte())
                 .is_some()
             {
@@ -88,6 +93,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             Some(())
         }
         IdentRole::MemberOfAccess(receiver) => {
+            ctx.telemetry.type_inferences += 1;
             let receiver_type = infer_expr_type_memo(
                 ctx.uri,
                 ctx.document,
@@ -96,6 +102,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 ident.start_byte(),
                 ctx.type_memo,
             )?;
+            ctx.telemetry.top_level_lookups += 1;
             let top = ctx.db.find_top_level(&receiver_type)?;
             if !matches!(
                 top.symbol.kind,
@@ -103,6 +110,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             ) {
                 return None;
             }
+            ctx.telemetry.member_lookups += 1;
             if ctx
                 .db
                 .find_member(&receiver_type, name, AccessLevel::Private)
@@ -124,6 +132,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
             )?;
             let container_name = enclosing.name.clone();
+            ctx.telemetry.member_lookups += 1;
             if ctx
                 .db
                 .find_member(&container_name, name, AccessLevel::Private)
@@ -140,6 +149,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             Some(())
         }
         IdentRole::FuncBareCall => {
+            ctx.telemetry.definition_resolutions += 1;
             if resolve_definition_at_byte(ctx.uri, ctx.document, ctx.db, ident.start_byte())
                 .is_some()
             {
@@ -154,6 +164,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             Some(())
         }
         IdentRole::Bare => {
+            ctx.telemetry.definition_resolutions += 1;
             if resolve_definition_at_byte(ctx.uri, ctx.document, ctx.db, ident.start_byte())
                 .is_some()
             {

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::time::{Duration, Instant};
 
 use tree_sitter::Node;
 
@@ -10,16 +11,27 @@ use super::WorkspaceDiagnostic;
 
 pub(crate) type TypeMemo = HashMap<(usize, usize), Option<String>>;
 
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct RuleTelemetry {
+    pub top_level_lookups: usize,
+    pub member_lookups: usize,
+    pub enum_variant_lookups: usize,
+    pub type_inferences: usize,
+    pub definition_resolutions: usize,
+}
+
 pub(crate) struct CstRuleCtx<'a, 'tree> {
     pub uri: &'a str,
     pub document: &'a ParsedDocument,
     pub db: &'a SymbolDb<'a>,
     pub type_memo: &'a mut TypeMemo,
+    pub telemetry: &'a mut RuleTelemetry,
     pub diagnostics: &'a mut Vec<WorkspaceDiagnostic>,
     pub _tree: PhantomData<&'tree ()>,
 }
 
 pub(crate) trait CstRule {
+    fn name(&self) -> &'static str;
     fn interested_in(&self, kind: &str) -> bool;
     fn visit<'tree>(&self, node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>);
 }
@@ -32,6 +44,8 @@ pub(crate) fn run_rules_on_document(
 ) -> Vec<WorkspaceDiagnostic> {
     let mut diagnostics = Vec::new();
     let mut memo: TypeMemo = HashMap::new();
+    let mut telemetry = RuleTelemetry::default();
+    let mut rule_times: Vec<(Duration, usize)> = vec![(Duration::ZERO, 0); rules.len()];
     walk(
         document.tree.root_node(),
         uri,
@@ -39,11 +53,31 @@ pub(crate) fn run_rules_on_document(
         db,
         rules,
         &mut memo,
+        &mut telemetry,
+        &mut rule_times,
         &mut diagnostics,
+    );
+    for ((elapsed, visits), rule) in rule_times.iter().zip(rules.iter()) {
+        tracing::debug!(
+            rule = rule.name(),
+            visits = visits,
+            elapsed_us = elapsed.as_micros() as u64,
+            "cst rule timing"
+        );
+    }
+    tracing::debug!(
+        top_level = telemetry.top_level_lookups,
+        member = telemetry.member_lookups,
+        enum_variant = telemetry.enum_variant_lookups,
+        type_inference = telemetry.type_inferences,
+        definition = telemetry.definition_resolutions,
+        memo_size = memo.len(),
+        "cst lookup counts"
     );
     diagnostics
 }
 
+#[allow(clippy::too_many_arguments)]
 fn walk<'tree>(
     node: Node<'tree>,
     uri: &str,
@@ -51,25 +85,41 @@ fn walk<'tree>(
     db: &SymbolDb<'_>,
     rules: &[&dyn CstRule],
     memo: &mut TypeMemo,
+    telemetry: &mut RuleTelemetry,
+    rule_times: &mut [(Duration, usize)],
     diagnostics: &mut Vec<WorkspaceDiagnostic>,
 ) {
     let kind = node.kind();
-    for rule in rules {
+    for (i, rule) in rules.iter().enumerate() {
         if rule.interested_in(kind) {
+            let start = Instant::now();
             let mut ctx = CstRuleCtx {
                 uri,
                 document,
                 db,
                 type_memo: memo,
+                telemetry,
                 diagnostics,
                 _tree: PhantomData,
             };
             rule.visit(node, &mut ctx);
+            rule_times[i].0 += start.elapsed();
+            rule_times[i].1 += 1;
         }
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk(child, uri, document, db, rules, memo, diagnostics);
+        walk(
+            child,
+            uri,
+            document,
+            db,
+            rules,
+            memo,
+            telemetry,
+            rule_times,
+            diagnostics,
+        );
     }
 }
 
@@ -90,6 +140,9 @@ mod tests {
     }
 
     impl CstRule for CountingRule {
+        fn name(&self) -> &'static str {
+            "counting"
+        }
         fn interested_in(&self, kind: &str) -> bool {
             kind == self.kind
         }
@@ -103,6 +156,9 @@ mod tests {
     }
 
     impl CstRule for InferenceCountingRule {
+        fn name(&self) -> &'static str {
+            "inference_counting"
+        }
         fn interested_in(&self, kind: &str) -> bool {
             kind == "func_call_expr"
         }
