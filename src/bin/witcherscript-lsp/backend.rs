@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::Arc;
 
+use serde_json::{json, Value};
 use tokio::sync::Mutex;
 use tower_lsp::jsonrpc::{Error, ErrorCode, Result};
 use tower_lsp::lsp_types::{
@@ -89,6 +90,22 @@ pub(crate) fn rename_changes(
     changes
 }
 
+// Wire shape mirrors LSP 3.18's `workspace/textDocumentContent` so the method can be
+// renamed to the standard name once tower-lsp adopts the spec.
+pub(crate) fn builtin_source_response(uri: &str) -> Result<Value> {
+    if uri.is_empty() {
+        return Err(Error {
+            code: ErrorCode::InvalidParams,
+            message: "missing `uri` parameter".into(),
+            data: None,
+        });
+    }
+    Ok(match builtin_source(uri) {
+        Some(text) => json!({ "text": text }),
+        None => Value::Null,
+    })
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Backend {
     pub(crate) client: Client,
@@ -111,6 +128,13 @@ pub(crate) struct Backend {
     pub(crate) formatter_compact_colon: Arc<AtomicBool>,
     pub(crate) formatter_align_member_colons: Arc<AtomicBool>,
     pub(crate) initial_index_done: Arc<Mutex<bool>>,
+}
+
+impl Backend {
+    pub(crate) async fn handle_builtin_source(&self, params: Value) -> Result<Value> {
+        let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("");
+        builtin_source_response(uri)
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -245,12 +269,18 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        if builtin_source(params.text_document.uri.as_str()).is_some() {
+            return;
+        }
         self.update_open_document(params.text_document.uri, params.text_document.text)
             .await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
+        if builtin_source(uri.as_str()).is_some() {
+            return;
+        }
         let prior = self
             .documents
             .lock()
@@ -825,6 +855,9 @@ impl LanguageServer for Backend {
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = params.text_document.uri;
+        if builtin_source(uri.as_str()).is_some() {
+            return Ok(None);
+        }
         let tab_size = params.options.tab_size;
         let use_tabs = !params.options.insert_spaces;
 

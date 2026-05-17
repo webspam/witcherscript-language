@@ -103,7 +103,7 @@ fn build_service(
     mut log_rx: mpsc::UnboundedReceiver<(MessageType, String)>,
     log_level: Arc<AtomicU8>,
 ) -> (LspService<Backend>, ClientSocket) {
-    LspService::new(move |client| {
+    LspService::build(move |client| {
         let c = client.clone();
         tokio::spawn(async move {
             while let Some((kind, msg)) = log_rx.recv().await {
@@ -133,6 +133,11 @@ fn build_service(
             initial_index_done: Arc::new(Mutex::new(false)),
         }
     })
+    .custom_method(
+        "witcherscript/builtinSource",
+        Backend::handle_builtin_source,
+    )
+    .finish()
 }
 
 async fn serve_stdio(service: LspService<Backend>, socket: ClientSocket) {

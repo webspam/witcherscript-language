@@ -946,3 +946,32 @@ mod watched_files {
         );
     }
 }
+
+mod builtin_source_request {
+    use crate::backend::builtin_source_response;
+    use tower_lsp::jsonrpc::ErrorCode;
+    use witcherscript_parser::builtins::BUILTIN_ARRAY_URI;
+
+    #[test]
+    fn returns_array_text_for_array_uri() {
+        let response = builtin_source_response(BUILTIN_ARRAY_URI).expect("should succeed");
+        let text = response
+            .get("text")
+            .and_then(|v| v.as_str())
+            .expect("response has text field");
+        assert!(text.contains("class array"));
+        assert!(text.contains("PushBack"));
+    }
+
+    #[test]
+    fn returns_null_for_unknown_uri() {
+        let response = builtin_source_response("file:///not/a/builtin.ws").expect("should succeed");
+        assert!(response.is_null());
+    }
+
+    #[test]
+    fn errors_when_uri_is_empty() {
+        let err = builtin_source_response("").expect_err("should reject empty uri");
+        assert_eq!(err.code, ErrorCode::InvalidParams);
+    }
+}
