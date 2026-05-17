@@ -507,6 +507,64 @@ fn goto_def_wrap_unknown_class_returns_just_self() {
 }
 
 #[test]
+fn add_field_resolves_from_member_access() {
+    let base = make_doc("class CPlayer {}\n");
+    let mod_a = make_doc("@addField(CPlayer) public var boost : int;\n");
+    let caller =
+        make_doc("function Caller() {\n  var p : CPlayer;\n  var x : int;\n  x = p.boost;\n}\n");
+    let index = index_docs(&[
+        ("file:///base.ws", &base),
+        ("file:///a.ws", &mod_a),
+        ("file:///caller.ws", &caller),
+    ]);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
+
+    let definition = resolve_definition(
+        "file:///caller.ws",
+        &caller,
+        &db,
+        SourcePosition {
+            line: 3,
+            character: 8,
+        },
+    )
+    .expect("a reference to an @addField var must resolve");
+    assert_eq!(definition.symbol.name, "boost");
+    assert_eq!(definition.symbol.kind, SymbolKind::Field);
+    assert_eq!(definition.uri, "file:///a.ws");
+}
+
+#[test]
+fn add_field_chained_type_resolves() {
+    let helper = make_doc("class CHelper {\n  public function Run() {}\n}\n");
+    let base = make_doc("class CPlayer {}\n");
+    let mod_a = make_doc("@addField(CPlayer) public var helper : CHelper;\n");
+    let caller = make_doc("function Caller() {\n  var p : CPlayer;\n  p.helper.Run();\n}\n");
+    let index = index_docs(&[
+        ("file:///helper.ws", &helper),
+        ("file:///base.ws", &base),
+        ("file:///a.ws", &mod_a),
+        ("file:///caller.ws", &caller),
+    ]);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
+
+    let definition = resolve_definition(
+        "file:///caller.ws",
+        &caller,
+        &db,
+        SourcePosition {
+            line: 2,
+            character: 11,
+        },
+    )
+    .expect("calling Run() through an @addField var must resolve into CHelper");
+    assert_eq!(definition.symbol.name, "Run");
+    assert_eq!(definition.uri, "file:///helper.ws");
+}
+
+#[test]
 fn goto_def_add_method_no_class_body_returns_annotated() {
     let base = make_doc("class CPlayer {\n  public function Heal() {}\n}\n");
     let mod_a = make_doc("@addMethod(CPlayer)\nfunction Boost() {}\n");

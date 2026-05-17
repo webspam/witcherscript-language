@@ -23,7 +23,8 @@ struct TypeContext {
     owner_class: Option<String>,
 }
 
-const METHOD_INJECTING_ANNOTATIONS: &[&str] = &["addMethod", "wrapMethod", "replaceMethod"];
+const MEMBER_INJECTING_ANNOTATIONS: &[&str] =
+    &["addMethod", "wrapMethod", "replaceMethod", "addField"];
 
 const MODDING_ANNOTATIONS: &[&str] = &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"];
 
@@ -31,7 +32,7 @@ fn annotation_target_class(symbol: &Symbol) -> Option<&str> {
     symbol
         .annotations
         .iter()
-        .find(|a| METHOD_INJECTING_ANNOTATIONS.contains(&a.name.as_str()))
+        .find(|a| MEMBER_INJECTING_ANNOTATIONS.contains(&a.name.as_str()))
         .and_then(|a| a.argument.as_deref())
 }
 
@@ -448,7 +449,7 @@ impl WorkspaceIndex {
                 if is_type_like(sym.kind) {
                     self.superclass_by_name.remove(&sym.name);
                 }
-                if sym.kind == SymbolKind::Function {
+                if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field) {
                     if let Some(target) = annotation_target_class(&sym) {
                         if let Some(by_name) = self.annotated_members_by_type.get_mut(target) {
                             if let Some(defs) = by_name.get_mut(&sym.name) {
@@ -505,7 +506,7 @@ impl WorkspaceIndex {
                             .insert(sym.name.clone(), superclass.clone());
                     }
                 }
-                if sym.kind == SymbolKind::Function {
+                if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field) {
                     if let Some(target) = annotation_target_class(sym) {
                         self.annotated_members_by_type
                             .entry(target.to_string())
@@ -1301,6 +1302,9 @@ enum SearchScope {
 /// annotation functions to the class they target.
 fn logical_member(symbol: &Symbol) -> Option<(String, String)> {
     match symbol.kind {
+        SymbolKind::Field if symbol.container.is_none() => {
+            annotation_target_class(symbol).map(|t| (t.to_string(), symbol.name.clone()))
+        }
         SymbolKind::Method | SymbolKind::Field => symbol
             .container_name
             .as_deref()
