@@ -411,6 +411,31 @@ mod tests {
     }
 
     #[test]
+    fn builtin_type_aliases_skipped() {
+        let cases: &[(&str, &str)] = &[
+            ("Bool", "function F(a : Bool) {}\n"),
+            ("Float", "function F(a : Float) {}\n"),
+            ("String", "function F(a : String) {}\n"),
+            ("CName", "function F(a : CName) {}\n"),
+            ("Int32", "function F(a : Int32) {}\n"),
+            ("UInt8", "function F(a : UInt8) {}\n"),
+            ("Int16", "function F(a : Int16) {}\n"),
+            ("Int8", "function F(a : Int8) {}\n"),
+            ("Uint32", "function F(a : Uint32) {}\n"),
+            ("Uint16", "function F(a : Uint16) {}\n"),
+            ("StringAnsi", "function F(a : StringAnsi) {}\n"),
+        ];
+        for (label, src) in cases {
+            let (idx, docs) = index_and_docs(&[("file:///t.ws", *src)]);
+            let result = check(&idx, &docs);
+            assert!(
+                result.is_empty(),
+                "case {label}: expected no diagnostics, got {result:?}",
+            );
+        }
+    }
+
+    #[test]
     fn known_type_skipped() {
         let (idx, docs) = index_and_docs(&[(
             "file:///t.ws",

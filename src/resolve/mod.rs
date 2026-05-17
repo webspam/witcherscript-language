@@ -1728,7 +1728,29 @@ fn is_type_annotation_boundary(node: Node) -> bool {
         })
 }
 
-pub const BUILTIN_TYPES: &[&str] = &["bool", "byte", "float", "int", "name", "string", "void"];
+pub const BUILTIN_TYPES: &[&str] = &[
+    "bool",
+    "byte",
+    "float",
+    "int",
+    "name",
+    "string",
+    "void",
+    "Bool",
+    "Float",
+    "String",
+    "CName",
+    "Int32",
+    "UInt8",
+    "Int16",
+    "Int8",
+    "Uint32",
+    "Uint16",
+    "StringAnsi",
+];
+
+pub const BUILTIN_TYPE_COMPLETIONS: &[&str] =
+    &["bool", "byte", "float", "int", "name", "string", "void"];
 
 pub fn type_completions(
     document: &ParsedDocument,

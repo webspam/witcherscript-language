@@ -33,7 +33,7 @@ use witcherscript_parser::resolve::{
     expression_completions, extends_completions, find_references, resolve_all_definitions,
     resolve_definition, script_body_completions, signature_help, state_owner_completions,
     statement_completions, type_completions, AfterWrapMethodCompletions, SymbolDb, WorkspaceIndex,
-    BUILTIN_TYPES,
+    BUILTIN_TYPE_COMPLETIONS,
 };
 use witcherscript_parser::script_env::ScriptEnvironment;
 use witcherscript_parser::semantic_tokens::{
@@ -728,7 +728,7 @@ impl LanguageServer for Backend {
 
         let user_types = type_completions(document, &db, pos);
         if !user_types.is_empty() {
-            let mut items: Vec<CompletionItem> = BUILTIN_TYPES
+            let mut items: Vec<CompletionItem> = BUILTIN_TYPE_COMPLETIONS
                 .iter()
                 .map(|name| builtin_type_item(name))
                 .collect();
