@@ -92,8 +92,14 @@ impl<'a> SymbolDb<'a> {
         }
     }
 
-    pub(crate) fn observer(&self) -> Option<&Mutex<ObservationSet>> {
-        self.observer
+    pub fn merge_observations(&self, other: ObservationSet) {
+        let Some(outer) = self.observer else {
+            return;
+        };
+        let mut outer = outer.lock().expect("observer mutex poisoned");
+        outer.top_level.extend(other.top_level);
+        outer.members.extend(other.members);
+        outer.enum_variants.extend(other.enum_variants);
     }
 
     fn record_top_level(&self, name: &str) {

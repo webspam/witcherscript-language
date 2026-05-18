@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::ops::Add;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -32,6 +33,36 @@ pub(crate) struct RuleTelemetry {
     pub branch_bare_visits: u64,
     pub member_access_infer_us: u64,
     pub member_access_member_us: u64,
+}
+
+impl Add for RuleTelemetry {
+    type Output = Self;
+    fn add(self, other: Self) -> Self {
+        Self {
+            top_level_lookups: self.top_level_lookups + other.top_level_lookups,
+            member_lookups: self.member_lookups + other.member_lookups,
+            enum_variant_lookups: self.enum_variant_lookups + other.enum_variant_lookups,
+            type_inferences: self.type_inferences + other.type_inferences,
+            definition_resolutions: self.definition_resolutions + other.definition_resolutions,
+            branch_type_ref_us: self.branch_type_ref_us + other.branch_type_ref_us,
+            branch_member_access_us: self.branch_member_access_us + other.branch_member_access_us,
+            branch_member_default_us: self.branch_member_default_us
+                + other.branch_member_default_us,
+            branch_func_bare_call_us: self.branch_func_bare_call_us
+                + other.branch_func_bare_call_us,
+            branch_bare_us: self.branch_bare_us + other.branch_bare_us,
+            branch_type_ref_visits: self.branch_type_ref_visits + other.branch_type_ref_visits,
+            branch_member_access_visits: self.branch_member_access_visits
+                + other.branch_member_access_visits,
+            branch_member_default_visits: self.branch_member_default_visits
+                + other.branch_member_default_visits,
+            branch_func_bare_call_visits: self.branch_func_bare_call_visits
+                + other.branch_func_bare_call_visits,
+            branch_bare_visits: self.branch_bare_visits + other.branch_bare_visits,
+            member_access_infer_us: self.member_access_infer_us + other.member_access_infer_us,
+            member_access_member_us: self.member_access_member_us + other.member_access_member_us,
+        }
+    }
 }
 
 pub(crate) struct CstRuleCtx<'a, 'tree> {
@@ -216,40 +247,15 @@ where
 }
 
 fn merge_shards(mut a: ParallelRuleShard, b: ParallelRuleShard) -> ParallelRuleShard {
-    a.telemetry = sum_telemetry(a.telemetry, b.telemetry);
+    a.telemetry = a.telemetry + b.telemetry;
     a.diagnostics.extend(b.diagnostics);
-    a.memo.extend(b.memo);
+    let mut a_obs = a.observer.into_inner().expect("observer mutex poisoned");
     let b_obs = b.observer.into_inner().expect("observer mutex poisoned");
-    let mut a_obs = a.observer.lock().expect("observer mutex poisoned");
     a_obs.top_level.extend(b_obs.top_level);
     a_obs.members.extend(b_obs.members);
     a_obs.enum_variants.extend(b_obs.enum_variants);
-    drop(a_obs);
+    a.observer = Mutex::new(a_obs);
     a
-}
-
-fn sum_telemetry(a: RuleTelemetry, b: RuleTelemetry) -> RuleTelemetry {
-    RuleTelemetry {
-        top_level_lookups: a.top_level_lookups + b.top_level_lookups,
-        member_lookups: a.member_lookups + b.member_lookups,
-        enum_variant_lookups: a.enum_variant_lookups + b.enum_variant_lookups,
-        type_inferences: a.type_inferences + b.type_inferences,
-        definition_resolutions: a.definition_resolutions + b.definition_resolutions,
-        branch_type_ref_us: a.branch_type_ref_us + b.branch_type_ref_us,
-        branch_member_access_us: a.branch_member_access_us + b.branch_member_access_us,
-        branch_member_default_us: a.branch_member_default_us + b.branch_member_default_us,
-        branch_func_bare_call_us: a.branch_func_bare_call_us + b.branch_func_bare_call_us,
-        branch_bare_us: a.branch_bare_us + b.branch_bare_us,
-        branch_type_ref_visits: a.branch_type_ref_visits + b.branch_type_ref_visits,
-        branch_member_access_visits: a.branch_member_access_visits + b.branch_member_access_visits,
-        branch_member_default_visits: a.branch_member_default_visits
-            + b.branch_member_default_visits,
-        branch_func_bare_call_visits: a.branch_func_bare_call_visits
-            + b.branch_func_bare_call_visits,
-        branch_bare_visits: a.branch_bare_visits + b.branch_bare_visits,
-        member_access_infer_us: a.member_access_infer_us + b.member_access_infer_us,
-        member_access_member_us: a.member_access_member_us + b.member_access_member_us,
-    }
 }
 
 #[cfg(test)]

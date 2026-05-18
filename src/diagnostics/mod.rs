@@ -41,18 +41,11 @@ pub fn collect_cst_diagnostics_for_document(
     let mut diagnostics = run_rules_on_document(uri, document, db, &rules);
 
     let shard = run_unknown_symbol_parallel(uri, document, db);
-
-    if let Some(outer) = db.observer() {
-        let merged = shard
-            .observer
-            .into_inner()
-            .expect("observer mutex poisoned");
-        let mut outer = outer.lock().expect("observer mutex poisoned");
-        outer.top_level.extend(merged.top_level);
-        outer.members.extend(merged.members);
-        outer.enum_variants.extend(merged.enum_variants);
-    }
-
+    let obs = shard
+        .observer
+        .into_inner()
+        .expect("observer mutex poisoned");
+    db.merge_observations(obs);
     diagnostics.extend(shard.diagnostics);
     diagnostics.sort_by(|a, b| {
         (a.range.start.line, a.range.start.character)

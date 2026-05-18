@@ -10,8 +10,8 @@ use crate::resolve::{infer_expr_type_memo, resolve_definition_at_ident, SymbolDb
 use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::{
-    collect_nodes_with_error_subtree, run_parallel_pass, run_rules_on_document, CstRule,
-    CstRuleCtx, ParallelRuleShard, Severity, WorkspaceDiagnostic,
+    collect_nodes_with_error_subtree, run_parallel_pass, CstRuleCtx, ParallelRuleShard, Severity,
+    WorkspaceDiagnostic,
 };
 
 pub(crate) fn run_unknown_symbol_parallel(
@@ -52,7 +52,6 @@ pub(crate) fn run_unknown_symbol_parallel(
         enum_variant = shard.telemetry.enum_variant_lookups,
         type_inference = shard.telemetry.type_inferences,
         definition = shard.telemetry.definition_resolutions,
-        memo_size = shard.memo.len(),
         "cst lookup counts"
     );
     tracing::debug!(
@@ -73,39 +72,26 @@ pub(crate) fn run_unknown_symbol_parallel(
     shard
 }
 
-pub(crate) struct UnknownSymbolRule;
-
-impl CstRule for UnknownSymbolRule {
-    fn name(&self) -> &'static str {
-        "unknown_symbol"
-    }
-
-    fn interested_in(&self, kind: &str) -> bool {
-        kind == "ident"
-    }
-
-    fn visit<'tree>(&self, node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
-        check_ident(node, ctx);
-    }
-}
-
 pub fn collect_unknown_symbol_diagnostics(
     documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
-    let rule = UnknownSymbolRule;
-    let rules: Vec<&dyn CstRule> = vec![&rule];
     let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
 
     for (uri, document) in documents {
-        let diagnostics = run_rules_on_document(uri, document, db, &rules);
-        if !diagnostics.is_empty() {
+        let shard = run_unknown_symbol_parallel(uri, document, db);
+        let obs = shard
+            .observer
+            .into_inner()
+            .expect("observer mutex poisoned");
+        db.merge_observations(obs);
+        if !shard.diagnostics.is_empty() {
             debug!(
                 uri = %uri,
-                count = diagnostics.len(),
+                count = shard.diagnostics.len(),
                 "emitted unknown-symbol diagnostics"
             );
-            result.insert((*uri).to_string(), diagnostics);
+            result.insert((*uri).to_string(), shard.diagnostics);
         }
     }
 
