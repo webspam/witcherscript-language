@@ -1,47 +1,54 @@
 # WitcherScript Language Tools
 
-Rust workspace providing a WitcherScript (`.ws`) parser, syntax validator, and Language
+Rust crate providing a WitcherScript (`.ws`) parser, syntax validator, and Language
 Server Protocol (LSP) server built on Tree-sitter.
 
 Two binaries are produced:
 
-- **`witcherscript-check`** — CLI syntax validator and parse-tree inspector.
-- **`witcherscript-lsp`** — LSP server for editor integration (go-to-definition, hover,
-  document symbols, inline diagnostics).
+- **`witcherscript-check`** — CLI parser / parse-tree inspector.
+- **`witcherscript-lsp`** — LSP server for editor integration.
 
 ## CLI: witcherscript-check
 
 ### Usage
 
-From this directory:
+The command accepts one or more file or directory paths. Directory inputs are searched
+recursively for `.ws` files.
 
 ```powershell
-cargo run -- ..\src\LightRewrite.ws
-cargo run -- ..\src ..\debug
-cargo run -- ..\debug\editor\LRDebug_ToastOneLiner.ws --dump-tree
+cargo run -- path\to\file.ws
+cargo run -- path\to\src path\to\debug
+cargo run -- path\to\file.ws --dump-tree
 ```
 
 If Cargo is not on `PATH` in PowerShell, use:
 
 ```powershell
-& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -- ..\src ..\debug
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -- path\to\src
 ```
 
-The command accepts one or more file or directory paths. Directory inputs are searched
-recursively for `.ws` files.
+`--dump-tree` prints a concrete syntax tree with node kinds plus line/column and byte
+ranges. `--max-diagnostics N` (default 20) caps the diagnostics printed per file.
 
 Exit codes:
 
 - `0`: all parsed files have no diagnostics.
-- `1`: one or more files parsed with syntax or validation diagnostics.
+- `1`: one or more files have tree-sitter parse errors.
 - `2`: CLI, IO, setup, or parser initialisation error.
 
 ### Diagnostics
 
-Diagnostics include the file path, start line/column, end line/column, byte range, node
-kind, and a source-line snippet when available.
+Parse diagnostics include the file path, start line/column, end line/column, byte range,
+node kind, and a source-line snippet when available.
 
-Current validation rules:
+The CLI only reports tree-sitter parse errors. The cross-file validation rules below
+(duplicate symbols, unknown member, shadowing, …) are produced by the library but only
+surfaced through the LSP server.
+
+## Validation rules
+
+In addition to tree-sitter parse errors, the LSP server publishes the following
+diagnostics:
 
 - Local `var` declarations must precede executable statements within each function block.
   Blank lines, comments, and bare semicolons do not count as executable statements.
@@ -91,9 +98,6 @@ Current validation rules:
   compiler always evaluates it to `0` / `false` / `void`. Flagged so the construct is
   rewritten as an `if`/`else` before it silently returns wrong values.
 
-`--dump-tree` prints a concrete syntax tree with node kinds plus line/column and byte
-ranges.
-
 ## LSP: witcherscript-lsp
 
 The LSP server communicates over stdin/stdout and can be integrated with any LSP-capable
@@ -125,11 +129,17 @@ client extension to connect to `127.0.0.1:9257` instead of spawning the binary.
 
 | Capability | Detail |
 |---|---|
-| Text sync | Full document sync on open and change |
-| Diagnostics | Syntax errors and validation rules published on every parse |
-| Go-to-definition | Locals, parameters, fields (`this.x`), and workspace-wide top-level symbols |
-| Hover | Signature or type annotation shown in a fenced `witcherscript` code block |
+| Text sync | Incremental document sync over the wire; the parse tree is rebuilt from the patched source each change |
+| Diagnostics | Parse errors and the [validation rules](#validation-rules) above, published after every parse |
+| Go-to-definition | Locals, parameters, fields (`this.x`), and workspace-wide top-level symbols; inheritance traversed up to depth 32 |
+| Find references | Locals, parameters, fields, methods, and top-level symbols |
+| Rename | Workspace-wide rename with `prepare_rename`; symbols declared in base scripts are rejected |
+| Hover | Signature or type annotation in a fenced `witcherscript` code block |
+| Completion | Triggered by `.`, `:`, `@`; covers members, expressions, statements, types, annotations, and keywords |
+| Signature help | Triggered by `(` and `,`; highlights the active parameter |
 | Document symbols | Nested outline of classes, structs, enums, functions, methods, states, events, and fields |
+| Semantic tokens | Full-document semantic highlighting; legend exposed in `initialize` |
+| Document formatting | Pretty-prints whole documents using `witcherscript.formatter.*` settings |
 
 On startup the server indexes every `.ws` file in the workspace root(s), then keeps
 open documents in sync as they are edited.
@@ -144,6 +154,11 @@ The server reads the following user-configurable settings:
 | `witcherscript.additionalScriptDirectories` | `string[]` | `[]` | Extra root directories to walk recursively for `.ws` files. Each entry is loaded as read-only base scripts: their symbols join the global namespace, but renames are rejected. Use this when writing co-dependent mods that need to see each other's declarations. |
 | `witcherscript.autoLoadModSharedImports` | `boolean` | `true` | Auto-load the **Shared Imports** mod (a specific community mod at `<gameDirectory>\Mods\modSharedImports` that most modern Witcher 3 mods depend on to avoid clashes between `import` declarations). When this flag is on and the directory exists, it is loaded automatically — see "Auto-loaded: the Shared Imports mod" below. |
 | `witcherscript.diagnostics.enable` | `boolean` | `true` | Master switch for all diagnostics (parse errors, duplicate symbols, shadowing warnings, late-local-var, etc.). Set to `false` to suppress every diagnostic the server would otherwise publish — useful when reviewing partial-port or legacy mod source where squiggles are noise. Live-toggleable: flipping it off clears any visible diagnostics; flipping it back on republishes them. |
+| `witcherscript.logLevel` | `string` | `"warn"` | Server log level (`error`, `warn`, `debug`, `trace`; unknown values fall back to `warn`). Live-toggleable via `workspace/didChangeConfiguration`. |
+| `witcherscript.formatter.lineLimit` | `number` | `100` | Soft wrap width for the formatter. |
+| `witcherscript.formatter.compactColon` | `boolean` | `false` | Drop the space before `:` in type annotations when formatting. |
+| `witcherscript.formatter.alignMemberColons` | `boolean` | `false` | Align `:` on consecutive member declarations when formatting. |
+| `files.exclude` | `object` | `{}` | Standard VS Code exclude globs. The server respects these when walking workspace roots. |
 
 #### Auto-loaded: the Shared Imports mod
 
@@ -155,56 +170,28 @@ When the auto-load fires, the LSP log line carries `auto_loaded = true` and the 
 
 To opt out entirely, set `witcherscript.autoLoadModSharedImports` to `false`.
 
-**How the server receives this value**
+**How the server receives settings**
 
-The server uses two complementary LSP mechanisms:
+Two complementary LSP mechanisms:
 
-1. **`workspace/configuration`** (primary) — after the `initialized` notification the server
-   sends a `workspace/configuration` request for `witcherscript.gameDirectory`. The
-   `vscode-languageclient` `LanguageClient` fulfils this automatically from the user's VS Code
-   settings; no extra client code is needed. The server also handles
-   `workspace/didChangeConfiguration` notifications, so changing the path in VS Code settings
-   re-indexes the base scripts without restarting.
+1. **`workspace/configuration`** (primary) — after the `initialized` notification the
+   server pulls each setting via a `workspace/configuration` request. The
+   `vscode-languageclient` `LanguageClient` fulfils this automatically from the user's
+   VS Code settings; no extra client code is needed. The server also handles
+   `workspace/didChangeConfiguration` notifications, so changing settings live re-indexes
+   when relevant without restarting.
 
-2. **`initializationOptions`** (fallback) — the client may pass the path in the
-   `initialize` request so the server has a value immediately at startup, before the
-   `workspace/configuration` round-trip completes.
+2. **`initializationOptions`** (fallback) — the client may pass any of the above settings
+   in the `initialize` request so the server has values immediately at startup, before
+   the `workspace/configuration` round-trip completes.
 
 **VS Code plugin integration**
 
-*`package.json` — declare the settings:*
-```json
-"contributes": {
-  "configuration": {
-    "title": "WitcherScript",
-    "properties": {
-      "witcherscript.gameDirectory": {
-        "type": "string",
-        "default": "",
-        "description": "Absolute path to the Witcher 3 install root."
-      },
-      "witcherscript.additionalScriptDirectories": {
-        "type": "array",
-        "items": { "type": "string" },
-        "default": [],
-        "description": "Extra root directories to walk recursively for .ws files. Each is indexed as read-only base scripts."
-      },
-      "witcherscript.autoLoadModSharedImports": {
-        "type": "boolean",
-        "default": true,
-        "description": "Auto-load <gameDirectory>\\Mods\\modSharedImports (the Shared Imports mod). See server README."
-      },
-      "witcherscript.diagnostics.enable": {
-        "type": "boolean",
-        "default": true,
-        "description": "Master switch for WitcherScript diagnostics. Set to false to suppress every diagnostic the server publishes."
-      }
-    }
-  }
-}
-```
+Declare each setting in your extension's `package.json` under
+`contributes.configuration.properties` so VS Code surfaces them in Settings UI, then
+forward the current values as `initializationOptions` from your extension's activation
+code:
 
-*Extension activation — pass as `initializationOptions` for a fast first start:*
 ```typescript
 const cfg = vscode.workspace.getConfiguration('witcherscript');
 const clientOptions: LanguageClientOptions = {
@@ -214,12 +201,19 @@ const clientOptions: LanguageClientOptions = {
     additionalScriptDirectories: cfg.get<string[]>('additionalScriptDirectories') ?? [],
     autoLoadModSharedImports: cfg.get<boolean>('autoLoadModSharedImports') ?? true,
     diagnostics: { enable: cfg.get<boolean>('diagnostics.enable') ?? true },
+    logLevel: cfg.get<string>('logLevel') ?? 'warn',
+    formatter: {
+      lineLimit: cfg.get<number>('formatter.lineLimit') ?? 100,
+      compactColon: cfg.get<boolean>('formatter.compactColon') ?? false,
+      alignMemberColons: cfg.get<boolean>('formatter.alignMemberColons') ?? false,
+    },
   },
 };
 ```
 
-The `LanguageClient` handles all `workspace/configuration` and `workspace/didChangeConfiguration`
-traffic automatically once the setting is declared in `package.json`.
+The `LanguageClient` handles all `workspace/configuration` and
+`workspace/didChangeConfiguration` traffic automatically once the settings are declared
+in `package.json`.
 
 ## Symbol extraction
 
@@ -230,48 +224,37 @@ The library extracts a flat symbol table from each document during parsing. Symb
 - `range` / `selection_range` as UTF-16 line/character positions (LSP-compatible)
 - `byte_range` / `selection_byte_range` for fast cursor queries
 - `container` — parent `SymbolId` for members, `None` for top-level declarations
-- `type_annotation`, `signature`, `detail`, `annotations` (`@wrapMethod`, `@addMethod`, …)
+- `type_annotation`, `signature`, `base_class`, `owner_class`, `flavour`, `annotations`
+  (`@wrapMethod`, `@addMethod`, …) — plus a `display_detail()` helper that renders
+  `extends`/`in` strings for LSP hover
 
-The `WorkspaceIndex` in `resolve.rs` maintains a per-URI symbol list and supports
+`WorkspaceIndex` in `src/resolve/mod.rs` maintains a per-URI symbol list and supports
 cross-file go-to-definition lookups.
 
 ## Tests
 
 ```powershell
-cargo nextest run
+just test
 ```
 
-Tests run via [cargo-nextest](https://nexte.st). Install with `cargo binstall cargo-nextest` or `winget install nextest.cargo-nextest`.
+Tests run via [cargo-nextest](https://nexte.st). Install with
+`cargo binstall cargo-nextest` or `winget install nextest.cargo-nextest`. Nextest config
+lives at `.config/nextest.toml`.
 
 Parser fixtures live under `tests/fixtures/valid` and `tests/fixtures/invalid`. Add `.ws`
 files there when covering larger WitcherScript examples; the fixture tests discover those
 files automatically.
 
-Unit tests are embedded in `diagnostics/`, `symbols.rs`, `line_index.rs`, and
-`resolve.rs`. Integration tests for language features (symbol extraction, definition
-resolution) live in `tests/language_features.rs`.
-
-## Current Validation Result
-
-Validated against the local Light Rewrite corpus:
-
-```powershell
-& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -- ..\src ..\debug --max-diagnostics 5
-```
-
-Result: all 32 `.ws` files under `src/` and `debug/` parsed cleanly with
-`tree-sitter-witcherscript` tag `v0.13.0` from
-`https://github.com/webspam/tree-sitter-witcherscript`.
-
-No syntax or local variable ordering failures were found in the local corpus during this
-pass.
+Unit tests are embedded in `src/diagnostics/`, `src/symbols.rs`, `src/line_index.rs`,
+`src/script_env.rs`, `src/resolve/tests/`, `src/semantic_tokens/tests.rs`, and
+`src/bin/witcherscript-lsp/tests.rs`. Integration tests for symbol extraction and
+definition resolution live in `tests/language_features.rs`; fixture-driven parse tests
+live in `tests/parser_fixtures.rs`.
 
 ## Caveats
 
-- This tool reports Tree-sitter parse errors plus a small set of explicit validation rules.
-  It does not reject every construct that the WitcherScript compiler or this repo's style
-  rules may reject.
+- This tool reports Tree-sitter parse errors plus a small set of explicit validation
+  rules. It does not reject every construct that the WitcherScript compiler or this
+  repo's style rules may reject.
 - The grammar dependency is pinned to the `webspam` fork so future grammar fixes can be
   made outside this repo and consumed by retargeting the Cargo dependency.
-- Definition resolution does not yet follow inheritance chains (e.g. resolving a member
-  through a base class requires the type name to match exactly).
