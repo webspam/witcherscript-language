@@ -41,11 +41,7 @@ pub fn collect_cst_diagnostics_for_document(
     let mut diagnostics = run_rules_on_document(uri, document, db, &rules);
 
     let shard = run_unknown_symbol_parallel(uri, document, db);
-    let obs = shard
-        .observer
-        .into_inner()
-        .expect("observer mutex poisoned");
-    db.merge_observations(obs);
+    db.merge_observations(shard.observer);
     diagnostics.extend(shard.diagnostics);
     diagnostics.sort_by(|a, b| {
         (a.range.start.line, a.range.start.character)

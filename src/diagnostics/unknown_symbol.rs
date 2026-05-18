@@ -80,11 +80,7 @@ pub fn collect_unknown_symbol_diagnostics(
 
     for (uri, document) in documents {
         let shard = run_unknown_symbol_parallel(uri, document, db);
-        let obs = shard
-            .observer
-            .into_inner()
-            .expect("observer mutex poisoned");
-        db.merge_observations(obs);
+        db.merge_observations(shard.observer);
         if !shard.diagnostics.is_empty() {
             debug!(
                 uri = %uri,

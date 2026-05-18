@@ -182,7 +182,7 @@ pub(crate) struct ParallelRuleShard {
     pub memo: TypeMemo,
     pub telemetry: RuleTelemetry,
     pub diagnostics: Vec<WorkspaceDiagnostic>,
-    pub observer: Mutex<ObservationSet>,
+    pub observer: ObservationSet,
 }
 
 pub(crate) fn collect_nodes_with_error_subtree<'tree>(
@@ -231,16 +231,28 @@ where
 {
     items
         .par_iter()
-        .fold(ParallelRuleShard::default, |mut shard, &(node, in_err)| {
-            let local_db = db.with_observer(&shard.observer);
-            visit(
-                node,
-                in_err,
-                &local_db,
-                &mut shard.memo,
-                &mut shard.telemetry,
-                &mut shard.diagnostics,
-            );
+        .fold(
+            || {
+                (
+                    ParallelRuleShard::default(),
+                    Mutex::new(ObservationSet::default()),
+                )
+            },
+            |(mut shard, observer), &(node, in_err)| {
+                let local_db = db.with_observer(&observer);
+                visit(
+                    node,
+                    in_err,
+                    &local_db,
+                    &mut shard.memo,
+                    &mut shard.telemetry,
+                    &mut shard.diagnostics,
+                );
+                (shard, observer)
+            },
+        )
+        .map(|(mut shard, observer)| {
+            shard.observer = observer.into_inner().expect("observer mutex poisoned");
             shard
         })
         .reduce(ParallelRuleShard::default, merge_shards)
@@ -249,12 +261,9 @@ where
 fn merge_shards(mut a: ParallelRuleShard, b: ParallelRuleShard) -> ParallelRuleShard {
     a.telemetry = a.telemetry + b.telemetry;
     a.diagnostics.extend(b.diagnostics);
-    let mut a_obs = a.observer.into_inner().expect("observer mutex poisoned");
-    let b_obs = b.observer.into_inner().expect("observer mutex poisoned");
-    a_obs.top_level.extend(b_obs.top_level);
-    a_obs.members.extend(b_obs.members);
-    a_obs.enum_variants.extend(b_obs.enum_variants);
-    a.observer = Mutex::new(a_obs);
+    a.observer.top_level.extend(b.observer.top_level);
+    a.observer.members.extend(b.observer.members);
+    a.observer.enum_variants.extend(b.observer.enum_variants);
     a
 }
 
