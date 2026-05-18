@@ -879,7 +879,29 @@ pub fn resolve_definition_at_ident(
     resolve_for_ident(uri, document, db, ident, ident.start_byte())
 }
 
+pub fn classify_definition_at_ident(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb<'_>,
+    ident: Node,
+) -> Option<Definition> {
+    resolve_for_ident_no_site_fallback(uri, document, db, ident, ident.start_byte())
+}
+
 fn resolve_for_ident(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb<'_>,
+    ident: Node,
+    byte_offset: usize,
+) -> Option<Definition> {
+    resolve_for_ident_no_site_fallback(uri, document, db, ident, byte_offset).or_else(|| {
+        let name = ident.utf8_text(document.source.as_bytes()).ok()?;
+        resolve_at_definition_site(uri, document, byte_offset, name)
+    })
+}
+
+fn resolve_for_ident_no_site_fallback(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb<'_>,
@@ -903,7 +925,6 @@ fn resolve_for_ident(
         .or_else(|| db.find_top_level(name))
         .or_else(|| db.find_enum_variant(name))
         .or_else(|| db.find_script_global(name))
-        .or_else(|| resolve_at_definition_site(uri, document, byte_offset, name))
 }
 
 /// All declaration sites at `position`, class-body declaration first.

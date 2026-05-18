@@ -1,8 +1,10 @@
+use std::collections::HashMap;
+
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
-use crate::resolve::{resolve_definition_at_byte, SymbolDb};
-use crate::symbols::SymbolKind;
+use crate::resolve::{classify_definition_at_ident, SymbolDb};
+use crate::symbols::{SymbolId, SymbolKind};
 
 pub const TOKEN_TYPES: &[&str] = &[
     "class",      // 0
@@ -48,18 +50,29 @@ struct RawToken {
 
 pub fn collect_semantic_tokens(uri: &str, document: &ParsedDocument, db: &SymbolDb) -> Vec<u32> {
     let mut tokens: Vec<RawToken> = Vec::new();
-    collect(document.tree.root_node(), uri, document, db, &mut tokens);
+    let mut cache: ClassifyCache = HashMap::new();
+    collect(
+        document.tree.root_node(),
+        uri,
+        document,
+        db,
+        &mut cache,
+        &mut tokens,
+    );
     encode(&tokens)
 }
+
+type ClassifyCache = HashMap<(String, Option<SymbolId>), Option<u32>>;
 
 fn collect(
     node: Node,
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
+    cache: &mut ClassifyCache,
     out: &mut Vec<RawToken>,
 ) {
-    if let Some(token_type) = classify(node, uri, document, db) {
+    if let Some(token_type) = classify(node, uri, document, db, cache) {
         let range = document.line_index.byte_range_to_range(
             &document.source,
             node.start_byte(),
@@ -73,25 +86,28 @@ fn collect(
                 token_type,
             });
         }
-        // Don't recurse — this node's full span is covered.
     } else if node.is_named() {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            collect(child, uri, document, db, out);
+            collect(child, uri, document, db, cache, out);
         }
     }
 }
 
-fn classify(node: Node, uri: &str, document: &ParsedDocument, db: &SymbolDb) -> Option<u32> {
+fn classify(
+    node: Node,
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    cache: &mut ClassifyCache,
+) -> Option<u32> {
     match node.kind() {
-        "ident" => classify_ident(node, uri, document, db),
+        "ident" => classify_ident(node, uri, document, db, cache),
         "annotation_ident" => Some(TT_DECORATOR),
         "comment" => Some(TT_COMMENT),
-        // CName literals ('SomeName') are compile-time symbol references, not text.
         "literal_name" => Some(TT_ENUM_MEMBER),
         "literal_string" => Some(TT_STRING),
         "literal_int" | "literal_float" | "literal_hex" => Some(TT_NUMBER),
-        // literal_bool, literal_null, this_expr etc. are omitted — TextMate constant.language wins.
         "specifier" | "func_flavour" | "autobind_single" => Some(TT_MODIFIER),
         _ => {
             if !node.is_named() {
@@ -103,7 +119,13 @@ fn classify(node: Node, uri: &str, document: &ParsedDocument, db: &SymbolDb) -> 
     }
 }
 
-fn classify_ident(node: Node, uri: &str, document: &ParsedDocument, db: &SymbolDb) -> Option<u32> {
+fn classify_ident(
+    node: Node,
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    cache: &mut ClassifyCache,
+) -> Option<u32> {
     let parent = node.parent()?;
     match parent.kind() {
         "class_decl" | "struct_decl" | "state_decl" => Some(TT_CLASS),
@@ -113,9 +135,82 @@ fn classify_ident(node: Node, uri: &str, document: &ParsedDocument, db: &SymbolD
         "func_param_group" => Some(TT_PARAMETER),
         "member_var_decl" | "autobind_decl" => Some(TT_PROPERTY),
         "local_var_decl_stmt" => Some(TT_VARIABLE),
-        _ => resolve_definition_at_byte(uri, document, db, node.start_byte())
-            .map(|def| symbol_kind_to_token_type(def.symbol.kind)),
+        _ => {
+            if let Some(t) = classify_locally(node, document) {
+                return Some(t);
+            }
+            if is_member_access_rhs(node, parent) {
+                return classify_definition_at_ident(uri, document, db, node)
+                    .map(|def| symbol_kind_to_token_type(def.symbol.kind));
+            }
+            let name = node.utf8_text(document.source.as_bytes()).ok()?;
+            let type_kinds = [SymbolKind::Class, SymbolKind::Struct, SymbolKind::State];
+            let class_id = document
+                .symbols
+                .enclosing_symbol_at(node.start_byte(), &type_kinds)
+                .map(|s| s.id);
+            let key = (name.to_string(), class_id);
+            if let Some(cached) = cache.get(&key) {
+                return *cached;
+            }
+            let result = classify_definition_at_ident(uri, document, db, node)
+                .map(|def| symbol_kind_to_token_type(def.symbol.kind));
+            cache.insert(key, result);
+            result
+        }
     }
+}
+
+fn is_member_access_rhs(node: Node, parent: Node) -> bool {
+    if parent.kind() != "member_access_expr" {
+        return false;
+    }
+    let mut cursor = parent.walk();
+    let is_receiver = parent
+        .named_children(&mut cursor)
+        .next()
+        .map(|c| c.id() == node.id())
+        .unwrap_or(false);
+    !is_receiver
+}
+
+fn classify_locally(node: Node, document: &ParsedDocument) -> Option<u32> {
+    if let Some(parent) = node.parent() {
+        if is_member_access_rhs(node, parent) {
+            return None;
+        }
+    }
+
+    let name = node.utf8_text(document.source.as_bytes()).ok()?;
+    let byte_offset = node.start_byte();
+
+    let callable_kinds = [SymbolKind::Function, SymbolKind::Method, SymbolKind::Event];
+    if let Some(callable) = document
+        .symbols
+        .enclosing_symbol_at(byte_offset, &callable_kinds)
+    {
+        if let Some(sym) = document
+            .symbols
+            .local_at_byte(callable.id, name, byte_offset)
+        {
+            return Some(symbol_kind_to_token_type(sym.kind));
+        }
+    }
+
+    let type_kinds = [SymbolKind::Class, SymbolKind::Struct, SymbolKind::State];
+    if let Some(class) = document
+        .symbols
+        .enclosing_symbol_at(byte_offset, &type_kinds)
+    {
+        if let Some(sym) = document.symbols.member_of(class.id, name).next() {
+            return Some(symbol_kind_to_token_type(sym.kind));
+        }
+    }
+
+    document
+        .symbols
+        .top_level_by_name(name)
+        .map(|sym| symbol_kind_to_token_type(sym.kind))
 }
 
 fn symbol_kind_to_token_type(kind: SymbolKind) -> u32 {
