@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use tower_lsp::lsp_types::Url;
+use lsp_types::Url;
 use witcherscript_language::diagnostics::{
     collect_cst_diagnostics_for_document, WorkspaceDiagnostic,
 };
@@ -87,8 +87,8 @@ pub(crate) fn cst_diagnostics_with_cache(
 #[cfg(test)]
 mod tests {
     use super::{cst_diagnostics_with_cache, CstCacheEntry, DbFingerprint};
+    use lsp_types::Url;
     use std::collections::HashMap;
-    use tower_lsp::lsp_types::Url;
     use witcherscript_language::document::{parse_document, ParsedDocument};
     use witcherscript_language::resolve::{SymbolDb, WorkspaceIndex};
 

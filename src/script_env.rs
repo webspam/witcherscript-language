@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use tower_lsp::lsp_types::Url;
+use lsp_types::Url;
 
 use crate::line_index::{SourcePosition, SourceRange};
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};

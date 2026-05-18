@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tower_lsp::lsp_types::{
+use lsp_types::{
     Command, CompletionItem, CompletionItemKind, CompletionTextEdit, Diagnostic,
     DiagnosticRelatedInformation, DiagnosticSeverity, DocumentSymbol, Documentation,
     InitializeParams, InsertTextFormat, Location, MarkupContent, MarkupKind, ParameterInformation,
@@ -19,6 +19,7 @@ pub(crate) fn canonical_uri(uri: &Url) -> Option<String> {
     Url::from_file_path(path).ok().map(|url| url.to_string())
 }
 
+#[allow(deprecated)]
 pub(crate) fn workspace_roots(params: InitializeParams) -> Vec<PathBuf> {
     if let Some(folders) = params.workspace_folders {
         return folders
@@ -46,9 +47,7 @@ pub(crate) fn lsp_diagnostics(document: &ParsedDocument) -> Vec<Diagnostic> {
                 diagnostic.byte_range.end,
             )),
             severity: Some(DiagnosticSeverity::ERROR),
-            code: Some(tower_lsp::lsp_types::NumberOrString::String(
-                diagnostic.kind.clone(),
-            )),
+            code: Some(lsp_types::NumberOrString::String(diagnostic.kind.clone())),
             source: Some("witcherscript".to_string()),
             message: diagnostic.message.clone(),
             ..Diagnostic::default()
@@ -79,9 +78,7 @@ pub(crate) fn lsp_workspace_diagnostic(diagnostic: &WorkspaceDiagnostic) -> Diag
             Severity::Error => DiagnosticSeverity::ERROR,
             Severity::Warning => DiagnosticSeverity::WARNING,
         }),
-        code: Some(tower_lsp::lsp_types::NumberOrString::String(
-            diagnostic.kind.clone(),
-        )),
+        code: Some(lsp_types::NumberOrString::String(diagnostic.kind.clone())),
         source: Some("witcherscript".to_string()),
         message: diagnostic.message.clone(),
         related_information: if related_information.is_empty() {
@@ -133,18 +130,18 @@ fn is_outline_symbol(symbol: &Symbol) -> bool {
     !matches!(symbol.kind, SymbolKind::Variable | SymbolKind::Parameter)
 }
 
-fn lsp_symbol_kind(kind: SymbolKind) -> tower_lsp::lsp_types::SymbolKind {
+fn lsp_symbol_kind(kind: SymbolKind) -> lsp_types::SymbolKind {
     match kind {
-        SymbolKind::Class => tower_lsp::lsp_types::SymbolKind::CLASS,
-        SymbolKind::Struct => tower_lsp::lsp_types::SymbolKind::STRUCT,
-        SymbolKind::Enum => tower_lsp::lsp_types::SymbolKind::ENUM,
-        SymbolKind::EnumVariant => tower_lsp::lsp_types::SymbolKind::ENUM_MEMBER,
-        SymbolKind::Function => tower_lsp::lsp_types::SymbolKind::FUNCTION,
-        SymbolKind::Method | SymbolKind::Event => tower_lsp::lsp_types::SymbolKind::METHOD,
-        SymbolKind::Field => tower_lsp::lsp_types::SymbolKind::FIELD,
-        SymbolKind::Variable => tower_lsp::lsp_types::SymbolKind::VARIABLE,
-        SymbolKind::Parameter => tower_lsp::lsp_types::SymbolKind::VARIABLE,
-        SymbolKind::State => tower_lsp::lsp_types::SymbolKind::OBJECT,
+        SymbolKind::Class => lsp_types::SymbolKind::CLASS,
+        SymbolKind::Struct => lsp_types::SymbolKind::STRUCT,
+        SymbolKind::Enum => lsp_types::SymbolKind::ENUM,
+        SymbolKind::EnumVariant => lsp_types::SymbolKind::ENUM_MEMBER,
+        SymbolKind::Function => lsp_types::SymbolKind::FUNCTION,
+        SymbolKind::Method | SymbolKind::Event => lsp_types::SymbolKind::METHOD,
+        SymbolKind::Field => lsp_types::SymbolKind::FIELD,
+        SymbolKind::Variable => lsp_types::SymbolKind::VARIABLE,
+        SymbolKind::Parameter => lsp_types::SymbolKind::VARIABLE,
+        SymbolKind::State => lsp_types::SymbolKind::OBJECT,
     }
 }
 

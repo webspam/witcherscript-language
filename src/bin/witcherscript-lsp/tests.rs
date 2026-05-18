@@ -1,4 +1,4 @@
-use tower_lsp::lsp_types::{ParameterLabel, SymbolKind as LspSymbolKind};
+use lsp_types::{ParameterLabel, SymbolKind as LspSymbolKind};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::files::read_script_file;
 use witcherscript_language::line_index::SourcePosition;
@@ -333,7 +333,7 @@ fn formats_class_hover_with_extends_on_single_line() {
 #[cfg(windows)]
 fn opening_a_workspace_indexed_file_does_not_self_conflict() {
     use crate::indexing::index_open_document;
-    use tower_lsp::lsp_types::Url;
+    use lsp_types::Url;
     use witcherscript_language::diagnostics::collect_duplicate_symbol_diagnostics;
 
     let document = parse_document("function Foo() {}\n").expect("document should parse");
@@ -388,13 +388,10 @@ fn workspace_diagnostic_carries_related_information() {
 
     let lsp = lsp_workspace_diagnostic(&diagnostic);
 
-    assert_eq!(
-        lsp.severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
-    );
+    assert_eq!(lsp.severity, Some(lsp_types::DiagnosticSeverity::ERROR));
     assert_eq!(
         lsp.code,
-        Some(tower_lsp::lsp_types::NumberOrString::String(
+        Some(lsp_types::NumberOrString::String(
             "duplicate_symbol".to_string()
         ))
     );
@@ -409,7 +406,7 @@ fn workspace_diagnostic_carries_related_information() {
 
 #[test]
 fn completion_item_method_has_method_kind() {
-    use tower_lsp::lsp_types::CompletionItemKind;
+    use lsp_types::CompletionItemKind;
     use witcherscript_language::resolve::{completion_members, SymbolDb, WorkspaceIndex};
 
     let source = concat!(
@@ -449,7 +446,7 @@ fn completion_item_method_has_method_kind() {
 
 #[test]
 fn completion_item_snippet_includes_param_placeholders() {
-    use tower_lsp::lsp_types::{CompletionItemKind, InsertTextFormat};
+    use lsp_types::{CompletionItemKind, InsertTextFormat};
     use witcherscript_language::resolve::{completion_members, SymbolDb, WorkspaceIndex};
 
     let source = concat!(
@@ -798,7 +795,7 @@ mod watched_files {
     use std::collections::HashSet;
     use std::path::PathBuf;
 
-    use tower_lsp::lsp_types::{FileChangeType, FileEvent, Url};
+    use lsp_types::{FileChangeType, FileEvent, Url};
     use witcherscript_language::files::ExcludeFilter;
 
     use crate::indexing::{classify_watched_event, WatchedEvent};
@@ -949,7 +946,7 @@ mod watched_files {
 
 mod builtin_source_request {
     use crate::backend::builtin_source_response;
-    use tower_lsp::jsonrpc::ErrorCode;
+    use async_lsp::ErrorCode;
     use witcherscript_language::builtins::BUILTIN_ARRAY_URI;
 
     #[test]
@@ -972,6 +969,6 @@ mod builtin_source_request {
     #[test]
     fn errors_when_uri_is_empty() {
         let err = builtin_source_response("").expect_err("should reject empty uri");
-        assert_eq!(err.code, ErrorCode::InvalidParams);
+        assert_eq!(err.code, ErrorCode::INVALID_PARAMS);
     }
 }

@@ -21,7 +21,11 @@ clap = { version = "4.5.51", default-features = false, features = [
     "cargo",
 ] }
 tokio = { version = "1.48.0", features = ["io-std", "macros", "net", "rt-multi-thread", "sync"] }
-tower-lsp = "0.20.0"
+async-lsp = { version = "0.2.4", default-features = false, features = ["omni-trait", "tokio", "tracing"] }
+lsp-types = "0.95"
+futures = "0.3"
+tower = { version = "0.5", default-features = false, features = ["util"] }
+tokio-util = { version = "0.7", default-features = false, features = ["compat"] }
 tree-sitter = "=0.26.8"
 tree-sitter-witcherscript = { git = "https://github.com/webspam/tree-sitter-witcherscript.git", tag = "v0.14.1" }
 rayon = "1.10"

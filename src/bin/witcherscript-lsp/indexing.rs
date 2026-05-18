@@ -4,12 +4,15 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
+use lsp_types::notification::PublishDiagnostics;
+use lsp_types::request::{RegisterCapability, WorkspaceConfiguration};
+use lsp_types::{
+    ConfigurationItem, ConfigurationParams, Diagnostic, DidChangeWatchedFilesRegistrationOptions,
+    FileChangeType, FileEvent, FileSystemWatcher, GlobPattern, Position, PublishDiagnosticsParams,
+    Registration, RegistrationParams, Url,
+};
 use rayon::prelude::*;
 use serde_json::Value;
-use tower_lsp::lsp_types::{
-    ConfigurationItem, Diagnostic, DidChangeWatchedFilesRegistrationOptions, FileChangeType,
-    FileEvent, FileSystemWatcher, GlobPattern, Position, Registration, Url,
-};
 use tracing::{debug, error, info, trace, warn};
 use witcherscript_language::diagnostics::{
     collect_duplicate_local_diagnostics, collect_duplicate_symbol_diagnostics,
@@ -237,9 +240,13 @@ impl Backend {
 
         let republished = to_publish.len();
         for (uri, diagnostics) in to_publish {
-            self.client
-                .publish_diagnostics(uri, diagnostics, None)
-                .await;
+            let _ = self
+                .client
+                .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
+                    uri,
+                    diagnostics,
+                    version: None,
+                });
         }
 
         trace!(
@@ -274,9 +281,13 @@ impl Backend {
         };
 
         for (uri, diagnostics) in to_publish {
-            self.client
-                .publish_diagnostics(uri, diagnostics, None)
-                .await;
+            let _ = self
+                .client
+                .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
+                    uri,
+                    diagnostics,
+                    version: None,
+                });
         }
     }
 
@@ -291,7 +302,13 @@ impl Backend {
                 keys
             };
             for uri in uris {
-                self.client.publish_diagnostics(uri, Vec::new(), None).await;
+                let _ = self
+                    .client
+                    .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
+                        uri,
+                        diagnostics: Vec::new(),
+                        version: None,
+                    });
             }
         }
     }
@@ -389,7 +406,13 @@ impl Backend {
             method: "workspace/didChangeWatchedFiles".to_string(),
             register_options: serde_json::to_value(options).ok(),
         };
-        if let Err(err) = self.client.register_capability(vec![registration]).await {
+        if let Err(err) = self
+            .client
+            .request::<RegisterCapability>(RegistrationParams {
+                registrations: vec![registration],
+            })
+            .await
+        {
             warn!(
                 error = %err,
                 "failed to register file watcher; workspace index may go stale on external file changes"
@@ -505,7 +528,11 @@ impl Backend {
                 section: Some("witcherscript.diagnostics.enable".to_string()),
             },
         ];
-        let Ok(values) = self.client.configuration(items).await else {
+        let Ok(values) = self
+            .client
+            .request::<WorkspaceConfiguration>(ConfigurationParams { items })
+            .await
+        else {
             warn!("workspace/configuration request failed");
             return ConfigChange::default();
         };
