@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::time::Instant;
 
 use tracing::{debug, trace};
@@ -8,7 +9,69 @@ use crate::document::ParsedDocument;
 use crate::resolve::{infer_expr_type_memo, resolve_definition_at_ident, SymbolDb, BUILTIN_TYPES};
 use crate::symbols::{AccessLevel, SymbolKind};
 
-use super::{run_rules_on_document, CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic};
+use super::{
+    collect_nodes_with_error_subtree, run_parallel_pass, run_rules_on_document, CstRule,
+    CstRuleCtx, ParallelRuleShard, Severity, WorkspaceDiagnostic,
+};
+
+pub(crate) fn run_unknown_symbol_parallel(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb<'_>,
+) -> ParallelRuleShard {
+    let items = collect_nodes_with_error_subtree(document.tree.root_node(), |k| k == "ident");
+    let visits = items.len();
+    let start = Instant::now();
+    let shard = run_parallel_pass(
+        &items,
+        db,
+        |node, in_err, local_db, memo, telemetry, diagnostics| {
+            let mut ctx = CstRuleCtx {
+                uri,
+                document,
+                db: local_db,
+                type_memo: memo,
+                telemetry,
+                diagnostics,
+                in_error_subtree: in_err,
+                _tree: PhantomData,
+            };
+            check_ident(node, &mut ctx);
+        },
+    );
+    let elapsed = start.elapsed();
+    tracing::debug!(
+        rule = "unknown_symbol",
+        visits = visits,
+        elapsed_us = elapsed.as_micros() as u64,
+        "cst rule timing"
+    );
+    tracing::debug!(
+        top_level = shard.telemetry.top_level_lookups,
+        member = shard.telemetry.member_lookups,
+        enum_variant = shard.telemetry.enum_variant_lookups,
+        type_inference = shard.telemetry.type_inferences,
+        definition = shard.telemetry.definition_resolutions,
+        memo_size = shard.memo.len(),
+        "cst lookup counts"
+    );
+    tracing::debug!(
+        type_ref_us = shard.telemetry.branch_type_ref_us,
+        type_ref_visits = shard.telemetry.branch_type_ref_visits,
+        member_access_us = shard.telemetry.branch_member_access_us,
+        member_access_visits = shard.telemetry.branch_member_access_visits,
+        member_access_infer_us = shard.telemetry.member_access_infer_us,
+        member_access_member_us = shard.telemetry.member_access_member_us,
+        member_default_us = shard.telemetry.branch_member_default_us,
+        member_default_visits = shard.telemetry.branch_member_default_visits,
+        func_bare_call_us = shard.telemetry.branch_func_bare_call_us,
+        func_bare_call_visits = shard.telemetry.branch_func_bare_call_visits,
+        bare_us = shard.telemetry.branch_bare_us,
+        bare_visits = shard.telemetry.branch_bare_visits,
+        "unknown_symbol branch timing"
+    );
+    shard
+}
 
 pub(crate) struct UnknownSymbolRule;
 
@@ -331,8 +394,42 @@ fn push<'tree>(ctx: &mut CstRuleCtx<'_, 'tree>, ident: Node<'tree>, kind: &str, 
 #[cfg(test)]
 mod tests {
     use super::collect_unknown_symbol_diagnostics;
+    use crate::diagnostics::collect_cst_diagnostics_for_document;
     use crate::document::{parse_document, ParsedDocument};
     use crate::resolve::{SymbolDb, WorkspaceIndex};
+
+    #[test]
+    fn parallel_run_is_deterministic() {
+        let mut src = String::new();
+        for i in 0..40 {
+            src.push_str(&format!(
+                "class C{i} extends Missing{i} {{ var f{i} : MissingType{i}; }} \
+                 function Fn{i}() {{ var x{i} : int; x{i} = unknownBare{i}; UnknownCall{i}(); }} \
+                 function Fn2_{i}() {{ var c{i} : C{i}; c{i}.bogus{i} = 1; }}\n"
+            ));
+        }
+        let mut idx = WorkspaceIndex::default();
+        let doc = parse_document(&src).expect("parse should succeed");
+        idx.update_document("file:///big.ws", &doc);
+        let base = WorkspaceIndex::default();
+        let db = SymbolDb::new(&idx, &base);
+
+        let first = collect_cst_diagnostics_for_document("file:///big.ws", &doc, &db);
+        let second = collect_cst_diagnostics_for_document("file:///big.ws", &doc, &db);
+
+        assert!(!first.is_empty(), "fixture should produce diagnostics");
+        assert_eq!(
+            first.len(),
+            second.len(),
+            "diagnostic count must be stable across runs"
+        );
+        for (i, (a, b)) in first.iter().zip(second.iter()).enumerate() {
+            assert_eq!(a.kind, b.kind, "diagnostic {i}: kind mismatch");
+            assert_eq!(a.message, b.message, "diagnostic {i}: message mismatch");
+            assert_eq!(a.severity, b.severity, "diagnostic {i}: severity mismatch");
+            assert_eq!(a.range, b.range, "diagnostic {i}: range mismatch");
+        }
+    }
 
     fn index_and_docs(docs: &[(&str, &str)]) -> (WorkspaceIndex, Vec<(String, ParsedDocument)>) {
         let mut idx = WorkspaceIndex::default();

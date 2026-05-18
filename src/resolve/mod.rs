@@ -92,6 +92,10 @@ impl<'a> SymbolDb<'a> {
         }
     }
 
+    pub(crate) fn observer(&self) -> Option<&Mutex<ObservationSet>> {
+        self.observer
+    }
+
     fn record_top_level(&self, name: &str) {
         if let Some(obs) = self.observer {
             let mut o = obs.lock().expect("observer mutex poisoned");

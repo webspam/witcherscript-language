@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use rayon::prelude::*;
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
-use crate::resolve::SymbolDb;
+use crate::resolve::{ObservationSet, SymbolDb};
 
 use super::WorkspaceDiagnostic;
 
@@ -88,21 +90,6 @@ pub(crate) fn run_rules_on_document(
         memo_size = memo.len(),
         "cst lookup counts"
     );
-    tracing::debug!(
-        type_ref_us = telemetry.branch_type_ref_us,
-        type_ref_visits = telemetry.branch_type_ref_visits,
-        member_access_us = telemetry.branch_member_access_us,
-        member_access_visits = telemetry.branch_member_access_visits,
-        member_access_infer_us = telemetry.member_access_infer_us,
-        member_access_member_us = telemetry.member_access_member_us,
-        member_default_us = telemetry.branch_member_default_us,
-        member_default_visits = telemetry.branch_member_default_visits,
-        func_bare_call_us = telemetry.branch_func_bare_call_us,
-        func_bare_call_visits = telemetry.branch_func_bare_call_visits,
-        bare_us = telemetry.branch_bare_us,
-        bare_visits = telemetry.branch_bare_visits,
-        "unknown_symbol branch timing"
-    );
     diagnostics
 }
 
@@ -156,6 +143,112 @@ fn walk<'tree>(
             diagnostics,
             in_error_subtree,
         );
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct ParallelRuleShard {
+    pub memo: TypeMemo,
+    pub telemetry: RuleTelemetry,
+    pub diagnostics: Vec<WorkspaceDiagnostic>,
+    pub observer: Mutex<ObservationSet>,
+}
+
+pub(crate) fn collect_nodes_with_error_subtree<'tree>(
+    root: Node<'tree>,
+    predicate: impl Fn(&str) -> bool,
+) -> Vec<(Node<'tree>, bool)> {
+    let mut out = Vec::new();
+    collect_nodes_walk(root, false, &predicate, &mut out);
+    out
+}
+
+fn collect_nodes_walk<'tree>(
+    node: Node<'tree>,
+    in_error_subtree: bool,
+    predicate: &impl Fn(&str) -> bool,
+    out: &mut Vec<(Node<'tree>, bool)>,
+) {
+    let kind = node.kind();
+    let in_error_subtree = in_error_subtree
+        || node.is_error()
+        || node.is_missing()
+        || kind == "incomplete_member_access_expr";
+    if predicate(kind) {
+        out.push((node, in_error_subtree));
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_nodes_walk(child, in_error_subtree, predicate, out);
+    }
+}
+
+pub(crate) fn run_parallel_pass<'tree, F>(
+    items: &[(Node<'tree>, bool)],
+    db: &SymbolDb<'_>,
+    visit: F,
+) -> ParallelRuleShard
+where
+    F: Fn(
+            Node<'tree>,
+            bool,
+            &SymbolDb<'_>,
+            &mut TypeMemo,
+            &mut RuleTelemetry,
+            &mut Vec<WorkspaceDiagnostic>,
+        ) + Sync,
+{
+    items
+        .par_iter()
+        .fold(ParallelRuleShard::default, |mut shard, &(node, in_err)| {
+            let local_db = db.with_observer(&shard.observer);
+            visit(
+                node,
+                in_err,
+                &local_db,
+                &mut shard.memo,
+                &mut shard.telemetry,
+                &mut shard.diagnostics,
+            );
+            shard
+        })
+        .reduce(ParallelRuleShard::default, merge_shards)
+}
+
+fn merge_shards(mut a: ParallelRuleShard, b: ParallelRuleShard) -> ParallelRuleShard {
+    a.telemetry = sum_telemetry(a.telemetry, b.telemetry);
+    a.diagnostics.extend(b.diagnostics);
+    a.memo.extend(b.memo);
+    let b_obs = b.observer.into_inner().expect("observer mutex poisoned");
+    let mut a_obs = a.observer.lock().expect("observer mutex poisoned");
+    a_obs.top_level.extend(b_obs.top_level);
+    a_obs.members.extend(b_obs.members);
+    a_obs.enum_variants.extend(b_obs.enum_variants);
+    drop(a_obs);
+    a
+}
+
+fn sum_telemetry(a: RuleTelemetry, b: RuleTelemetry) -> RuleTelemetry {
+    RuleTelemetry {
+        top_level_lookups: a.top_level_lookups + b.top_level_lookups,
+        member_lookups: a.member_lookups + b.member_lookups,
+        enum_variant_lookups: a.enum_variant_lookups + b.enum_variant_lookups,
+        type_inferences: a.type_inferences + b.type_inferences,
+        definition_resolutions: a.definition_resolutions + b.definition_resolutions,
+        branch_type_ref_us: a.branch_type_ref_us + b.branch_type_ref_us,
+        branch_member_access_us: a.branch_member_access_us + b.branch_member_access_us,
+        branch_member_default_us: a.branch_member_default_us + b.branch_member_default_us,
+        branch_func_bare_call_us: a.branch_func_bare_call_us + b.branch_func_bare_call_us,
+        branch_bare_us: a.branch_bare_us + b.branch_bare_us,
+        branch_type_ref_visits: a.branch_type_ref_visits + b.branch_type_ref_visits,
+        branch_member_access_visits: a.branch_member_access_visits + b.branch_member_access_visits,
+        branch_member_default_visits: a.branch_member_default_visits
+            + b.branch_member_default_visits,
+        branch_func_bare_call_visits: a.branch_func_bare_call_visits
+            + b.branch_func_bare_call_visits,
+        branch_bare_visits: a.branch_bare_visits + b.branch_bare_visits,
+        member_access_infer_us: a.member_access_infer_us + b.member_access_infer_us,
+        member_access_member_us: a.member_access_member_us + b.member_access_member_us,
     }
 }
 
