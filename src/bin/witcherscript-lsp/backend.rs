@@ -1,27 +1,30 @@
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::Arc;
 
-use serde_json::{json, Value};
-use tokio::sync::Mutex;
-use tower_lsp::jsonrpc::{Error, ErrorCode, Result};
-use tower_lsp::lsp_types::{
+use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
+use futures::future::BoxFuture;
+use lsp_types::notification::PublishDiagnostics;
+use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
     Diagnostic, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverContents, HoverParams, InitializeParams, InitializeResult,
-    InitializedParams, InsertTextFormat, Location, MarkupContent, MarkupKind, OneOf,
-    PrepareRenameResponse, ReferenceParams, RenameOptions, RenameParams, SemanticToken,
-    SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
-    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
-    ServerCapabilities, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
-    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
-    WorkDoneProgressOptions, WorkspaceEdit, WorkspaceFoldersServerCapabilities,
-    WorkspaceServerCapabilities,
+    GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
+    InitializeParams, InitializeResult, InitializedParams, InsertTextFormat, Location,
+    MarkupContent, MarkupKind, OneOf, PrepareRenameResponse, PublishDiagnosticsParams,
+    ReferenceParams, RenameOptions, RenameParams, SemanticToken, SemanticTokenModifier,
+    SemanticTokenType, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
+    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelp, SignatureHelpOptions,
+    SignatureHelpParams, TextDocumentPositionParams, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, Url, WorkDoneProgressOptions, WorkspaceEdit,
+    WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
-use tower_lsp::{Client, LanguageServer};
+use serde_json::{json, Value};
+use tokio::sync::{mpsc, Mutex};
 use tracing::{error, info, trace};
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::document::{apply_content_change, ParsedDocument};
@@ -47,6 +50,15 @@ use crate::convert::{
     workspace_roots, wrap_method_snippet,
 };
 use crate::logging::{level_from_str, level_to_u8};
+
+type Result<T> = std::result::Result<T, ResponseError>;
+
+pub(crate) enum DocOp {
+    Open(DidOpenTextDocumentParams),
+    Change(DidChangeTextDocumentParams),
+    Close(DidCloseTextDocumentParams),
+    WatchedFiles(DidChangeWatchedFilesParams),
+}
 
 // Open editor docs shadow workspace docs which shadow base docs — unsaved edits win.
 pub(crate) fn merge_documents<'a>(
@@ -90,15 +102,12 @@ pub(crate) fn rename_changes(
     changes
 }
 
-// Wire shape mirrors LSP 3.18's `workspace/textDocumentContent` so the method can be
-// renamed to the standard name once tower-lsp adopts the spec.
 pub(crate) fn builtin_source_response(uri: &str) -> Result<Value> {
     if uri.is_empty() {
-        return Err(Error {
-            code: ErrorCode::InvalidParams,
-            message: "missing `uri` parameter".into(),
-            data: None,
-        });
+        return Err(ResponseError::new(
+            ErrorCode::INVALID_PARAMS,
+            "missing `uri` parameter",
+        ));
     }
     Ok(match builtin_source(uri) {
         Some(text) => json!({ "text": text }),
@@ -108,7 +117,7 @@ pub(crate) fn builtin_source_response(uri: &str) -> Result<Value> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Backend {
-    pub(crate) client: Client,
+    pub(crate) client: ClientSocket,
     pub(crate) log_level: Arc<AtomicU8>,
     pub(crate) documents: Arc<Mutex<HashMap<Url, ParsedDocument>>>,
     pub(crate) published_diagnostics: Arc<Mutex<HashMap<Url, Vec<Diagnostic>>>>,
@@ -129,6 +138,7 @@ pub(crate) struct Backend {
     pub(crate) formatter_compact_colon: Arc<AtomicBool>,
     pub(crate) formatter_align_member_colons: Arc<AtomicBool>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
+    pub(crate) doc_ops_tx: mpsc::UnboundedSender<DocOp>,
 }
 
 impl Backend {
@@ -137,11 +147,160 @@ impl Backend {
         trace!(uri = uri, "witcherscript/builtinSource request");
         builtin_source_response(uri)
     }
+
+    pub(crate) async fn dispatch_doc_op(&self, op: DocOp) {
+        match op {
+            DocOp::Open(p) => self._did_open(p).await,
+            DocOp::Change(p) => self._did_change(p).await,
+            DocOp::Close(p) => self._did_close(p).await,
+            DocOp::WatchedFiles(p) => self._did_change_watched_files(p).await,
+        }
+    }
+
+    fn submit_doc_op(&self, op: DocOp) {
+        if let Err(send_err) = self.doc_ops_tx.send(op) {
+            error!(
+                error = %send_err,
+                "doc op consumer is gone; edit will not be applied (LSP state may be stale)"
+            );
+        }
+    }
 }
 
-#[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+    type Error = ResponseError;
+    type NotifyResult = ControlFlow<async_lsp::Result<()>>;
+
+    fn initialize(
+        &mut self,
+        params: InitializeParams,
+    ) -> BoxFuture<'static, Result<InitializeResult>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._initialize(params).await })
+    }
+
+    fn initialized(&mut self, params: InitializedParams) -> Self::NotifyResult {
+        let backend = self.clone();
+        tokio::spawn(async move { backend._initialized(params).await });
+        ControlFlow::Continue(())
+    }
+
+    fn shutdown(&mut self, _: ()) -> BoxFuture<'static, Result<()>> {
+        Box::pin(async move { Ok(()) })
+    }
+
+    fn did_open(&mut self, params: DidOpenTextDocumentParams) -> Self::NotifyResult {
+        self.submit_doc_op(DocOp::Open(params));
+        ControlFlow::Continue(())
+    }
+
+    fn did_change(&mut self, params: DidChangeTextDocumentParams) -> Self::NotifyResult {
+        self.submit_doc_op(DocOp::Change(params));
+        ControlFlow::Continue(())
+    }
+
+    fn did_close(&mut self, params: DidCloseTextDocumentParams) -> Self::NotifyResult {
+        self.submit_doc_op(DocOp::Close(params));
+        ControlFlow::Continue(())
+    }
+
+    fn did_change_watched_files(
+        &mut self,
+        params: DidChangeWatchedFilesParams,
+    ) -> Self::NotifyResult {
+        self.submit_doc_op(DocOp::WatchedFiles(params));
+        ControlFlow::Continue(())
+    }
+
+    fn did_change_configuration(
+        &mut self,
+        params: DidChangeConfigurationParams,
+    ) -> Self::NotifyResult {
+        let backend = self.clone();
+        tokio::spawn(async move { backend._did_change_configuration(params).await });
+        ControlFlow::Continue(())
+    }
+
+    fn definition(
+        &mut self,
+        params: GotoDefinitionParams,
+    ) -> BoxFuture<'static, Result<Option<GotoDefinitionResponse>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._definition(params).await })
+    }
+
+    fn hover(&mut self, params: HoverParams) -> BoxFuture<'static, Result<Option<Hover>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._hover(params).await })
+    }
+
+    fn signature_help(
+        &mut self,
+        params: SignatureHelpParams,
+    ) -> BoxFuture<'static, Result<Option<SignatureHelp>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._signature_help(params).await })
+    }
+
+    fn document_symbol(
+        &mut self,
+        params: DocumentSymbolParams,
+    ) -> BoxFuture<'static, Result<Option<DocumentSymbolResponse>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._document_symbol(params).await })
+    }
+
+    fn semantic_tokens_full(
+        &mut self,
+        params: SemanticTokensParams,
+    ) -> BoxFuture<'static, Result<Option<SemanticTokensResult>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._semantic_tokens_full(params).await })
+    }
+
+    fn references(
+        &mut self,
+        params: ReferenceParams,
+    ) -> BoxFuture<'static, Result<Option<Vec<Location>>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._references(params).await })
+    }
+
+    fn prepare_rename(
+        &mut self,
+        params: TextDocumentPositionParams,
+    ) -> BoxFuture<'static, Result<Option<PrepareRenameResponse>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._prepare_rename(params).await })
+    }
+
+    fn rename(
+        &mut self,
+        params: RenameParams,
+    ) -> BoxFuture<'static, Result<Option<WorkspaceEdit>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._rename(params).await })
+    }
+
+    fn completion(
+        &mut self,
+        params: CompletionParams,
+    ) -> BoxFuture<'static, Result<Option<CompletionResponse>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._completion(params).await })
+    }
+
+    fn formatting(
+        &mut self,
+        params: DocumentFormattingParams,
+    ) -> BoxFuture<'static, Result<Option<Vec<TextEdit>>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._formatting(params).await })
+    }
+}
+
+impl Backend {
+    async fn _initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         // Capture base scripts path from initializationOptions if provided.
         // workspace/configuration is pulled after initialized(), but this ensures
         // we have a value even before that round-trip completes.
@@ -224,7 +383,7 @@ impl LanguageServer for Backend {
                     prepare_provider: Some(true),
                     work_done_progress_options: WorkDoneProgressOptions::default(),
                 })),
-                hover_provider: Some(tower_lsp::lsp_types::HoverProviderCapability::Simple(true)),
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 semantic_tokens_provider: Some(
                     SemanticTokensServerCapabilities::SemanticTokensOptions(
@@ -232,11 +391,11 @@ impl LanguageServer for Backend {
                             legend: SemanticTokensLegend {
                                 token_types: TOKEN_TYPES
                                     .iter()
-                                    .map(|s| tower_lsp::lsp_types::SemanticTokenType::new(s))
+                                    .map(|s| SemanticTokenType::new(s))
                                     .collect(),
                                 token_modifiers: TOKEN_MODIFIERS
                                     .iter()
-                                    .map(|s| tower_lsp::lsp_types::SemanticTokenModifier::new(s))
+                                    .map(|s| SemanticTokenModifier::new(s))
                                     .collect(),
                             },
                             full: Some(SemanticTokensFullOptions::Bool(true)),
@@ -258,24 +417,17 @@ impl LanguageServer for Backend {
         })
     }
 
-    async fn initialized(&self, _: InitializedParams) {
-        let backend = self.clone();
-        tokio::spawn(async move {
-            tracing::trace!("initialized: fetching config and indexing");
-            backend.fetch_config().await;
-            backend.index_workspace().await;
-            backend.register_file_watchers().await;
-            backend.index_base_scripts().await;
-            backend.initial_index_done.store(true, Ordering::Release);
-            backend.publish_open_diagnostics().await;
-        });
+    async fn _initialized(&self, _: InitializedParams) {
+        tracing::trace!("initialized: fetching config and indexing");
+        self.fetch_config().await;
+        self.index_workspace().await;
+        self.register_file_watchers().await;
+        self.index_base_scripts().await;
+        self.initial_index_done.store(true, Ordering::Release);
+        self.publish_open_diagnostics().await;
     }
 
-    async fn shutdown(&self) -> Result<()> {
-        Ok(())
-    }
-
-    async fn did_open(&self, params: DidOpenTextDocumentParams) {
+    async fn _did_open(&self, params: DidOpenTextDocumentParams) {
         if builtin_source(params.text_document.uri.as_str()).is_some() {
             return;
         }
@@ -284,7 +436,7 @@ impl LanguageServer for Backend {
     }
 
     #[tracing::instrument(skip_all, fields(uri = %params.text_document.uri), level = "debug")]
-    async fn did_change(&self, params: DidChangeTextDocumentParams) {
+    async fn _did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
         if builtin_source(uri.as_str()).is_some() {
             return;
@@ -320,17 +472,21 @@ impl LanguageServer for Backend {
         self.update_open_document(uri, source).await;
     }
 
-    async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        self.client
-            .publish_diagnostics(params.text_document.uri, Vec::new(), None)
-            .await;
+    async fn _did_close(&self, params: DidCloseTextDocumentParams) {
+        let _ = self
+            .client
+            .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
+                uri: params.text_document.uri,
+                diagnostics: Vec::new(),
+                version: None,
+            });
     }
 
-    async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+    async fn _did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
         self.apply_watched_file_events(params.changes).await;
     }
 
-    async fn did_change_configuration(&self, _: DidChangeConfigurationParams) {
+    async fn _did_change_configuration(&self, _: DidChangeConfigurationParams) {
         let initial_done = self.initial_index_done.load(Ordering::Acquire);
         let change = self.fetch_config().await;
         if !initial_done {
@@ -352,7 +508,7 @@ impl LanguageServer for Backend {
         }
     }
 
-    async fn goto_definition(
+    async fn _definition(
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
@@ -388,7 +544,7 @@ impl LanguageServer for Backend {
         }
     }
 
-    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+    async fn _hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         let documents = self.documents.lock().await;
@@ -416,7 +572,7 @@ impl LanguageServer for Backend {
         }))
     }
 
-    async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
+    async fn _signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         let documents = self.documents.lock().await;
@@ -441,7 +597,7 @@ impl LanguageServer for Backend {
         .map(signature_help_response))
     }
 
-    async fn document_symbol(
+    async fn _document_symbol(
         &self,
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
@@ -457,7 +613,7 @@ impl LanguageServer for Backend {
         ))))
     }
 
-    async fn semantic_tokens_full(
+    async fn _semantic_tokens_full(
         &self,
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
@@ -489,7 +645,7 @@ impl LanguageServer for Backend {
         })))
     }
 
-    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+    async fn _references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
         let include_declaration = params.context.include_declaration;
@@ -553,7 +709,7 @@ impl LanguageServer for Backend {
         Ok(Some(locations))
     }
 
-    async fn prepare_rename(
+    async fn _prepare_rename(
         &self,
         params: TextDocumentPositionParams,
     ) -> Result<Option<PrepareRenameResponse>> {
@@ -566,18 +722,16 @@ impl LanguageServer for Backend {
 
         let base_docs = self.base_scripts_documents.lock().await;
         if base_docs.contains_key(&definition.uri) {
-            return Err(Error {
-                code: ErrorCode::InvalidRequest,
-                message: "Cannot rename a symbol declared in a base script (read-only)".into(),
-                data: None,
-            });
+            return Err(ResponseError::new(
+                ErrorCode::INVALID_REQUEST,
+                "Cannot rename a symbol declared in a base script (read-only)",
+            ));
         }
         if builtin_source(&definition.uri).is_some() {
-            return Err(Error {
-                code: ErrorCode::InvalidRequest,
-                message: "Cannot rename a built-in symbol".into(),
-                data: None,
-            });
+            return Err(ResponseError::new(
+                ErrorCode::INVALID_REQUEST,
+                "Cannot rename a built-in symbol",
+            ));
         }
 
         Ok(Some(PrepareRenameResponse::DefaultBehavior {
@@ -585,7 +739,7 @@ impl LanguageServer for Backend {
         }))
     }
 
-    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+    async fn _rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri;
         let new_name = params.new_name;
 
@@ -604,18 +758,16 @@ impl LanguageServer for Backend {
         let base_docs = self.base_scripts_documents.lock().await;
 
         if base_docs.contains_key(&definition.uri) {
-            return Err(Error {
-                code: ErrorCode::InvalidRequest,
-                message: "Cannot rename a symbol declared in a base script (read-only)".into(),
-                data: None,
-            });
+            return Err(ResponseError::new(
+                ErrorCode::INVALID_REQUEST,
+                "Cannot rename a symbol declared in a base script (read-only)",
+            ));
         }
         if builtin_source(&definition.uri).is_some() {
-            return Err(Error {
-                code: ErrorCode::InvalidRequest,
-                message: "Cannot rename a built-in symbol".into(),
-                data: None,
-            });
+            return Err(ResponseError::new(
+                ErrorCode::INVALID_REQUEST,
+                "Cannot rename a built-in symbol",
+            ));
         }
 
         let db = SymbolDb::new(&workspace, &base_index)
@@ -643,7 +795,7 @@ impl LanguageServer for Backend {
         }))
     }
 
-    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+    async fn _completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
         let documents = self.documents.lock().await;
@@ -865,7 +1017,7 @@ impl LanguageServer for Backend {
         Ok(None)
     }
 
-    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+    async fn _formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let uri = params.text_document.uri;
         if builtin_source(uri.as_str()).is_some() {
             return Ok(None);

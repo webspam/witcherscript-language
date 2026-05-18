@@ -2,8 +2,8 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use lsp_types::MessageType;
 use tokio::sync::mpsc;
-use tower_lsp::lsp_types::MessageType;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::Layer;
 
@@ -176,7 +176,7 @@ mod tests {
         assert!(is_own_target("witcherscript_lsp"));
         assert!(is_own_target("witcherscript_lsp::indexing"));
         assert!(is_own_target("witcherscript_language::resolve"));
-        assert!(!is_own_target("tower_lsp::jsonrpc"));
+        assert!(!is_own_target("async_lsp::router"));
         assert!(!is_own_target("hyper::proto"));
         assert!(!is_own_target("witcherscript_lsp_extra"));
     }
