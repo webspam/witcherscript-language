@@ -169,6 +169,26 @@ mod tests {
     }
 
     #[test]
+    fn second_change_position_requires_first_change_applied() {
+        let source = "abc";
+
+        let index1 = LineIndex::new(source);
+        let step1 =
+            apply_content_change(source, &index1, range(pos(0, 3), pos(0, 3)), "def").unwrap();
+        assert_eq!(step1, "abcdef");
+
+        let index2 = LineIndex::new(&step1);
+        let step2 = apply_content_change(&step1, &index2, range(pos(0, 5), pos(0, 6)), "").unwrap();
+        assert_eq!(step2, "abcde");
+
+        let index_orig = LineIndex::new(source);
+        assert!(
+            apply_content_change(source, &index_orig, range(pos(0, 5), pos(0, 6)), "").is_none(),
+            "skipping step 1 must produce an out-of-range failure",
+        );
+    }
+
+    #[test]
     fn out_of_range_position_returns_none() {
         let source = "short";
         let index = LineIndex::new(source);
