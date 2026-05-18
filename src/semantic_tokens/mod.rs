@@ -1,7 +1,7 @@
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
-use crate::resolve::{resolve_definition_at_byte, SymbolDb};
+use crate::resolve::{classify_definition_at_ident, SymbolDb};
 use crate::symbols::SymbolKind;
 
 pub const TOKEN_TYPES: &[&str] = &[
@@ -113,7 +113,7 @@ fn classify_ident(node: Node, uri: &str, document: &ParsedDocument, db: &SymbolD
         "func_param_group" => Some(TT_PARAMETER),
         "member_var_decl" | "autobind_decl" => Some(TT_PROPERTY),
         "local_var_decl_stmt" => Some(TT_VARIABLE),
-        _ => resolve_definition_at_byte(uri, document, db, node.start_byte())
+        _ => classify_definition_at_ident(uri, document, db, node)
             .map(|def| symbol_kind_to_token_type(def.symbol.kind)),
     }
 }
