@@ -24,10 +24,17 @@ use lsp_types::{
     WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 use serde_json::{json, Value};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use tracing::{error, info, trace};
 
 type Result<T> = std::result::Result<T, ResponseError>;
+
+pub(crate) enum DocOp {
+    Open(DidOpenTextDocumentParams),
+    Change(DidChangeTextDocumentParams),
+    Close(DidCloseTextDocumentParams),
+    WatchedFiles(DidChangeWatchedFilesParams),
+}
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::document::{apply_content_change, ParsedDocument};
 use witcherscript_language::formatter::format_document;
@@ -131,6 +138,7 @@ pub(crate) struct Backend {
     pub(crate) formatter_compact_colon: Arc<AtomicBool>,
     pub(crate) formatter_align_member_colons: Arc<AtomicBool>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
+    pub(crate) doc_ops_tx: mpsc::UnboundedSender<DocOp>,
 }
 
 impl Backend {
@@ -138,6 +146,15 @@ impl Backend {
         let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("");
         trace!(uri = uri, "witcherscript/builtinSource request");
         builtin_source_response(uri)
+    }
+
+    pub(crate) async fn dispatch_doc_op(&self, op: DocOp) {
+        match op {
+            DocOp::Open(p) => self._did_open(p).await,
+            DocOp::Change(p) => self._did_change(p).await,
+            DocOp::Close(p) => self._did_close(p).await,
+            DocOp::WatchedFiles(p) => self._did_change_watched_files(p).await,
+        }
     }
 }
 
@@ -164,20 +181,17 @@ impl LanguageServer for Backend {
     }
 
     fn did_open(&mut self, params: DidOpenTextDocumentParams) -> Self::NotifyResult {
-        let backend = self.clone();
-        tokio::spawn(async move { backend._did_open(params).await });
+        let _ = self.doc_ops_tx.send(DocOp::Open(params));
         ControlFlow::Continue(())
     }
 
     fn did_change(&mut self, params: DidChangeTextDocumentParams) -> Self::NotifyResult {
-        let backend = self.clone();
-        tokio::spawn(async move { backend._did_change(params).await });
+        let _ = self.doc_ops_tx.send(DocOp::Change(params));
         ControlFlow::Continue(())
     }
 
     fn did_close(&mut self, params: DidCloseTextDocumentParams) -> Self::NotifyResult {
-        let backend = self.clone();
-        tokio::spawn(async move { backend._did_close(params).await });
+        let _ = self.doc_ops_tx.send(DocOp::Close(params));
         ControlFlow::Continue(())
     }
 
@@ -185,8 +199,7 @@ impl LanguageServer for Backend {
         &mut self,
         params: DidChangeWatchedFilesParams,
     ) -> Self::NotifyResult {
-        let backend = self.clone();
-        tokio::spawn(async move { backend._did_change_watched_files(params).await });
+        let _ = self.doc_ops_tx.send(DocOp::WatchedFiles(params));
         ControlFlow::Continue(())
     }
 

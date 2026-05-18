@@ -31,7 +31,7 @@ use witcherscript_language::builtins::load_builtins_index;
 use witcherscript_language::resolve::WorkspaceIndex;
 use witcherscript_language::script_env::ScriptEnvironment;
 
-use backend::Backend;
+use backend::{Backend, DocOp};
 use logging::{level_to_u8, LspLogSender, DEFAULT_LOG_LEVEL};
 
 type LogRxHolder = Arc<Mutex<Option<mpsc::UnboundedReceiver<(MessageType, String)>>>>;
@@ -58,6 +58,8 @@ async fn main() {
     let (server, _client_socket) = async_lsp::MainLoop::new_server(move |client: ClientSocket| {
         spawn_log_forwarder(client.clone(), Arc::clone(&log_rx_holder));
 
+        let (doc_ops_tx, mut doc_ops_rx) = mpsc::unbounded_channel::<DocOp>();
+
         let backend = Backend {
             client,
             log_level: Arc::clone(&log_level_for_backend),
@@ -80,7 +82,15 @@ async fn main() {
             formatter_compact_colon: Arc::new(AtomicBool::new(false)),
             formatter_align_member_colons: Arc::new(AtomicBool::new(false)),
             initial_index_done: Arc::new(AtomicBool::new(false)),
+            doc_ops_tx,
         };
+
+        let consumer_backend = backend.clone();
+        tokio::spawn(async move {
+            while let Some(op) = doc_ops_rx.recv().await {
+                consumer_backend.dispatch_doc_op(op).await;
+            }
+        });
 
         let mut router: Router<Backend> = Router::from_language_server(backend);
         router.request::<BuiltinSourceRequest, _>(|backend, params| {
