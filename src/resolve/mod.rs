@@ -1342,11 +1342,14 @@ fn resolve_local_or_parameter(
     byte_offset: usize,
     name: &str,
 ) -> Option<Definition> {
-    let callable_id = document.scope_index.enclosing_callable(byte_offset)?;
-    let id = document
-        .scope_index
-        .local_or_param_at(callable_id, name, byte_offset)?;
-    let symbol = document.symbols.by_id(id)?.clone();
+    let callable = document.symbols.enclosing_symbol_at(
+        byte_offset,
+        &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
+    )?;
+    let symbol = document
+        .symbols
+        .local_at_byte(callable.id, name, byte_offset)?
+        .clone();
     Some(Definition {
         uri: uri.to_string(),
         symbol,
@@ -1372,15 +1375,15 @@ fn resolve_document_member(
     name: &str,
     min_access: AccessLevel,
 ) -> Option<Definition> {
-    let container_id = document.scope_index.type_like_container(container_name)?;
-    let member_id = document.scope_index.direct_member(container_id, name)?;
-    let symbol = document.symbols.by_id(member_id)?;
-    if symbol.access < min_access {
-        return None;
-    }
+    let container = document.symbols.type_by_name(container_name)?;
+    let symbol = document
+        .symbols
+        .member_of(container.id, name)
+        .find(|s| s.access >= min_access)?
+        .clone();
     Some(Definition {
         uri: uri.to_string(),
-        symbol: symbol.clone(),
+        symbol,
     })
 }
 
@@ -1389,8 +1392,7 @@ fn resolve_document_top_level(
     document: &ParsedDocument,
     name: &str,
 ) -> Option<Definition> {
-    let id = document.scope_index.top_level(name)?;
-    let symbol = document.symbols.by_id(id)?.clone();
+    let symbol = document.symbols.top_level_by_name(name)?.clone();
     Some(Definition {
         uri: uri.to_string(),
         symbol,
@@ -1406,8 +1408,10 @@ fn current_type_name(
 }
 
 fn current_type_symbol(document: &ParsedDocument, byte_offset: usize) -> Option<&Symbol> {
-    let id = document.scope_index.enclosing_type(byte_offset)?;
-    document.symbols.by_id(id)
+    document.symbols.enclosing_symbol_at(
+        byte_offset,
+        &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
+    )
 }
 
 /// Falls back to the annotation target when not syntactically inside a type.
@@ -1424,8 +1428,10 @@ fn enclosing_type_context(
         });
     }
 
-    let callable_id = document.scope_index.enclosing_callable(byte_offset)?;
-    let callable = document.symbols.by_id(callable_id)?;
+    let callable = document.symbols.enclosing_symbol_at(
+        byte_offset,
+        &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
+    )?;
     if callable.container.is_some() || callable.kind != SymbolKind::Function {
         return None;
     }
@@ -2691,14 +2697,18 @@ fn function_body_completions<'a>(
         return None;
     }
 
-    let callable_id = document.scope_index.enclosing_callable(byte_offset)?;
+    let callable = document.symbols.enclosing_symbol_at(
+        byte_offset,
+        &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
+    )?;
 
     let locals: Vec<Definition> = document
-        .scope_index
-        .locals_in(callable_id)
-        .iter()
-        .filter(|e| e.selection_start <= byte_offset)
-        .filter_map(|e| document.symbols.by_id(e.id))
+        .symbols
+        .children_of(Some(callable.id))
+        .filter(|sym| {
+            matches!(sym.kind, SymbolKind::Variable | SymbolKind::Parameter)
+                && sym.selection_byte_range.start <= byte_offset
+        })
         .cloned()
         .map(|symbol| Definition {
             uri: uri.to_string(),

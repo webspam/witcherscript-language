@@ -146,11 +146,10 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
         }
         IdentRole::MemberOfDefault => {
             let r = (|| {
-                let enclosing_id = ctx
-                    .document
-                    .scope_index
-                    .enclosing_type(ident.start_byte())?;
-                let enclosing = ctx.document.symbols.by_id(enclosing_id)?;
+                let enclosing = ctx.document.symbols.enclosing_symbol_at(
+                    ident.start_byte(),
+                    &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
+                )?;
                 let container_name = enclosing.name.clone();
                 ctx.telemetry.member_lookups += 1;
                 if ctx
@@ -299,29 +298,25 @@ fn is_type_reference(ident: Node, parent: Node) -> bool {
 
 fn resolves_as_local<'tree>(ctx: &CstRuleCtx<'_, 'tree>, ident: Node<'tree>, name: &str) -> bool {
     let byte = ident.start_byte();
-    let Some(callable_id) = ctx.document.scope_index.enclosing_callable(byte) else {
+    let Some(callable) = ctx.document.symbols.enclosing_symbol_at(
+        byte,
+        &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
+    ) else {
         return false;
     };
     ctx.document
-        .scope_index
-        .local_or_param_at(callable_id, name, byte)
+        .symbols
+        .local_at_byte(callable.id, name, byte)
         .is_some()
 }
 
 fn is_inside_wrap_method<'tree>(ident: Node<'tree>, ctx: &CstRuleCtx<'_, 'tree>) -> bool {
-    let Some(enclosing_id) = ctx
-        .document
-        .scope_index
-        .enclosing_callable(ident.start_byte())
-    else {
+    let Some(enclosing) = ctx.document.symbols.enclosing_symbol_at(
+        ident.start_byte(),
+        &[SymbolKind::Function, SymbolKind::Method],
+    ) else {
         return false;
     };
-    let Some(enclosing) = ctx.document.symbols.by_id(enclosing_id) else {
-        return false;
-    };
-    if !matches!(enclosing.kind, SymbolKind::Function | SymbolKind::Method) {
-        return false;
-    }
     enclosing.annotations.iter().any(|a| a.name == "wrapMethod")
 }
 
