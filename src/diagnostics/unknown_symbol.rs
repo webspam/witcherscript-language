@@ -192,17 +192,21 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             r
         }
         IdentRole::Bare => {
-            ctx.telemetry.definition_resolutions += 1;
-            let r = if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
+            let r = if resolves_as_local(ctx, ident, name) {
                 None
             } else {
-                push(
-                    ctx,
-                    ident,
-                    "unknown_identifier",
-                    format!("unknown identifier '{name}'"),
-                );
-                Some(())
+                ctx.telemetry.definition_resolutions += 1;
+                if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
+                    None
+                } else {
+                    push(
+                        ctx,
+                        ident,
+                        "unknown_identifier",
+                        format!("unknown identifier '{name}'"),
+                    );
+                    Some(())
+                }
             };
             ctx.telemetry.branch_bare_us +=
                 branch_start.elapsed().as_micros() as u64;
@@ -291,6 +295,17 @@ fn is_type_reference(ident: Node, parent: Node) -> bool {
         }
         _ => false,
     }
+}
+
+fn resolves_as_local<'tree>(ctx: &CstRuleCtx<'_, 'tree>, ident: Node<'tree>, name: &str) -> bool {
+    let byte = ident.start_byte();
+    let Some(callable_id) = ctx.document.scope_index.enclosing_callable(byte) else {
+        return false;
+    };
+    ctx.document
+        .scope_index
+        .local_or_param_at(callable_id, name, byte)
+        .is_some()
 }
 
 fn is_inside_wrap_method<'tree>(ident: Node<'tree>, ctx: &CstRuleCtx<'_, 'tree>) -> bool {
