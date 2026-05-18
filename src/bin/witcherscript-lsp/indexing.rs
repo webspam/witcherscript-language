@@ -685,9 +685,15 @@ impl Backend {
                 let parsed: Vec<(String, ParsedDocument)> = files
                     .par_iter()
                     .filter_map(|path| {
-                        let source = read_script_file(path).ok()?;
-                        let document = parse_document(source).ok()?;
-                        let uri = Url::from_file_path(path).ok()?;
+                        let source = read_script_file(path)
+                            .map_err(|e| warn!(path = %path.display(), error = %e, "failed to read base script"))
+                            .ok()?;
+                        let document = parse_document(source)
+                            .map_err(|e| warn!(path = %path.display(), error = %e, "failed to parse base script"))
+                            .ok()?;
+                        let uri = Url::from_file_path(path)
+                            .map_err(|_| warn!(path = %path.display(), "failed to convert base script path to URI"))
+                            .ok()?;
                         Some((uri.to_string(), document))
                     })
                     .collect();
