@@ -57,11 +57,7 @@ pub(crate) fn cst_diagnostics_with_cache(
             let d =
                 tracing::debug_span!("cst_doc", uri = url.as_str(), bytes = document.source.len())
                     .in_scope(|| {
-                        collect_cst_diagnostics_for_document(
-                            url.as_str(),
-                            document,
-                            &recording_db,
-                        )
+                        collect_cst_diagnostics_for_document(url.as_str(), document, &recording_db)
                     });
             cache.insert(
                 url.clone(),
@@ -71,8 +67,7 @@ pub(crate) fn cst_diagnostics_with_cache(
                     diagnostics: d.clone(),
                 },
             );
-            new_subscriptions
-                .push((url.to_string(), observations.into_inner().unwrap()));
+            new_subscriptions.push((url.to_string(), observations.into_inner().unwrap()));
             d
         };
         if !diagnostics.is_empty() {
@@ -300,6 +295,9 @@ mod tests {
             "user.ws never observed helper.ws's symbols and must not be invalidated; got {invalidated:?}"
         );
         assert_eq!(stats.hits, 1, "user.ws should still be a hit");
-        assert_eq!(stats.misses, 1, "helper.ws should miss (its own parse_version changed)");
+        assert_eq!(
+            stats.misses, 1,
+            "helper.ws should miss (its own parse_version changed)"
+        );
     }
 }

@@ -486,10 +486,7 @@ impl WorkspaceIndex {
         self.surface_hash ^= new_hash;
 
         let new_outward = outward_hash_map(&all_symbols);
-        let changed_keys = diff_outward_keys(
-            self.doc_outward_hashes.get(&uri),
-            &new_outward,
-        );
+        let changed_keys = diff_outward_keys(self.doc_outward_hashes.get(&uri), &new_outward);
         self.doc_outward_hashes.insert(uri.clone(), new_outward);
         let invalidated = self.subscribers_of(&changed_keys);
 
@@ -1703,10 +1700,9 @@ fn outward_key_for(s: &Symbol) -> ObservedKey {
     match (s.container.is_none(), s.kind) {
         (true, _) => ObservedKey::TopLevel(s.name.clone()),
         (false, SymbolKind::EnumVariant) => ObservedKey::EnumVariant(s.name.clone()),
-        (false, _) => ObservedKey::Member(
-            s.container_name.clone().unwrap_or_default(),
-            s.name.clone(),
-        ),
+        (false, _) => {
+            ObservedKey::Member(s.container_name.clone().unwrap_or_default(), s.name.clone())
+        }
     }
 }
 

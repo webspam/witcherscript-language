@@ -92,8 +92,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 push(ctx, ident, "unknown_type", format!("unknown type '{name}'"));
                 Some(())
             };
-            ctx.telemetry.branch_type_ref_us +=
-                branch_start.elapsed().as_micros() as u64;
+            ctx.telemetry.branch_type_ref_us += branch_start.elapsed().as_micros() as u64;
             ctx.telemetry.branch_type_ref_visits += 1;
             r
         }
@@ -108,8 +107,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 ident.start_byte(),
                 ctx.type_memo,
             );
-            ctx.telemetry.member_access_infer_us +=
-                infer_start.elapsed().as_micros() as u64;
+            ctx.telemetry.member_access_infer_us += infer_start.elapsed().as_micros() as u64;
             let r = (|| {
                 let receiver_type = receiver_type?;
                 ctx.telemetry.top_level_lookups += 1;
@@ -126,8 +124,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                     .db
                     .find_member(&receiver_type, name, AccessLevel::Private)
                     .is_some();
-                ctx.telemetry.member_access_member_us +=
-                    member_start.elapsed().as_micros() as u64;
+                ctx.telemetry.member_access_member_us += member_start.elapsed().as_micros() as u64;
                 if found {
                     return None;
                 }
@@ -139,8 +136,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 );
                 Some(())
             })();
-            ctx.telemetry.branch_member_access_us +=
-                branch_start.elapsed().as_micros() as u64;
+            ctx.telemetry.branch_member_access_us += branch_start.elapsed().as_micros() as u64;
             ctx.telemetry.branch_member_access_visits += 1;
             r
         }
@@ -167,8 +163,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 );
                 Some(())
             })();
-            ctx.telemetry.branch_member_default_us +=
-                branch_start.elapsed().as_micros() as u64;
+            ctx.telemetry.branch_member_default_us += branch_start.elapsed().as_micros() as u64;
             ctx.telemetry.branch_member_default_visits += 1;
             r
         }
@@ -185,8 +180,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 );
                 Some(())
             };
-            ctx.telemetry.branch_func_bare_call_us +=
-                branch_start.elapsed().as_micros() as u64;
+            ctx.telemetry.branch_func_bare_call_us += branch_start.elapsed().as_micros() as u64;
             ctx.telemetry.branch_func_bare_call_visits += 1;
             r
         }
@@ -207,8 +201,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                     Some(())
                 }
             };
-            ctx.telemetry.branch_bare_us +=
-                branch_start.elapsed().as_micros() as u64;
+            ctx.telemetry.branch_bare_us += branch_start.elapsed().as_micros() as u64;
             ctx.telemetry.branch_bare_visits += 1;
             r
         }

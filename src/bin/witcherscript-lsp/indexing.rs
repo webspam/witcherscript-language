@@ -189,8 +189,9 @@ impl Backend {
                 let db = SymbolDb::new(&index, &base)
                     .with_script_env(&env)
                     .with_builtins(&self.builtins_index);
-                tracing::debug_span!("cst_diagnostics", open_docs = documents.len())
-                    .in_scope(|| cst_diagnostics_with_cache(&documents, &db, fingerprint, &mut cache))
+                tracing::debug_span!("cst_diagnostics", open_docs = documents.len()).in_scope(
+                    || cst_diagnostics_with_cache(&documents, &db, fingerprint, &mut cache),
+                )
             };
             for (uri, observations) in result.new_subscriptions {
                 index.register_subscription(&uri, observations);
