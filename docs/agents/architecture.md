@@ -5,7 +5,7 @@
 ```
 src/
 ├── lib.rs                          module declarations, public API surface
-├── main.rs                         CLI binary (witcherscript-parser)
+├── main.rs                         CLI binary (witcherscript-check)
 ├── bin/
 │   ├── dump_tree.rs               developer helper: prints a tree-sitter parse tree
 │   └── witcherscript-lsp/         LSP server binary (~2860 lines across 6 files)
@@ -54,8 +54,8 @@ semantic_tokens ──► line_index
 
 lib      ──► all of the above (re-exports)
 
-bin/witcherscript-lsp/ ──► witcherscript_parser::* (all library modules)
-main                  ──► witcherscript_parser::* (document, files, diagnostics)
+bin/witcherscript-lsp/ ──► witcherscript_language::* (all library modules)
+main                  ──► witcherscript_language::* (document, files, diagnostics)
 ```
 
 ## Data flow pipeline

@@ -4,7 +4,7 @@
 
 This is a Rust crate (`witcherscript-language`) that produces two binaries:
 
-- `witcherscript-language` — CLI syntax validator (`src/main.rs`)
+- `witcherscript-check` — CLI syntax validator (`src/main.rs`)
 - `witcherscript-lsp` — LSP server (`src/bin/witcherscript-lsp/`)
 
 ## Module quick reference

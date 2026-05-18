@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use witcherscript_parser::diagnostics::collect_diagnostics;
+use witcherscript_language::diagnostics::collect_diagnostics;
 
 #[test]
 fn valid_fixture_files_parse_without_diagnostics() {

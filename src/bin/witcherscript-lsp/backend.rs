@@ -23,11 +23,11 @@ use tower_lsp::lsp_types::{
 };
 use tower_lsp::{Client, LanguageServer};
 use tracing::{error, info, trace};
-use witcherscript_parser::builtins::builtin_source;
-use witcherscript_parser::document::{apply_content_change, ParsedDocument};
-use witcherscript_parser::formatter::format_document;
-use witcherscript_parser::line_index::LineIndex;
-use witcherscript_parser::resolve::{
+use witcherscript_language::builtins::builtin_source;
+use witcherscript_language::document::{apply_content_change, ParsedDocument};
+use witcherscript_language::formatter::format_document;
+use witcherscript_language::line_index::LineIndex;
+use witcherscript_language::resolve::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
     expression_completions, extends_completions, find_references, resolve_all_definitions,
@@ -35,8 +35,8 @@ use witcherscript_parser::resolve::{
     statement_completions, type_completions, AfterWrapMethodCompletions, SymbolDb, WorkspaceIndex,
     BUILTIN_TYPE_COMPLETIONS,
 };
-use witcherscript_parser::script_env::ScriptEnvironment;
-use witcherscript_parser::semantic_tokens::{
+use witcherscript_language::script_env::ScriptEnvironment;
+use witcherscript_language::semantic_tokens::{
     collect_semantic_tokens, TOKEN_MODIFIERS, TOKEN_TYPES,
 };
 
@@ -71,7 +71,7 @@ pub(crate) fn merge_documents<'a>(
 // even when the renamed symbol's declaration lives in the workspace (e.g. an
 // @wrapMethod whose target's class-body declaration sits in a base script).
 pub(crate) fn rename_changes(
-    refs: &[(String, witcherscript_parser::line_index::SourceRange)],
+    refs: &[(String, witcherscript_language::line_index::SourceRange)],
     new_name: &str,
     base_docs: &HashMap<String, ParsedDocument>,
 ) -> HashMap<Url, Vec<TextEdit>> {

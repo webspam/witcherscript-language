@@ -1,7 +1,7 @@
 use std::io::{self, Read};
 
 use tree_sitter::Parser;
-use witcherscript_parser::diagnostics::format_tree;
+use witcherscript_language::diagnostics::format_tree;
 
 fn main() {
     if let Err(e) = run() {

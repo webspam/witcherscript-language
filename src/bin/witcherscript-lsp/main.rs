@@ -18,9 +18,9 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
-use witcherscript_parser::builtins::load_builtins_index;
-use witcherscript_parser::resolve::WorkspaceIndex;
-use witcherscript_parser::script_env::ScriptEnvironment;
+use witcherscript_language::builtins::load_builtins_index;
+use witcherscript_language::resolve::WorkspaceIndex;
+use witcherscript_language::script_env::ScriptEnvironment;
 
 use backend::Backend;
 use logging::{level_to_u8, LspLogSender, DEFAULT_LOG_LEVEL};
@@ -79,7 +79,7 @@ fn init_tracing(
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         if tcp_mode {
             tracing_subscriber::EnvFilter::new(
-                "warn,witcherscript_lsp=trace,witcherscript_parser=trace",
+                "warn,witcherscript_lsp=trace,witcherscript_language=trace",
             )
         } else {
             tracing_subscriber::EnvFilter::default()

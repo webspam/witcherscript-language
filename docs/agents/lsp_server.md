@@ -11,7 +11,7 @@
 | `logging.rs` | `LspLogSender` tracing layer, level enum/parsing, `DEFAULT_LOG_LEVEL`. |
 | `tests.rs` | `#[cfg(test)]` LSP-specific tests: encoding, hover markdown, completion items, rename. |
 
-The binary is intentionally thin. All parse/resolve logic lives in the library (`witcherscript_parser::*`). The binary only:
+The binary is intentionally thin. All parse/resolve logic lives in the library (`witcherscript_language::*`). The binary only:
 - Owns shared state in the `Backend` struct
 - Dispatches LSP requests to library functions
 - Publishes results back to the client

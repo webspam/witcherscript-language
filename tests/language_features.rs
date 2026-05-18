@@ -1,8 +1,8 @@
-use witcherscript_parser::builtins::{load_builtins_index, BUILTIN_ARRAY_URI};
-use witcherscript_parser::document::parse_document;
-use witcherscript_parser::line_index::SourcePosition;
-use witcherscript_parser::resolve::{resolve_definition, SymbolDb, WorkspaceIndex};
-use witcherscript_parser::symbols::SymbolKind;
+use witcherscript_language::builtins::{load_builtins_index, BUILTIN_ARRAY_URI};
+use witcherscript_language::document::parse_document;
+use witcherscript_language::line_index::SourcePosition;
+use witcherscript_language::resolve::{resolve_definition, SymbolDb, WorkspaceIndex};
+use witcherscript_language::symbols::SymbolKind;
 
 #[test]
 fn extracts_outline_symbols_from_mod_annotations_fixture() {
@@ -219,7 +219,7 @@ fn builtin_array_methods_resolve_through_fixture() {
 }
 
 fn assert_symbol(
-    document: &witcherscript_parser::document::ParsedDocument,
+    document: &witcherscript_language::document::ParsedDocument,
     name: &str,
     kind: SymbolKind,
 ) {

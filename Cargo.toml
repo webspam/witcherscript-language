@@ -4,7 +4,11 @@ version = "0.3.0"
 edition = "2021"
 description = "LSP & language services for The Witcher 3 script files (WitcherScript / .ws)"
 publish = false
-default-run = "witcherscript-language"
+default-run = "witcherscript-check"
+
+[[bin]]
+name = "witcherscript-check"
+path = "src/main.rs"
 
 [dependencies]
 # default-features = false drops colour, suggestions, env, wrap_help, unicode — smaller binary and fewer deps

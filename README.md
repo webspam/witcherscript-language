@@ -5,11 +5,11 @@ Server Protocol (LSP) server built on Tree-sitter.
 
 Two binaries are produced:
 
-- **`witcherscript-parser`** — CLI syntax validator and parse-tree inspector.
+- **`witcherscript-check`** — CLI syntax validator and parse-tree inspector.
 - **`witcherscript-lsp`** — LSP server for editor integration (go-to-definition, hover,
   document symbols, inline diagnostics).
 
-## CLI: witcherscript-parser
+## CLI: witcherscript-check
 
 ### Usage
 
@@ -117,7 +117,7 @@ cargo run --bin witcherscript-lsp -- --listen 9257
 The server binds `127.0.0.1:<port>` (loopback only — never the LAN), accepts a single
 client connection, and serves it until disconnect. Server logs go to stderr in the
 launching terminal; when `--listen` is set and `RUST_LOG` is unset, the default filter
-is `warn,witcherscript_lsp=trace,witcherscript_parser=trace` so own-crate trace events
+is `warn,witcherscript_lsp=trace,witcherscript_language=trace` so own-crate trace events
 show up immediately and dependency crates stay quiet. Configure your editor's LSP
 client extension to connect to `127.0.0.1:9257` instead of spawning the binary.
 
