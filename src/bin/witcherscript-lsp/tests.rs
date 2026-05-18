@@ -1,11 +1,11 @@
 use tower_lsp::lsp_types::{ParameterLabel, SymbolKind as LspSymbolKind};
-use witcherscript_parser::document::parse_document;
-use witcherscript_parser::files::read_script_file;
-use witcherscript_parser::line_index::SourcePosition;
-use witcherscript_parser::resolve::{
+use witcherscript_language::document::parse_document;
+use witcherscript_language::files::read_script_file;
+use witcherscript_language::line_index::SourcePosition;
+use witcherscript_language::resolve::{
     resolve_definition, SignatureHelpInfo, SymbolDb, WorkspaceIndex,
 };
-use witcherscript_parser::symbols::AccessLevel;
+use witcherscript_language::symbols::AccessLevel;
 
 use crate::convert::{
     completion_item, document_symbols, hover_markdown, lsp_diagnostics, lsp_workspace_diagnostic,
@@ -258,7 +258,7 @@ fn formats_inherited_method_hover_with_superclass_name() {
     )
     .expect("inherited method should resolve");
 
-    let text = witcherscript_parser::resolve::hover_text(&definition);
+    let text = witcherscript_language::resolve::hover_text(&definition);
     assert!(
         text.starts_with("(method) "),
         "method hover should start with '(method) '"
@@ -295,7 +295,7 @@ fn formats_field_hover_with_full_declaration() {
     )
     .expect("field should resolve");
 
-    let text = witcherscript_parser::resolve::hover_text(&definition);
+    let text = witcherscript_language::resolve::hover_text(&definition);
     assert!(
         text.starts_with("(field) "),
         "field hover should start with '(field) '"
@@ -322,7 +322,7 @@ fn formats_class_hover_with_extends_on_single_line() {
     )
     .expect("class should resolve");
 
-    let text = witcherscript_parser::resolve::hover_text(&definition);
+    let text = witcherscript_language::resolve::hover_text(&definition);
     assert_eq!(
         text, "class X extends Y",
         "class hover should render the extends clause on a single line"
@@ -334,7 +334,7 @@ fn formats_class_hover_with_extends_on_single_line() {
 fn opening_a_workspace_indexed_file_does_not_self_conflict() {
     use crate::indexing::index_open_document;
     use tower_lsp::lsp_types::Url;
-    use witcherscript_parser::diagnostics::collect_duplicate_symbol_diagnostics;
+    use witcherscript_language::diagnostics::collect_duplicate_symbol_diagnostics;
 
     let document = parse_document("function Foo() {}\n").expect("document should parse");
     let mut index = WorkspaceIndex::default();
@@ -361,8 +361,8 @@ fn opening_a_workspace_indexed_file_does_not_self_conflict() {
 
 #[test]
 fn workspace_diagnostic_carries_related_information() {
-    use witcherscript_parser::diagnostics::{RelatedLocation, Severity, WorkspaceDiagnostic};
-    use witcherscript_parser::line_index::SourceRange;
+    use witcherscript_language::diagnostics::{RelatedLocation, Severity, WorkspaceDiagnostic};
+    use witcherscript_language::line_index::SourceRange;
 
     let range = SourceRange {
         start: SourcePosition {
@@ -410,7 +410,7 @@ fn workspace_diagnostic_carries_related_information() {
 #[test]
 fn completion_item_method_has_method_kind() {
     use tower_lsp::lsp_types::CompletionItemKind;
-    use witcherscript_parser::resolve::{completion_members, SymbolDb, WorkspaceIndex};
+    use witcherscript_language::resolve::{completion_members, SymbolDb, WorkspaceIndex};
 
     let source = concat!(
         "class CExample {\n",
@@ -450,7 +450,7 @@ fn completion_item_method_has_method_kind() {
 #[test]
 fn completion_item_snippet_includes_param_placeholders() {
     use tower_lsp::lsp_types::{CompletionItemKind, InsertTextFormat};
-    use witcherscript_parser::resolve::{completion_members, SymbolDb, WorkspaceIndex};
+    use witcherscript_language::resolve::{completion_members, SymbolDb, WorkspaceIndex};
 
     let source = concat!(
         "class CExample {\n",
@@ -499,7 +499,7 @@ fn completion_item_snippet_includes_param_placeholders() {
 
 #[test]
 fn rename_returns_edits_for_all_occurrences() {
-    use witcherscript_parser::resolve::find_references;
+    use witcherscript_language::resolve::find_references;
 
     let source = "function Make() {\n var x : int;\n x = 1;\n x = x + 1;\n}\n";
     let document = parse_document(source).expect("document should parse");
@@ -570,7 +570,7 @@ fn rename_rejects_base_script_symbol() {
 #[test]
 fn rename_does_not_edit_base_scripts() {
     use std::collections::HashMap;
-    use witcherscript_parser::resolve::find_references;
+    use witcherscript_language::resolve::find_references;
 
     use crate::backend::rename_changes;
 
@@ -799,7 +799,7 @@ mod watched_files {
     use std::path::PathBuf;
 
     use tower_lsp::lsp_types::{FileChangeType, FileEvent, Url};
-    use witcherscript_parser::files::ExcludeFilter;
+    use witcherscript_language::files::ExcludeFilter;
 
     use crate::indexing::{classify_watched_event, WatchedEvent};
 
@@ -950,7 +950,7 @@ mod watched_files {
 mod builtin_source_request {
     use crate::backend::builtin_source_response;
     use tower_lsp::jsonrpc::ErrorCode;
-    use witcherscript_parser::builtins::BUILTIN_ARRAY_URI;
+    use witcherscript_language::builtins::BUILTIN_ARRAY_URI;
 
     #[test]
     fn returns_array_text_for_array_uri() {

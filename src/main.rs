@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser as ClapParser;
 use tree_sitter::Parser as TreeSitterParser;
-use witcherscript_parser::diagnostics::format_tree;
-use witcherscript_parser::document::parse_document_with_parser;
-use witcherscript_parser::files::collect_witcherscript_files;
+use witcherscript_language::diagnostics::format_tree;
+use witcherscript_language::document::parse_document_with_parser;
+use witcherscript_language::files::collect_witcherscript_files;
 
 #[derive(Debug, ClapParser)]
 #[command(author, version, about)]

@@ -2,9 +2,9 @@
 
 ## Repository overview
 
-This is a Rust crate (`witcherscript-parser`) that produces two binaries:
+This is a Rust crate (`witcherscript-language`) that produces two binaries:
 
-- `witcherscript-parser` — CLI syntax validator (`src/main.rs`)
+- `witcherscript-check` — CLI syntax validator (`src/main.rs`)
 - `witcherscript-lsp` — LSP server (`src/bin/witcherscript-lsp/`)
 
 ## Module quick reference

@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use tower_lsp::lsp_types::Url;
-use witcherscript_parser::diagnostics::{
+use witcherscript_language::diagnostics::{
     collect_cst_diagnostics_for_document, WorkspaceDiagnostic,
 };
-use witcherscript_parser::document::ParsedDocument;
-use witcherscript_parser::resolve::{ObservationSet, SymbolDb};
+use witcherscript_language::document::ParsedDocument;
+use witcherscript_language::resolve::{ObservationSet, SymbolDb};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DbFingerprint {
@@ -89,8 +89,8 @@ mod tests {
     use super::{cst_diagnostics_with_cache, CstCacheEntry, DbFingerprint};
     use std::collections::HashMap;
     use tower_lsp::lsp_types::Url;
-    use witcherscript_parser::document::{parse_document, ParsedDocument};
-    use witcherscript_parser::resolve::{SymbolDb, WorkspaceIndex};
+    use witcherscript_language::document::{parse_document, ParsedDocument};
+    use witcherscript_language::resolve::{SymbolDb, WorkspaceIndex};
 
     fn make_doc(src: &str) -> ParsedDocument {
         parse_document(src).expect("parse should succeed")

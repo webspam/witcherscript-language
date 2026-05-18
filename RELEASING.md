@@ -1,6 +1,6 @@
 # Releasing
 
-How to cut a new version of `witcherscript-parser`.
+How to cut a new version of `witcherscript-language`.
 
 There is currently no published artifact — `publish = false` in `Cargo.toml`, so
 nothing goes to crates.io. A "release" today just means a recorded version bump
@@ -17,7 +17,7 @@ Semantic versioning (`MAJOR.MINOR.PATCH`):
 ## Steps
 
 1. Pick the new version and edit `version` in `Cargo.toml`.
-2. Regenerate `Cargo.lock` so the `witcherscript-parser` entry matches:
+2. Regenerate `Cargo.lock` so the `witcherscript-language` entry matches:
 
    ```
    just build

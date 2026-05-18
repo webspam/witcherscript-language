@@ -86,7 +86,7 @@ Read `target/lsp-tcp.log` if you need more than the streamed lines, then summari
   with `sed 's/\x1b\[[0-9;]*m//g' target/lsp-tcp.log` or fix `with_ansi(false)` in
   [src/bin/witcherscript-lsp/main.rs](src/bin/witcherscript-lsp/main.rs).
 - **Default log filter when `--listen` is set and `RUST_LOG` is unset** is
-  `warn,witcherscript_lsp=trace,witcherscript_parser=trace`. To override, set
+  `warn,witcherscript_lsp=trace,witcherscript_language=trace`. To override, set
   `RUST_LOG` before launching (e.g. `RUST_LOG=debug` for less noise).
 - **Loopback only.** The server binds `127.0.0.1` — clients on the LAN cannot
   reach it.

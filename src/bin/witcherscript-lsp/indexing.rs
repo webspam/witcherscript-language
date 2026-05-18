@@ -11,16 +11,16 @@ use tower_lsp::lsp_types::{
     FileEvent, FileSystemWatcher, GlobPattern, Position, Registration, Url,
 };
 use tracing::{debug, error, info, trace, warn};
-use witcherscript_parser::diagnostics::{
+use witcherscript_language::diagnostics::{
     collect_duplicate_local_diagnostics, collect_duplicate_symbol_diagnostics,
     collect_shadowing_diagnostics,
 };
-use witcherscript_parser::document::{parse_document, ParsedDocument};
-use witcherscript_parser::files::{
+use witcherscript_language::document::{parse_document, ParsedDocument};
+use witcherscript_language::files::{
     collect_witcherscript_files, is_witcherscript_file, read_script_file, ExcludeFilter,
 };
-use witcherscript_parser::resolve::{resolve_definition, Definition, SymbolDb, WorkspaceIndex};
-use witcherscript_parser::script_env::parse_script_environment;
+use witcherscript_language::resolve::{resolve_definition, Definition, SymbolDb, WorkspaceIndex};
+use witcherscript_language::script_env::parse_script_environment;
 
 use crate::backend::Backend;
 use crate::convert::{canonical_uri, lsp_diagnostics, lsp_workspace_diagnostic, source_position};

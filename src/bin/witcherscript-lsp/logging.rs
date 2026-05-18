@@ -53,7 +53,7 @@ pub(crate) struct LspLogSender {
     pub(crate) min_level: Arc<AtomicU8>,
 }
 
-const OWN_TARGET_PREFIXES: [&str; 2] = ["witcherscript_lsp", "witcherscript_parser"];
+const OWN_TARGET_PREFIXES: [&str; 2] = ["witcherscript_lsp", "witcherscript_language"];
 
 fn is_own_target(target: &str) -> bool {
     OWN_TARGET_PREFIXES.iter().any(|prefix| {
@@ -175,7 +175,7 @@ mod tests {
     fn own_targets_pass_dependency_targets_are_rejected() {
         assert!(is_own_target("witcherscript_lsp"));
         assert!(is_own_target("witcherscript_lsp::indexing"));
-        assert!(is_own_target("witcherscript_parser::resolve"));
+        assert!(is_own_target("witcherscript_language::resolve"));
         assert!(!is_own_target("tower_lsp::jsonrpc"));
         assert!(!is_own_target("hyper::proto"));
         assert!(!is_own_target("witcherscript_lsp_extra"));
