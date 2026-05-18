@@ -17,6 +17,7 @@ use async_lsp::router::Router;
 use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
 use async_lsp::{ClientSocket, LanguageClient, ResponseError};
+use futures::FutureExt;
 use lsp_types::request::Request;
 use lsp_types::{LogMessageParams, MessageType};
 use serde_json::Value;
@@ -88,7 +89,21 @@ async fn main() {
         let consumer_backend = backend.clone();
         tokio::spawn(async move {
             while let Some(op) = doc_ops_rx.recv().await {
-                consumer_backend.dispatch_doc_op(op).await;
+                let backend = consumer_backend.clone();
+                let result = std::panic::AssertUnwindSafe(async move {
+                    backend.dispatch_doc_op(op).await;
+                })
+                .catch_unwind()
+                .await;
+                if let Err(panic) = result {
+                    let payload = panic
+                        .downcast_ref::<&'static str>()
+                        .copied()
+                        .map(str::to_string)
+                        .or_else(|| panic.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "<non-string panic payload>".to_string());
+                    tracing::error!(panic = %payload, "doc op handler panicked; continuing");
+                }
             }
         });
 

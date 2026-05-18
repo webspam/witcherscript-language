@@ -26,15 +26,6 @@ use lsp_types::{
 use serde_json::{json, Value};
 use tokio::sync::{mpsc, Mutex};
 use tracing::{error, info, trace};
-
-type Result<T> = std::result::Result<T, ResponseError>;
-
-pub(crate) enum DocOp {
-    Open(DidOpenTextDocumentParams),
-    Change(DidChangeTextDocumentParams),
-    Close(DidCloseTextDocumentParams),
-    WatchedFiles(DidChangeWatchedFilesParams),
-}
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::document::{apply_content_change, ParsedDocument};
 use witcherscript_language::formatter::format_document;
@@ -59,6 +50,15 @@ use crate::convert::{
     workspace_roots, wrap_method_snippet,
 };
 use crate::logging::{level_from_str, level_to_u8};
+
+type Result<T> = std::result::Result<T, ResponseError>;
+
+pub(crate) enum DocOp {
+    Open(DidOpenTextDocumentParams),
+    Change(DidChangeTextDocumentParams),
+    Close(DidCloseTextDocumentParams),
+    WatchedFiles(DidChangeWatchedFilesParams),
+}
 
 // Open editor docs shadow workspace docs which shadow base docs — unsaved edits win.
 pub(crate) fn merge_documents<'a>(
@@ -156,6 +156,15 @@ impl Backend {
             DocOp::WatchedFiles(p) => self._did_change_watched_files(p).await,
         }
     }
+
+    fn submit_doc_op(&self, op: DocOp) {
+        if let Err(send_err) = self.doc_ops_tx.send(op) {
+            error!(
+                error = %send_err,
+                "doc op consumer is gone; edit will not be applied (LSP state may be stale)"
+            );
+        }
+    }
 }
 
 impl LanguageServer for Backend {
@@ -181,17 +190,17 @@ impl LanguageServer for Backend {
     }
 
     fn did_open(&mut self, params: DidOpenTextDocumentParams) -> Self::NotifyResult {
-        let _ = self.doc_ops_tx.send(DocOp::Open(params));
+        self.submit_doc_op(DocOp::Open(params));
         ControlFlow::Continue(())
     }
 
     fn did_change(&mut self, params: DidChangeTextDocumentParams) -> Self::NotifyResult {
-        let _ = self.doc_ops_tx.send(DocOp::Change(params));
+        self.submit_doc_op(DocOp::Change(params));
         ControlFlow::Continue(())
     }
 
     fn did_close(&mut self, params: DidCloseTextDocumentParams) -> Self::NotifyResult {
-        let _ = self.doc_ops_tx.send(DocOp::Close(params));
+        self.submit_doc_op(DocOp::Close(params));
         ControlFlow::Continue(())
     }
 
@@ -199,7 +208,7 @@ impl LanguageServer for Backend {
         &mut self,
         params: DidChangeWatchedFilesParams,
     ) -> Self::NotifyResult {
-        let _ = self.doc_ops_tx.send(DocOp::WatchedFiles(params));
+        self.submit_doc_op(DocOp::WatchedFiles(params));
         ControlFlow::Continue(())
     }
 
