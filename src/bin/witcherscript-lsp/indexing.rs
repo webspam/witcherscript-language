@@ -83,14 +83,15 @@ pub(crate) fn index_open_document(
     index: &mut WorkspaceIndex,
     uri: &Url,
     document: &ParsedDocument,
-) {
-    // index_workspace keys this file under the canonical spelling; drop that copy so it is not indexed twice.
+) -> HashSet<String> {
+    let mut invalidated = HashSet::new();
     if let Some(canonical) = canonical_uri(uri) {
         if canonical != uri.as_str() {
-            index.remove_document(&canonical);
+            invalidated.extend(index.remove_document(&canonical));
         }
     }
-    index.update_document(uri.as_str(), document);
+    invalidated.extend(index.update_document(uri.as_str(), document));
+    invalidated
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -130,10 +131,11 @@ impl Backend {
         let parsed = tracing::debug_span!("parse_document").in_scope(|| parse_document(text));
         match parsed {
             Ok(document) => {
-                {
+                let invalidated = {
                     let mut index = self.workspace_index.lock().await;
-                    index_open_document(&mut index, &uri, &document);
-                }
+                    index_open_document(&mut index, &uri, &document)
+                };
+                self.evict_cache_entries(&invalidated).await;
                 self.documents.lock().await.insert(uri.clone(), document);
                 self.publish_open_diagnostics().await;
             }
@@ -141,6 +143,14 @@ impl Backend {
                 error!(uri = %uri, error = %err, "failed to parse document");
             }
         }
+    }
+
+    async fn evict_cache_entries(&self, uris: &HashSet<String>) {
+        if uris.is_empty() {
+            return;
+        }
+        let mut cache = self.cst_diag_cache.lock().await;
+        cache.retain(|url, _| !uris.contains(url.as_str()));
     }
 
     #[tracing::instrument(skip(self), level = "debug")]
@@ -159,14 +169,10 @@ impl Backend {
         let documents = self.documents.lock().await;
 
         let (dup_by_uri, shadow_by_uri, dup_local_by_uri, cst_by_uri, cst_stats) = {
-            let index = self.workspace_index.lock().await;
+            let mut index = self.workspace_index.lock().await;
             let base = self.base_scripts_index.lock().await;
             let env = self.script_env.lock().await;
             let mut cache = self.cst_diag_cache.lock().await;
-
-            let db = SymbolDb::new(&index, &base)
-                .with_script_env(&env)
-                .with_builtins(&self.builtins_index);
 
             let dup = tracing::debug_span!("dup_symbols")
                 .in_scope(|| collect_duplicate_symbol_diagnostics(&index));
@@ -176,14 +182,21 @@ impl Backend {
                 .in_scope(|| collect_duplicate_local_diagnostics(&index));
 
             let fingerprint = DbFingerprint {
-                workspace_surface: index.surface_hash(),
                 base_surface: base.surface_hash(),
                 env: env.version(),
             };
-            let (cst, stats) = tracing::debug_span!("cst_diagnostics", open_docs = documents.len())
-                .in_scope(|| cst_diagnostics_with_cache(&documents, &db, fingerprint, &mut cache));
+            let result = {
+                let db = SymbolDb::new(&index, &base)
+                    .with_script_env(&env)
+                    .with_builtins(&self.builtins_index);
+                tracing::debug_span!("cst_diagnostics", open_docs = documents.len())
+                    .in_scope(|| cst_diagnostics_with_cache(&documents, &db, fingerprint, &mut cache))
+            };
+            for (uri, observations) in result.new_subscriptions {
+                index.register_subscription(&uri, observations);
+            }
 
-            (dup, shadow, dup_local, cst, stats)
+            (dup, shadow, dup_local, result.by_uri, result.stats)
         };
 
         let collect_us = start.elapsed().as_micros();
@@ -387,18 +400,21 @@ impl Backend {
             return;
         }
 
-        {
+        let invalidated = {
             let mut index = self.workspace_index.lock().await;
             let mut docs = self.workspace_documents.lock().await;
+            let mut invalidated: HashSet<String> = HashSet::new();
             for (canonical, document) in updates {
-                index.update_document(canonical.as_str(), &document);
+                invalidated.extend(index.update_document(canonical.as_str(), &document));
                 docs.insert(canonical, document);
             }
             for canonical in removals {
-                index.remove_document(&canonical);
+                invalidated.extend(index.remove_document(&canonical));
                 docs.remove(&canonical);
             }
-        }
+            invalidated
+        };
+        self.evict_cache_entries(&invalidated).await;
 
         self.publish_open_diagnostics().await;
     }

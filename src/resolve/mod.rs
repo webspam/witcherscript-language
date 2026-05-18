@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Mutex;
 
 use tree_sitter::Node;
 
@@ -6,6 +7,19 @@ use crate::document::ParsedDocument;
 use crate::line_index::{SourcePosition, SourceRange};
 use crate::script_env::ScriptEnvironment;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+
+#[derive(Debug, Default, Clone)]
+pub struct ObservationSet {
+    pub top_level: HashSet<String>,
+    pub members: HashSet<(String, String)>,
+    pub enum_variants: HashSet<String>,
+}
+
+impl ObservationSet {
+    pub fn is_empty(&self) -> bool {
+        self.top_level.is_empty() && self.members.is_empty() && self.enum_variants.is_empty()
+    }
+}
 
 // AGENTS.md key invariant #3.
 const MAX_INHERITANCE_DEPTH: usize = 32;
@@ -41,6 +55,7 @@ pub struct SymbolDb<'a> {
     base: &'a WorkspaceIndex,
     builtins: Option<&'a WorkspaceIndex>,
     script_env: Option<&'a ScriptEnvironment>,
+    observer: Option<&'a Mutex<ObservationSet>>,
 }
 
 impl<'a> SymbolDb<'a> {
@@ -50,6 +65,7 @@ impl<'a> SymbolDb<'a> {
             base,
             builtins: None,
             script_env: None,
+            observer: None,
         }
     }
 
@@ -61,6 +77,47 @@ impl<'a> SymbolDb<'a> {
     pub fn with_builtins(mut self, builtins: &'a WorkspaceIndex) -> Self {
         self.builtins = Some(builtins);
         self
+    }
+
+    pub fn with_observer<'b>(&self, observer: &'b Mutex<ObservationSet>) -> SymbolDb<'b>
+    where
+        'a: 'b,
+    {
+        SymbolDb {
+            workspace: self.workspace,
+            base: self.base,
+            builtins: self.builtins,
+            script_env: self.script_env,
+            observer: Some(observer),
+        }
+    }
+
+    fn record_top_level(&self, name: &str) {
+        if let Some(obs) = self.observer {
+            let mut o = obs.lock().expect("observer mutex poisoned");
+            if !o.top_level.contains(name) {
+                o.top_level.insert(name.to_string());
+            }
+        }
+    }
+
+    fn record_member(&self, container: &str, name: &str) {
+        if let Some(obs) = self.observer {
+            let mut o = obs.lock().expect("observer mutex poisoned");
+            let key = (container.to_string(), name.to_string());
+            if !o.members.contains(&key) {
+                o.members.insert(key);
+            }
+        }
+    }
+
+    fn record_enum_variant(&self, name: &str) {
+        if let Some(obs) = self.observer {
+            let mut o = obs.lock().expect("observer mutex poisoned");
+            if !o.enum_variants.contains(name) {
+                o.enum_variants.insert(name.to_string());
+            }
+        }
     }
 
     fn find_script_global(&self, name: &str) -> Option<Definition> {
@@ -79,6 +136,7 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn find_top_level(&self, name: &str) -> Option<Definition> {
+        self.record_top_level(name);
         self.workspace
             .find_top_level(name)
             .or_else(|| self.base.find_top_level(name))
@@ -86,6 +144,7 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn find_enum_variant(&self, name: &str) -> Option<Definition> {
+        self.record_enum_variant(name);
         self.workspace
             .find_enum_variant(name)
             .or_else(|| self.base.find_enum_variant(name))
@@ -102,6 +161,7 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn superclass_of(&self, class_name: &str) -> Option<String> {
+        self.record_top_level(class_name);
         self.workspace
             .superclass_of(class_name)
             .or_else(|| self.base.superclass_of(class_name))
@@ -116,6 +176,7 @@ impl<'a> SymbolDb<'a> {
     ) -> Option<Definition> {
         let (lookup, element) = generic_lookup_target(container);
         let def = self.try_in_chain(lookup, min_access, |container, _depth, access| {
+            self.record_member(container, name);
             self.workspace
                 .direct_member_of(container, name, access)
                 .or_else(|| self.base.direct_member_of(container, name, access))
@@ -229,6 +290,7 @@ impl<'a> SymbolDb<'a> {
             if depth > MAX_INHERITANCE_DEPTH {
                 return None;
             }
+            self.record_top_level(&current);
             if let Some(found) = visit(&current, depth, access) {
                 return Some(found);
             }
@@ -381,6 +443,18 @@ pub struct WorkspaceIndex {
     doc_surface_hashes: HashMap<String, u64>,
     surface_hash: u64,
     generation: u64,
+    doc_outward_hashes: HashMap<String, HashMap<ObservedKey, u64>>,
+    top_level_subscribers: HashMap<String, HashSet<String>>,
+    member_subscribers: HashMap<(String, String), HashSet<String>>,
+    enum_variant_subscribers: HashMap<String, HashSet<String>>,
+    subscriber_keys: HashMap<String, ObservationSet>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ObservedKey {
+    TopLevel(String),
+    Member(String, String),
+    EnumVariant(String),
 }
 
 impl WorkspaceIndex {
@@ -392,7 +466,11 @@ impl WorkspaceIndex {
         self.surface_hash
     }
 
-    pub fn update_document(&mut self, uri: impl Into<String>, document: &ParsedDocument) {
+    pub fn update_document(
+        &mut self,
+        uri: impl Into<String>,
+        document: &ParsedDocument,
+    ) -> HashSet<String> {
         let uri: String = uri.into();
         self.remove_from_indices(&uri);
         self.doc_idents.remove(&uri);
@@ -407,18 +485,105 @@ impl WorkspaceIndex {
         }
         self.surface_hash ^= new_hash;
 
+        let new_outward = outward_hash_map(&all_symbols);
+        let changed_keys = diff_outward_keys(
+            self.doc_outward_hashes.get(&uri),
+            &new_outward,
+        );
+        self.doc_outward_hashes.insert(uri.clone(), new_outward);
+        let invalidated = self.subscribers_of(&changed_keys);
+
         self.documents.insert(uri, all_symbols);
         self.generation = self.generation.wrapping_add(1);
+        invalidated
     }
 
-    pub fn remove_document(&mut self, uri: &str) {
+    pub fn remove_document(&mut self, uri: &str) -> HashSet<String> {
         self.remove_from_indices(uri);
         self.doc_idents.remove(uri);
         self.documents.remove(uri);
         if let Some(old_hash) = self.doc_surface_hashes.remove(uri) {
             self.surface_hash ^= old_hash;
         }
+        let changed_keys: Vec<ObservedKey> = self
+            .doc_outward_hashes
+            .remove(uri)
+            .map(|map| map.into_keys().collect())
+            .unwrap_or_default();
+        let invalidated = self.subscribers_of(&changed_keys);
         self.generation = self.generation.wrapping_add(1);
+        invalidated
+    }
+
+    pub fn register_subscription(&mut self, subscriber_uri: &str, observations: ObservationSet) {
+        self.unregister_subscription(subscriber_uri);
+        for name in &observations.top_level {
+            self.top_level_subscribers
+                .entry(name.clone())
+                .or_default()
+                .insert(subscriber_uri.to_string());
+        }
+        for key in &observations.members {
+            self.member_subscribers
+                .entry(key.clone())
+                .or_default()
+                .insert(subscriber_uri.to_string());
+        }
+        for name in &observations.enum_variants {
+            self.enum_variant_subscribers
+                .entry(name.clone())
+                .or_default()
+                .insert(subscriber_uri.to_string());
+        }
+        self.subscriber_keys
+            .insert(subscriber_uri.to_string(), observations);
+    }
+
+    pub fn unregister_subscription(&mut self, subscriber_uri: &str) {
+        let Some(prev) = self.subscriber_keys.remove(subscriber_uri) else {
+            return;
+        };
+        for name in prev.top_level {
+            if let Some(set) = self.top_level_subscribers.get_mut(&name) {
+                set.remove(subscriber_uri);
+                if set.is_empty() {
+                    self.top_level_subscribers.remove(&name);
+                }
+            }
+        }
+        for key in prev.members {
+            if let Some(set) = self.member_subscribers.get_mut(&key) {
+                set.remove(subscriber_uri);
+                if set.is_empty() {
+                    self.member_subscribers.remove(&key);
+                }
+            }
+        }
+        for name in prev.enum_variants {
+            if let Some(set) = self.enum_variant_subscribers.get_mut(&name) {
+                set.remove(subscriber_uri);
+                if set.is_empty() {
+                    self.enum_variant_subscribers.remove(&name);
+                }
+            }
+        }
+    }
+
+    fn subscribers_of(&self, keys: &[ObservedKey]) -> HashSet<String> {
+        let mut out = HashSet::new();
+        for key in keys {
+            let bucket = match key {
+                ObservedKey::TopLevel(n) => self.top_level_subscribers.get(n),
+                ObservedKey::Member(c, n) => self.member_subscribers.get(&(c.clone(), n.clone())),
+                ObservedKey::EnumVariant(n) => self.enum_variant_subscribers.get(n),
+            };
+            if let Some(set) = bucket {
+                for uri in set {
+                    out.insert(uri.clone());
+                }
+            }
+        }
+        out
     }
 
     fn is_indexed(&self, uri: &str) -> bool {
@@ -1512,6 +1677,81 @@ fn dedup_definitions(defs: Vec<Definition>) -> Vec<Definition> {
         result.push(def);
     }
     result
+}
+
+fn outward_hash_map(symbols: &[Symbol]) -> HashMap<ObservedKey, u64> {
+    let mut out: HashMap<ObservedKey, u64> = HashMap::new();
+    for s in symbols.iter().filter(|s| is_outward_visible(s)) {
+        let key = outward_key_for(s);
+        let hash = outward_symbol_hash(s);
+        out.entry(key).and_modify(|h| *h ^= hash).or_insert(hash);
+    }
+    out
+}
+
+fn is_outward_visible(s: &Symbol) -> bool {
+    !matches!(s.kind, SymbolKind::Variable | SymbolKind::Parameter)
+}
+
+fn outward_key_for(s: &Symbol) -> ObservedKey {
+    match (s.container.is_none(), s.kind) {
+        (true, _) => ObservedKey::TopLevel(s.name.clone()),
+        (false, SymbolKind::EnumVariant) => ObservedKey::EnumVariant(s.name.clone()),
+        (false, _) => ObservedKey::Member(
+            s.container_name.clone().unwrap_or_default(),
+            s.name.clone(),
+        ),
+    }
+}
+
+fn outward_symbol_hash(s: &Symbol) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    s.name.hash(&mut h);
+    (s.kind as u8).hash(&mut h);
+    s.container_name.hash(&mut h);
+    s.type_annotation.hash(&mut h);
+    s.signature.hash(&mut h);
+    s.base_class.hash(&mut h);
+    s.owner_class.hash(&mut h);
+    s.flavour.hash(&mut h);
+    h.write_usize(s.annotations.len());
+    for a in &s.annotations {
+        a.name.hash(&mut h);
+        a.argument.hash(&mut h);
+    }
+    (s.access as u8).hash(&mut h);
+    s.is_optional.hash(&mut h);
+    s.is_out.hash(&mut h);
+    h.finish()
+}
+
+fn diff_outward_keys(
+    prev: Option<&HashMap<ObservedKey, u64>>,
+    next: &HashMap<ObservedKey, u64>,
+) -> Vec<ObservedKey> {
+    let mut changed = Vec::new();
+    match prev {
+        None => {
+            for k in next.keys() {
+                changed.push(k.clone());
+            }
+        }
+        Some(prev) => {
+            for (k, v) in next {
+                if prev.get(k) != Some(v) {
+                    changed.push(k.clone());
+                }
+            }
+            for k in prev.keys() {
+                if !next.contains_key(k) {
+                    changed.push(k.clone());
+                }
+            }
+        }
+    }
+    changed
 }
 
 fn doc_surface_hash(uri: &str, symbols: &[Symbol]) -> u64 {
