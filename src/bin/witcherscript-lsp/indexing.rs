@@ -7,8 +7,8 @@ use std::time::Instant;
 use rayon::prelude::*;
 use serde_json::Value;
 use tower_lsp::lsp_types::{
-    ConfigurationItem, DidChangeWatchedFilesRegistrationOptions, FileChangeType, FileEvent,
-    FileSystemWatcher, GlobPattern, Position, Registration, Url,
+    ConfigurationItem, Diagnostic, DidChangeWatchedFilesRegistrationOptions, FileChangeType,
+    FileEvent, FileSystemWatcher, GlobPattern, Position, Registration, Url,
 };
 use tracing::{debug, error, info, trace, warn};
 use witcherscript_parser::diagnostics::{
@@ -201,37 +201,53 @@ impl Backend {
         };
 
         let collect_us = start.elapsed().as_micros();
-        let mut published = self.published_diagnostics.lock().await;
-        let mut republished = 0;
-        for (uri, document) in documents.iter() {
-            let mut diagnostics = lsp_diagnostics(document);
-            if let Some(dups) = dup_by_uri.get(uri.as_str()) {
-                diagnostics.extend(dups.iter().map(lsp_workspace_diagnostic));
+
+        let to_publish: Vec<(Url, Vec<Diagnostic>)> = {
+            let mut published = self.published_diagnostics.lock().await;
+            let mut list = Vec::new();
+            for (uri, document) in documents.iter() {
+                let mut diagnostics = lsp_diagnostics(document);
+                if let Some(dups) = dup_by_uri.get(uri.as_str()) {
+                    diagnostics.extend(dups.iter().map(lsp_workspace_diagnostic));
+                }
+                if let Some(shadows) = shadow_by_uri.get(uri.as_str()) {
+                    diagnostics.extend(shadows.iter().map(lsp_workspace_diagnostic));
+                }
+                if let Some(dup_locals) = dup_local_by_uri.get(uri.as_str()) {
+                    diagnostics.extend(dup_locals.iter().map(lsp_workspace_diagnostic));
+                }
+                if let Some(cst) = cst_by_uri.get(uri.as_str()) {
+                    diagnostics.extend(cst.iter().map(lsp_workspace_diagnostic));
+                }
+                if published.get(uri) == Some(&diagnostics) {
+                    continue;
+                }
+                published.insert(uri.clone(), diagnostics.clone());
+                list.push((uri.clone(), diagnostics));
             }
-            if let Some(shadows) = shadow_by_uri.get(uri.as_str()) {
-                diagnostics.extend(shadows.iter().map(lsp_workspace_diagnostic));
-            }
-            if let Some(dup_locals) = dup_local_by_uri.get(uri.as_str()) {
-                diagnostics.extend(dup_locals.iter().map(lsp_workspace_diagnostic));
-            }
-            if let Some(cst) = cst_by_uri.get(uri.as_str()) {
-                diagnostics.extend(cst.iter().map(lsp_workspace_diagnostic));
-            }
-            if published.get(uri) == Some(&diagnostics) {
-                continue;
-            }
+            list
+        };
+
+        let open_documents = documents.len();
+        let flagged_uris = dup_by_uri.len();
+        let shadow_uris = shadow_by_uri.len();
+        let dup_local_uris = dup_local_by_uri.len();
+        let cst_uris = cst_by_uri.len();
+        drop(documents);
+
+        let republished = to_publish.len();
+        for (uri, diagnostics) in to_publish {
             self.client
-                .publish_diagnostics(uri.clone(), diagnostics.clone(), None)
+                .publish_diagnostics(uri, diagnostics, None)
                 .await;
-            published.insert(uri.clone(), diagnostics);
-            republished += 1;
         }
+
         trace!(
-            open_documents = documents.len(),
-            flagged_uris = dup_by_uri.len(),
-            shadow_uris = shadow_by_uri.len(),
-            dup_local_uris = dup_local_by_uri.len(),
-            cst_uris = cst_by_uri.len(),
+            open_documents,
+            flagged_uris,
+            shadow_uris,
+            dup_local_uris,
+            cst_uris,
             cst_cache_hits = cst_stats.hits,
             cst_cache_misses = cst_stats.misses,
             republished,
@@ -242,17 +258,25 @@ impl Backend {
     }
 
     async fn publish_syntactic_only(&self) {
-        let documents = self.documents.lock().await;
-        let mut published = self.published_diagnostics.lock().await;
-        for (uri, document) in documents.iter() {
-            let diagnostics = lsp_diagnostics(document);
-            if published.get(uri) == Some(&diagnostics) {
-                continue;
+        let to_publish: Vec<(Url, Vec<Diagnostic>)> = {
+            let documents = self.documents.lock().await;
+            let mut published = self.published_diagnostics.lock().await;
+            let mut list = Vec::new();
+            for (uri, document) in documents.iter() {
+                let diagnostics = lsp_diagnostics(document);
+                if published.get(uri) == Some(&diagnostics) {
+                    continue;
+                }
+                published.insert(uri.clone(), diagnostics.clone());
+                list.push((uri.clone(), diagnostics));
             }
+            list
+        };
+
+        for (uri, diagnostics) in to_publish {
             self.client
-                .publish_diagnostics(uri.clone(), diagnostics.clone(), None)
+                .publish_diagnostics(uri, diagnostics, None)
                 .await;
-            published.insert(uri.clone(), diagnostics);
         }
     }
 
