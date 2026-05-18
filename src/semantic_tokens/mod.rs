@@ -113,9 +113,58 @@ fn classify_ident(node: Node, uri: &str, document: &ParsedDocument, db: &SymbolD
         "func_param_group" => Some(TT_PARAMETER),
         "member_var_decl" | "autobind_decl" => Some(TT_PROPERTY),
         "local_var_decl_stmt" => Some(TT_VARIABLE),
-        _ => classify_definition_at_ident(uri, document, db, node)
-            .map(|def| symbol_kind_to_token_type(def.symbol.kind)),
+        _ => classify_locally(node, document).or_else(|| {
+            classify_definition_at_ident(uri, document, db, node)
+                .map(|def| symbol_kind_to_token_type(def.symbol.kind))
+        }),
     }
+}
+
+fn classify_locally(node: Node, document: &ParsedDocument) -> Option<u32> {
+    if let Some(parent) = node.parent() {
+        if parent.kind() == "member_access_expr" {
+            let mut cursor = parent.walk();
+            let is_receiver = parent
+                .named_children(&mut cursor)
+                .next()
+                .map(|c| c.id() == node.id())
+                .unwrap_or(false);
+            if !is_receiver {
+                return None;
+            }
+        }
+    }
+
+    let name = node.utf8_text(document.source.as_bytes()).ok()?;
+    let byte_offset = node.start_byte();
+
+    let callable_kinds = [SymbolKind::Function, SymbolKind::Method, SymbolKind::Event];
+    if let Some(callable) = document
+        .symbols
+        .enclosing_symbol_at(byte_offset, &callable_kinds)
+    {
+        if let Some(sym) = document
+            .symbols
+            .local_at_byte(callable.id, name, byte_offset)
+        {
+            return Some(symbol_kind_to_token_type(sym.kind));
+        }
+    }
+
+    let type_kinds = [SymbolKind::Class, SymbolKind::Struct, SymbolKind::State];
+    if let Some(class) = document
+        .symbols
+        .enclosing_symbol_at(byte_offset, &type_kinds)
+    {
+        if let Some(sym) = document.symbols.member_of(class.id, name).next() {
+            return Some(symbol_kind_to_token_type(sym.kind));
+        }
+    }
+
+    document
+        .symbols
+        .top_level_by_name(name)
+        .map(|sym| symbol_kind_to_token_type(sym.kind))
 }
 
 fn symbol_kind_to_token_type(kind: SymbolKind) -> u32 {
