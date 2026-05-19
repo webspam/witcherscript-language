@@ -47,8 +47,9 @@ impl Fixture {
 
             started = true;
 
-            if trimmed.starts_with("//") {
-                if let Some(caret_pos) = raw_line.find('^') {
+            if let Some(after_slashes) = trimmed.strip_prefix("//") {
+                if after_slashes.trim_start().starts_with('^') {
+                    let caret_pos = raw_line.find('^').expect("caret confirmed above");
                     let bytes = raw_line.as_bytes();
                     let mut end = caret_pos;
                     while end < bytes.len() && bytes[end] == b'^' {
@@ -171,6 +172,24 @@ mod tests {
                     character: 12
                 },
             }
+        );
+    }
+
+    #[test]
+    fn comment_lines_with_stray_caret_are_not_treated_as_annotations() {
+        let f = Fixture::parse(
+            "function Foo() {}\n\
+             // pointer ^ in a regular comment\n\
+             function Bar() {}\n",
+        );
+        assert!(
+            f.spans.is_empty(),
+            "stray ^ inside a regular // comment must not register a span"
+        );
+        assert_eq!(
+            f.files[0].text,
+            "function Foo() {}\n// pointer ^ in a regular comment\nfunction Bar() {}\n",
+            "non-annotation comment lines must reach the server as source content"
         );
     }
 
