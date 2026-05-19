@@ -57,16 +57,32 @@ jobs:
           restore-keys: |
             iai-${{ runner.os }}-
 
-      - name: Seed baseline from master if cache is empty
+      - name: Probe master for iai baseline target
+        id: probe
         if: github.event_name == 'pull_request'
         run: |
           if [ -d target/iai ] && [ -n "$(ls -A target/iai 2>/dev/null)" ]; then
-            echo "Baseline restored from cache; skipping master seed."
-            exit 0
+            echo "cache_present=true" >> "$GITHUB_OUTPUT"
+            echo "Baseline restored from cache."
+          else
+            echo "cache_present=false" >> "$GITHUB_OUTPUT"
           fi
+          git fetch origin master --depth=1
+          if git ls-tree origin/master -- benches/iai_lib.rs | grep -q .; then
+            echo "master_has_target=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "master_has_target=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=iai gate inactive this run::origin/master does not yet have benches/iai_lib.rs, so there is no baseline to compare against. The gate will activate once master has the bench target."
+          fi
+
+      - name: Seed baseline from master
+        if: |
+          github.event_name == 'pull_request' &&
+          steps.probe.outputs.cache_present == 'false' &&
+          steps.probe.outputs.master_has_target == 'true'
+        run: |
           echo "No baseline cache (likely expired); running iai on origin/master to seed."
           original=$(git rev-parse HEAD)
-          git fetch origin master --depth=1
           git -c advice.detachedHead=false checkout origin/master
           cargo bench --bench iai_lib
           git -c advice.detachedHead=false checkout "$original"
