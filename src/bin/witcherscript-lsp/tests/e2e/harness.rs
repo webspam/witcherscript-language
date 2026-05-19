@@ -180,7 +180,9 @@ impl LspClient {
                         |e| panic!("decode failed for {}: {e}\nresponse: {v}", R::METHOD),
                     );
                 }
-                self.handle_inbound(v);
+                if let Some(reply) = self.handle_inbound(v) {
+                    self.send_raw(&reply).await;
+                }
             }
         })
         .await;
@@ -203,7 +205,9 @@ impl LspClient {
                     return diags.clone();
                 }
                 let v = self.read_raw().await;
-                self.handle_inbound(v);
+                if let Some(reply) = self.handle_inbound(v) {
+                    self.send_raw(&reply).await;
+                }
             }
         })
         .await;
@@ -243,16 +247,28 @@ impl LspClient {
         serde_json::from_slice(&buf).expect("parse JSON")
     }
 
-    fn handle_inbound(&mut self, v: Value) {
-        let Some(method) = v.get("method").and_then(|m| m.as_str()) else {
-            return;
-        };
+    fn handle_inbound(&mut self, v: Value) -> Option<Value> {
+        let method = v.get("method").and_then(|m| m.as_str())?;
         if method == PublishDiagnostics::METHOD {
             if let Some(p) = v.get("params") {
                 if let Ok(params) = serde_json::from_value::<PublishDiagnosticsParams>(p.clone()) {
                     self.diagnostics.insert(params.uri, params.diagnostics);
                 }
             }
+            return None;
         }
+        let id = v.get("id").cloned()?;
+        let result = match method {
+            "workspace/configuration" => {
+                let count = v
+                    .pointer("/params/items")
+                    .and_then(|i| i.as_array())
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+                Value::Array(vec![Value::Null; count])
+            }
+            _ => Value::Null,
+        };
+        Some(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
     }
 }
