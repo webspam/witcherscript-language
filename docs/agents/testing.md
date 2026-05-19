@@ -178,6 +178,37 @@ There are no doctests in this repo, so a separate `cargo test --doc` step is not
 | Regression that only shows up over JSON-RPC (serialization, dispatch, framing) | Test in `src/bin/witcherscript-lsp/tests/e2e/` |
 | New semantic token | Test in `semantic_tokens/tests.rs` |
 
+## Benchmarks
+
+Performance is tracked in two layers under `benches/`. Layout and intent:
+
+| File | Tool | Where it runs | Purpose |
+|---|---|---|---|
+| `benches/lib_*.rs` | criterion | Local | Wall-clock timing of parse / symbols / index / resolve / completion. Use during refactor iteration with `just bench-baseline` and `just bench-compare`. |
+| `benches/iai_lib.rs` | iai-callgrind | CI (Linux) + local on WSL | Instruction counts under cachegrind. Deterministic; immune to CI runner noise. This is the regression-gating layer. |
+| `benches/lsp_smoke.rs` | criterion | Local only | Spawns the release `witcherscript-lsp` binary and measures cold start + warm request latency over stdio. Local sanity check, not gated. |
+| `benches/common/synth.rs` | helper | n/a | Deterministic `synth_file` / `synth_workspace` generators. Each bench includes it via `#[path = "common/synth.rs"]`. |
+
+The wire-level smoke bench shares `src/bin/witcherscript-lsp/tests/jsonrpc_client.rs` with the E2E harness — same framing code, two transports.
+
+Recipes:
+
+```
+just bench                   # criterion library benches (wall-clock)
+just bench-baseline pre      # save a labelled criterion baseline
+just bench-compare pre       # compare current run against saved baseline
+just bench-iai               # iai-callgrind (requires valgrind, Linux/WSL)
+just bench-lsp               # criterion LSP smoke benches against release binary
+```
+
+When adding a new hot path that needs perf coverage:
+
+1. Add a criterion bench under `benches/lib_<area>.rs` for local iteration.
+2. Add an iai-callgrind bench in `benches/iai_lib.rs` for CI gating.
+3. If the path is reached only through the LSP wire protocol, also add a scenario to `benches/lsp_smoke.rs`.
+
+CI runs only `iai_lib` (on `ubuntu-latest` with valgrind installed). Criterion benches are local; CI wall-clock measurement is too noisy to gate on.
+
 ## assert_symbol helper
 
 `tests/language_features.rs` defines a small helper used in integration tests:
