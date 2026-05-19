@@ -15,11 +15,12 @@ pub const BUILTIN_TYPES: &[&str] = &[
     "String",
     "CName",
     "Int32",
-    "UInt8",
     "Int16",
     "Int8",
-    "Uint32",
+    "Uint8",
     "Uint16",
+    "Uint32",
+    "Uint64",
     "StringAnsi",
 ];
 

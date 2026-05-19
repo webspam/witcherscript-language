@@ -536,7 +536,7 @@ mod tests {
             ("String", "function F(a : String) {}\n"),
             ("CName", "function F(a : CName) {}\n"),
             ("Int32", "function F(a : Int32) {}\n"),
-            ("UInt8", "function F(a : UInt8) {}\n"),
+            ("Uint8", "function F(a : Uint8) {}\n"),
             ("Int16", "function F(a : Int16) {}\n"),
             ("Int8", "function F(a : Int8) {}\n"),
             ("Uint32", "function F(a : Uint32) {}\n"),
