@@ -22,6 +22,7 @@ pub(crate) struct JsonRpcClient<R, W> {
     diagnostics: HashMap<Url, Vec<Diagnostic>>,
 }
 
+#[allow(dead_code)]
 impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
     pub(crate) fn new(read: R, write: W) -> Self {
         Self {

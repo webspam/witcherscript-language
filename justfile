@@ -45,6 +45,10 @@ bench-compare name:
 bench-iai:
     cargo bench --bench iai_lib
 
+# Run the local LSP smoke benches against the release-built binary.
+bench-lsp:
+    cargo bench --bench lsp_smoke
+
 # Run the LSP server in TCP listen mode (default port 9257). Stderr -> target/lsp-tcp.log.
 # Uses `cmd /c` for the redirect because PowerShell's `2>` mangles native stderr
 # (UTF-16 + NativeCommandError wrapping); cmd does true fd-2 redirection.
