@@ -38,9 +38,14 @@ arc-swap = "1.9.1"
 [dev-dependencies]
 tokio = { version = "1.48.0", features = ["io-util", "time"] }
 criterion = { version = "0.5", default-features = false, features = ["html_reports"] }
+iai-callgrind = "0.14"
 
 [[bench]]
 name = "lib_parse"
+harness = false
+
+[[bench]]
+name = "iai_lib"
 harness = false
 
 [[bench]]

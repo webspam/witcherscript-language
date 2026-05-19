@@ -41,6 +41,10 @@ bench-baseline name:
 bench-compare name:
     cargo bench --bench lib_parse --bench lib_symbols --bench lib_index --bench lib_resolve --bench lib_completion -- --baseline {{name}}
 
+# Run iai-callgrind benches (instruction counts; requires valgrind, Linux or WSL).
+bench-iai:
+    cargo bench --bench iai_lib
+
 # Run the LSP server in TCP listen mode (default port 9257). Stderr -> target/lsp-tcp.log.
 # Uses `cmd /c` for the redirect because PowerShell's `2>` mangles native stderr
 # (UTF-16 + NativeCommandError wrapping); cmd does true fd-2 redirection.
