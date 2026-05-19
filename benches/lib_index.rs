@@ -7,7 +7,11 @@ mod synth;
 
 fn bench_index_build(c: &mut Criterion) {
     let mut group = c.benchmark_group("index_build");
-    for size in [10usize, 100, 500] {
+    for size in [
+        synth::WORKSPACE_SIZE_SMALL,
+        synth::WORKSPACE_SIZE_MEDIUM,
+        synth::WORKSPACE_SIZE_LARGE,
+    ] {
         let files: Vec<_> = synth::synth_workspace(size)
             .into_iter()
             .map(|(uri, source)| {

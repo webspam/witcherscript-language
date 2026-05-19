@@ -10,6 +10,20 @@ pub const TARGET_URI: &str = "file:///synth/target.ws";
 pub type WorkspaceFixture = (WorkspaceIndex, WorkspaceIndex, ParsedDocument);
 
 #[allow(dead_code)]
+pub const FILE_SIZE_SMALL: (usize, usize) = (2, 3);
+#[allow(dead_code)]
+pub const FILE_SIZE_MEDIUM: (usize, usize) = (10, 6);
+#[allow(dead_code)]
+pub const FILE_SIZE_LARGE: (usize, usize) = (50, 10);
+
+#[allow(dead_code)]
+pub const WORKSPACE_SIZE_SMALL: usize = 10;
+#[allow(dead_code)]
+pub const WORKSPACE_SIZE_MEDIUM: usize = 100;
+#[allow(dead_code)]
+pub const WORKSPACE_SIZE_LARGE: usize = 500;
+
+#[allow(dead_code)]
 pub fn synth_file(num_classes: usize, methods_per_class: usize) -> String {
     let mut out = String::with_capacity(num_classes * methods_per_class * 96);
     out.push_str("function Top0(a: int, b: int) : int { return a + b; }\n");

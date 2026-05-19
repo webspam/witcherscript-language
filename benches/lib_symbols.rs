@@ -8,7 +8,11 @@ mod synth;
 
 fn bench_symbols(c: &mut Criterion) {
     let mut group = c.benchmark_group("symbols");
-    for (label, num_classes, methods) in [("small", 2, 3), ("medium", 10, 6), ("large", 50, 10)] {
+    for (label, (num_classes, methods)) in [
+        ("small", synth::FILE_SIZE_SMALL),
+        ("medium", synth::FILE_SIZE_MEDIUM),
+        ("large", synth::FILE_SIZE_LARGE),
+    ] {
         let source = synth::synth_file(num_classes, methods);
         let document = parse_document(source.clone()).expect("synth source must parse");
         let line_index = LineIndex::new(&document.source);

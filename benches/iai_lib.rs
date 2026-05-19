@@ -46,23 +46,26 @@ fn build_find_refs_fixture() -> FindRefsFixture {
 }
 
 fn synth_source_small() -> String {
-    synth::synth_file(2, 3)
+    let (c, m) = synth::FILE_SIZE_SMALL;
+    synth::synth_file(c, m)
 }
 fn synth_source_medium() -> String {
-    synth::synth_file(10, 6)
+    let (c, m) = synth::FILE_SIZE_MEDIUM;
+    synth::synth_file(c, m)
 }
 fn synth_source_large() -> String {
-    synth::synth_file(50, 10)
+    let (c, m) = synth::FILE_SIZE_LARGE;
+    synth::synth_file(c, m)
 }
 
-fn parse_workspace_10() -> IndexFixture {
-    parse_workspace(10)
+fn parse_workspace_small() -> IndexFixture {
+    parse_workspace(synth::WORKSPACE_SIZE_SMALL)
 }
-fn parse_workspace_100() -> IndexFixture {
-    parse_workspace(100)
+fn parse_workspace_medium() -> IndexFixture {
+    parse_workspace(synth::WORKSPACE_SIZE_MEDIUM)
 }
-fn parse_workspace_500() -> IndexFixture {
-    parse_workspace(500)
+fn parse_workspace_large() -> IndexFixture {
+    parse_workspace(synth::WORKSPACE_SIZE_LARGE)
 }
 
 fn parse_workspace(num_files: usize) -> IndexFixture {
@@ -84,9 +87,9 @@ fn bench_parse(source: String) {
 }
 
 #[library_benchmark]
-#[bench::small(setup = parse_workspace_10)]
-#[bench::medium(setup = parse_workspace_100)]
-#[bench::large(setup = parse_workspace_500)]
+#[bench::small(setup = parse_workspace_small)]
+#[bench::medium(setup = parse_workspace_medium)]
+#[bench::large(setup = parse_workspace_large)]
 fn bench_index_build(files: IndexFixture) {
     let mut index = WorkspaceIndex::default();
     for (uri, doc) in &files {
