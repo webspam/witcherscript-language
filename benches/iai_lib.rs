@@ -1,7 +1,6 @@
 use std::hint::black_box;
 
 use iai_callgrind::{library_benchmark, library_benchmark_group, main};
-use witcherscript_language::builtins::load_builtins_index;
 use witcherscript_language::document::{parse_document, ParsedDocument};
 use witcherscript_language::line_index::SourcePosition;
 use witcherscript_language::resolve::{
@@ -12,9 +11,8 @@ use witcherscript_language::resolve::{
 #[path = "common/synth.rs"]
 mod synth;
 
-const TARGET_URI: &str = "file:///synth/target.ws";
+use synth::{build_workspace, WorkspaceFixture, TARGET_URI};
 
-type WorkspaceFixture = (WorkspaceIndex, WorkspaceIndex, ParsedDocument);
 type FindRefsFixture = (
     WorkspaceIndex,
     WorkspaceIndex,
@@ -23,18 +21,6 @@ type FindRefsFixture = (
     Definition,
 );
 type IndexFixture = Vec<(String, ParsedDocument)>;
-
-fn build_workspace() -> WorkspaceFixture {
-    let mut workspace = WorkspaceIndex::default();
-    for (uri, source) in synth::synth_workspace(40) {
-        let doc = parse_document(source).expect("synth source must parse");
-        workspace.update_document(uri.to_string(), &doc);
-    }
-    let target_doc = parse_document(synth::synth_file(6, 6)).expect("synth source must parse");
-    workspace.update_document(TARGET_URI, &target_doc);
-    let base = load_builtins_index();
-    (workspace, base, target_doc)
-}
 
 fn build_find_refs_fixture() -> FindRefsFixture {
     let (workspace, base, target_doc) = build_workspace();

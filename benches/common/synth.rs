@@ -1,4 +1,13 @@
 use lsp_types::Url;
+use witcherscript_language::builtins::load_builtins_index;
+use witcherscript_language::document::{parse_document, ParsedDocument};
+use witcherscript_language::resolve::WorkspaceIndex;
+
+#[allow(dead_code)]
+pub const TARGET_URI: &str = "file:///synth/target.ws";
+
+#[allow(dead_code)]
+pub type WorkspaceFixture = (WorkspaceIndex, WorkspaceIndex, ParsedDocument);
 
 #[allow(dead_code)]
 pub fn synth_file(num_classes: usize, methods_per_class: usize) -> String {
@@ -47,4 +56,17 @@ pub fn synth_workspace(num_files: usize) -> Vec<(Url, String)> {
             (uri, synth_file(4, 6))
         })
         .collect()
+}
+
+#[allow(dead_code)]
+pub fn build_workspace() -> WorkspaceFixture {
+    let mut workspace = WorkspaceIndex::default();
+    for (uri, source) in synth_workspace(40) {
+        let doc = parse_document(source).expect("synth source must parse");
+        workspace.update_document(uri.to_string(), &doc);
+    }
+    let target_doc = parse_document(synth_file(6, 6)).expect("synth source must parse");
+    workspace.update_document(TARGET_URI, &target_doc);
+    let base = load_builtins_index();
+    (workspace, base, target_doc)
 }
