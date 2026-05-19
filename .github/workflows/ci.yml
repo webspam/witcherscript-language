@@ -57,6 +57,20 @@ jobs:
           restore-keys: |
             iai-${{ runner.os }}-
 
+      - name: Seed baseline from master if cache is empty
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ -d target/iai ] && [ -n "$(ls -A target/iai 2>/dev/null)" ]; then
+            echo "Baseline restored from cache; skipping master seed."
+            exit 0
+          fi
+          echo "No baseline cache (likely expired); running iai on origin/master to seed."
+          original=$(git rev-parse HEAD)
+          git fetch origin master --depth=1
+          git -c advice.detachedHead=false checkout origin/master
+          cargo bench --bench iai_lib
+          git -c advice.detachedHead=false checkout "$original"
+
       - name: Run iai-callgrind benches
         env:
           IAI_CALLGRIND_REGRESSION: "ir=5.0"
