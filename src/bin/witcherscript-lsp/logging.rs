@@ -1,11 +1,13 @@
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use arc_swap::ArcSwap;
 use lsp_types::MessageType;
 use tokio::sync::mpsc;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::Layer;
+
+use crate::config::Config;
 
 pub(crate) const LEVEL_ERROR: u8 = 1;
 pub(crate) const LEVEL_WARN: u8 = 2;
@@ -46,11 +48,9 @@ pub(crate) fn level_from_str(s: &str) -> tracing::Level {
     }
 }
 
-/// Forwards tracing events to the LSP client's log_message via an async channel.
-/// The `min_level` atomic is updated at runtime when the user changes `witcherscript.logLevel`.
 pub(crate) struct LspLogSender {
     pub(crate) sender: mpsc::UnboundedSender<(MessageType, String)>,
-    pub(crate) min_level: Arc<AtomicU8>,
+    pub(crate) config: Arc<ArcSwap<Config>>,
 }
 
 const OWN_TARGET_PREFIXES: [&str; 2] = ["witcherscript_lsp", "witcherscript_language"];
@@ -75,7 +75,7 @@ impl<S: tracing::Subscriber> Layer<S> for LspLogSender {
         }
 
         let level = *event.metadata().level();
-        if level > level_from_u8(self.min_level.load(Ordering::Relaxed)) {
+        if level > level_from_u8(self.config.load().log_level) {
             return;
         }
 

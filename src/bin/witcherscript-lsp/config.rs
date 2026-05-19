@@ -1,4 +1,4 @@
-use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use lsp_types::request::WorkspaceConfiguration;
 use lsp_types::{ConfigurationItem, ConfigurationParams};
@@ -6,7 +6,30 @@ use serde_json::Value;
 use tracing::{info, trace, warn};
 
 use crate::backend::Backend;
-use crate::logging::{level_from_str, level_to_u8};
+use crate::logging::{level_from_str, level_to_u8, DEFAULT_LOG_LEVEL};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Config {
+    pub(crate) log_level: u8,
+    pub(crate) auto_load_mod_shared_imports: bool,
+    pub(crate) diagnostics_enabled: bool,
+    pub(crate) formatter_line_limit: u32,
+    pub(crate) formatter_compact_colon: bool,
+    pub(crate) formatter_align_member_colons: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            log_level: level_to_u8(DEFAULT_LOG_LEVEL),
+            auto_load_mod_shared_imports: true,
+            diagnostics_enabled: true,
+            formatter_line_limit: 100,
+            formatter_compact_colon: false,
+            formatter_align_member_colons: false,
+        }
+    }
+}
 
 fn log_setting_change<T: PartialEq + std::fmt::Display>(setting: &str, prev: T, new: T) {
     if prev != new {
@@ -25,8 +48,7 @@ impl Backend {
         let prev_base_scripts_path = self.base_scripts_path.lock().await.clone();
         let prev_files_exclude = self.files_exclude.lock().await.clone();
         let prev_additional = self.additional_script_dirs.lock().await.clone();
-        let prev_auto_load = self.auto_load_mod_shared_imports.load(Ordering::Relaxed);
-        let prev_diag_enabled = self.diagnostics_enabled.load(Ordering::Relaxed);
+        let prev_cfg = (**self.config.load()).clone();
 
         let items = vec![
             ConfigurationItem {
@@ -75,40 +97,43 @@ impl Backend {
             return ConfigChange::default();
         };
         let mut iter = values.into_iter();
+        let mut next_cfg = prev_cfg.clone();
+
         if let Some(Value::String(path_str)) = iter.next() {
             if !path_str.is_empty() {
                 *self.base_scripts_path.lock().await = Some(std::path::PathBuf::from(path_str));
             }
         }
         if let Some(Value::String(level_str)) = iter.next() {
-            let new_level = level_to_u8(level_from_str(&level_str));
-            self.log_level.store(new_level, Ordering::Relaxed);
-            info!(level = %level_str, "log level updated");
+            next_cfg.log_level = level_to_u8(level_from_str(&level_str));
+            if next_cfg.log_level != prev_cfg.log_level {
+                info!(level = %level_str, "log level updated");
+            }
         }
         if let Some(Value::Number(n)) = iter.next() {
             if let Some(limit) = n.as_u64() {
+                next_cfg.formatter_line_limit = limit as u32;
                 log_setting_change(
                     "formatter.lineLimit",
-                    self.formatter_line_limit
-                        .swap(limit as u32, Ordering::Relaxed),
-                    limit as u32,
+                    prev_cfg.formatter_line_limit,
+                    next_cfg.formatter_line_limit,
                 );
             }
         }
         if let Some(Value::Bool(compact)) = iter.next() {
+            next_cfg.formatter_compact_colon = compact;
             log_setting_change(
                 "formatter.compactColon",
-                self.formatter_compact_colon
-                    .swap(compact, Ordering::Relaxed),
-                compact,
+                prev_cfg.formatter_compact_colon,
+                next_cfg.formatter_compact_colon,
             );
         }
         if let Some(Value::Bool(align)) = iter.next() {
+            next_cfg.formatter_align_member_colons = align;
             log_setting_change(
                 "formatter.alignMemberColons",
-                self.formatter_align_member_colons
-                    .swap(align, Ordering::Relaxed),
-                align,
+                prev_cfg.formatter_align_member_colons,
+                next_cfg.formatter_align_member_colons,
             );
         }
         if let Some(Value::Object(map)) = iter.next() {
@@ -134,34 +159,25 @@ impl Backend {
                 self.additional_script_dirs.lock().await.clear();
             }
         }
-        match iter.next() {
-            Some(Value::Bool(b)) => {
-                self.auto_load_mod_shared_imports
-                    .store(b, Ordering::Relaxed);
-            }
-            _ => {
-                self.auto_load_mod_shared_imports
-                    .store(true, Ordering::Relaxed);
-            }
-        }
-        match iter.next() {
-            Some(Value::Bool(b)) => {
-                self.diagnostics_enabled.store(b, Ordering::Relaxed);
-            }
-            _ => {
-                self.diagnostics_enabled.store(true, Ordering::Relaxed);
-            }
-        }
+        next_cfg.auto_load_mod_shared_imports = match iter.next() {
+            Some(Value::Bool(b)) => b,
+            _ => true,
+        };
+        next_cfg.diagnostics_enabled = match iter.next() {
+            Some(Value::Bool(b)) => b,
+            _ => true,
+        };
+
+        self.config.store(Arc::new(next_cfg.clone()));
 
         let base_scripts_changed = *self.base_scripts_path.lock().await != prev_base_scripts_path;
         let files_exclude_changed = *self.files_exclude.lock().await != prev_files_exclude;
         let new_additional_len = self.additional_script_dirs.lock().await.len();
         let additional_changed = new_additional_len != prev_additional.len()
             || *self.additional_script_dirs.lock().await != prev_additional;
-        let new_auto_load = self.auto_load_mod_shared_imports.load(Ordering::Relaxed);
-        let auto_load_changed = new_auto_load != prev_auto_load;
-        let new_diag_enabled = self.diagnostics_enabled.load(Ordering::Relaxed);
-        let diagnostics_toggled = new_diag_enabled != prev_diag_enabled;
+        let auto_load_changed =
+            next_cfg.auto_load_mod_shared_imports != prev_cfg.auto_load_mod_shared_imports;
+        let diagnostics_toggled = next_cfg.diagnostics_enabled != prev_cfg.diagnostics_enabled;
         if base_scripts_changed {
             trace!(setting = "gameDirectory", "setting changed");
         }
@@ -179,16 +195,16 @@ impl Backend {
         if auto_load_changed {
             trace!(
                 setting = "autoLoadModSharedImports",
-                prev = prev_auto_load,
-                new = new_auto_load,
+                prev = prev_cfg.auto_load_mod_shared_imports,
+                new = next_cfg.auto_load_mod_shared_imports,
                 "setting changed"
             );
         }
         if diagnostics_toggled {
             trace!(
                 setting = "diagnostics.enable",
-                prev = prev_diag_enabled,
-                new = new_diag_enabled,
+                prev = prev_cfg.diagnostics_enabled,
+                new = next_cfg.diagnostics_enabled,
                 "setting changed"
             );
         }

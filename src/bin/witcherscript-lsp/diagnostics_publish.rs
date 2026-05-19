@@ -17,7 +17,7 @@ use crate::cst_cache::{cst_diagnostics_with_cache, DbFingerprint};
 impl Backend {
     #[tracing::instrument(skip(self), level = "debug")]
     pub(crate) async fn publish_open_diagnostics(&self) {
-        if !self.diagnostics_enabled.load(Ordering::Relaxed) {
+        if !self.config.load().diagnostics_enabled {
             return;
         }
 
@@ -151,7 +151,7 @@ impl Backend {
     }
 
     pub(crate) async fn apply_diagnostics_toggle(&self) {
-        if self.diagnostics_enabled.load(Ordering::Relaxed) {
+        if self.config.load().diagnostics_enabled {
             self.publish_open_diagnostics().await;
         } else {
             let uris: Vec<Url> = {
