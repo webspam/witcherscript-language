@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use lsp_types::{Position, Url};
@@ -193,7 +192,7 @@ impl Backend {
     pub(crate) async fn index_base_scripts(&self) {
         let game_dir_opt = self.base_scripts_path.lock().await.clone();
         let extras = self.additional_script_dirs.lock().await.clone();
-        let auto_load = self.auto_load_mod_shared_imports.load(Ordering::Relaxed);
+        let auto_load = self.config.load().auto_load_mod_shared_imports;
 
         if game_dir_opt.is_none() && extras.is_empty() {
             let mut idx = self.base_scripts_index.lock().await;

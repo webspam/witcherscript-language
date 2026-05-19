@@ -258,10 +258,11 @@ mod watched_files {
 #[cfg(test)]
 mod concurrent_doc_ops {
     use std::collections::HashMap;
-    use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8};
+    use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
+    use arc_swap::ArcSwap;
     use async_lsp::router::Router;
     use async_lsp::{ClientSocket, LanguageServer};
     use lsp_types::{
@@ -274,6 +275,7 @@ mod concurrent_doc_ops {
     use witcherscript_language::script_env::ScriptEnvironment;
 
     use crate::backend::{Backend, DocOp};
+    use crate::config::Config;
 
     fn make_backend() -> (Backend, mpsc::UnboundedReceiver<DocOp>) {
         let (_main_loop, client) =
@@ -281,7 +283,10 @@ mod concurrent_doc_ops {
         let (doc_ops_tx, doc_ops_rx) = mpsc::unbounded_channel();
         let backend = Backend {
             client,
-            log_level: Arc::new(AtomicU8::new(0)),
+            config: Arc::new(ArcSwap::from_pointee(Config {
+                diagnostics_enabled: false,
+                ..Config::default()
+            })),
             documents: Arc::new(Mutex::new(HashMap::new())),
             published_diagnostics: Arc::new(Mutex::new(HashMap::new())),
             workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
@@ -290,16 +295,11 @@ mod concurrent_doc_ops {
             files_exclude: Arc::new(Mutex::new(Vec::new())),
             base_scripts_path: Arc::new(Mutex::new(None)),
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
-            auto_load_mod_shared_imports: Arc::new(AtomicBool::new(true)),
-            diagnostics_enabled: Arc::new(AtomicBool::new(false)),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
             builtins_index: Arc::new(load_builtins_index()),
             script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
             cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
-            formatter_line_limit: Arc::new(AtomicU32::new(100)),
-            formatter_compact_colon: Arc::new(AtomicBool::new(false)),
-            formatter_align_member_colons: Arc::new(AtomicBool::new(false)),
             initial_index_done: Arc::new(AtomicBool::new(false)),
             doc_ops_tx,
         };

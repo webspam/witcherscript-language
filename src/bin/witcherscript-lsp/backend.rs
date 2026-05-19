@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
 use futures::future::BoxFuture;
 use lsp_types::notification::PublishDiagnostics;
@@ -43,6 +44,7 @@ use witcherscript_language::semantic_tokens::{
     collect_semantic_tokens, TOKEN_MODIFIERS, TOKEN_TYPES,
 };
 
+use crate::config::Config;
 use crate::convert::{
     annotation_name_items, builtin_type_item, class_body_kw_item, completion_item,
     document_symbols, hover_markdown, keyword_snippet_item, lsp_range, script_body_item,
@@ -118,7 +120,7 @@ pub(crate) fn builtin_source_response(uri: &str) -> Result<Value> {
 #[derive(Debug, Clone)]
 pub(crate) struct Backend {
     pub(crate) client: ClientSocket,
-    pub(crate) log_level: Arc<AtomicU8>,
+    pub(crate) config: Arc<ArcSwap<Config>>,
     pub(crate) documents: Arc<Mutex<HashMap<Url, ParsedDocument>>>,
     pub(crate) published_diagnostics: Arc<Mutex<HashMap<Url, Vec<Diagnostic>>>>,
     pub(crate) workspace_index: Arc<Mutex<WorkspaceIndex>>,
@@ -127,16 +129,11 @@ pub(crate) struct Backend {
     pub(crate) files_exclude: Arc<Mutex<Vec<String>>>,
     pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
-    pub(crate) auto_load_mod_shared_imports: Arc<AtomicBool>,
-    pub(crate) diagnostics_enabled: Arc<AtomicBool>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     pub(crate) builtins_index: Arc<WorkspaceIndex>,
     pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
     pub(crate) cst_diag_cache: Arc<Mutex<HashMap<Url, crate::cst_cache::CstCacheEntry>>>,
-    pub(crate) formatter_line_limit: Arc<AtomicU32>,
-    pub(crate) formatter_compact_colon: Arc<AtomicBool>,
-    pub(crate) formatter_align_member_colons: Arc<AtomicBool>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
     pub(crate) doc_ops_tx: mpsc::UnboundedSender<DocOp>,
 }
@@ -322,36 +319,33 @@ impl Backend {
                     .collect();
                 *self.additional_script_dirs.lock().await = dirs;
             }
+            let mut cfg = (**self.config.load()).clone();
             if let Some(b) = opts
                 .get("autoLoadModSharedImports")
                 .and_then(|v| v.as_bool())
             {
-                self.auto_load_mod_shared_imports
-                    .store(b, Ordering::Relaxed);
+                cfg.auto_load_mod_shared_imports = b;
             }
             if let Some(diag) = opts.get("diagnostics") {
                 if let Some(b) = diag.get("enable").and_then(|v| v.as_bool()) {
-                    self.diagnostics_enabled.store(b, Ordering::Relaxed);
+                    cfg.diagnostics_enabled = b;
                 }
             }
             if let Some(level_str) = opts.get("logLevel").and_then(|v| v.as_str()) {
-                self.log_level
-                    .store(level_to_u8(level_from_str(level_str)), Ordering::Relaxed);
+                cfg.log_level = level_to_u8(level_from_str(level_str));
             }
             if let Some(formatter) = opts.get("formatter") {
                 if let Some(limit) = formatter.get("lineLimit").and_then(|v| v.as_u64()) {
-                    self.formatter_line_limit
-                        .store(limit as u32, Ordering::Relaxed);
+                    cfg.formatter_line_limit = limit as u32;
                 }
                 if let Some(compact) = formatter.get("compactColon").and_then(|v| v.as_bool()) {
-                    self.formatter_compact_colon
-                        .store(compact, Ordering::Relaxed);
+                    cfg.formatter_compact_colon = compact;
                 }
                 if let Some(align) = formatter.get("alignMemberColons").and_then(|v| v.as_bool()) {
-                    self.formatter_align_member_colons
-                        .store(align, Ordering::Relaxed);
+                    cfg.formatter_align_member_colons = align;
                 }
             }
+            self.config.store(Arc::new(cfg));
         }
 
         let roots = workspace_roots(params);
@@ -585,7 +579,7 @@ impl Backend {
         let db = SymbolDb::new(&workspace, &base)
             .with_script_env(&script_env)
             .with_builtins(&self.builtins_index);
-        let compact_colon = self.formatter_compact_colon.load(Ordering::Relaxed);
+        let compact_colon = self.config.load().formatter_compact_colon;
 
         Ok(signature_help(
             uri.as_str(),
@@ -1030,9 +1024,10 @@ impl Backend {
             return Ok(None);
         };
 
-        let line_limit = self.formatter_line_limit.load(Ordering::Relaxed);
-        let compact_colon = self.formatter_compact_colon.load(Ordering::Relaxed);
-        let align_member_colons = self.formatter_align_member_colons.load(Ordering::Relaxed);
+        let cfg = self.config.load();
+        let line_limit = cfg.formatter_line_limit;
+        let compact_colon = cfg.formatter_compact_colon;
+        let align_member_colons = cfg.formatter_align_member_colons;
 
         let formatted = format_document(
             document.tree.root_node(),

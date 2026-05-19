@@ -11,9 +11,10 @@ mod watcher;
 
 use std::collections::HashMap;
 use std::io::IsTerminal;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use async_lsp::concurrency::ConcurrencyLayer;
 use async_lsp::panic::CatchUnwindLayer;
 use async_lsp::router::Router;
@@ -36,7 +37,8 @@ use witcherscript_language::resolve::WorkspaceIndex;
 use witcherscript_language::script_env::ScriptEnvironment;
 
 use backend::{Backend, DocOp};
-use logging::{level_to_u8, LspLogSender, DEFAULT_LOG_LEVEL};
+use config::Config;
+use logging::LspLogSender;
 
 type LogRxHolder = Arc<Mutex<Option<mpsc::UnboundedReceiver<(MessageType, String)>>>>;
 
@@ -52,12 +54,12 @@ async fn main() {
     let listen_port = parse_listen_port();
 
     let (log_tx, log_rx) = mpsc::unbounded_channel::<(MessageType, String)>();
-    let log_level = Arc::new(AtomicU8::new(level_to_u8(DEFAULT_LOG_LEVEL)));
+    let config = Arc::new(ArcSwap::from_pointee(Config::default()));
 
-    init_tracing(log_tx, Arc::clone(&log_level), listen_port.is_some());
+    init_tracing(log_tx, Arc::clone(&config), listen_port.is_some());
 
     let log_rx_holder = Arc::new(Mutex::new(Some(log_rx)));
-    let log_level_for_backend = Arc::clone(&log_level);
+    let config_for_backend = Arc::clone(&config);
 
     let (server, _client_socket) = async_lsp::MainLoop::new_server(move |client: ClientSocket| {
         spawn_log_forwarder(client.clone(), Arc::clone(&log_rx_holder));
@@ -66,7 +68,7 @@ async fn main() {
 
         let backend = Backend {
             client,
-            log_level: Arc::clone(&log_level_for_backend),
+            config: Arc::clone(&config_for_backend),
             documents: Arc::new(Mutex::new(HashMap::new())),
             published_diagnostics: Arc::new(Mutex::new(HashMap::new())),
             workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
@@ -75,16 +77,11 @@ async fn main() {
             files_exclude: Arc::new(Mutex::new(Vec::new())),
             base_scripts_path: Arc::new(Mutex::new(None)),
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
-            auto_load_mod_shared_imports: Arc::new(AtomicBool::new(true)),
-            diagnostics_enabled: Arc::new(AtomicBool::new(true)),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
             builtins_index: Arc::new(load_builtins_index()),
             script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
             cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
-            formatter_line_limit: Arc::new(AtomicU32::new(100)),
-            formatter_compact_colon: Arc::new(AtomicBool::new(false)),
-            formatter_align_member_colons: Arc::new(AtomicBool::new(false)),
             initial_index_done: Arc::new(AtomicBool::new(false)),
             doc_ops_tx,
         };
@@ -161,7 +158,7 @@ fn parse_listen_port() -> Option<u16> {
 
 fn init_tracing(
     log_tx: mpsc::UnboundedSender<(MessageType, String)>,
-    log_level: Arc<AtomicU8>,
+    config: Arc<ArcSwap<Config>>,
     tcp_mode: bool,
 ) {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
@@ -184,7 +181,7 @@ fn init_tracing(
         )
         .with(LspLogSender {
             sender: log_tx,
-            min_level: log_level,
+            config,
         })
         .init();
 }

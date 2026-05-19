@@ -24,8 +24,8 @@ The binary is intentionally thin. All parse/resolve logic lives in the library (
 
 ```rust
 struct Backend {
-    client: Client,                                              // tower-lsp client handle
-    log_level: Arc<AtomicU8>,                                   // runtime log level (1=ERROR..5=TRACE)
+    client: ClientSocket,                                       // async-lsp client handle
+    config: Arc<ArcSwap<Config>>,                               // user-facing settings (log level, formatter, diagnostics, …)
     documents: Arc<Mutex<HashMap<Url, ParsedDocument>>>,        // editor-open files
     workspace_index: Arc<Mutex<WorkspaceIndex>>,                // user project symbol index
     workspace_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,  // parsed user project files
@@ -37,7 +37,7 @@ struct Backend {
 }
 ```
 
-All fields are `Arc<Mutex<>>` for async-safe shared state across tokio tasks.
+All shared mutable state is wrapped for async-safe access: `Arc<Mutex<>>` for collections, `Arc<ArcSwap<Config>>` for the read-mostly settings bag.
 
 ## Implemented LSP capabilities
 
@@ -111,7 +111,7 @@ This handles the mixed encodings found in shipped Witcher 3 script files.
 | Setting | Where | Effect |
 |---|---|---|
 | `witcherscript.gameDirectory` | `initializationOptions` or `workspace/configuration` | Path to game directory for base script indexing |
-| `witcherscript.logLevel` | `initializationOptions` or `workspace/configuration` | Sets `log_level: Arc<AtomicU8>`; accepts `error`/`warn`/`info`/`debug`/`trace` |
+| `witcherscript.logLevel` | `initializationOptions` or `workspace/configuration` | Sets `config.log_level` (read via `Arc<ArcSwap<Config>>`); accepts `error`/`warn`/`info`/`debug`/`trace` |
 
 Configuration is re-fetched on `did_change_configuration()` and base scripts are re-indexed if the game directory changed.
 
