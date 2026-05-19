@@ -11,6 +11,7 @@
 | `src/resolve/tests/` | Everything in the `resolve/` submodules (~3400 lines across 11 files, most comprehensive) |
 | `src/semantic_tokens/tests.rs` | `collect_semantic_tokens()` — classify, resolve, encode |
 | `src/bin/witcherscript-lsp/tests.rs` | LSP-specific: encoding, hover markdown, completion items, rename |
+| `src/bin/witcherscript-lsp/tests/e2e/` | Wire-level E2E tests that drive the real `Backend` over a tokio duplex pair with framed JSON-RPC |
 | `tests/parser_fixtures.rs` | Parametrized parse tests over all fixture files |
 | `tests/language_features.rs` | Integration tests for symbol extraction + resolution |
 
@@ -96,6 +97,63 @@ fn make_index(uri: &str, doc: &ParsedDocument) -> WorkspaceIndex {
 }
 ```
 
+## tests/e2e/ wire-level LSP tests
+
+`src/bin/witcherscript-lsp/tests/e2e/` exercises the full LSP stack: tests speak framed JSON-RPC to a real `Backend` running inside the same process. The server is wired with the same `Router` + `LifecycleLayer` + `CatchUnwindLayer` + `ConcurrencyLayer` + `TracingLayer` stack as `main.rs`, so a regression in dispatch, encoding, or framing fails a test rather than slipping past the unit suite.
+
+| File | What it covers |
+|---|---|
+| `harness.rs` | `LspClient::spawn()` builds the server on a `tokio::io::duplex` pair and returns a client that speaks `Content-Length`-framed JSON. Exposes `request<R>`, `notify<N>`, `open`, `change_full`, `wait_diagnostics`. |
+| `fixture.rs` | Parses inline source with rust-analyzer-style markers: `//- /path.ws` for multi-file, `$0` for the cursor, `//^^^ label` for an expected span on the line above. |
+| `definition.rs` | `textDocument/definition` golden paths |
+| `completion.rs` | `textDocument/completion` golden paths |
+| `hover.rs` | `textDocument/hover` golden paths |
+| `rename.rs` | `textDocument/rename` golden paths |
+| `diagnostics.rs` | `textDocument/publishDiagnostics` after open and after change |
+
+**Fixture format:**
+
+```rust
+let f = Fixture::parse(concat!(
+    "function Foo() {}\n",
+    "//       ^^^ name\n",
+    "function Bar() { Fo$0o(); }\n",
+));
+```
+
+- `$0` is the cursor (exactly one per fixture).
+- `//^^^ label` annotates a span on the previous content line; `Fixture::span("label")` returns `(Url, Range)`.
+- `//- /lib.ws` starts a new virtual file in a multi-file fixture; without any `//- ` marker the source lands under `file:///main.ws`.
+- Annotation lines are stripped before the source is sent to the server, so positions reference the *stripped* line numbering.
+
+**Writing an E2E test:**
+
+```rust
+#[tokio::test]
+async fn definition_resolves_function_callsite_to_declaration() {
+    let f = Fixture::parse(concat!(
+        "function Foo() {}\n",
+        "//       ^^^ name\n",
+        "function Bar() { Fo$0o(); }\n",
+    ));
+    let mut client = LspClient::spawn().await;
+    for file in &f.files {
+        client.open(&file.uri, &file.text).await;
+    }
+    let (cursor_uri, pos) = f.cursor();
+    let resp = client.request::<GotoDefinition>(/* params at pos */).await;
+    let (expected_uri, expected_range) = f.span("name");
+    // assert resp points at expected_uri/expected_range
+}
+```
+
+**When to add one:**
+
+- Wiring up a new LSP capability: one golden-path E2E case per request type.
+- A bug that only manifested through the JSON-RPC layer (lsp-types schema mismatch, layer ordering, dispatch arm).
+
+For pure resolve / completion / inference logic, prefer `src/resolve/tests/`; E2E tests should not duplicate that coverage.
+
 ## Running tests
 
 ```
@@ -116,7 +174,8 @@ There are no doctests in this repo, so a separate `cargo test --doc` step is not
 | New symbol kind | Test in `symbols.rs` `#[cfg(test)]` + cases in `resolve/tests.rs` |
 | New resolution case | Test in `resolve/tests.rs` (inline source) |
 | New completion case | Test in `resolve/tests.rs` or a new `language_features.rs` test |
-| New LSP handler | Test in `src/bin/witcherscript-lsp/tests.rs` |
+| New LSP handler | Test in `src/bin/witcherscript-lsp/tests.rs` (handler logic) + a golden-path case in `tests/e2e/<feature>.rs` (wire-level) |
+| Regression that only shows up over JSON-RPC (serialization, dispatch, framing) | Test in `src/bin/witcherscript-lsp/tests/e2e/` |
 | New semantic token | Test in `semantic_tokens/tests.rs` |
 
 ## assert_symbol helper
