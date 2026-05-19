@@ -25,7 +25,7 @@ use lsp_types::{
     WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 use serde_json::{json, Value};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, Mutex, MutexGuard};
 use tracing::{error, info, trace};
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::document::{apply_content_change, ParsedDocument};
@@ -138,7 +138,39 @@ pub(crate) struct Backend {
     pub(crate) doc_ops_tx: mpsc::UnboundedSender<DocOp>,
 }
 
+pub(crate) struct DbHandles<'a> {
+    workspace: MutexGuard<'a, WorkspaceIndex>,
+    base: MutexGuard<'a, WorkspaceIndex>,
+    script_env: MutexGuard<'a, ScriptEnvironment>,
+    builtins: &'a WorkspaceIndex,
+}
+
+impl<'a> DbHandles<'a> {
+    pub(crate) fn db(&'a self) -> SymbolDb<'a> {
+        SymbolDb::new(&self.workspace, &self.base)
+            .with_script_env(&self.script_env)
+            .with_builtins(self.builtins)
+    }
+
+    pub(crate) fn workspace(&self) -> &WorkspaceIndex {
+        &self.workspace
+    }
+
+    pub(crate) fn base(&self) -> &WorkspaceIndex {
+        &self.base
+    }
+}
+
 impl Backend {
+    pub(crate) async fn db_handles(&self) -> DbHandles<'_> {
+        DbHandles {
+            workspace: self.workspace_index.lock().await,
+            base: self.base_scripts_index.lock().await,
+            script_env: self.script_env.lock().await,
+            builtins: self.builtins_index.as_ref(),
+        }
+    }
+
     pub(crate) async fn handle_builtin_source(&self, params: Value) -> Result<Value> {
         let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("");
         trace!(uri = uri, "witcherscript/builtinSource request");
@@ -512,12 +544,8 @@ impl Backend {
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let workspace = self.workspace_index.lock().await;
-        let base = self.base_scripts_index.lock().await;
-        let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base)
-            .with_script_env(&script_env)
-            .with_builtins(&self.builtins_index);
+        let handles = self.db_handles().await;
+        let db = handles.db();
         let definitions =
             resolve_all_definitions(uri.as_str(), document, &db, source_position(position));
 
@@ -545,12 +573,8 @@ impl Backend {
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let workspace = self.workspace_index.lock().await;
-        let base = self.base_scripts_index.lock().await;
-        let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base)
-            .with_script_env(&script_env)
-            .with_builtins(&self.builtins_index);
+        let handles = self.db_handles().await;
+        let db = handles.db();
         let Some(definition) =
             resolve_definition(uri.as_str(), document, &db, source_position(position))
         else {
@@ -573,12 +597,8 @@ impl Backend {
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let workspace = self.workspace_index.lock().await;
-        let base = self.base_scripts_index.lock().await;
-        let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base)
-            .with_script_env(&script_env)
-            .with_builtins(&self.builtins_index);
+        let handles = self.db_handles().await;
+        let db = handles.db();
         let compact_colon = self.config.load().formatter_compact_colon;
 
         Ok(signature_help(
@@ -616,12 +636,8 @@ impl Backend {
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let workspace = self.workspace_index.lock().await;
-        let base = self.base_scripts_index.lock().await;
-        let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base)
-            .with_script_env(&script_env)
-            .with_builtins(&self.builtins_index);
+        let handles = self.db_handles().await;
+        let db = handles.db();
         let data = collect_semantic_tokens(uri.as_str(), document, &db);
         let tokens: Vec<SemanticToken> = data
             .chunks_exact(5)
@@ -648,15 +664,11 @@ impl Backend {
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let workspace = self.workspace_index.lock().await;
-        let base = self.base_scripts_index.lock().await;
-        let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base)
-            .with_script_env(&script_env)
-            .with_builtins(&self.builtins_index);
+        let handles = self.db_handles().await;
+        let db = handles.db();
 
-        let ws_kb = workspace.doc_idents_bytes() / 1024;
-        let base_kb = base.doc_idents_bytes() / 1024;
+        let ws_kb = handles.workspace().doc_idents_bytes() / 1024;
+        let base_kb = handles.base().doc_idents_bytes() / 1024;
         info!(
             ws_kb,
             base_kb,
@@ -745,9 +757,7 @@ impl Backend {
         };
 
         let documents = self.documents.lock().await;
-        let workspace = self.workspace_index.lock().await;
-        let base_index = self.base_scripts_index.lock().await;
-        let script_env = self.script_env.lock().await;
+        let handles = self.db_handles().await;
         let workspace_docs = self.workspace_documents.lock().await;
         let base_docs = self.base_scripts_documents.lock().await;
 
@@ -764,9 +774,7 @@ impl Backend {
             ));
         }
 
-        let db = SymbolDb::new(&workspace, &base_index)
-            .with_script_env(&script_env)
-            .with_builtins(&self.builtins_index);
+        let db = handles.db();
 
         let merged = merge_documents(&base_docs, &workspace_docs, &documents);
 
@@ -796,12 +804,8 @@ impl Backend {
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let workspace = self.workspace_index.lock().await;
-        let base = self.base_scripts_index.lock().await;
-        let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base)
-            .with_script_env(&script_env)
-            .with_builtins(&self.builtins_index);
+        let handles = self.db_handles().await;
+        let db = handles.db();
 
         let pos = source_position(position);
 

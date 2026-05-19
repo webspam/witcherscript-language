@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use tracing::{debug, error, info, warn};
 use witcherscript_language::document::{parse_document, ParsedDocument};
 use witcherscript_language::files::{collect_witcherscript_files, read_script_file};
-use witcherscript_language::resolve::{resolve_definition, Definition, SymbolDb, WorkspaceIndex};
+use witcherscript_language::resolve::{resolve_definition, Definition, WorkspaceIndex};
 use witcherscript_language::script_env::parse_script_environment;
 
 use crate::backend::Backend;
@@ -180,12 +180,8 @@ impl Backend {
     pub(crate) async fn resolve_at(&self, uri: &Url, position: Position) -> Option<Definition> {
         let documents = self.documents.lock().await;
         let document = documents.get(uri)?;
-        let workspace = self.workspace_index.lock().await;
-        let base = self.base_scripts_index.lock().await;
-        let script_env = self.script_env.lock().await;
-        let db = SymbolDb::new(&workspace, &base)
-            .with_script_env(&script_env)
-            .with_builtins(&self.builtins_index);
+        let handles = self.db_handles().await;
+        let db = handles.db();
         resolve_definition(uri.as_str(), document, &db, source_position(position))
     }
 
