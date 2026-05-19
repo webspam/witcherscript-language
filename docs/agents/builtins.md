@@ -26,7 +26,7 @@ When a query asks for members of `array<int>`:
    - Replaces whole-ident occurrences of `T` with `int` in `type_annotation`, `signature`, `detail`.
    - Rewrites `container_name` from `array` to `array<int>` so hover shows `(method) array<int>.PushBack(param1: int) : void`.
 
-Whole-ident substitution: `T`, `<T>`, `: T)`, `: T;` all match; `TArray`, `MyT`, `T_x` do not. See `substitute_placeholder()` in `src/resolve/mod.rs`.
+Whole-ident substitution: `T`, `<T>`, `: T)`, `: T;` all match; `TArray`, `MyT`, `T_x` do not. See `substitute_placeholder()` in `src/resolve/db.rs`.
 
 Nested generics (`array<array<int>>`) substitute one level: `Last() : T` becomes `Last() : array<int>`.
 
@@ -40,5 +40,5 @@ Nested generics (`array<array<int>>`) substitute one level: `Last() : T` becomes
 
 1. Add or edit `builtins/<name>.ws`. Use `T` as the generic placeholder (if needed) and the same conventions as `array.ws`.
 2. In `src/builtins.rs`: add a `const FOO_WS: &str = include_str!("../builtins/<name>.ws")`, a `BUILTIN_<NAME>_URI` constant, and an `insert_builtin(&mut index, ..., FOO_WS)` call in `load_builtins_index()`. Add the URI to `builtin_source()`.
-3. If the type is generic, the substitution layer in `src/resolve/mod.rs` will work automatically — it keys off `parse_generic_type()` and is not array-specific.
+3. If the type is generic, the substitution layer in `src/resolve/db.rs` will work automatically — it keys off `parse_generic_type()` (in `src/resolve/mod.rs`) and is not array-specific.
 4. Add unit tests in `src/resolve/tests/builtin_<name>.rs` and a fixture in `tests/fixtures/valid/`.

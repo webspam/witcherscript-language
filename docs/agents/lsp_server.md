@@ -1,15 +1,19 @@
 # LSP server
 
-**Module:** `src/bin/witcherscript-lsp/` (~2860 lines across 6 files)
+**Module:** `src/bin/witcherscript-lsp/` (~3300 lines across 10 files)
 
 | File | Purpose |
 |---|---|
 | `main.rs` | Tokio entry point — wires the tracing layer + `LspLogSender`, constructs `Backend`, and serves over stdio. |
 | `backend.rs` | `Backend` struct, all `LanguageServer` handler impls (`initialize`, `did_open`, `completion`, `hover`, `rename`, …). |
 | `convert.rs` | LSP↔internal type conversion: `lsp_range`, `source_position`, `lsp_symbol_kind`, `completion_item`, `document_symbols`, `hover_markdown`, `read_script_file`, `workspace_roots`. |
+| `cst_cache.rs` | Per-document parse-tree cache with invalidation hooks. |
 | `indexing.rs` | Workspace + base-script discovery and indexing helpers (game-directory scan, `modSharedImports` auto-load, settings refresh). |
+| `config.rs` | `fetch_config`, `apply_diagnostics_toggle`, `ConfigChange` plumbing for `workspace/configuration`. |
+| `diagnostics_publish.rs` | `publish_open_diagnostics`, `publish_syntactic_only` — diagnostic emission for open documents. |
+| `watcher.rs` | `register_file_watchers`, `apply_watched_file_events`, `classify_watched_event` — file-watcher integration. |
 | `logging.rs` | `LspLogSender` tracing layer, level enum/parsing, `DEFAULT_LOG_LEVEL`. |
-| `tests.rs` | `#[cfg(test)]` LSP-specific tests: encoding, hover markdown, completion items, rename. |
+| `tests.rs` + `tests/{completion,diagnostics,file_io,hover,indexing,refactoring}.rs` | `#[cfg(test)]` LSP-specific tests split per feature. |
 
 The binary is intentionally thin. All parse/resolve logic lives in the library (`witcherscript_language::*`). The binary only:
 - Owns shared state in the `Backend` struct
@@ -177,5 +181,5 @@ Open `documents` (editor-open) take precedence over `workspace_documents` (backg
 
 1. Add the capability to `ServerCapabilities` in `initialize()`.
 2. Implement the handler method on `Backend` (`impl LanguageServer for Backend`).
-3. If the handler needs new resolve logic, add it to `resolve/mod.rs` as a `pub fn` — not in the binary.
-4. Add a `#[cfg(test)]` test in `src/bin/witcherscript-lsp/tests.rs`.
+3. If the handler needs new resolve logic, add it as a `pub fn` in the appropriate `src/resolve/` submodule — not in the binary.
+4. Add a `#[cfg(test)]` test in the relevant `src/bin/witcherscript-lsp/tests/<feature>.rs` file.

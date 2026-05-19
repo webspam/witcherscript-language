@@ -1,6 +1,6 @@
 # Resolution and workspace indexing
 
-**File:** `src/resolve/mod.rs` (and `resolve/tests.rs` — 1800 lines of tests)
+**Module:** `src/resolve/` — split across `mod.rs` (helpers, `Definition`, `ObservationSet`), `db.rs` (`WorkspaceIndex`, `SymbolDb`, generic substitution), `definition.rs` (`resolve_definition` and self/super/this resolution), `references.rs` (`find_references`), `inference.rs` (`infer_expr_type` and type-context helpers), `signature.rs` (`signature_help`, `hover_text`), `ast.rs` (CST navigation helpers), and `completion/{members,types,bodies,headers}.rs`. Tests live under `src/resolve/tests/`.
 
 ## WorkspaceIndex
 

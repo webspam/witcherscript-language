@@ -72,7 +72,7 @@ parse_document(source)          [document.rs]
     ▼
 ParsedDocument { source, tree, line_index, diagnostics, symbols }
     │
-    ├─► WorkspaceIndex::update_document(uri, doc)    [resolve/mod.rs]
+    ├─► WorkspaceIndex::update_document(uri, doc)    [resolve/db.rs]
     │       inserts into top_level_by_name, member_by_type,
     │       superclass_by_name, doc_idents
     │
@@ -119,7 +119,7 @@ When constructing a `SymbolDb` for a request:
 - Exit code: 0 (ok), 1 (diagnostics found), 2 (runtime error)
 - Flags: `--dump-tree`, `--max-diagnostics N`
 
-**`src/bin/witcherscript-lsp/`** — LSP server (module split across `main.rs`, `backend.rs`, `convert.rs`, `indexing.rs`, `logging.rs`, `tests.rs`)
+**`src/bin/witcherscript-lsp/`** — LSP server (module split across `main.rs`, `backend.rs`, `convert.rs`, `cst_cache.rs`, `indexing.rs`, `config.rs`, `diagnostics_publish.rs`, `watcher.rs`, `logging.rs`, and `tests.rs` + per-feature files under `tests/`)
 - Async Tokio runtime; tower-lsp framework over stdin/stdout
 - `Backend` struct holds all shared state behind `Arc<Mutex<>>`
 - All parse/resolve logic lives in the library; the binary only orchestrates
