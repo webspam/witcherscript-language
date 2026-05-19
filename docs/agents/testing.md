@@ -195,8 +195,8 @@ The wire-level smoke bench shares `src/bin/witcherscript-lsp/tests/jsonrpc_clien
 
 iai-callgrind writes per-bench instruction counts under `target/iai/` and, on each run, compares against whatever previous results it finds in that directory. CI persists those results across runs via `actions/cache`:
 
-- Cache key is `iai-<os>-<commit-sha>`. The full key never hits on the first run for a given commit, so the cache step always saves a fresh entry at the end of the job.
-- Restore key is the prefix `iai-<os>-`. PRs and subsequent master runs restore the most recent prior cache (typically the previous master run), so iai-callgrind has a baseline to diff against.
+- Cache key is `iai-<os>-<commit-sha>`. Restore key is the prefix `iai-<os>-`.
+- Only `push` events on `master` save the cache. PR runs restore but never save. That keeps the restore prefix resolving to a master baseline only: a PR can't poison its own follow-up commit by saving a regressed cache that the next commit restores from.
 - `IAI_CALLGRIND_REGRESSION=ir=5.0` makes the job fail if instruction reads (`ir`) climb more than 5% vs the restored baseline. The first run on a fresh cache prints absolute counts and exits zero, since there's nothing to compare against yet.
 
 Fixture work inside each `#[library_benchmark]` runs in a `#[bench(setup = ...)]` callback so cachegrind only measures the target call, not the surrounding parse / index build. See `benches/iai_lib.rs` for the pattern.
