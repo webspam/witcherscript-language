@@ -2,7 +2,7 @@ use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
-use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::super::ast::{
     find_ancestor_of_kind, is_kind_or_error_wrapped_kind, is_statement_boundary,
@@ -243,11 +243,6 @@ fn function_body_completions<'a>(
             has_super,
         },
     ))
-}
-
-#[allow(dead_code)]
-fn symbol_id(symbol: &Symbol) -> SymbolId {
-    symbol.id
 }
 
 #[derive(Clone, Copy, PartialEq)]
