@@ -29,6 +29,18 @@ build:
 release:
     cargo build --release
 
+# Run criterion library benches (wall-clock, local).
+bench:
+    cargo bench --bench lib_parse --bench lib_symbols --bench lib_index --bench lib_resolve --bench lib_completion
+
+# Save a criterion baseline (e.g. before a refactor): just bench-baseline pre
+bench-baseline name:
+    cargo bench --bench lib_parse --bench lib_symbols --bench lib_index --bench lib_resolve --bench lib_completion -- --save-baseline {{name}}
+
+# Compare current run against a saved baseline.
+bench-compare name:
+    cargo bench --bench lib_parse --bench lib_symbols --bench lib_index --bench lib_resolve --bench lib_completion -- --baseline {{name}}
+
 # Run the LSP server in TCP listen mode (default port 9257). Stderr -> target/lsp-tcp.log.
 # Uses `cmd /c` for the redirect because PowerShell's `2>` mangles native stderr
 # (UTF-16 + NativeCommandError wrapping); cmd does true fd-2 redirection.

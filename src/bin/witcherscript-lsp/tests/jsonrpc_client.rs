@@ -10,9 +10,7 @@ use lsp_types::{
     TextDocumentContentChangeEvent, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
 };
 use serde_json::{json, Value};
-use tokio::io::{
-    AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader,
-};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::time::timeout;
 
 pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
