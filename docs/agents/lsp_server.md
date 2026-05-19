@@ -14,6 +14,7 @@
 | `watcher.rs` | `register_file_watchers`, `apply_watched_file_events`, `classify_watched_event` — file-watcher integration. |
 | `logging.rs` | `LspLogSender` tracing layer, level enum/parsing, `DEFAULT_LOG_LEVEL`. |
 | `tests.rs` + `tests/{completion,diagnostics,file_io,hover,indexing,refactoring}.rs` | `#[cfg(test)]` LSP-specific tests split per feature. |
+| `tests/e2e/` | Wire-level E2E tests that drive the real `Backend` over a `tokio::io::duplex` pair with framed JSON-RPC. See [testing.md](testing.md#testse2e-wire-level-lsp-tests). |
 
 The binary is intentionally thin. All parse/resolve logic lives in the library (`witcherscript_language::*`). The binary only:
 - Owns shared state in the `Backend` struct
