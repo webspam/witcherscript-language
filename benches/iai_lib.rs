@@ -125,7 +125,12 @@ fn bench_completion_members(fixture: WorkspaceFixture) {
         line: 8,
         character: 9,
     };
-    black_box(completion_members(TARGET_URI, &target_doc, &db, pos));
+    let result = completion_members(TARGET_URI, &target_doc, &db, pos);
+    assert!(
+        !result.is_empty(),
+        "synth layout drifted: cursor no longer lands inside `this.<member>`"
+    );
+    black_box(result);
 }
 
 #[library_benchmark]
@@ -137,7 +142,12 @@ fn bench_statement_completions(fixture: WorkspaceFixture) {
         line: 7,
         character: 4,
     };
-    black_box(statement_completions(TARGET_URI, &target_doc, &db, pos));
+    let result = statement_completions(TARGET_URI, &target_doc, &db, pos);
+    assert!(
+        !result.locals.is_empty() || !result.members.is_empty() || !result.globals.is_empty(),
+        "synth layout drifted: cursor no longer lands inside a method body with visible symbols"
+    );
+    black_box(result);
 }
 
 library_benchmark_group!(

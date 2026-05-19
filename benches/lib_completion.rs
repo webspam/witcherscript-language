@@ -10,11 +10,16 @@ use synth::{build_workspace, TARGET_URI};
 fn bench_completion_members(c: &mut Criterion) {
     let (workspace, base, target_doc) = build_workspace();
     let db = SymbolDb::new(&workspace, &base);
-    // Line 8 is `    this.field0_a = local0;` in method0; char 9 is just past the dot.
     let pos = SourcePosition {
         line: 8,
         character: 9,
     };
+    let canary = completion_members(TARGET_URI, &target_doc, &db, pos);
+    assert!(
+        !canary.is_empty(),
+        "synth layout drifted: cursor no longer lands inside `this.<member>`"
+    );
+
     c.bench_function("completion_members/this_dot", |b| {
         b.iter(|| completion_members(TARGET_URI, &target_doc, &db, pos));
     });
@@ -23,11 +28,16 @@ fn bench_completion_members(c: &mut Criterion) {
 fn bench_statement_completions(c: &mut Criterion) {
     let (workspace, base, target_doc) = build_workspace();
     let db = SymbolDb::new(&workspace, &base);
-    // Line 7 is `    var local0 : int = arg;`; char 4 is the start of the statement.
     let pos = SourcePosition {
         line: 7,
         character: 4,
     };
+    let canary = statement_completions(TARGET_URI, &target_doc, &db, pos);
+    assert!(
+        !canary.locals.is_empty() || !canary.members.is_empty() || !canary.globals.is_empty(),
+        "synth layout drifted: cursor no longer lands inside a method body with visible symbols"
+    );
+
     c.bench_function("statement_completions/in_method_body", |b| {
         b.iter(|| statement_completions(TARGET_URI, &target_doc, &db, pos));
     });

@@ -109,6 +109,11 @@ fn bench_definition(c: &mut Criterion) {
         work_done_progress_params: WorkDoneProgressParams::default(),
         partial_result_params: PartialResultParams::default(),
     };
+    let canary = rt.block_on(async { rpc.request::<GotoDefinition>(params.clone()).await });
+    assert!(
+        canary.is_some(),
+        "synth layout drifted: cursor no longer lands on a resolvable call site"
+    );
 
     c.bench_function("lsp/definition_request", |b| {
         b.iter(|| {
