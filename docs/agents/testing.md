@@ -178,6 +178,49 @@ There are no doctests in this repo, so a separate `cargo test --doc` step is not
 | Regression that only shows up over JSON-RPC (serialization, dispatch, framing) | Test in `src/bin/witcherscript-lsp/tests/e2e/` |
 | New semantic token | Test in `semantic_tokens/tests.rs` |
 
+## Benchmarks
+
+Performance is tracked in two layers under `benches/`. Layout and intent:
+
+| File | Tool | Where it runs | Purpose |
+|---|---|---|---|
+| `benches/lib_*.rs` | criterion | Local | Wall-clock timing of parse / symbols / index / resolve / completion. Use during refactor iteration with `just bench-baseline` and `just bench-compare`. |
+| `benches/iai_lib.rs` | iai-callgrind | CI (Linux) + local on WSL | Instruction counts under cachegrind. Deterministic; immune to CI runner noise. This is the regression-gating layer. |
+| `benches/lsp_smoke.rs` | criterion | Local only | Spawns the release `witcherscript-lsp` binary and measures cold start + warm request latency over stdio. Local sanity check, not gated. |
+| `benches/common/synth.rs` | helper | n/a | Deterministic `synth_file` / `synth_workspace` generators. Each bench includes it via `#[path = "common/synth.rs"]`. |
+
+The wire-level smoke bench shares `src/bin/witcherscript-lsp/tests/jsonrpc_client.rs` with the E2E harness: same framing code, two transports.
+
+### How the iai-callgrind gate works in CI
+
+iai-callgrind writes per-bench instruction counts under `target/iai/` and, on each run, compares against whatever previous results it finds in that directory. CI persists those results across runs via `actions/cache`:
+
+- Cache key is `iai-<os>-<commit-sha>`. Restore key is the prefix `iai-<os>-`.
+- Only `push` events on `master` save the cache. PR runs restore but never save. That keeps the restore prefix resolving to a master baseline only: a PR can't poison its own follow-up commit by saving a regressed cache that the next commit restores from.
+- If a PR finds the cache empty (e.g. GitHub expired it after a week of no activity), the job checks out `origin/master`, runs iai once to seed `target/iai/`, then checks back out to the PR HEAD before the gating run. That keeps the gate live across quiet periods at the cost of one extra bench run on cold-cache PRs.
+- The seed step skips itself when `origin/master` does not yet have `benches/iai_lib.rs` (e.g. on the PR that first introduces the gate, before master has caught up). It emits a GitHub Actions warning annotation so the inactive-gate condition is obvious from the workflow summary, but the job stays green.
+- `IAI_CALLGRIND_REGRESSION=ir=5.0` makes the job fail if instruction reads (`ir`) climb more than 5% vs the restored baseline. The first ever run on master prints absolute counts and exits zero, since there's nothing to compare against yet.
+
+Fixture work inside each `#[library_benchmark]` runs in a `#[bench(setup = ...)]` callback so cachegrind only measures the target call, not the surrounding parse / index build. See `benches/iai_lib.rs` for the pattern.
+
+Recipes:
+
+```
+just bench                   # criterion library benches (wall-clock)
+just bench-baseline pre      # save a labelled criterion baseline
+just bench-compare pre       # compare current run against saved baseline
+just bench-iai               # iai-callgrind (requires valgrind, Linux/WSL)
+just bench-lsp               # criterion LSP smoke benches against release binary
+```
+
+When adding a new hot path that needs perf coverage:
+
+1. Add a criterion bench under `benches/lib_<area>.rs` for local iteration.
+2. Add an iai-callgrind bench in `benches/iai_lib.rs` for CI gating.
+3. If the path is reached only through the LSP wire protocol, also add a scenario to `benches/lsp_smoke.rs`.
+
+CI runs only `iai_lib` (on `ubuntu-latest` with valgrind installed). Criterion benches are local; CI wall-clock measurement is too noisy to gate on.
+
 ## assert_symbol helper
 
 `tests/language_features.rs` defines a small helper used in integration tests:

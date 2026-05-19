@@ -36,7 +36,37 @@ ignore = "0.4"
 arc-swap = "1.9.1"
 
 [dev-dependencies]
-tokio = { version = "1.48.0", features = ["io-util", "time"] }
+tokio = { version = "1.48.0", features = ["io-util", "process", "time"] }
+criterion = { version = "0.5", default-features = false, features = ["async_tokio", "html_reports"] }
+iai-callgrind = "0.14"
+
+[[bench]]
+name = "lib_parse"
+harness = false
+
+[[bench]]
+name = "iai_lib"
+harness = false
+
+[[bench]]
+name = "lsp_smoke"
+harness = false
+
+[[bench]]
+name = "lib_symbols"
+harness = false
+
+[[bench]]
+name = "lib_index"
+harness = false
+
+[[bench]]
+name = "lib_resolve"
+harness = false
+
+[[bench]]
+name = "lib_completion"
+harness = false
 
 [profile.release]
 codegen-units = 1
