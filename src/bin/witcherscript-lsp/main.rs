@@ -1,10 +1,13 @@
 mod backend;
+mod config;
 mod convert;
 mod cst_cache;
+mod diagnostics_publish;
 mod indexing;
 mod logging;
 #[cfg(test)]
 mod tests;
+mod watcher;
 
 use std::collections::HashMap;
 use std::io::IsTerminal;
