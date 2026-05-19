@@ -189,7 +189,7 @@ Performance is tracked in two layers under `benches/`. Layout and intent:
 | `benches/lsp_smoke.rs` | criterion | Local only | Spawns the release `witcherscript-lsp` binary and measures cold start + warm request latency over stdio. Local sanity check, not gated. |
 | `benches/common/synth.rs` | helper | n/a | Deterministic `synth_file` / `synth_workspace` generators. Each bench includes it via `#[path = "common/synth.rs"]`. |
 
-The wire-level smoke bench shares `src/bin/witcherscript-lsp/tests/jsonrpc_client.rs` with the E2E harness — same framing code, two transports.
+The wire-level smoke bench shares `src/bin/witcherscript-lsp/tests/jsonrpc_client.rs` with the E2E harness: same framing code, two transports.
 
 Recipes:
 
