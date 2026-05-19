@@ -8,7 +8,7 @@
 | `src/symbols.rs` `#[cfg(test)]` | `extract_symbols()` — params, locals, functions |
 | `src/line_index.rs` `#[cfg(test)]` | `LineIndex` — byte↔position conversions, UTF-16 |
 | `src/script_env.rs` `#[cfg(test)]` | INI parsing, globals section, symbol positions |
-| `src/resolve/tests/` | Everything in `resolve/mod.rs` (~3400 lines across 11 files, most comprehensive) |
+| `src/resolve/tests/` | Everything in the `resolve/` submodules (~3400 lines across 11 files, most comprehensive) |
 | `src/semantic_tokens/tests.rs` | `collect_semantic_tokens()` — classify, resolve, encode |
 | `src/bin/witcherscript-lsp/tests.rs` | LSP-specific: encoding, hover markdown, completion items, rename |
 | `tests/parser_fixtures.rs` | Parametrized parse tests over all fixture files |
@@ -38,7 +38,7 @@ When adding a new grammar feature or parse rule, add or update a fixture rather 
 
 ## resolve/tests/ — authoritative test patterns
 
-This directory (~3400 lines across 11 files) is the canonical reference for how to write resolution and completion tests. Use it as examples before writing new tests in `resolve/mod.rs`.
+This directory (~3400 lines across 11 files) is the canonical reference for how to write resolution and completion tests. Use it as examples before adding new tests under `src/resolve/tests/`.
 
 | File | What it covers |
 |---|---|

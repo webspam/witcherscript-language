@@ -2,17 +2,15 @@ use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
+use crate::symbols::{Symbol, SymbolKind};
 
-use super::ast::{first_named_child, identifier_at};
+use super::ast::{find_ancestor_of_kind, first_named_child, identifier_at, nodes_at_offset};
 use super::db::SymbolDb;
 use super::inference::{
-    resolve_current_type_member, resolve_document_top_level, resolve_local_or_parameter,
-    resolve_member_access,
+    enclosing_type_context, resolve_current_type_member, resolve_document_top_level,
+    resolve_local_or_parameter, resolve_member_access,
 };
-use super::references::{
-    definition_key, logical_member, resolve_at_definition_site, resolve_self_keyword,
-};
-use super::{dedup_definitions, Definition};
+use super::{annotation_target_class, dedup_definitions, Definition};
 
 pub fn resolve_definition(
     uri: &str,
@@ -120,4 +118,78 @@ pub fn resolve_all_definitions(
         decls.push(primary);
     }
     dedup_definitions(decls)
+}
+
+pub(super) fn logical_member(symbol: &Symbol) -> Option<(String, String)> {
+    match symbol.kind {
+        SymbolKind::Field if symbol.container.is_none() => {
+            annotation_target_class(symbol).map(|t| (t.to_string(), symbol.name.clone()))
+        }
+        SymbolKind::Method | SymbolKind::Field => symbol
+            .container_name
+            .as_deref()
+            .map(|cn| (cn.to_string(), symbol.name.clone())),
+        SymbolKind::Function if symbol.container.is_none() => {
+            annotation_target_class(symbol).map(|t| (t.to_string(), symbol.name.clone()))
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn definition_key(definition: &Definition) -> (String, std::ops::Range<usize>) {
+    (
+        definition.uri.clone(),
+        definition.symbol.selection_byte_range.clone(),
+    )
+}
+
+pub(super) fn resolve_self_keyword(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_offset: usize,
+) -> Option<Definition> {
+    let root = document.tree.root_node();
+    let node = nodes_at_offset(root, byte_offset)
+        .into_iter()
+        .find_map(|n| find_ancestor_of_kind(n, &["this_expr", "super_expr", "parent_expr"]))?;
+
+    let current_type = enclosing_type_context(document, db, byte_offset)?;
+    match node.kind() {
+        "this_expr" => resolve_document_top_level(uri, document, &current_type.name)
+            .or_else(|| db.find_top_level(&current_type.name)),
+        "super_expr" => {
+            let base_name = current_type.base_class.as_deref()?;
+            resolve_document_top_level(uri, document, base_name)
+                .or_else(|| db.find_top_level(base_name))
+        }
+        "parent_expr" => {
+            let owner_name = current_type.owner_class.as_deref()?;
+            resolve_document_top_level(uri, document, owner_name)
+                .or_else(|| db.find_top_level(owner_name))
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn resolve_at_definition_site(
+    uri: &str,
+    document: &ParsedDocument,
+    byte_offset: usize,
+    name: &str,
+) -> Option<Definition> {
+    document
+        .symbols
+        .all()
+        .iter()
+        .find(|symbol| {
+            symbol.name == name
+                && symbol.selection_byte_range.start <= byte_offset
+                && byte_offset < symbol.selection_byte_range.end
+        })
+        .cloned()
+        .map(|symbol| Definition {
+            uri: uri.to_string(),
+            symbol,
+        })
 }
