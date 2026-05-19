@@ -1,0 +1,7 @@
+mod completion;
+mod definition;
+mod diagnostics;
+mod fixture;
+mod harness;
+mod hover;
+mod rename;
