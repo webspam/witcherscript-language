@@ -49,5 +49,15 @@ jobs:
         with:
           tool: iai-callgrind-runner@0.14
 
+      - name: Restore iai-callgrind baseline
+        uses: actions/cache@v4
+        with:
+          path: target/iai
+          key: iai-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            iai-${{ runner.os }}-
+
       - name: Run iai-callgrind benches
+        env:
+          IAI_CALLGRIND_REGRESSION: "ir=5.0"
         run: cargo bench --bench iai_lib
