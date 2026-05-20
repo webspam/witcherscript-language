@@ -12,7 +12,10 @@ use async_lsp::{ClientSocket, MainLoop};
 use futures::FutureExt;
 use lsp_types::notification::Initialized;
 use lsp_types::request::{Initialize, Request};
-use lsp_types::{ClientCapabilities, Diagnostic, InitializeParams, InitializedParams, Url};
+use lsp_types::{
+    ClientCapabilities, Diagnostic, InitializeParams, InitializeResult, InitializedParams,
+    ServerCapabilities, Url,
+};
 use tokio::io::{split, DuplexStream, ReadHalf, WriteHalf};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
@@ -28,6 +31,7 @@ use crate::config::Config;
 
 pub(crate) struct LspClient {
     rpc: JsonRpcClient<ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>,
+    init_result: InitializeResult,
     _server: JoinHandle<()>,
 }
 
@@ -52,6 +56,7 @@ impl LspClient {
                 files_exclude: Arc::new(Mutex::new(Vec::new())),
                 base_scripts_path: Arc::new(Mutex::new(None)),
                 additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
+                legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
                 base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
                 base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
                 builtins_index: Arc::new(load_builtins_index()),
@@ -90,21 +95,25 @@ impl LspClient {
         });
 
         let (read, write) = split(client_io);
-        let mut client = LspClient {
-            rpc: JsonRpcClient::new(read, write),
-            _server: server_handle,
-        };
+        let mut rpc = JsonRpcClient::new(read, write);
 
-        let _: <Initialize as Request>::Result = client
-            .rpc
+        let init_result: <Initialize as Request>::Result = rpc
             .request::<Initialize>(InitializeParams {
                 capabilities: ClientCapabilities::default(),
                 ..InitializeParams::default()
             })
             .await;
-        client.rpc.notify::<Initialized>(InitializedParams {}).await;
+        rpc.notify::<Initialized>(InitializedParams {}).await;
 
-        client
+        LspClient {
+            rpc,
+            init_result,
+            _server: server_handle,
+        }
+    }
+
+    pub(crate) fn server_capabilities(&self) -> &ServerCapabilities {
+        &self.init_result.capabilities
     }
 
     pub(crate) async fn open(&mut self, uri: &Url, text: &str) {

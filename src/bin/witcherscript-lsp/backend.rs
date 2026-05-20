@@ -9,8 +9,9 @@ use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
 use futures::future::BoxFuture;
 use lsp_types::notification::PublishDiagnostics;
 use lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
-    Diagnostic, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+    CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
+    CodeActionResponse, CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
+    CompletionResponse, Diagnostic, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
@@ -46,10 +47,10 @@ use witcherscript_language::semantic_tokens::{
 
 use crate::config::Config;
 use crate::convert::{
-    annotation_name_items, builtin_type_item, class_body_kw_item, completion_item,
-    document_symbols, hover_markdown, keyword_snippet_item, lsp_range, script_body_item,
-    signature_help_response, source_position, source_range, this_super_item, type_completion_item,
-    workspace_roots, wrap_method_snippet,
+    annotation_name_items, base_script_conflict_code_actions, builtin_type_item,
+    class_body_kw_item, completion_item, document_symbols, hover_markdown, keyword_snippet_item,
+    lsp_range, script_body_item, signature_help_response, source_position, source_range,
+    this_super_item, type_completion_item, workspace_roots, wrap_method_snippet,
 };
 use crate::logging::{level_from_str, level_to_u8};
 
@@ -129,6 +130,7 @@ pub(crate) struct Backend {
     pub(crate) files_exclude: Arc<Mutex<Vec<String>>>,
     pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
+    pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     pub(crate) builtins_index: Arc<WorkspaceIndex>,
@@ -326,6 +328,14 @@ impl LanguageServer for Backend {
         let backend = self.clone();
         Box::pin(async move { backend._formatting(params).await })
     }
+
+    fn code_action(
+        &mut self,
+        params: CodeActionParams,
+    ) -> BoxFuture<'static, Result<Option<CodeActionResponse>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._code_action(params).await })
+    }
 }
 
 impl Backend {
@@ -350,6 +360,18 @@ impl Backend {
                     .map(PathBuf::from)
                     .collect();
                 *self.additional_script_dirs.lock().await = dirs;
+            }
+            if let Some(arr) = opts
+                .get("legacyScriptDirectories")
+                .and_then(|v| v.as_array())
+            {
+                let dirs: Vec<PathBuf> = arr
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(PathBuf::from)
+                    .collect();
+                *self.legacy_script_dirs.lock().await = dirs;
             }
             let mut cfg = (**self.config.load()).clone();
             if let Some(b) = opts
@@ -430,6 +452,13 @@ impl Backend {
                     ),
                 ),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                code_action_provider: Some(CodeActionProviderCapability::Options(
+                    CodeActionOptions {
+                        code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
+                        work_done_progress_options: WorkDoneProgressOptions::default(),
+                        resolve_provider: None,
+                    },
+                )),
                 workspace: Some(WorkspaceServerCapabilities {
                     workspace_folders: Some(WorkspaceFoldersServerCapabilities {
                         supported: Some(true),
@@ -441,6 +470,12 @@ impl Backend {
             },
             ..InitializeResult::default()
         })
+    }
+
+    async fn _code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        let roots = self.workspace_roots.lock().await.clone();
+        let actions = base_script_conflict_code_actions(&params.context.diagnostics, &roots);
+        Ok((!actions.is_empty()).then_some(actions))
     }
 
     async fn _initialized(&self, _: InitializedParams) {

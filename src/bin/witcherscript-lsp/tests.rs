@@ -1,3 +1,4 @@
+mod code_action;
 mod completion;
 mod diagnostics;
 mod e2e;
