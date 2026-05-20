@@ -77,8 +77,11 @@ opt-level = 3
 # Removes panic unwinding logic — smaller binary, but no Drop on panic, no std::panic::catch_unwind
 panic = "abort"
 
-# The bench profile inherits release, but iai-callgrind needs symbols to attach
+# The bench profile inherits release. iai-callgrind needs symbols to attach
 # callgrind's collection toggle — stripped binaries make every counter read zero.
+# LTO is dropped so an unrelated edit cannot shift inlining in a benchmarked
+# path and trip the regression gate with phantom instruction-count drift.
 [profile.bench]
 strip = false
 debug = true
+lto = false

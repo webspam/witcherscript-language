@@ -196,17 +196,17 @@ Performance is tracked in two layers under `benches/`. Layout and intent:
 
 The wire-level smoke bench shares `src/bin/witcherscript-lsp/tests/jsonrpc_client.rs` with the E2E harness: same framing code, two transports.
 
-### How the iai-callgrind gate works in CI
+### How the iai-callgrind benchmark comparison works in CI
 
-iai-callgrind writes per-bench instruction counts under `target/iai/`. CI uses iai-callgrind's *named baseline* mechanism: master records a baseline called `master`, and PRs compare against it. The baseline is persisted across runs via `actions/cache`:
+iai-callgrind writes per-bench instruction counts under `target/iai/`. CI uses iai-callgrind's *named baseline* mechanism: master records a baseline called `master`, and PRs compare against it. The comparison is **advisory**: it never blocks merging. It prints the instruction-count diff to the CI job log, so a regression is a deliberate, visible decision rather than an enforced wall. The baseline is persisted across runs via `actions/cache`:
 
 - Cache key is `iai-<os>-master-<commit-sha>`. Restore key is the prefix `iai-<os>-master-`, so any run resolves to the most recent master baseline.
 - Only `push` events on `master` save the cache: master runs `cargo bench -- --save-baseline=master` and persists `target/iai/`. PR runs restore but never save, so a PR cannot poison the baseline.
-- PR runs gate with `cargo bench -- --baseline=master`, which compares against the saved `master` baseline without overwriting it.
-- If a PR finds no cache (e.g. GitHub expired it after a week of no activity), the job checks out `master`, runs `--save-baseline=master` to seed `target/iai/`, then checks back out to the PR HEAD before the gating run. That keeps the gate live across quiet periods at the cost of one extra bench run on cold-cache PRs.
-- `IAI_CALLGRIND_REGRESSION=ir=5.0` makes the PR job fail if instruction reads (`ir`) climb more than 5% vs the `master` baseline. Master `push` runs only record the baseline; they do not gate.
+- PR runs compare with `cargo bench -- --baseline=master`, which diffs against the saved `master` baseline without overwriting it and prints the result to the job log.
+- If a PR finds no cache (e.g. GitHub expired it after a week of no activity), the job checks out `master`, runs `--save-baseline=master` to seed `target/iai/`, then checks back out to the PR HEAD before the comparison run.
+- `IAI_CALLGRIND_REGRESSION=ir=5.0` makes iai-callgrind flag any bench whose instruction reads (`ir`) climb more than 5% vs the `master` baseline. The job tolerates that flag (iai-callgrind exit code 3) and stays green; only a genuine failure to build or run the benches fails the job.
 
-The benchmark binary needs symbols for cachegrind to attach its collection toggle, so `[profile.bench]` in `Cargo.toml` overrides the stripped `release` profile with `strip = false` / `debug = true`. Without that every counter reads zero.
+The benchmark binary needs symbols for cachegrind to attach its collection toggle, so `[profile.bench]` in `Cargo.toml` overrides the `release` profile with `strip = false` / `debug = true`. It also sets `lto = false`: under LTO an unrelated edit can shift inlining in a benchmarked path and produce phantom instruction-count drift. Without these overrides every counter reads zero or wanders.
 
 Fixture work inside each `#[library_benchmark]` runs in a `#[bench(setup = ...)]` callback so cachegrind only measures the target call, not the surrounding parse / index build. See `benches/iai_lib.rs` for the pattern.
 

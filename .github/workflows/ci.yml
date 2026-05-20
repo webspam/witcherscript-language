@@ -4,10 +4,10 @@ on:
   push:
     branches: ["master"]
     paths-ignore:
-      - 'docs/**'
+      - "docs/**"
   pull_request:
     paths-ignore:
-      - 'docs/**'
+      - "docs/**"
 
 env:
   CARGO_TERM_COLOR: always
@@ -74,11 +74,18 @@ jobs:
           cargo bench --bench iai_lib -- --save-baseline=master
           git -c advice.detachedHead=false checkout "$original"
 
-      - name: Run iai-callgrind benches (gated against master)
+      - name: Compare benches against master (advisory)
         if: github.event_name == 'pull_request'
         env:
           IAI_CALLGRIND_REGRESSION: "ir=5.0"
-        run: cargo bench --bench iai_lib -- --baseline=master
+        run: |
+          cargo bench --bench iai_lib -- --baseline=master && status=0 || status=$?
+          # Exit 3 is iai-callgrind flagging a regression: advisory, stay green.
+          # Any other non-zero means the benches failed to build or run.
+          if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then
+            echo "::error::iai-callgrind failed to run (exit $status)"
+            exit "$status"
+          fi
 
       - name: Record master baseline
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
