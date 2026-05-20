@@ -257,7 +257,7 @@ mod watched_files {
 
 #[cfg(test)]
 mod concurrent_doc_ops {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
     use std::time::{Duration, Instant};
@@ -296,6 +296,7 @@ mod concurrent_doc_ops {
             base_scripts_path: Arc::new(Mutex::new(None)),
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
+            legacy_indexed_uris: Arc::new(Mutex::new(HashSet::new())),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
             builtins_index: Arc::new(load_builtins_index()),
@@ -413,7 +414,7 @@ mod concurrent_doc_ops {
 
 #[cfg(test)]
 mod legacy_routing {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::path::{Path, PathBuf};
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
@@ -475,6 +476,7 @@ mod legacy_routing {
             base_scripts_path: Arc::new(Mutex::new(None)),
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
+            legacy_indexed_uris: Arc::new(Mutex::new(HashSet::new())),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
             builtins_index: Arc::new(load_builtins_index()),
@@ -611,6 +613,58 @@ mod legacy_routing {
             ws_docs.contains_key(legacy_url.as_str()),
             "legacy file should be in workspace_documents; got keys {:?}",
             ws_docs.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn deleting_a_legacy_file_removes_it_from_the_workspace() {
+        let temp = LocalTempDir::new("ws_deleting_legacy_file_removes_it");
+        let (game_dir, base_url) =
+            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+        let legacy_dir = temp.path().join("legacy");
+        let legacy_path = write_script(
+            &legacy_dir,
+            "game/r4Player.ws",
+            "class CR4Player {}\n// legacy\n",
+        );
+        let legacy_url = Url::from_file_path(&legacy_path).expect("legacy path -> url");
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+        *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+
+        backend.index_base_scripts().await;
+        assert!(
+            backend
+                .workspace_documents
+                .lock()
+                .await
+                .contains_key(legacy_url.as_str()),
+            "legacy file should be indexed into the workspace first"
+        );
+
+        std::fs::remove_file(&legacy_path).expect("remove legacy file");
+        backend.index_base_scripts().await;
+
+        assert!(
+            !backend
+                .workspace_documents
+                .lock()
+                .await
+                .contains_key(legacy_url.as_str()),
+            "a deleted legacy file must not linger in workspace_documents"
+        );
+        assert!(
+            backend.legacy_indexed_uris.lock().await.is_empty(),
+            "tracked legacy URIs must be cleared once the file is gone"
+        );
+        assert!(
+            backend
+                .base_scripts_documents
+                .lock()
+                .await
+                .contains_key(base_url.as_str()),
+            "the base script returns to the base index once nothing overrides it"
         );
     }
 

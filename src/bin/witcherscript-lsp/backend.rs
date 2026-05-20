@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -131,6 +131,8 @@ pub(crate) struct Backend {
     pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
+    // URIs last indexed into the workspace from legacy dirs, so a vanished one can be dropped.
+    pub(crate) legacy_indexed_uris: Arc<Mutex<HashSet<String>>>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     pub(crate) builtins_index: Arc<WorkspaceIndex>,

@@ -194,6 +194,29 @@ impl Backend {
         resolve_definition(uri.as_str(), document, &db, source_position(position))
     }
 
+    // A deleted legacy file has no other removal path, so each run drops the previous set.
+    async fn reconcile_legacy_workspace_files(&self, parsed: Vec<(String, ParsedDocument)>) {
+        let open_canonical: HashSet<String> = {
+            let documents = self.documents.lock().await;
+            documents.keys().filter_map(canonical_uri).collect()
+        };
+        let mut ws_idx = self.workspace_index.lock().await;
+        let mut ws_docs = self.workspace_documents.lock().await;
+        let mut tracked = self.legacy_indexed_uris.lock().await;
+        for uri in tracked.drain() {
+            ws_idx.remove_document(&uri);
+            ws_docs.remove(&uri);
+        }
+        for (uri, doc) in parsed {
+            if open_canonical.contains(&uri) {
+                continue;
+            }
+            ws_idx.update_document(uri.as_str(), &doc);
+            ws_docs.insert(uri.clone(), doc);
+            tracked.insert(uri);
+        }
+    }
+
     pub(crate) async fn index_base_scripts(&self) {
         let game_dir_opt = self.base_scripts_path.lock().await.clone();
         let extras = self.additional_script_dirs.lock().await.clone();
@@ -201,10 +224,14 @@ impl Backend {
         let auto_load = self.config.load().auto_load_mod_shared_imports;
 
         if game_dir_opt.is_none() && extras.is_empty() && legacy_dirs.is_empty() {
-            let mut idx = self.base_scripts_index.lock().await;
-            let mut docs = self.base_scripts_documents.lock().await;
-            *idx = WorkspaceIndex::default();
-            docs.clear();
+            {
+                let mut idx = self.base_scripts_index.lock().await;
+                let mut docs = self.base_scripts_documents.lock().await;
+                *idx = WorkspaceIndex::default();
+                docs.clear();
+            }
+            self.reconcile_legacy_workspace_files(Vec::new()).await;
+            self.publish_open_diagnostics().await;
             return;
         }
 
@@ -391,21 +418,7 @@ impl Backend {
             *docs = base_new_docs;
         }
 
-        if !legacy_parsed.is_empty() {
-            let open_canonical: HashSet<String> = {
-                let documents = self.documents.lock().await;
-                documents.keys().filter_map(canonical_uri).collect()
-            };
-            let mut ws_idx = self.workspace_index.lock().await;
-            let mut ws_docs = self.workspace_documents.lock().await;
-            for (uri, doc) in legacy_parsed {
-                if open_canonical.contains(&uri) {
-                    continue;
-                }
-                ws_idx.update_document(uri.as_str(), &doc);
-                ws_docs.insert(uri, doc);
-            }
-        }
+        self.reconcile_legacy_workspace_files(legacy_parsed).await;
 
         let elapsed_ms = total_start.elapsed().as_millis();
         info!(
