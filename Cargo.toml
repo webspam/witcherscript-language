@@ -76,3 +76,9 @@ strip = true
 opt-level = 3
 # Removes panic unwinding logic — smaller binary, but no Drop on panic, no std::panic::catch_unwind
 panic = "abort"
+
+# The bench profile inherits release, but iai-callgrind needs symbols to attach
+# callgrind's collection toggle — stripped binaries make every counter read zero.
+[profile.bench]
+strip = false
+debug = true
