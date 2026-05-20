@@ -4,20 +4,32 @@
 
 - `src/diagnostics/mod.rs` — syntactic, single-document diagnostics (`ParseDiagnostic`,
   `collect_diagnostics`, `format_tree`), the shared workspace-diagnostic types, and the
-  single-walk dispatcher `collect_cst_diagnostics_for_document`.
+  per-document CST dispatcher `collect_cst_diagnostics_for_document`.
 - `src/diagnostics/duplicate_symbols.rs` — workspace-wide index-walking rule.
-- `src/diagnostics/duplicate_local.rs` — workspace-wide index-walking rule.
+- `src/diagnostics/duplicate_local.rs` — workspace-wide index-walking rule; flags
+  parameters or local variables that share a name within the same function. Emits
+  `"duplicate_local"`. Skips functions annotated with `@wrapMethod` or `@replaceMethod`.
 - `src/diagnostics/shadowing.rs` — workspace-wide index-walking rule (warning severity).
-- `src/diagnostics/unknown_method.rs` — workspace-wide CST-walking rule registered via
-  `CstRule`.
+- `src/diagnostics/unknown_method.rs` — CST-walking rule (`UnknownMethodRule`) that
+  implements `CstRule` and is registered in `collect_cst_diagnostics_for_document`. Also
+  exposes `collect_unknown_method_diagnostics(&[(&str, &ParsedDocument)], &SymbolDb)`
+  as a standalone batch function that calls `run_rules_on_document` directly for each
+  document in a slice.
 - `src/diagnostics/unknown_symbol.rs` — workspace-wide CST-walking rule covering every
   ident-as-use. Dispatches to one of four kinds based on the parent grammar context:
   `unknown_type`, `unknown_member`, `unknown_function`, `unknown_identifier`. Skips
   declaration sites, `BUILTIN_TYPES`, tree-sitter error/missing subtrees, and idents
   already owned by `unknown_method` (member-access calls).
+- `src/diagnostics/wrapped_method.rs` — CST-walking rule (`WrappedMethodRule`) that
+  implements `CstRule` and is registered in `collect_cst_diagnostics_for_document`. Also
+  exposes `collect_wrapped_method_diagnostics(&[(&str, &ParsedDocument)], &SymbolDb)`
+  as a standalone batch function. Checks every `@wrapMethod`-annotated function for a
+  bare `wrappedMethod(...)` call: emits `"missing_wrapped_method"` if none is found,
+  or `"duplicate_wrapped_method"` for each call beyond the first.
 - `src/diagnostics/cst_walker.rs` — `CstRule` trait, `CstRuleCtx`, per-call `TypeMemo`,
-  `run_rules_on_document`. Any new rule needing to walk a document's CST must register
-  here rather than walking on its own.
+  `run_rules_on_document`, `collect_nodes_with_error_subtree`, `run_parallel_pass`. Any
+  new rule needing to walk a document's CST must use these primitives rather than walking
+  on its own.
 
 ## ParseDiagnostic
 
@@ -40,26 +52,38 @@ pub struct ParseDiagnostic {
 pub fn collect_diagnostics(root: Node, source: &str) -> Vec<ParseDiagnostic>
 ```
 
-Runs three passes over the tree and collects into a single Vec:
+Performs a single recursive walk (`collect_walk`) over the tree. On each node it checks
+for four conditions in sequence, collecting into a single Vec:
 
-### Pass 1: Tree-sitter errors (`collect_tree_errors`)
+### Condition 1: Tree-sitter errors
 
-Walks the entire tree recursively. For any node where `node.is_error() || node.is_missing()`:
+For any node where `node.is_error() || node.is_missing()`:
 - **Error node:** `kind = node.kind()`, `message = "syntax error"`
 - **Missing node:** `kind = node.kind()`, `message = "missing {kind}"`
 
 These cover all structural parse failures detected by tree-sitter's error recovery.
 
-### Pass 2: Incomplete member access (`collect_incomplete_exprs`)
+### Condition 2: Incomplete member access
 
-Walks the tree looking for `incomplete_member_access_expr` nodes. These are produced by the grammar when a `.` is typed but no identifier follows (e.g., `obj.` at end of line).
+For any `incomplete_member_access_expr` node (grammar produces these when a `.` is typed
+but no identifier follows, e.g. `obj.` at end of line):
 
 ```
 kind:    "incomplete_member_access_expr"
 message: "incomplete member access: expected identifier after '.'"
 ```
 
-### Pass 3: Late local variable declarations (`collect_late_local_vars`)
+### Condition 3: Ternary expressions
+
+For any `ternary_cond_expr` node. WitcherScript parses `cond ? a : b` but the compiler
+always evaluates it to `0 / false / void`:
+
+```
+kind:    "ternary_cond_expr"
+message: "ternary expression is not supported: ..."
+```
+
+### Condition 4: Late local variable declarations (`collect_late_local_vars_in_block`)
 
 Scans inside each `func_block` node. Tracks whether any executable statement has been seen. If a `local_var_decl_stmt` appears after one, it is flagged:
 
@@ -87,6 +111,19 @@ name. Symbols carrying modding annotations are skipped — `@addMethod`/`@wrapMe
 functions are member injections, not fresh global names. It enumerates raw symbols via
 `WorkspaceIndex::all_top_level()` because `top_level_by_name` dedups by name.
 
+`collect_duplicate_local_diagnostics(&WorkspaceIndex) -> HashMap<uri, Vec<WorkspaceDiagnostic>>`
+flags parameters or local variables that share a name within the same function scope
+(kind `"duplicate_local"`). Functions annotated with `@wrapMethod` or `@replaceMethod`
+are exempt because those annotations intentionally redeclare parameters from the wrapped
+signature.
+
+`collect_wrapped_method_diagnostics(&[(&str, &ParsedDocument)], &SymbolDb) -> HashMap<String, Vec<WorkspaceDiagnostic>>`
+is a batch CST-walking function (calls `run_rules_on_document` per document). It checks
+every `@wrapMethod`-annotated function for a bare `wrappedMethod(...)` call, emitting
+`"missing_wrapped_method"` if none is found or `"duplicate_wrapped_method"` for each
+call after the first. Unlike the index-walking rules, it requires parsed documents, not
+just the index.
+
 The LSP computes workspace diagnostics across the whole index but only *publishes* them
 for open documents (`Backend::publish_open_diagnostics` in `indexing.rs`), merged with the
 document's syntactic `ParseDiagnostic`s.
@@ -94,7 +131,8 @@ document's syntactic `ParseDiagnostic`s.
 ## LSP conversion
 
 All diagnostics are published as:
-- Severity: `ERROR`
+- Severity: `ERROR` for most rules; `WARNING` for shadowing and any rule that sets
+  `Severity::Warning` on its `WorkspaceDiagnostic`
 - Code: the `kind` string
 - Source: `"witcherscript"`
 - Range: `ParseDiagnostic` is converted from `byte_range` via
@@ -143,11 +181,18 @@ document — e.g. unknown method/field access, type mismatch):
 3. In `visit(node, ctx)`, push `WorkspaceDiagnostic` values into `ctx.diagnostics`. Use
    `infer_expr_type_memo(ctx.uri, ctx.document, ctx.db, node, byte, ctx.type_memo)`
    for receiver-type inference so chained calls share work.
-4. Register the rule in `collect_cst_diagnostics_for_document` in `src/diagnostics/mod.rs`.
-5. The LSP server picks it up automatically — no edit to `publish_open_diagnostics`
-   needed. The per-document cache in `src/bin/witcherscript-lsp/cst_cache.rs` already
-   keys on `(parse_version, workspace_generation, base_generation, env_version)`, so
-   the rule re-runs only when the document is reparsed or workspace state changes.
+4. Decide how to expose the rule:
+   - **Per-document** (most rules): register the rule struct in
+     `collect_cst_diagnostics_for_document` in `src/diagnostics/mod.rs`. The LSP picks
+     it up automatically — no edit to `publish_open_diagnostics` needed.
+   - **Batch over multiple documents** (e.g. `collect_wrapped_method_diagnostics`): expose
+     a standalone `collect_*` function that calls `run_rules_on_document` for each
+     document in a slice, returning `HashMap<String, Vec<WorkspaceDiagnostic>>`. Call it
+     from `Backend::publish_open_diagnostics` in `src/bin/witcherscript-lsp/indexing.rs`.
+5. The per-document cache in `src/bin/witcherscript-lsp/cst_cache.rs` already keys on
+   `(parse_version, workspace_generation, base_generation, env_version)`, so rules
+   registered in `collect_cst_diagnostics_for_document` re-run only when the document is
+   reparsed or workspace state changes.
 6. Add unit tests in the submodule's `#[cfg(test)]` block.
 7. Document the rule in `README.md`.
 
@@ -157,9 +202,11 @@ rule invocations.
 
 ## Existing tests
 
-Three tests in `diagnostics.rs`:
+Five tests in `src/diagnostics/mod.rs`:
 - `accepts_local_vars_before_statements` — var before code is fine
 - `reports_local_vars_after_statements` — var after `a = 1` fires
+- `reports_ternary_expression` — `cond ? a : b` fires `ternary_cond_expr`
+- `accepts_non_ternary_expression` — plain assignment produces no diagnostic
 - `reports_incomplete_member_access` — `super.` without ident fires
 
 These test `collect_diagnostics()` directly with inline source strings.

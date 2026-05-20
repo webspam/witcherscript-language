@@ -8,9 +8,9 @@
 | `src/symbols.rs` `#[cfg(test)]` | `extract_symbols()` — params, locals, functions |
 | `src/line_index.rs` `#[cfg(test)]` | `LineIndex` — byte↔position conversions, UTF-16 |
 | `src/script_env.rs` `#[cfg(test)]` | INI parsing, globals section, symbol positions |
-| `src/resolve/tests/` | Everything in the `resolve/` submodules (~3400 lines across 11 files, most comprehensive) |
+| `src/resolve/tests/` | Everything in the `resolve/` submodules (~3400 lines across 16 files, most comprehensive) |
 | `src/semantic_tokens/tests.rs` | `collect_semantic_tokens()` — classify, resolve, encode |
-| `src/bin/witcherscript-lsp/tests.rs` | LSP-specific: encoding, hover markdown, completion items, rename |
+| `src/bin/witcherscript-lsp/tests/` | LSP-specific unit tests split across `completion.rs`, `diagnostics.rs`, `file_io.rs`, `hover.rs`, `indexing.rs`, `refactoring.rs` |
 | `src/bin/witcherscript-lsp/tests/e2e/` | Wire-level E2E tests that drive the real `Backend` over a tokio duplex pair with framed JSON-RPC |
 | `tests/parser_fixtures.rs` | Parametrized parse tests over all fixture files |
 | `tests/language_features.rs` | Integration tests for symbol extraction + resolution |
@@ -39,7 +39,7 @@ When adding a new grammar feature or parse rule, add or update a fixture rather 
 
 ## resolve/tests/ — authoritative test patterns
 
-This directory (~3400 lines across 11 files) is the canonical reference for how to write resolution and completion tests. Use it as examples before adding new tests under `src/resolve/tests/`.
+This directory (~3400 lines across 16 files) is the canonical reference for how to write resolution and completion tests. Use it as examples before adding new tests under `src/resolve/tests/`.
 
 | File | What it covers |
 |---|---|
@@ -53,7 +53,12 @@ This directory (~3400 lines across 11 files) is the canonical reference for how 
 | `completion_statement.rs` | `statement_completions` — locals, members, globals, `this`/`super`, loop/switch flags, context guards |
 | `completion_type.rs` | `type_completions`, `extends_completions` |
 | `completion_keywords.rs` | `class_body_keyword_completions` — specifier state machine |
+| `completion_script_keywords.rs` | Script-level keyword completions |
 | `completion_annotation.rs` | `annotation_arg_completions`, `after_wrap_method_completions` |
+| `builtin_array.rs` | Built-in array type resolution, `parse_generic_type`, member completions and hover via `load_builtins_index` |
+| `index.rs` | `WorkspaceIndex::all_top_level` — multi-document iteration, member exclusion |
+| `signature_help.rs` | `signature_help` — parameter hints and active parameter tracking |
+| `mod.rs` | Module root: declares all submodules and houses `make_doc`/`make_index` helpers shared across resolve tests |
 
 **Test categories covered:**
 - Definition resolution for top-level functions, class methods, enum variants, fields, locals, parameters
@@ -171,10 +176,10 @@ There are no doctests in this repo, so a separate `cargo test --doc` step is not
 |---|---|
 | New grammar construct | Fixture in `tests/fixtures/valid/` + `parser_fixtures.rs` picks it up automatically |
 | New validation rule | Unit test in `diagnostics.rs` + fixture in `tests/fixtures/invalid/` if complex |
-| New symbol kind | Test in `symbols.rs` `#[cfg(test)]` + cases in `resolve/tests.rs` |
-| New resolution case | Test in `resolve/tests.rs` (inline source) |
-| New completion case | Test in `resolve/tests.rs` or a new `language_features.rs` test |
-| New LSP handler | Test in `src/bin/witcherscript-lsp/tests.rs` (handler logic) + a golden-path case in `tests/e2e/<feature>.rs` (wire-level) |
+| New symbol kind | Test in `symbols.rs` `#[cfg(test)]` + cases in `src/resolve/tests/` |
+| New resolution case | Test in `src/resolve/tests/` (inline source) |
+| New completion case | Test in `src/resolve/tests/` or a new `language_features.rs` test |
+| New LSP handler | Test in `src/bin/witcherscript-lsp/tests/` (handler logic) + a golden-path case in `tests/e2e/<feature>.rs` (wire-level) |
 | Regression that only shows up over JSON-RPC (serialization, dispatch, framing) | Test in `src/bin/witcherscript-lsp/tests/e2e/` |
 | New semantic token | Test in `semantic_tokens/tests.rs` |
 

@@ -40,9 +40,11 @@ pub struct Symbol {
                                               // full node text for Fields
     pub base_class: Option<String>,           // Raw superclass name for Class/Struct/State
     pub owner_class: Option<String>,          // Raw owner class name for State (second ident in state_decl)
+    pub flavour: Option<String>,              // func_flavour text for callables (e.g. "quest", "timer")
     pub annotations: Vec<Annotation>,        // @addField, @wrapMethod, etc.
     pub access: AccessLevel,                  // default: Public
     pub is_optional: bool,                    // true if specifier "optional" present (Parameters only)
+    pub is_out: bool,                         // true if specifier "out" present (Parameters only)
 }
 ```
 

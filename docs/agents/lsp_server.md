@@ -13,7 +13,9 @@
 | `diagnostics_publish.rs` | `publish_open_diagnostics`, `publish_syntactic_only` — diagnostic emission for open documents. |
 | `watcher.rs` | `register_file_watchers`, `apply_watched_file_events`, `classify_watched_event` — file-watcher integration. |
 | `logging.rs` | `LspLogSender` tracing layer, level enum/parsing, `DEFAULT_LOG_LEVEL`. |
-| `tests.rs` + `tests/{completion,diagnostics,file_io,hover,indexing,refactoring}.rs` | `#[cfg(test)]` LSP-specific tests split per feature. |
+| `tests.rs` | Module root that declares the `tests/` submodules. |
+| `tests/{completion,diagnostics,file_io,hover,indexing,refactoring}.rs` | `#[cfg(test)]` LSP-specific tests split per feature. |
+| `tests/jsonrpc_client.rs` | Framed JSON-RPC client used by the E2E test harness. |
 | `tests/e2e/` | Wire-level E2E tests that drive the real `Backend` over a `tokio::io::duplex` pair with framed JSON-RPC. See [testing.md](testing.md#testse2e-wire-level-lsp-tests). |
 
 The binary is intentionally thin. All parse/resolve logic lives in the library (`witcherscript_language::*`). The binary only:
@@ -25,26 +27,46 @@ The binary is intentionally thin. All parse/resolve logic lives in the library (
 
 ```rust
 struct Backend {
-    client: ClientSocket,                                       // async-lsp client handle
-    config: Arc<ArcSwap<Config>>,                               // user-facing settings (log level, formatter, diagnostics, …)
-    documents: Arc<Mutex<HashMap<Url, ParsedDocument>>>,        // editor-open files
-    workspace_index: Arc<Mutex<WorkspaceIndex>>,                // user project symbol index
-    workspace_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,  // parsed user project files
-    workspace_roots: Arc<Mutex<Vec<PathBuf>>>,                  // workspace root directories
-    base_scripts_path: Arc<Mutex<Option<PathBuf>>>,             // path to game directory
-    base_scripts_index: Arc<Mutex<WorkspaceIndex>>,             // base game scripts symbol index
-    base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>, // parsed base scripts
-    script_env: Arc<Mutex<ScriptEnvironment>>,                  // INI-loaded globals
+    client: ClientSocket,                                                    // async-lsp client handle
+    config: Arc<ArcSwap<Config>>,                                            // user-facing settings (log level, formatter, diagnostics, …)
+    documents: Arc<Mutex<HashMap<Url, ParsedDocument>>>,                     // editor-open files
+    published_diagnostics: Arc<Mutex<HashMap<Url, Vec<Diagnostic>>>>,        // last-published diagnostics per URI
+    workspace_index: Arc<Mutex<WorkspaceIndex>>,                             // user project symbol index
+    workspace_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,        // parsed user project files
+    workspace_roots: Arc<Mutex<Vec<PathBuf>>>,                               // workspace root directories
+    files_exclude: Arc<Mutex<Vec<String>>>,                                  // glob patterns excluded from indexing
+    base_scripts_path: Arc<Mutex<Option<PathBuf>>>,                          // path to game directory
+    additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,                        // extra script directories to index
+    base_scripts_index: Arc<Mutex<WorkspaceIndex>>,                          // base game scripts symbol index
+    base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,     // parsed base scripts
+    builtins_index: Arc<WorkspaceIndex>,                                     // built-in type symbol index (read-only, no Mutex)
+    script_env: Arc<Mutex<ScriptEnvironment>>,                               // INI-loaded globals
+    cst_diag_cache: Arc<Mutex<HashMap<Url, cst_cache::CstCacheEntry>>>,      // cached CST diagnostics per document
+    initial_index_done: Arc<AtomicBool>,                                     // set true once the startup index completes
+    doc_ops_tx: mpsc::UnboundedSender<DocOp>,                                // sends document ops to the background worker
 }
 ```
 
-All shared mutable state is wrapped for async-safe access: `Arc<Mutex<>>` for collections, `Arc<ArcSwap<Config>>` for the read-mostly settings bag.
+All shared mutable state is wrapped for async-safe access: `Arc<Mutex<>>` for collections, `Arc<ArcSwap<Config>>` for the read-mostly settings bag, and `Arc<AtomicBool>` for the startup-complete flag. `builtins_index` needs no `Mutex` because it is populated once at startup and never mutated.
+
+### DbHandles helper
+
+```rust
+struct DbHandles<'a> {
+    workspace: MutexGuard<'a, WorkspaceIndex>,
+    base: MutexGuard<'a, WorkspaceIndex>,
+    script_env: MutexGuard<'a, ScriptEnvironment>,
+    builtins: &'a WorkspaceIndex,
+}
+```
+
+`Backend::db_handles()` acquires the three mutex guards simultaneously and returns a `DbHandles`. Callers then call `.db()` on it to get a fully assembled `SymbolDb` without having to lock each field individually. This prevents lock-order bugs and keeps handler code concise.
 
 ## Implemented LSP capabilities
 
 | Capability | Details |
 |---|---|
-| Text document sync | `FULL` — complete document text on every change |
+| Text document sync | `INCREMENTAL` — only changed ranges are sent on each edit |
 | Completion | Trigger chars: `.`, `:`, `@` |
 | Signature help | Parameter hints at call sites; trigger chars `(` and `,`, retrigger `,` |
 | Go-to-definition | Resolves symbol at cursor |

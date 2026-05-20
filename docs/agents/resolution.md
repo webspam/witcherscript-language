@@ -140,14 +140,13 @@ pub struct StatementCompletions {
     pub globals: Vec<Definition>,   // all top-level callables (excluding exec/quest)
     pub has_this: bool,
     pub has_super: bool,
+    pub in_switch: bool,            // cursor is inside a switch block
+    pub in_loop: bool,              // cursor is inside a for/while/do-while loop
 }
 ```
 
-### `class_body_completions(document, position)`
-Called in class/struct/state body. Returns `Option<SymbolKind>`:
-- `Some(Struct)` → in a struct body (only `var` makes sense)
-- `Some(Class)` or `Some(State)` → in a class/state body (full member declarations)
-- `None` → not in a type body
+### `class_body_keyword_completions(document, position)`
+Called in class/struct/state body. Returns `Vec<&'static str>` — the keyword candidates valid at the cursor position given which specifiers have already been written. Returns an empty vec when the cursor is not in a type body or follows a completed declaration keyword.
 
 ## signature_help
 
