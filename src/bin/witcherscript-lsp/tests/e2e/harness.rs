@@ -10,11 +10,11 @@ use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
 use async_lsp::{ClientSocket, MainLoop};
 use futures::FutureExt;
-use lsp_types::notification::Initialized;
+use lsp_types::notification::{DidSaveTextDocument, Initialized};
 use lsp_types::request::{Initialize, Request};
 use lsp_types::{
-    ClientCapabilities, Diagnostic, InitializeParams, InitializeResult, InitializedParams,
-    ServerCapabilities, Url,
+    ClientCapabilities, Diagnostic, DidSaveTextDocumentParams, InitializeParams, InitializeResult,
+    InitializedParams, ServerCapabilities, TextDocumentIdentifier, Url,
 };
 use tokio::io::{split, DuplexStream, ReadHalf, WriteHalf};
 use tokio::sync::{mpsc, Mutex};
@@ -79,7 +79,8 @@ impl LspClient {
                 }
             });
 
-            let router: Router<Backend> = Router::from_language_server(backend);
+            let mut router: Router<Backend> = Router::from_language_server(backend);
+            crate::ignore_unhandled_notifications(&mut router);
 
             ServiceBuilder::new()
                 .layer(TracingLayer::default())
@@ -123,6 +124,15 @@ impl LspClient {
 
     pub(crate) async fn change_full(&mut self, uri: &Url, version: i32, text: &str) {
         self.rpc.did_change_full(uri, version, text).await;
+    }
+
+    pub(crate) async fn did_save(&mut self, uri: &Url) {
+        self.rpc
+            .notify::<DidSaveTextDocument>(DidSaveTextDocumentParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                text: None,
+            })
+            .await;
     }
 
     pub(crate) async fn request<R: Request>(&mut self, params: R::Params) -> R::Result {
