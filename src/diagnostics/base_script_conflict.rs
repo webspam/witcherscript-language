@@ -39,7 +39,7 @@ pub fn collect_base_script_conflict_diagnostics(
                 if is_same_file(workspace_uri, entry.uri) {
                     return None;
                 }
-                if !workspace_uri.ends_with(entry.relative_path) {
+                if !path_suffix_matches(workspace_uri, entry.relative_path) {
                     return None;
                 }
                 entry.declarations.get(&key).map(|base| (entry, *base))
@@ -136,6 +136,12 @@ pub fn basename_of(uri: &str) -> Option<&str> {
 pub fn relative_from_scripts(uri: &str) -> Option<&str> {
     let idx = uri.rfind(SCRIPTS_SEGMENT)?;
     Some(&uri[idx + SCRIPTS_SEGMENT.len()..])
+}
+
+// Anchor on a separator so `.../r4game/r4Player.ws` does not match base `game/r4Player.ws`.
+fn path_suffix_matches(uri: &str, relative_path: &str) -> bool {
+    uri.strip_suffix(relative_path)
+        .is_some_and(|head| head.ends_with('/'))
 }
 
 // Carried on the diagnostic so the quick fix knows which directory to mark as legacy.
@@ -240,6 +246,13 @@ mod tests {
             Case {
                 name: "different basename does not fire",
                 workspace: vec![("file:///mod/src/game/r4Other.ws", "class CR4Player {}\n")],
+                base: vec![(BASE_PLAYER_URI, "class CR4Player {}\n")],
+                expected_uri: None,
+                expected_count: 0,
+            },
+            Case {
+                name: "directory ending in the base subdir name does not fire",
+                workspace: vec![("file:///mod/src/r4game/r4Player.ws", "class CR4Player {}\n")],
                 base: vec![(BASE_PLAYER_URI, "class CR4Player {}\n")],
                 expected_uri: None,
                 expected_count: 0,
