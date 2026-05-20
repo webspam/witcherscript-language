@@ -136,14 +136,36 @@ pub fn parse_script_environment(ini_path: &Path) -> Option<ScriptEnvironment> {
 
 // Engine injects these globals at runtime; if customised, leave them
 fn apply_engine_overrides(globals: &mut Vec<ScriptGlobal>, ini_uri: &str) {
-    inject_if_absent(globals, ini_uri, "theCamera", "CCameraDirector");
+    override_stock_global(globals, ini_uri, "theCamera", "CCamera", "CCameraDirector");
     inject_if_absent(globals, ini_uri, "theTelemetry", "CR4TelemetryScriptProxy");
+}
+
+fn override_stock_global(
+    globals: &mut Vec<ScriptGlobal>,
+    ini_uri: &str,
+    name: &str,
+    stock_type: &str,
+    override_type: &str,
+) {
+    match globals.iter_mut().find(|g| g.name == name) {
+        Some(existing) if existing.type_name == stock_type => {
+            existing.type_name = override_type.to_string();
+            existing.symbol.type_annotation = Some(override_type.to_string());
+        }
+        // retyped by the user to a custom class; leave their choice alone
+        Some(_) => {}
+        None => globals.push(make_global(ini_uri, name, override_type)),
+    }
 }
 
 fn inject_if_absent(globals: &mut Vec<ScriptGlobal>, ini_uri: &str, name: &str, type_name: &str) {
     if globals.iter().any(|g| g.name == name) {
         return;
     }
+    globals.push(make_global(ini_uri, name, type_name));
+}
+
+fn make_global(ini_uri: &str, name: &str, type_name: &str) -> ScriptGlobal {
     let zero = SourcePosition {
         line: 0,
         character: 0,
@@ -152,7 +174,7 @@ fn inject_if_absent(globals: &mut Vec<ScriptGlobal>, ini_uri: &str, name: &str, 
         start: zero,
         end: zero,
     };
-    globals.push(ScriptGlobal {
+    ScriptGlobal {
         name: name.to_string(),
         type_name: type_name.to_string(),
         ini_uri: ini_uri.to_string(),
@@ -176,7 +198,7 @@ fn inject_if_absent(globals: &mut Vec<ScriptGlobal>, ini_uri: &str, name: &str, 
             is_optional: false,
             is_out: false,
         },
-    });
+    }
 }
 
 #[cfg(test)]
@@ -236,31 +258,36 @@ mod tests {
     }
 
     #[test]
-    fn camera_left_alone_when_ini_already_has_it() {
+    fn camera_override_respects_ini_state() {
         struct Case {
             name: &'static str,
             ini_type: &'static str,
+            expected: &'static str,
         }
         let cases = [
             Case {
-                name: "stock CCamera entry",
+                name: "stock CCamera entry is overridden",
                 ini_type: "CCamera",
+                expected: "CCameraDirector",
             },
             Case {
-                name: "mod retyped",
+                name: "mod retyped is left untouched",
                 ini_type: "MyCustomCamera",
+                expected: "MyCustomCamera",
             },
         ];
         for (idx, c) in cases.iter().enumerate() {
             let path = write_temp(
-                &format!("se_camera_alone{idx}.ini"),
+                &format!("se_camera_state{idx}.ini"),
                 &format!("[globals]\ntheCamera={}\n", c.ini_type),
             );
             let env = parse_script_environment(&path).unwrap();
+            let camera = env.find("theCamera").unwrap();
+            assert_eq!(camera.type_name, c.expected, "case: {}", c.name);
             assert_eq!(
-                env.find("theCamera").unwrap().type_name,
-                c.ini_type,
-                "case {}: theCamera should be untouched",
+                camera.symbol.type_annotation.as_deref(),
+                Some(c.expected),
+                "case: {}",
                 c.name,
             );
         }
