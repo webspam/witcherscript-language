@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use lsp_types::request::RegisterCapability;
 use lsp_types::{
@@ -20,11 +20,7 @@ pub(crate) fn event_touches_legacy_dir(event: &FileEvent, legacy_dirs: &[PathBuf
     let Ok(path) = event.uri.to_file_path() else {
         return false;
     };
-    legacy_dirs.iter().any(|dir| starts_with(&path, dir))
-}
-
-fn starts_with(path: &Path, dir: &Path) -> bool {
-    path.starts_with(dir)
+    legacy_dirs.iter().any(|dir| path.starts_with(dir))
 }
 
 #[derive(Debug, PartialEq, Eq)]
