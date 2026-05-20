@@ -198,13 +198,15 @@ The wire-level smoke bench shares `src/bin/witcherscript-lsp/tests/jsonrpc_clien
 
 ### How the iai-callgrind gate works in CI
 
-iai-callgrind writes per-bench instruction counts under `target/iai/` and, on each run, compares against whatever previous results it finds in that directory. CI persists those results across runs via `actions/cache`:
+iai-callgrind writes per-bench instruction counts under `target/iai/`. CI uses iai-callgrind's *named baseline* mechanism: master records a baseline called `master`, and PRs compare against it. The baseline is persisted across runs via `actions/cache`:
 
-- Cache key is `iai-<os>-<commit-sha>`. Restore key is the prefix `iai-<os>-`.
-- Only `push` events on `master` save the cache. PR runs restore but never save. That keeps the restore prefix resolving to a master baseline only: a PR can't poison its own follow-up commit by saving a regressed cache that the next commit restores from.
-- If a PR finds the cache empty (e.g. GitHub expired it after a week of no activity), the job checks out `origin/master`, runs iai once to seed `target/iai/`, then checks back out to the PR HEAD before the gating run. That keeps the gate live across quiet periods at the cost of one extra bench run on cold-cache PRs.
-- The seed step skips itself when `origin/master` does not yet have `benches/iai_lib.rs` (e.g. on the PR that first introduces the gate, before master has caught up). It emits a GitHub Actions warning annotation so the inactive-gate condition is obvious from the workflow summary, but the job stays green.
-- `IAI_CALLGRIND_REGRESSION=ir=5.0` makes the job fail if instruction reads (`ir`) climb more than 5% vs the restored baseline. The first ever run on master prints absolute counts and exits zero, since there's nothing to compare against yet.
+- Cache key is `iai-<os>-master-<commit-sha>`. Restore key is the prefix `iai-<os>-master-`, so any run resolves to the most recent master baseline.
+- Only `push` events on `master` save the cache: master runs `cargo bench -- --save-baseline=master` and persists `target/iai/`. PR runs restore but never save, so a PR cannot poison the baseline.
+- PR runs gate with `cargo bench -- --baseline=master`, which compares against the saved `master` baseline without overwriting it.
+- If a PR finds no cache (e.g. GitHub expired it after a week of no activity), the job checks out `master`, runs `--save-baseline=master` to seed `target/iai/`, then checks back out to the PR HEAD before the gating run. That keeps the gate live across quiet periods at the cost of one extra bench run on cold-cache PRs.
+- `IAI_CALLGRIND_REGRESSION=ir=5.0` makes the PR job fail if instruction reads (`ir`) climb more than 5% vs the `master` baseline. Master `push` runs only record the baseline; they do not gate.
+
+The benchmark binary needs symbols for cachegrind to attach its collection toggle, so `[profile.bench]` in `Cargo.toml` overrides the stripped `release` profile with `strip = false` / `debug = true`. Without that every counter reads zero.
 
 Fixture work inside each `#[library_benchmark]` runs in a `#[bench(setup = ...)]` callback so cachegrind only measures the target call, not the surrounding parse / index build. See `benches/iai_lib.rs` for the pattern.
 

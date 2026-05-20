@@ -39,7 +39,6 @@ jobs:
   bench:
     name: Bench (iai-callgrind)
     runs-on: ubuntu-latest
-    needs: test
 
     steps:
       - uses: actions/checkout@v4
@@ -54,51 +53,40 @@ jobs:
           tool: iai-callgrind-runner@0.14
 
       - name: Restore iai-callgrind baseline
+        id: baseline
+        if: github.event_name == 'pull_request'
         uses: actions/cache/restore@v4
         with:
           path: target/iai
-          key: iai-${{ runner.os }}-${{ github.sha }}
+          key: iai-${{ runner.os }}-master-${{ github.sha }}
           restore-keys: |
-            iai-${{ runner.os }}-
-
-      - name: Probe master for iai baseline target
-        id: probe
-        if: github.event_name == 'pull_request'
-        run: |
-          if [ -d target/iai ] && [ -n "$(ls -A target/iai 2>/dev/null)" ]; then
-            echo "cache_present=true" >> "$GITHUB_OUTPUT"
-            echo "Baseline restored from cache."
-          else
-            echo "cache_present=false" >> "$GITHUB_OUTPUT"
-          fi
-          git fetch origin master --depth=1
-          if git ls-tree origin/master -- benches/iai_lib.rs | grep -q .; then
-            echo "master_has_target=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "master_has_target=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=iai gate inactive this run::origin/master does not yet have benches/iai_lib.rs, so there is no baseline to compare against. The gate will activate once master has the bench target."
-          fi
+            iai-${{ runner.os }}-master-
 
       - name: Seed baseline from master
         if: |
           github.event_name == 'pull_request' &&
-          steps.probe.outputs.cache_present == 'false' &&
-          steps.probe.outputs.master_has_target == 'true'
+          steps.baseline.outputs.cache-matched-key == ''
         run: |
-          echo "No baseline cache (likely expired); running iai on origin/master to seed."
+          echo "No baseline cache; running iai on master to seed the comparison."
           original=$(git rev-parse HEAD)
-          git -c advice.detachedHead=false checkout origin/master
-          cargo bench --bench iai_lib
+          git fetch --depth=1 origin master
+          git -c advice.detachedHead=false checkout FETCH_HEAD
+          cargo bench --bench iai_lib -- --save-baseline=master
           git -c advice.detachedHead=false checkout "$original"
 
-      - name: Run iai-callgrind benches
+      - name: Run iai-callgrind benches (gated against master)
+        if: github.event_name == 'pull_request'
         env:
           IAI_CALLGRIND_REGRESSION: "ir=5.0"
-        run: cargo bench --bench iai_lib
+        run: cargo bench --bench iai_lib -- --baseline=master
+
+      - name: Record master baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: cargo bench --bench iai_lib -- --save-baseline=master
 
       - name: Save iai-callgrind baseline (master only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/cache/save@v4
         with:
           path: target/iai
-          key: iai-${{ runner.os }}-${{ github.sha }}
+          key: iai-${{ runner.os }}-master-${{ github.sha }}
