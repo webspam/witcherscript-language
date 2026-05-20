@@ -295,6 +295,7 @@ mod concurrent_doc_ops {
             files_exclude: Arc::new(Mutex::new(Vec::new())),
             base_scripts_path: Arc::new(Mutex::new(None)),
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
+            legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
             builtins_index: Arc::new(load_builtins_index()),
@@ -407,5 +408,305 @@ mod concurrent_doc_ops {
 
         wait_for(&backend, &uri_a, "aXX").await;
         wait_for(&backend, &uri_b, "bYY").await;
+    }
+}
+
+#[cfg(test)]
+mod legacy_routing {
+    use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    use arc_swap::ArcSwap;
+    use async_lsp::router::Router;
+    use async_lsp::ClientSocket;
+    use lsp_types::{FileChangeType, FileEvent, Url};
+    use tokio::sync::{mpsc, Mutex};
+    use witcherscript_language::builtins::load_builtins_index;
+    use witcherscript_language::diagnostics::collect_base_script_conflict_diagnostics;
+    use witcherscript_language::resolve::WorkspaceIndex;
+    use witcherscript_language::script_env::ScriptEnvironment;
+
+    use crate::backend::Backend;
+    use crate::config::Config;
+    use crate::indexing::legacy_replaces_base;
+    use crate::watcher::event_touches_legacy_dir;
+
+    struct LocalTempDir {
+        path: PathBuf,
+    }
+
+    impl LocalTempDir {
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir().join(name);
+            std::fs::remove_dir_all(&path).ok();
+            std::fs::create_dir_all(&path).expect("mkdir tempdir");
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for LocalTempDir {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.path).ok();
+        }
+    }
+
+    fn make_backend() -> Backend {
+        let (_main_loop, client) =
+            async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
+        let (doc_ops_tx, _doc_ops_rx) = mpsc::unbounded_channel();
+        Backend {
+            client,
+            config: Arc::new(ArcSwap::from_pointee(Config {
+                diagnostics_enabled: false,
+                ..Config::default()
+            })),
+            documents: Arc::new(Mutex::new(HashMap::new())),
+            published_diagnostics: Arc::new(Mutex::new(HashMap::new())),
+            workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
+            workspace_documents: Arc::new(Mutex::new(HashMap::new())),
+            workspace_roots: Arc::new(Mutex::new(Vec::new())),
+            files_exclude: Arc::new(Mutex::new(Vec::new())),
+            base_scripts_path: Arc::new(Mutex::new(None)),
+            additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
+            legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
+            base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
+            base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
+            builtins_index: Arc::new(load_builtins_index()),
+            script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
+            cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
+            initial_index_done: Arc::new(AtomicBool::new(false)),
+            doc_ops_tx,
+        }
+    }
+
+    fn write_script(dir: &Path, rel: &str, contents: &str) -> PathBuf {
+        let path = dir.join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("mkdir parent");
+        }
+        std::fs::write(&path, contents).expect("write script");
+        path
+    }
+
+    fn make_game_dir(temp: &Path, rel: &str, contents: &str) -> (PathBuf, Url) {
+        let game_dir = temp.join("game");
+        let full_rel = Path::new("content")
+            .join("content0")
+            .join("scripts")
+            .join(rel);
+        let path = write_script(&game_dir, full_rel.to_str().unwrap(), contents);
+        let url = Url::from_file_path(&path).expect("base path -> url");
+        (game_dir, url)
+    }
+
+    #[test]
+    fn legacy_replaces_base_matches_same_relpath() {
+        assert!(legacy_replaces_base(
+            "file:///game/content/content0/scripts/game/r4Player.ws",
+            "file:///mod/legacy/game/r4Player.ws",
+        ));
+    }
+
+    #[test]
+    fn legacy_replaces_base_requires_path_separator() {
+        assert!(!legacy_replaces_base(
+            "file:///game/content/content0/scripts/game/r4Player.ws",
+            "file:///mod/legacy/Xgame/r4Player.ws",
+        ));
+    }
+
+    #[test]
+    fn legacy_replaces_base_skips_base_without_scripts_segment() {
+        assert!(!legacy_replaces_base(
+            "file:///game/r4Player.ws",
+            "file:///mod/legacy/r4Player.ws",
+        ));
+    }
+
+    #[test]
+    fn legacy_replaces_base_basename_only_no_match() {
+        assert!(!legacy_replaces_base(
+            "file:///game/content/content0/scripts/game/r4Player.ws",
+            "file:///mod/legacy/r4Player.ws",
+        ));
+    }
+
+    #[test]
+    fn event_touches_legacy_dir_true_inside() {
+        let temp = LocalTempDir::new("ws_event_touches_legacy_dir_true_inside");
+        let file = temp.path().join("game").join("r4Player.ws");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, "").unwrap();
+        let event = FileEvent {
+            uri: Url::from_file_path(&file).unwrap(),
+            typ: FileChangeType::CHANGED,
+        };
+        assert!(event_touches_legacy_dir(
+            &event,
+            &[temp.path().to_path_buf()]
+        ));
+    }
+
+    #[test]
+    fn event_touches_legacy_dir_false_outside() {
+        let temp = LocalTempDir::new("ws_event_touches_legacy_dir_false_outside");
+        let legacy = temp.path().join("legacy");
+        std::fs::create_dir_all(&legacy).unwrap();
+        let elsewhere = temp.path().join("workspace").join("foo.ws");
+        std::fs::create_dir_all(elsewhere.parent().unwrap()).unwrap();
+        std::fs::write(&elsewhere, "").unwrap();
+        let event = FileEvent {
+            uri: Url::from_file_path(&elsewhere).unwrap(),
+            typ: FileChangeType::CHANGED,
+        };
+        assert!(!event_touches_legacy_dir(&event, &[legacy]));
+    }
+
+    #[test]
+    fn event_touches_legacy_dir_empty_dirs_returns_false() {
+        let temp = LocalTempDir::new("ws_event_touches_legacy_dir_empty_dirs_returns_false");
+        let file = temp.path().join("foo.ws");
+        std::fs::write(&file, "").unwrap();
+        let event = FileEvent {
+            uri: Url::from_file_path(&file).unwrap(),
+            typ: FileChangeType::CHANGED,
+        };
+        assert!(!event_touches_legacy_dir(&event, &[]));
+    }
+
+    #[tokio::test]
+    async fn matching_legacy_file_drops_base_and_lands_in_workspace() {
+        let temp = LocalTempDir::new("ws_matching_legacy_file_drops_base");
+        let (game_dir, base_url) =
+            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+        let legacy_dir = temp.path().join("legacy");
+        let legacy_path = write_script(
+            &legacy_dir,
+            "game/r4Player.ws",
+            "class CR4Player {}\n// legacy\n",
+        );
+        let legacy_url = Url::from_file_path(&legacy_path).expect("legacy path -> url");
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+        *backend.legacy_script_dirs.lock().await = vec![legacy_dir.clone()];
+
+        backend.index_base_scripts().await;
+
+        let base_docs = backend.base_scripts_documents.lock().await;
+        assert!(
+            !base_docs.contains_key(base_url.as_str()),
+            "base script should be replaced; got keys {:?}",
+            base_docs.keys().collect::<Vec<_>>()
+        );
+
+        let ws_docs = backend.workspace_documents.lock().await;
+        assert!(
+            ws_docs.contains_key(legacy_url.as_str()),
+            "legacy file should be in workspace_documents; got keys {:?}",
+            ws_docs.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn unmatched_legacy_file_still_lands_in_workspace() {
+        let temp = LocalTempDir::new("ws_unmatched_legacy_file_lands_in_workspace");
+        let (game_dir, base_url) =
+            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+        let legacy_dir = temp.path().join("legacy");
+        let legacy_path = write_script(
+            &legacy_dir,
+            "game/MyMod.ws",
+            "@addMethod(CR4Player)\nfunction Hi() {}\n",
+        );
+        let legacy_url = Url::from_file_path(&legacy_path).expect("legacy path -> url");
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+        *backend.legacy_script_dirs.lock().await = vec![legacy_dir.clone()];
+
+        backend.index_base_scripts().await;
+
+        let base_docs = backend.base_scripts_documents.lock().await;
+        assert!(
+            base_docs.contains_key(base_url.as_str()),
+            "unmatched legacy file must not remove the base script"
+        );
+
+        let ws_docs = backend.workspace_documents.lock().await;
+        assert!(
+            ws_docs.contains_key(legacy_url.as_str()),
+            "annotated legacy file should be in workspace_documents"
+        );
+    }
+
+    #[tokio::test]
+    async fn base_script_conflict_silent_on_matched_legacy_file() {
+        let temp = LocalTempDir::new("ws_base_script_conflict_silent_on_matched_legacy");
+        let (game_dir, _base_url) =
+            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+        let legacy_dir = temp.path().join("legacy");
+        let _ = write_script(
+            &legacy_dir,
+            "game/r4Player.ws",
+            "class CR4Player {}\n// legacy\n",
+        );
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+        *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+
+        backend.index_base_scripts().await;
+
+        let ws = backend.workspace_index.lock().await;
+        let base = backend.base_scripts_index.lock().await;
+        let diagnostics = collect_base_script_conflict_diagnostics(&ws, &base);
+        assert!(
+            diagnostics.is_empty(),
+            "matched legacy file must not trigger base_script_conflict; got {diagnostics:?}",
+        );
+    }
+
+    #[tokio::test]
+    async fn additional_script_dir_overlapping_legacy_logs_and_wins_as_legacy() {
+        let temp = LocalTempDir::new("ws_additional_overlapping_legacy_wins_as_legacy");
+        let (game_dir, base_url) =
+            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+        let legacy_dir = temp.path().join("legacy");
+        let legacy_path = write_script(
+            &legacy_dir,
+            "game/r4Player.ws",
+            "class CR4Player {}\n// override\n",
+        );
+        let legacy_url = Url::from_file_path(&legacy_path).expect("legacy path -> url");
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+        *backend.additional_script_dirs.lock().await = vec![legacy_dir.clone()];
+        *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+
+        backend.index_base_scripts().await;
+
+        let base_docs = backend.base_scripts_documents.lock().await;
+        assert!(
+            !base_docs.contains_key(base_url.as_str()),
+            "legacy semantics must win when the same dir appears in both lists"
+        );
+        assert!(
+            !base_docs.contains_key(legacy_url.as_str()),
+            "legacy file must not be loaded as a base overlay"
+        );
+
+        let ws_docs = backend.workspace_documents.lock().await;
+        assert!(
+            ws_docs.contains_key(legacy_url.as_str()),
+            "legacy file must land in workspace_documents"
+        );
     }
 }

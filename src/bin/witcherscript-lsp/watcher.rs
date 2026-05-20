@@ -1,17 +1,31 @@
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use lsp_types::request::RegisterCapability;
 use lsp_types::{
     DidChangeWatchedFilesRegistrationOptions, FileChangeType, FileEvent, FileSystemWatcher,
     GlobPattern, Registration, RegistrationParams,
 };
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::files::{is_witcherscript_file, read_script_file, ExcludeFilter};
 
 use crate::backend::Backend;
 use crate::convert::canonical_uri;
+
+pub(crate) fn event_touches_legacy_dir(event: &FileEvent, legacy_dirs: &[PathBuf]) -> bool {
+    if legacy_dirs.is_empty() {
+        return false;
+    }
+    let Ok(path) = event.uri.to_file_path() else {
+        return false;
+    };
+    legacy_dirs.iter().any(|dir| starts_with(&path, dir))
+}
+
+fn starts_with(path: &Path, dir: &Path) -> bool {
+    path.starts_with(dir)
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum WatchedEvent {
@@ -79,11 +93,16 @@ impl Backend {
         };
         let roots = self.workspace_roots.lock().await.clone();
         let filter = ExcludeFilter::new(&roots, &self.files_exclude.lock().await.clone());
+        let legacy_dirs = self.legacy_script_dirs.lock().await.clone();
+
+        let (legacy_events, normal_events): (Vec<FileEvent>, Vec<FileEvent>) = events
+            .into_iter()
+            .partition(|event| event_touches_legacy_dir(event, &legacy_dirs));
 
         let mut updates: Vec<(String, witcherscript_language::document::ParsedDocument)> =
             Vec::new();
         let mut removals: Vec<String> = Vec::new();
-        for event in &events {
+        for event in &normal_events {
             let Some(decision) = classify_watched_event(event, &open_canonical, &filter) else {
                 continue;
             };
@@ -113,26 +132,37 @@ impl Backend {
             }
         }
 
-        if updates.is_empty() && removals.is_empty() {
+        let has_normal_work = !updates.is_empty() || !removals.is_empty();
+        if has_normal_work {
+            let invalidated = {
+                let mut index = self.workspace_index.lock().await;
+                let mut docs = self.workspace_documents.lock().await;
+                let mut invalidated: HashSet<String> = HashSet::new();
+                for (canonical, document) in updates {
+                    invalidated.extend(index.update_document(canonical.as_str(), &document));
+                    docs.insert(canonical, document);
+                }
+                for canonical in removals {
+                    invalidated.extend(index.remove_document(&canonical));
+                    docs.remove(&canonical);
+                }
+                invalidated
+            };
+            self.evict_cache_entries(&invalidated).await;
+        }
+
+        if !legacy_events.is_empty() {
+            trace!(
+                count = legacy_events.len(),
+                "watched file events touched a legacy script directory; triggering full re-index"
+            );
+            self.index_workspace().await;
+            self.index_base_scripts().await;
             return;
         }
 
-        let invalidated = {
-            let mut index = self.workspace_index.lock().await;
-            let mut docs = self.workspace_documents.lock().await;
-            let mut invalidated: HashSet<String> = HashSet::new();
-            for (canonical, document) in updates {
-                invalidated.extend(index.update_document(canonical.as_str(), &document));
-                docs.insert(canonical, document);
-            }
-            for canonical in removals {
-                invalidated.extend(index.remove_document(&canonical));
-                docs.remove(&canonical);
-            }
-            invalidated
-        };
-        self.evict_cache_entries(&invalidated).await;
-
-        self.publish_open_diagnostics().await;
+        if has_normal_work {
+            self.publish_open_diagnostics().await;
+        }
     }
 }

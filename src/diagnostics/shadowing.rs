@@ -63,6 +63,7 @@ fn script_global_shadow(sym: &Symbol, env: &ScriptEnvironment) -> Option<Workspa
             range: global.symbol.selection_range,
             message: format!("'{}' declared here", sym.name),
         }],
+        data: None,
     })
 }
 
@@ -84,6 +85,7 @@ fn field_shadows_script_global(
             range: global.symbol.selection_range,
             message: format!("'{}' declared here", sym.name),
         }],
+        data: None,
     })
 }
 
@@ -117,6 +119,7 @@ fn class_field_shadow(
             range: field.symbol.selection_range,
             message: format!("field '{}' declared here", sym.name),
         }],
+        data: None,
     })
 }
 

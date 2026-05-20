@@ -56,6 +56,14 @@ diagnostics:
   not share a name with another top-level declaration anywhere in the workspace. Each
   conflicting declaration is flagged, with related-information links to the others.
   Modding-annotation member injections (`@addMethod`/`@wrapMethod`/...) are exempt.
+- Base-script conflict (`base_script_conflict`, error): a workspace file whose path and
+  name match a base game script (e.g. a copied-and-edited `game/r4Player.ws`) and which
+  redeclares the base script's top-level symbols. Each clashing declaration is flagged
+  with a related-information link to the base declaration. This is a legacy full-script
+  override; the message asks the user to either mark the directory under
+  `witcherscript.legacyScriptDirectories` (a quick fix is offered) or switch to
+  annotation-based modding. Inside such a file the generic duplicate-symbol error is
+  suppressed in favour of this clearer one.
 - Duplicate local declarations (error): two parameters, two local `var`s, or a parameter
   and a local `var` with the same name inside one function. `@wrapMethod` and
   `@replaceMethod` functions are exempt — they intentionally mirror the wrapped/replaced
@@ -140,6 +148,7 @@ client extension to connect to `127.0.0.1:9257` instead of spawning the binary.
 | Document symbols | Nested outline of classes, structs, enums, functions, methods, states, events, and fields |
 | Semantic tokens | Full-document semantic highlighting; legend exposed in `initialize` |
 | Document formatting | Pretty-prints whole documents using `witcherscript.formatter.*` settings |
+| Code actions | Quick fix for `base_script_conflict`: marks the conflicting directory as a legacy override directory |
 
 On startup the server indexes every `.ws` file in the workspace root(s), then keeps
 open documents in sync as they are edited.
@@ -152,6 +161,7 @@ The server reads the following user-configurable settings:
 |---|---|---|---|
 | `witcherscript.gameDirectory` | `string` | `""` | Absolute path to the Witcher 3 install root (e.g. `C:\GOG Games\The Witcher 3`). The server appends `content\content0\scripts` and indexes the ~1,700 base game scripts. It also loads engine globals from `bin\redscripts.ini`. |
 | `witcherscript.additionalScriptDirectories` | `string[]` | `[]` | Extra root directories to walk recursively for `.ws` files. Each entry is loaded as read-only base scripts: their symbols join the global namespace, but renames are rejected. Use this when writing co-dependent mods that need to see each other's declarations. |
+| `witcherscript.legacyScriptDirectories` | `string[]` | `[]` | Directories holding legacy full-script overrides — copies of base game scripts edited in place. Each base script a legacy file replaces is dropped from the read-only base index, and the legacy file is indexed as a normal (editable) workspace file. Marking a directory here is what silences the `base_script_conflict` diagnostic; the diagnostic's quick fix appends to this list. |
 | `witcherscript.autoLoadModSharedImports` | `boolean` | `true` | Auto-load the **Shared Imports** mod (a specific community mod at `<gameDirectory>\Mods\modSharedImports` that most modern Witcher 3 mods depend on to avoid clashes between `import` declarations). When this flag is on and the directory exists, it is loaded automatically — see "Auto-loaded: the Shared Imports mod" below. |
 | `witcherscript.diagnostics.enable` | `boolean` | `true` | Master switch for all diagnostics (parse errors, duplicate symbols, shadowing warnings, late-local-var, etc.). Set to `false` to suppress every diagnostic the server would otherwise publish — useful when reviewing partial-port or legacy mod source where squiggles are noise. Live-toggleable: flipping it off clears any visible diagnostics; flipping it back on republishes them. |
 | `witcherscript.logLevel` | `string` | `"warn"` | Server log level (`error`, `warn`, `debug`, `trace`; unknown values fall back to `warn`). Live-toggleable via `workspace/didChangeConfiguration`. |

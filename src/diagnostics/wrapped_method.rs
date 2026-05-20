@@ -145,6 +145,7 @@ fn push<'tree>(ctx: &mut CstRuleCtx<'_, 'tree>, anchor: Node<'tree>, kind: &str,
         severity: Severity::Error,
         range,
         related: vec![],
+        data: None,
     });
 }
 

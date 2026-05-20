@@ -57,6 +57,7 @@ pub fn collect_duplicate_local_diagnostics(
                             severity: Severity::Error,
                             range: sym.selection_range,
                             related,
+                            data: None,
                         });
                 }
             }

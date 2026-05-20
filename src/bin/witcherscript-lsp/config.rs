@@ -48,6 +48,7 @@ impl Backend {
         let prev_base_scripts_path = self.base_scripts_path.lock().await.clone();
         let prev_files_exclude = self.files_exclude.lock().await.clone();
         let prev_additional = self.additional_script_dirs.lock().await.clone();
+        let prev_legacy = self.legacy_script_dirs.lock().await.clone();
         let prev_cfg = (**self.config.load()).clone();
 
         let items = vec![
@@ -86,6 +87,10 @@ impl Backend {
             ConfigurationItem {
                 scope_uri: None,
                 section: Some("witcherscript.diagnostics.enable".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.legacyScriptDirectories".to_string()),
             },
         ];
         let Ok(values) = self
@@ -167,6 +172,21 @@ impl Backend {
             Some(Value::Bool(b)) => b,
             _ => true,
         };
+        match iter.next() {
+            Some(Value::Array(arr)) => {
+                let dirs: Vec<std::path::PathBuf> = arr
+                    .into_iter()
+                    .filter_map(|v| match v {
+                        Value::String(s) if !s.is_empty() => Some(std::path::PathBuf::from(s)),
+                        _ => None,
+                    })
+                    .collect();
+                *self.legacy_script_dirs.lock().await = dirs;
+            }
+            _ => {
+                self.legacy_script_dirs.lock().await.clear();
+            }
+        }
 
         self.config.store(Arc::new(next_cfg.clone()));
 
@@ -175,6 +195,7 @@ impl Backend {
         let new_additional_len = self.additional_script_dirs.lock().await.len();
         let additional_changed = new_additional_len != prev_additional.len()
             || *self.additional_script_dirs.lock().await != prev_additional;
+        let legacy_changed = *self.legacy_script_dirs.lock().await != prev_legacy;
         let auto_load_changed =
             next_cfg.auto_load_mod_shared_imports != prev_cfg.auto_load_mod_shared_imports;
         let diagnostics_toggled = next_cfg.diagnostics_enabled != prev_cfg.diagnostics_enabled;
@@ -208,10 +229,14 @@ impl Backend {
                 "setting changed"
             );
         }
+        if legacy_changed {
+            trace!(setting = "legacyScriptDirectories", "setting changed");
+        }
         ConfigChange {
             needs_reindex: base_scripts_changed
                 || files_exclude_changed
                 || additional_changed
+                || legacy_changed
                 || auto_load_changed,
             diagnostics_toggled,
         }
