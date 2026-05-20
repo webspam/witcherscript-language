@@ -5,6 +5,7 @@ use tree_sitter::{Node, Point};
 
 use crate::line_index::SourceRange;
 
+mod base_script_conflict;
 mod cst_walker;
 mod duplicate_local;
 mod duplicate_symbols;
@@ -13,6 +14,10 @@ mod unknown_method;
 mod unknown_symbol;
 mod wrapped_method;
 
+pub use base_script_conflict::{
+    basename_of, collect_base_script_conflict_diagnostics, relative_from_scripts,
+    KIND as BASE_SCRIPT_CONFLICT_KIND,
+};
 pub(crate) use cst_walker::{
     collect_nodes_with_error_subtree, run_parallel_pass, run_rules_on_document, CstRule,
     CstRuleCtx, ParallelRuleShard,
@@ -74,6 +79,7 @@ pub struct WorkspaceDiagnostic {
     pub severity: Severity,
     pub range: SourceRange,
     pub related: Vec<RelatedLocation>,
+    pub data: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]

@@ -57,6 +57,7 @@ pub fn collect_duplicate_symbol_diagnostics(
                     severity: Severity::Error,
                     range: sym.selection_range,
                     related,
+                    data: None,
                 });
         }
     }

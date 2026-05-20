@@ -136,6 +136,7 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         severity: Severity::Error,
         range,
         related: vec![],
+        data: None,
     });
 }
 

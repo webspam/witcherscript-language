@@ -95,6 +95,7 @@ fn workspace_diagnostic_carries_related_information() {
             range,
             message: "'Foo' also declared here".to_string(),
         }],
+        data: None,
     };
 
     let lsp = lsp_workspace_diagnostic(&diagnostic);
