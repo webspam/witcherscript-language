@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use crate::resolve::WorkspaceIndex;
 use crate::symbols::{Symbol, SymbolKind};
@@ -17,11 +18,16 @@ struct BaseEntry<'a> {
 pub fn collect_base_script_conflict_diagnostics(
     workspace: &WorkspaceIndex,
     base: &WorkspaceIndex,
+    legacy_dirs: &[PathBuf],
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
     let by_basename = index_base_scripts(base);
     let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
 
     for (workspace_uri, symbols) in workspace.documents() {
+        // A file under a legacyScriptDirectories entry is a confirmed override, not a clash.
+        if uri_is_under_any(workspace_uri, legacy_dirs) {
+            continue;
+        }
         let Some(basename) = basename_of(workspace_uri) else {
             continue;
         };
@@ -144,6 +150,19 @@ fn path_suffix_matches(uri: &str, relative_path: &str) -> bool {
         .is_some_and(|head| head.ends_with('/'))
 }
 
+fn uri_is_under_any(uri: &str, dirs: &[PathBuf]) -> bool {
+    if dirs.is_empty() {
+        return false;
+    }
+    let Some(path) = lsp_types::Url::parse(uri)
+        .ok()
+        .and_then(|u| u.to_file_path().ok())
+    else {
+        return false;
+    };
+    dirs.iter().any(|dir| path.starts_with(dir))
+}
+
 // Carried on the diagnostic so the quick fix knows which directory to mark as legacy.
 fn conflict_data(workspace_uri: &str, base_relpath: &str) -> Option<serde_json::Value> {
     let dir_uri = workspace_uri.strip_suffix(base_relpath)?;
@@ -195,7 +214,7 @@ mod tests {
     ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
         let workspace = build_index(workspace_docs);
         let base = build_index(base_docs);
-        collect_base_script_conflict_diagnostics(&workspace, &base)
+        collect_base_script_conflict_diagnostics(&workspace, &base, &[])
     }
 
     #[test]
@@ -347,6 +366,26 @@ mod tests {
         assert_eq!(
             diags[1].range.start.line, 1,
             "second diagnostic on function"
+        );
+    }
+
+    #[test]
+    fn workspace_file_under_a_legacy_dir_is_not_flagged() {
+        let legacy_dir = std::env::temp_dir().join("bsc_legacy_skip_test");
+        let ws_path = legacy_dir.join("game").join("r4Player.ws");
+        let ws_uri = lsp_types::Url::from_file_path(&ws_path)
+            .expect("absolute path -> url")
+            .to_string();
+        let workspace = build_index(&[(ws_uri.as_str(), "class CR4Player {}\n")]);
+        let base = build_index(&[(BASE_PLAYER_URI, "class CR4Player {}\n")]);
+
+        assert!(
+            !collect_base_script_conflict_diagnostics(&workspace, &base, &[]).is_empty(),
+            "control: the file is flagged when its directory is not marked legacy",
+        );
+        assert!(
+            collect_base_script_conflict_diagnostics(&workspace, &base, &[legacy_dir]).is_empty(),
+            "a file under a configured legacy directory must not be flagged",
         );
     }
 

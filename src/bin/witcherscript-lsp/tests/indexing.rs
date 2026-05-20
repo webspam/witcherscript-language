@@ -425,7 +425,9 @@ mod legacy_routing {
     use lsp_types::{FileChangeType, FileEvent, Url};
     use tokio::sync::{mpsc, Mutex};
     use witcherscript_language::builtins::load_builtins_index;
-    use witcherscript_language::diagnostics::collect_base_script_conflict_diagnostics;
+    use witcherscript_language::diagnostics::{
+        collect_base_script_conflict_diagnostics, collect_duplicate_symbol_diagnostics,
+    };
     use witcherscript_language::resolve::WorkspaceIndex;
     use witcherscript_language::script_env::ScriptEnvironment;
 
@@ -720,10 +722,50 @@ mod legacy_routing {
 
         let ws = backend.workspace_index.lock().await;
         let base = backend.base_scripts_index.lock().await;
-        let diagnostics = collect_base_script_conflict_diagnostics(&ws, &base);
+        let legacy_dirs = backend.legacy_script_dirs.lock().await.clone();
+        let diagnostics = collect_base_script_conflict_diagnostics(&ws, &base, &legacy_dirs);
         assert!(
             diagnostics.is_empty(),
             "matched legacy file must not trigger base_script_conflict; got {diagnostics:?}",
+        );
+    }
+
+    #[tokio::test]
+    async fn opening_an_overridden_base_script_keeps_it_out_of_the_workspace() {
+        let temp = LocalTempDir::new("ws_open_overridden_base_no_dup");
+        let (game_dir, base_url) =
+            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+        let legacy_dir = temp.path().join("legacy");
+        let _ = write_script(
+            &legacy_dir,
+            "game/r4Player.ws",
+            "class CR4Player {}\n// legacy\n",
+        );
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+        *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+        backend.index_base_scripts().await;
+
+        backend
+            .update_open_document(base_url.clone(), "class CR4Player {}\n".to_string())
+            .await;
+
+        let ws = backend.workspace_index.lock().await;
+        let base = backend.base_scripts_index.lock().await;
+        let legacy_dirs = backend.legacy_script_dirs.lock().await.clone();
+
+        assert!(
+            collect_duplicate_symbol_diagnostics(&ws).is_empty(),
+            "opening the overridden base script must not create a workspace duplicate",
+        );
+        assert!(
+            collect_base_script_conflict_diagnostics(&ws, &base, &legacy_dirs).is_empty(),
+            "the legacy override must not be flagged once both files are loaded",
+        );
+        assert!(
+            base.documents().any(|(uri, _)| uri == base_url.as_str()),
+            "the opened base script should be indexed as a base script",
         );
     }
 

@@ -84,7 +84,11 @@ impl Backend {
         let parsed = tracing::debug_span!("parse_document").in_scope(|| parse_document(text));
         match parsed {
             Ok(document) => {
-                let invalidated = {
+                // Indexing an opened base script as a workspace declaration duplicates its override.
+                let invalidated = if self.is_base_script_uri(&uri).await {
+                    let mut index = self.base_scripts_index.lock().await;
+                    index_open_document(&mut index, &uri, &document)
+                } else {
                     let mut index = self.workspace_index.lock().await;
                     index_open_document(&mut index, &uri, &document)
                 };
@@ -96,6 +100,31 @@ impl Backend {
                 error!(uri = %uri, error = %err, "failed to parse document");
             }
         }
+    }
+
+    async fn is_base_script_uri(&self, uri: &Url) -> bool {
+        let Ok(path) = uri.to_file_path() else {
+            return false;
+        };
+        if self
+            .legacy_script_dirs
+            .lock()
+            .await
+            .iter()
+            .any(|dir| path.starts_with(dir))
+        {
+            return false;
+        }
+        if let Some(game_dir) = self.base_scripts_path.lock().await.as_ref() {
+            if path.starts_with(game_dir) {
+                return true;
+            }
+        }
+        self.additional_script_dirs
+            .lock()
+            .await
+            .iter()
+            .any(|dir| path.starts_with(dir))
     }
 
     pub(super) async fn evict_cache_entries(&self, uris: &HashSet<String>) {
