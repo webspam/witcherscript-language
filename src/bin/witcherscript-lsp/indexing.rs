@@ -127,6 +127,27 @@ impl Backend {
             .any(|dir| path.starts_with(dir))
     }
 
+    // index_base_scripts rebuilds the base index from disk, dropping any open base script.
+    async fn merge_open_base_documents(&self) {
+        let open_uris: Vec<Url> = self.documents.lock().await.keys().cloned().collect();
+        let mut base_uris: Vec<Url> = Vec::new();
+        for uri in open_uris {
+            if self.is_base_script_uri(&uri).await {
+                base_uris.push(uri);
+            }
+        }
+        if base_uris.is_empty() {
+            return;
+        }
+        let documents = self.documents.lock().await;
+        let mut idx = self.base_scripts_index.lock().await;
+        for uri in base_uris {
+            if let Some(doc) = documents.get(&uri) {
+                index_open_document(&mut idx, &uri, doc);
+            }
+        }
+    }
+
     pub(super) async fn evict_cache_entries(&self, uris: &HashSet<String>) {
         if uris.is_empty() {
             return;
@@ -233,6 +254,10 @@ impl Backend {
         let mut ws_docs = self.workspace_documents.lock().await;
         let mut tracked = self.legacy_indexed_uris.lock().await;
         for uri in tracked.drain() {
+            // An open legacy file is owned by update_open_document; leave it alone.
+            if open_canonical.contains(&uri) {
+                continue;
+            }
             ws_idx.remove_document(&uri);
             ws_docs.remove(&uri);
         }
@@ -446,6 +471,7 @@ impl Backend {
             *idx = base_new_index;
             *docs = base_new_docs;
         }
+        self.merge_open_base_documents().await;
 
         self.reconcile_legacy_workspace_files(legacy_parsed).await;
 

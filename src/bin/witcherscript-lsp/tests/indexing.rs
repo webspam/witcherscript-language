@@ -770,6 +770,69 @@ mod legacy_routing {
     }
 
     #[tokio::test]
+    async fn reindexing_keeps_an_open_legacy_file_indexed() {
+        let temp = LocalTempDir::new("ws_reindex_keeps_open_legacy");
+        let (game_dir, _base_url) =
+            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+        let legacy_dir = temp.path().join("legacy");
+        let legacy_path = write_script(&legacy_dir, "game/r4Player.ws", "class CR4Player {}\n");
+        let legacy_url = Url::from_file_path(&legacy_path).expect("legacy path -> url");
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+        *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+
+        backend.index_base_scripts().await;
+        backend
+            .update_open_document(legacy_url.clone(), "class CR4Player {}\n".to_string())
+            .await;
+        backend.index_base_scripts().await;
+
+        assert!(
+            backend
+                .workspace_index
+                .lock()
+                .await
+                .documents()
+                .any(|(uri, _)| uri == legacy_url.as_str()),
+            "an open legacy file must survive a re-index",
+        );
+    }
+
+    #[tokio::test]
+    async fn reindexing_keeps_an_open_overridden_base_script_indexed() {
+        let temp = LocalTempDir::new("ws_reindex_keeps_open_overridden_base");
+        let (game_dir, base_url) =
+            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+        let legacy_dir = temp.path().join("legacy");
+        let _ = write_script(
+            &legacy_dir,
+            "game/r4Player.ws",
+            "class CR4Player {}\n// legacy\n",
+        );
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+        *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+
+        backend.index_base_scripts().await;
+        backend
+            .update_open_document(base_url.clone(), "class CR4Player {}\n".to_string())
+            .await;
+        backend.index_base_scripts().await;
+
+        assert!(
+            backend
+                .base_scripts_index
+                .lock()
+                .await
+                .documents()
+                .any(|(uri, _)| uri == base_url.as_str()),
+            "an open, legacy-overridden base script must survive a re-index",
+        );
+    }
+
+    #[tokio::test]
     async fn additional_script_dir_overlapping_legacy_logs_and_wins_as_legacy() {
         let temp = LocalTempDir::new("ws_additional_overlapping_legacy_wins_as_legacy");
         let (game_dir, base_url) =
