@@ -8,12 +8,12 @@ use rayon::prelude::*;
 use tracing::{debug, error, info, warn};
 use witcherscript_language::diagnostics::{basename_of, relative_from_scripts};
 use witcherscript_language::document::{parse_document, ParsedDocument};
-use witcherscript_language::files::{collect_witcherscript_files, read_script_file};
+use witcherscript_language::files::{canonical_uri, collect_witcherscript_files, read_script_file};
 use witcherscript_language::resolve::{resolve_definition, Definition, WorkspaceIndex};
 use witcherscript_language::script_env::parse_script_environment;
 
 use crate::backend::Backend;
-use crate::convert::{canonical_uri, source_position};
+use crate::convert::source_position;
 
 pub(crate) fn legacy_replaces_base(base_uri: &str, legacy_uri: &str) -> bool {
     let Some(tail) = relative_from_scripts(base_uri) else {
@@ -84,7 +84,11 @@ impl Backend {
         let parsed = tracing::debug_span!("parse_document").in_scope(|| parse_document(text));
         match parsed {
             Ok(document) => {
-                let invalidated = {
+                // Indexing an opened base script as a workspace declaration duplicates its override.
+                let invalidated = if self.is_base_script_uri(&uri).await {
+                    let mut index = self.base_scripts_index.lock().await;
+                    index_open_document(&mut index, &uri, &document)
+                } else {
                     let mut index = self.workspace_index.lock().await;
                     index_open_document(&mut index, &uri, &document)
                 };
@@ -94,6 +98,52 @@ impl Backend {
             }
             Err(err) => {
                 error!(uri = %uri, error = %err, "failed to parse document");
+            }
+        }
+    }
+
+    async fn is_base_script_uri(&self, uri: &Url) -> bool {
+        let Ok(path) = uri.to_file_path() else {
+            return false;
+        };
+        if self
+            .legacy_script_dirs
+            .lock()
+            .await
+            .iter()
+            .any(|dir| path.starts_with(dir))
+        {
+            return false;
+        }
+        if let Some(game_dir) = self.base_scripts_path.lock().await.as_ref() {
+            if path.starts_with(game_dir) {
+                return true;
+            }
+        }
+        self.additional_script_dirs
+            .lock()
+            .await
+            .iter()
+            .any(|dir| path.starts_with(dir))
+    }
+
+    // index_base_scripts rebuilds the base index from disk, dropping any open base script.
+    async fn merge_open_base_documents(&self) {
+        let open_uris: Vec<Url> = self.documents.lock().await.keys().cloned().collect();
+        let mut base_uris: Vec<Url> = Vec::new();
+        for uri in open_uris {
+            if self.is_base_script_uri(&uri).await {
+                base_uris.push(uri);
+            }
+        }
+        if base_uris.is_empty() {
+            return;
+        }
+        let documents = self.documents.lock().await;
+        let mut idx = self.base_scripts_index.lock().await;
+        for uri in base_uris {
+            if let Some(doc) = documents.get(&uri) {
+                index_open_document(&mut idx, &uri, doc);
             }
         }
     }
@@ -194,6 +244,33 @@ impl Backend {
         resolve_definition(uri.as_str(), document, &db, source_position(position))
     }
 
+    // A deleted legacy file has no other removal path, so each run drops the previous set.
+    async fn reconcile_legacy_workspace_files(&self, parsed: Vec<(String, ParsedDocument)>) {
+        let open_canonical: HashSet<String> = {
+            let documents = self.documents.lock().await;
+            documents.keys().filter_map(canonical_uri).collect()
+        };
+        let mut ws_idx = self.workspace_index.lock().await;
+        let mut ws_docs = self.workspace_documents.lock().await;
+        let mut tracked = self.legacy_indexed_uris.lock().await;
+        for uri in tracked.drain() {
+            // An open legacy file is owned by update_open_document; leave it alone.
+            if open_canonical.contains(&uri) {
+                continue;
+            }
+            ws_idx.remove_document(&uri);
+            ws_docs.remove(&uri);
+        }
+        for (uri, doc) in parsed {
+            if open_canonical.contains(&uri) {
+                continue;
+            }
+            ws_idx.update_document(uri.as_str(), &doc);
+            ws_docs.insert(uri.clone(), doc);
+            tracked.insert(uri);
+        }
+    }
+
     pub(crate) async fn index_base_scripts(&self) {
         let game_dir_opt = self.base_scripts_path.lock().await.clone();
         let extras = self.additional_script_dirs.lock().await.clone();
@@ -201,10 +278,14 @@ impl Backend {
         let auto_load = self.config.load().auto_load_mod_shared_imports;
 
         if game_dir_opt.is_none() && extras.is_empty() && legacy_dirs.is_empty() {
-            let mut idx = self.base_scripts_index.lock().await;
-            let mut docs = self.base_scripts_documents.lock().await;
-            *idx = WorkspaceIndex::default();
-            docs.clear();
+            {
+                let mut idx = self.base_scripts_index.lock().await;
+                let mut docs = self.base_scripts_documents.lock().await;
+                *idx = WorkspaceIndex::default();
+                docs.clear();
+            }
+            self.reconcile_legacy_workspace_files(Vec::new()).await;
+            self.publish_open_diagnostics().await;
             return;
         }
 
@@ -390,22 +471,9 @@ impl Backend {
             *idx = base_new_index;
             *docs = base_new_docs;
         }
+        self.merge_open_base_documents().await;
 
-        if !legacy_parsed.is_empty() {
-            let open_canonical: HashSet<String> = {
-                let documents = self.documents.lock().await;
-                documents.keys().filter_map(canonical_uri).collect()
-            };
-            let mut ws_idx = self.workspace_index.lock().await;
-            let mut ws_docs = self.workspace_documents.lock().await;
-            for (uri, doc) in legacy_parsed {
-                if open_canonical.contains(&uri) {
-                    continue;
-                }
-                ws_idx.update_document(uri.as_str(), &doc);
-                ws_docs.insert(uri, doc);
-            }
-        }
+        self.reconcile_legacy_workspace_files(legacy_parsed).await;
 
         let elapsed_ms = total_start.elapsed().as_millis();
         info!(

@@ -30,6 +30,7 @@ impl Backend {
         let start = Instant::now();
 
         let documents = self.documents.lock().await;
+        let legacy_dirs = self.legacy_script_dirs.lock().await.clone();
 
         let (
             dup_by_uri,
@@ -51,7 +52,7 @@ impl Backend {
             let dup_local = tracing::debug_span!("dup_locals")
                 .in_scope(|| collect_duplicate_local_diagnostics(&index));
             let base_conflict = tracing::debug_span!("base_script_conflict")
-                .in_scope(|| collect_base_script_conflict_diagnostics(&index, &base));
+                .in_scope(|| collect_base_script_conflict_diagnostics(&index, &base, &legacy_dirs));
 
             let fingerprint = DbFingerprint {
                 base_surface: base.surface_hash(),
