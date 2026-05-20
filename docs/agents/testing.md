@@ -4,7 +4,7 @@
 
 | Location | What it tests |
 |---|---|
-| `src/diagnostics.rs` `#[cfg(test)]` | `collect_diagnostics()` — late vars, incomplete exprs |
+| `src/diagnostics/mod.rs` `#[cfg(test)]` | `collect_diagnostics()` — late vars, incomplete exprs, ternary |
 | `src/symbols.rs` `#[cfg(test)]` | `extract_symbols()` — params, locals, functions |
 | `src/line_index.rs` `#[cfg(test)]` | `LineIndex` — byte↔position conversions, UTF-16 |
 | `src/script_env.rs` `#[cfg(test)]` | INI parsing, globals section, symbol positions |
@@ -175,7 +175,7 @@ There are no doctests in this repo, so a separate `cargo test --doc` step is not
 | Scenario | Where to add |
 |---|---|
 | New grammar construct | Fixture in `tests/fixtures/valid/` + `parser_fixtures.rs` picks it up automatically |
-| New validation rule | Unit test in `diagnostics.rs` + fixture in `tests/fixtures/invalid/` if complex |
+| New validation rule | Unit test in `src/diagnostics/mod.rs` + fixture in `tests/fixtures/invalid/` if complex |
 | New symbol kind | Test in `symbols.rs` `#[cfg(test)]` + cases in `src/resolve/tests/` |
 | New resolution case | Test in `src/resolve/tests/` (inline source) |
 | New completion case | Test in `src/resolve/tests/` or a new `language_features.rs` test |

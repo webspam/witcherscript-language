@@ -1,6 +1,6 @@
 # LSP server
 
-**Module:** `src/bin/witcherscript-lsp/` (~3300 lines across 10 files)
+**Module:** `src/bin/witcherscript-lsp/` (~3150 lines across 10 files)
 
 | File | Purpose |
 |---|---|
@@ -153,7 +153,7 @@ The `completion()` handler tries four strategies in order, taking the first that
 1. **Member completions** — if the character before the cursor is `.` or `:`, call `completion_members()` to get tiered members of the receiver type.
 2. **Type completions** — if cursor is in a type annotation context, call `type_completions()`.
 3. **Statement completions** — if cursor is inside a function body, call `statement_completions()`. Offers `this`, `super`, `var` keyword, locals, members, globals.
-4. **Class body completions** — if cursor is in a class/struct/state body, call `class_body_completions()` and offer structural keywords.
+4. **Class body completions** — if cursor is in a class/struct/state body, call `class_body_keyword_completions()` and offer structural keywords.
 
 ## Completion item format
 
@@ -181,6 +181,7 @@ Built fresh for each request:
 
 ```rust
 let db = SymbolDb::new(&workspace_index, &base_scripts_index)
+    .with_builtins(&builtins_index)
     .with_script_env(&script_env);
 ```
 

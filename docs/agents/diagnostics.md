@@ -21,11 +21,10 @@
   declaration sites, `BUILTIN_TYPES`, tree-sitter error/missing subtrees, and idents
   already owned by `unknown_method` (member-access calls).
 - `src/diagnostics/wrapped_method.rs` — CST-walking rule (`WrappedMethodRule`) that
-  implements `CstRule` and is registered in `collect_cst_diagnostics_for_document`. Also
-  exposes `collect_wrapped_method_diagnostics(&[(&str, &ParsedDocument)], &SymbolDb)`
-  as a standalone batch function. Checks every `@wrapMethod`-annotated function for a
-  bare `wrappedMethod(...)` call: emits `"missing_wrapped_method"` if none is found,
-  or `"duplicate_wrapped_method"` for each call beyond the first.
+  implements `CstRule` and is registered in `collect_cst_diagnostics_for_document`.
+  Checks every `@wrapMethod`-annotated function for a bare `wrappedMethod(...)` call:
+  emits `"missing_wrapped_method"` if none is found, or `"duplicate_wrapped_method"`
+  for each call beyond the first.
 - `src/diagnostics/cst_walker.rs` — `CstRule` trait, `CstRuleCtx`, per-call `TypeMemo`,
   `run_rules_on_document`, `collect_nodes_with_error_subtree`, `run_parallel_pass`. Any
   new rule needing to walk a document's CST must use these primitives rather than walking
@@ -117,15 +116,8 @@ flags parameters or local variables that share a name within the same function s
 are exempt because those annotations intentionally redeclare parameters from the wrapped
 signature.
 
-`collect_wrapped_method_diagnostics(&[(&str, &ParsedDocument)], &SymbolDb) -> HashMap<String, Vec<WorkspaceDiagnostic>>`
-is a batch CST-walking function (calls `run_rules_on_document` per document). It checks
-every `@wrapMethod`-annotated function for a bare `wrappedMethod(...)` call, emitting
-`"missing_wrapped_method"` if none is found or `"duplicate_wrapped_method"` for each
-call after the first. Unlike the index-walking rules, it requires parsed documents, not
-just the index.
-
 The LSP computes workspace diagnostics across the whole index but only *publishes* them
-for open documents (`Backend::publish_open_diagnostics` in `indexing.rs`), merged with the
+for open documents (`Backend::publish_open_diagnostics` in `diagnostics_publish.rs`), merged with the
 document's syntactic `ParseDiagnostic`s.
 
 ## LSP conversion
@@ -167,7 +159,7 @@ Used by the CLI's `--dump-tree` flag.
 
 1. Add a new submodule under `src/diagnostics/` returning `HashMap<uri, Vec<WorkspaceDiagnostic>>`.
 2. Re-export its entry point from `src/diagnostics/mod.rs`.
-3. Call it from `Backend::publish_open_diagnostics` in `src/bin/witcherscript-lsp/indexing.rs`.
+3. Call it from `Backend::publish_open_diagnostics` in `src/bin/witcherscript-lsp/diagnostics_publish.rs`.
 4. Add unit tests in the submodule's `#[cfg(test)]` block (fixtures cannot express cross-file rules).
 5. Document the rule in `README.md`.
 
@@ -181,14 +173,9 @@ document — e.g. unknown method/field access, type mismatch):
 3. In `visit(node, ctx)`, push `WorkspaceDiagnostic` values into `ctx.diagnostics`. Use
    `infer_expr_type_memo(ctx.uri, ctx.document, ctx.db, node, byte, ctx.type_memo)`
    for receiver-type inference so chained calls share work.
-4. Decide how to expose the rule:
-   - **Per-document** (most rules): register the rule struct in
-     `collect_cst_diagnostics_for_document` in `src/diagnostics/mod.rs`. The LSP picks
-     it up automatically — no edit to `publish_open_diagnostics` needed.
-   - **Batch over multiple documents** (e.g. `collect_wrapped_method_diagnostics`): expose
-     a standalone `collect_*` function that calls `run_rules_on_document` for each
-     document in a slice, returning `HashMap<String, Vec<WorkspaceDiagnostic>>`. Call it
-     from `Backend::publish_open_diagnostics` in `src/bin/witcherscript-lsp/indexing.rs`.
+4. Register the rule struct in `collect_cst_diagnostics_for_document` in
+   `src/diagnostics/mod.rs`. The LSP picks it up automatically — no edit to
+   `publish_open_diagnostics` needed.
 5. The per-document cache in `src/bin/witcherscript-lsp/cst_cache.rs` already keys on
    `(parse_version, workspace_generation, base_generation, env_version)`, so rules
    registered in `collect_cst_diagnostics_for_document` re-run only when the document is
