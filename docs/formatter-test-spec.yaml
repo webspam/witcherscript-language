@@ -4,14 +4,16 @@
 # Used by agents to verify a rewritten formatter against the original rules.
 #
 # FORMAT OPTIONS DEFAULTS (applied when a test omits the "options" key or a field within it):
-#   tab_size:      4
-#   use_tabs:      false
-#   line_limit:    100
-#   compact_colon: false
+#   tab_size:            4
+#   use_tabs:            false
+#   line_limit:          100
+#   compact_colon:       false
+#   align_member_colons: false
 #
 # ASSERTION TYPES:
 #   contains:     output string must contain this exact substring
 #   not_contains: output string must NOT contain this exact substring
+#   eq:           output string must equal this exact value
 #   eq_first_fmt: formatting the output again (with same options) must produce identical output (idempotency)
 #
 # ESCAPE SEQUENCES in input/expected strings:
@@ -22,6 +24,7 @@ defaults:
   use_tabs: false
   line_limit: 100
   compact_colon: false
+  align_member_colons: false
 
 tests:
 
@@ -256,6 +259,91 @@ tests:
     assertions:
       - not_contains: "var a : int;\n\n"
 
+  - id: no_blank_line_between_adjacent_abstract_methods
+    category: blank_lines
+    rule: >
+      Two adjacent abstract (bodiless) methods with no blank line in source must
+      NOT gain a blank line in the formatted output.
+    options: {}
+    input: "abstract class C {\n    function Foo();\n    function Bar();\n}"
+    assertions:
+      - not_contains: "function Foo();\n\n"
+
+  - id: blank_line_between_abstract_methods_preserved
+    category: blank_lines
+    rule: >
+      An explicit blank line between two abstract (bodiless) methods is preserved.
+    options: {}
+    input: "abstract class C {\n    function Foo();\n\n    function Bar();\n}"
+    assertions:
+      - contains: "function Foo();\n\n    function Bar();"
+
+  - id: blank_line_forced_between_abstract_and_bodied_methods
+    category: blank_lines
+    rule: >
+      A bodied method that immediately follows an abstract (bodiless) method must
+      be separated from it by a blank line, even if no blank line was present in
+      the source.
+    options: {}
+    input: "abstract class C {\n    function Foo();\n    function Bar() {}\n}"
+    assertions:
+      - contains: "function Foo();\n\n    function Bar() {}"
+
+  - id: blank_line_forced_between_bodied_and_abstract_methods
+    category: blank_lines
+    rule: >
+      An abstract (bodiless) method that immediately follows a bodied method must
+      be separated from it by a blank line, even if no blank line was present in
+      the source.
+    options: {}
+    input: "abstract class C {\n    function Foo() {}\n    function Bar();\n}"
+    assertions:
+      - contains: "function Foo() {}\n\n    function Bar();"
+
+  - id: blank_lines_after_annotated_decl_capped_at_one
+    category: blank_lines
+    rule: >
+      Multiple consecutive blank lines after an annotated top-level declaration
+      collapse to exactly one blank line before the next declaration.
+    options: {}
+    input: "@addField(CR4Player)\nvar foo : int;\n\n\n\nvar bar : int;"
+    assertions:
+      - eq: "@addField(CR4Player)\nvar foo : int;\n\nvar bar : int;\n"
+
+  # ─── ANNOTATION PLACEMENT ───────────────────────────────────────────────────
+
+  - id: add_field_annotation_stays_on_own_line
+    category: annotation_placement
+    rule: >
+      An "@addField(...)" annotation always sits on its own line, with the
+      decorated declaration directly underneath (no blank line between them).
+    options: {}
+    input: "@addField(CR4Player) var foo : int;"
+    assertions:
+      - eq: "@addField(CR4Player)\nvar foo : int;\n"
+
+  - id: annotation_sits_directly_above_declaration
+    category: annotation_placement
+    rule: >
+      Any blank lines that appear between an annotation and the declaration it
+      decorates are collapsed: the annotation must end up on the line immediately
+      above the declaration. Applies to both "@addField" (vars) and "@addMethod"
+      (functions).
+    options: {}
+    input: "@addField(CR4Player)\n\n\nvar foo : int;"
+    assertions:
+      - eq: "@addField(CR4Player)\nvar foo : int;\n"
+
+  - id: annotation_sits_directly_above_method
+    category: annotation_placement
+    rule: >
+      Same rule as for fields: blank lines between "@addMethod" and the function
+      it decorates collapse so the annotation sits directly above the function.
+    options: {}
+    input: "@addMethod(CR4Player)\n\n\nfunction Foo() {}"
+    assertions:
+      - eq: "@addMethod(CR4Player)\nfunction Foo() {}\n"
+
   # ─── EXPRESSION NORMALISATION ───────────────────────────────────────────────
 
   - id: normalizes_expr_whitespace
@@ -341,11 +429,33 @@ tests:
     category: control_flow
     rule: >
       For loop is formatted as "for (init; cond; iter) {" with semicolons separating
-      the three clauses.
+      the three clauses. Binary operators inside the header (=, <, +=, etc.) get
+      single spaces around them.
     options: {}
     input: "function F() { for(i=0;i<10;i+=1){a();} }"
     assertions:
-      - contains: "for (i=0; i<10; i+=1) {"
+      - contains: "for (i = 0; i < 10; i += 1) {"
+
+  - id: spaces_around_binary_operators_in_for_header
+    category: control_flow
+    rule: >
+      Operator spacing inside the for-header is normalised regardless of source
+      whitespace: both a compact form (no spaces) and an over-spaced form must
+      produce the same canonical "for (i = 0; i < count; i += 1) {".
+    options: {}
+    input: "function F() { for(i=0;i<count;i+=1){} }"
+    assertions:
+      - contains: "for (i = 0; i < count; i += 1) {"
+
+  - id: spaces_around_binary_operators_in_for_header_overspaced
+    category: control_flow
+    rule: >
+      An over-spaced for-header must collapse to the same canonical form as a
+      compact one.
+    options: {}
+    input: "function F() { for ( i = 0 ; i < count ; i += 1 ) {} }"
+    assertions:
+      - contains: "for (i = 0; i < count; i += 1) {"
 
   - id: long_if_condition_splits_onto_own_lines
     category: control_flow
@@ -551,6 +661,19 @@ tests:
       - contains: "/*a*/"
       - not_contains: "bool,"
 
+  - id: comment_between_params_keeps_source_comma_position
+    category: comment_preservation
+    rule: >
+      When the source has a comment immediately before AND immediately after the
+      separating comma between two parameters, the comma's position relative to
+      those two comments is preserved. The comment before the comma stays before
+      the comma; the comment after stays after. This is independent of any other
+      noise (extra whitespace, intra-param comments) the source may contain.
+    options: {}
+    input: "function lossy(   /*a*/   a   /*b*/  /*c*/  :/*d*//*e*/bool/*f*/,/*g*/i:int) {}"
+    assertions:
+      - contains: "/*f*/, /*g*/"
+
   - id: comment_in_enum_body_preserved
     category: comment_preservation
     rule: >
@@ -570,6 +693,74 @@ tests:
     input: "class C {\n    defaults {\n        // a comment\n        x = 1;\n    }\n}"
     assertions:
       - contains: "// a comment"
+
+  # ─── MEMBER COLON ALIGNMENT ─────────────────────────────────────────────────
+  #
+  # Opt-in via `align_member_colons: true`. Consecutive class member_var_decls
+  # are padded with spaces between the name list and the colon so that all colons
+  # in the run line up on the same column. A blank line, or any non-alignable
+  # member (comment, method, error node), ends the current run.
+
+  - id: member_colons_not_aligned_by_default
+    category: alignment
+    rule: >
+      With align_member_colons=false (default), consecutive member var colons are
+      NOT padded — each var keeps a single " : " gap regardless of name length.
+    options: {}
+    input: "class C { var x : int; var someLongName : string; }"
+    assertions:
+      - contains: "    var x : int;"
+      - contains: "    var someLongName : string;"
+
+  - id: aligns_consecutive_member_colons
+    category: alignment
+    rule: >
+      With align_member_colons=true, a run of consecutive member vars is padded
+      with spaces so the colons line up on the same column. The widest name in
+      the run determines the column.
+    options:
+      align_member_colons: true
+    input: "class C { var x : int; var someLongName : string; var ab : bool; }"
+    assertions:
+      - contains: "    var x            : int;"
+      - contains: "    var someLongName : string;"
+      - contains: "    var ab           : bool;"
+
+  - id: blank_line_breaks_alignment_run
+    category: alignment
+    rule: >
+      A blank line between member vars ends the current alignment run and starts
+      a new one. Each run aligns independently to its own widest name.
+    options:
+      align_member_colons: true
+    input: "class C {\n    var x : int;\n    var someLongName : string;\n\n    var y : int;\n    var anotherLongOne : bool;\n}"
+    assertions:
+      - contains: "    var x            : int;"
+      - contains: "    var y              : int;"
+      - contains: "    var anotherLongOne : bool;"
+
+  - id: single_field_is_not_padded
+    category: alignment
+    rule: >
+      A lone member var (no adjacent vars to align with) is NOT padded — it keeps
+      the default single " : " gap.
+    options:
+      align_member_colons: true
+    input: "class C { var x : int; }"
+    assertions:
+      - contains: "    var x : int;"
+
+  - id: alignment_accounts_for_specifiers_and_name_lists
+    category: alignment
+    rule: >
+      Alignment width measurement includes access specifiers (e.g. "private") and
+      the full comma-separated name list (e.g. "a, bb"), not just the first name.
+    options:
+      align_member_colons: true
+    input: "class C {\n    private var a, bb : int;\n    var c : float;\n}"
+    assertions:
+      - contains: "    private var a, bb : int;"
+      - contains: "    var c             : float;"
 
   # ─── IDEMPOTENCY ─────────────────────────────────────────────────────────────
 
