@@ -5,4 +5,5 @@ mod diagnostics;
 mod fixture;
 mod harness;
 mod hover;
+mod notifications;
 mod rename;

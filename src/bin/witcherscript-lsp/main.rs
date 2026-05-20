@@ -11,6 +11,7 @@ mod watcher;
 
 use std::collections::{HashMap, HashSet};
 use std::io::IsTerminal;
+use std::ops::ControlFlow;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
@@ -22,6 +23,10 @@ use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
 use async_lsp::{ClientSocket, LanguageClient, ResponseError};
 use futures::FutureExt;
+use lsp_types::notification::{
+    DidChangeWorkspaceFolders, DidCreateFiles, DidDeleteFiles, DidRenameFiles, DidSaveTextDocument,
+    WillSaveTextDocument, WorkDoneProgressCancel,
+};
 use lsp_types::request::Request;
 use lsp_types::{LogMessageParams, MessageType};
 use serde_json::Value;
@@ -115,6 +120,8 @@ async fn main() {
             async move { backend.handle_builtin_source(params).await }
         });
 
+        ignore_unhandled_notifications(&mut router);
+
         ServiceBuilder::new()
             .layer(TracingLayer::default())
             .layer(LifecycleLayer::default())
@@ -127,6 +134,22 @@ async fn main() {
         Some(port) => serve_tcp(port, server).await,
         None => serve_stdio(server).await,
     }
+}
+
+/// async-lsp's default for an unhandled notification (e.g. didSave) is to terminate the server.
+pub(crate) fn ignore_unhandled_notifications(router: &mut Router<Backend>) {
+    router
+        .notification::<DidSaveTextDocument>(|_, _| ControlFlow::Continue(()))
+        .notification::<WillSaveTextDocument>(|_, _| ControlFlow::Continue(()))
+        .notification::<DidCreateFiles>(|_, _| ControlFlow::Continue(()))
+        .notification::<DidRenameFiles>(|_, _| ControlFlow::Continue(()))
+        .notification::<DidDeleteFiles>(|_, _| ControlFlow::Continue(()))
+        .notification::<DidChangeWorkspaceFolders>(|_, _| ControlFlow::Continue(()))
+        .notification::<WorkDoneProgressCancel>(|_, _| ControlFlow::Continue(()))
+        .unhandled_notification(|_, notif| {
+            tracing::debug!(method = %notif.method, "ignoring unhandled notification");
+            ControlFlow::Continue(())
+        });
 }
 
 fn parse_listen_port() -> Option<u16> {
