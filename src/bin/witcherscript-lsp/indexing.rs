@@ -6,7 +6,7 @@ use std::time::Instant;
 use lsp_types::{Position, Url};
 use rayon::prelude::*;
 use tracing::{debug, error, info, warn};
-use witcherscript_language::diagnostics::relative_from_scripts;
+use witcherscript_language::diagnostics::{basename_of, relative_from_scripts};
 use witcherscript_language::document::{parse_document, ParsedDocument};
 use witcherscript_language::files::{collect_witcherscript_files, read_script_file};
 use witcherscript_language::resolve::{resolve_definition, Definition, WorkspaceIndex};
@@ -337,14 +337,23 @@ impl Backend {
                 legacy_parsed.extend(parsed);
             }
 
+            // A legacy file can only replace a base script with the same filename.
+            let mut base_by_basename: HashMap<&str, Vec<&String>> = HashMap::new();
+            for base_uri in base_docs.keys() {
+                if let Some(name) = basename_of(base_uri) {
+                    base_by_basename.entry(name).or_default().push(base_uri);
+                }
+            }
             let mut skip_base: HashSet<String> = HashSet::new();
             for (legacy_uri, _) in &legacy_parsed {
-                for base_uri in base_docs.keys() {
-                    if skip_base.contains(base_uri) {
-                        continue;
-                    }
+                let Some(candidates) = basename_of(legacy_uri)
+                    .and_then(|name| base_by_basename.get(name))
+                else {
+                    continue;
+                };
+                for base_uri in candidates {
                     if legacy_replaces_base(base_uri, legacy_uri) {
-                        skip_base.insert(base_uri.clone());
+                        skip_base.insert((*base_uri).clone());
                     }
                 }
             }
