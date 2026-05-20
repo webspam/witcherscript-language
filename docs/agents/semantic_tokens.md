@@ -68,36 +68,28 @@ The `classify()` function dispatches on `node.kind()`:
 
 **Reference sites** (must resolve; no token if unresolvable):
 
-| Parent node | Behavior |
-|---|---|
-| `type_annot`, `new_expr` | `resolve_ident()` — classify by resolved symbol kind |
-| `member_access_expr` (after `.`) | `resolve_member_ident()` — infer receiver type, look up member |
-| `member_access_expr` (before `.`) | `resolve_ident()` — classify receiver |
-| all other parents | `resolve_ident()` |
+All reference-site `ident` nodes fall through to the `_` arm in `classify_ident`, which:
 
-## resolve_ident resolution order
-
-1. Local variables/parameters of the enclosing function (search children of enclosing function symbol, checking `selection_byte_range.start <= byte_offset` to avoid seeing names declared later)
-2. Members of the enclosing class/struct/state (non-callable members first, then methods/events)
-3. Top-level symbols in the current document
-4. `db.find_top_level(name)` (workspace + base)
+1. Calls `classify_locally()` (local variables/parameters of enclosing function, then members of enclosing class/struct/state, then top-level symbols in the current document).
+2. If the ident is the RHS of a `member_access_expr` (i.e. after the `.`), calls `classify_definition_at_ident()` directly, which dispatches to `resolve_member_access()` to infer the receiver type and look up the member.
+3. Otherwise, calls `classify_definition_at_ident()` which searches locals, type members, document top-level, then the workspace db (`find_top_level`, `find_enum_variant`, `find_script_global`).
 
 If nothing resolves, no token is emitted for the identifier.
 
-## resolve_member_ident
+## resolve_member_access (for `receiver.member` expressions)
 
-For `receiver.member` expressions:
+`resolve_member_access()` in `src/resolve/inference.rs` infers the receiver type:
 
 | Receiver kind | Type inference |
 |---|---|
-| `this_expr` | name of enclosing class |
-| `super_expr`, `parent_expr`, `virtual_parent_expr` | superclass from `detail` (`"extends X"`) |
-| `ident` | `type_annotation` of the resolved local/param in the enclosing function |
+| `this_expr` | name of enclosing class/struct/state |
+| `super_expr`, `virtual_parent_expr` | `base_class` of enclosing type |
+| `parent_expr` | `owner_class` of enclosing state |
+| `ident` | `type_annotation` of the resolved local/param/field, or `db.script_global_type()` |
+| `func_call_expr`, `member_access_expr` | return type inferred recursively |
 | anything else | returns None (no token) |
 
-After getting the type name, checks:
-1. Local document symbols for a class/struct/state with that name, then its children.
-2. `db.find_member(type, member, Public)` across workspace + base.
+After getting the type name, looks up the member in the current document's symbols then `db.find_member()`.
 
 ## Encoding
 

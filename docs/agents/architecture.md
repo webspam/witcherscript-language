@@ -8,22 +8,47 @@ src/
 ├── main.rs                         CLI binary (witcherscript-check)
 ├── bin/
 │   ├── dump_tree.rs               developer helper: prints a tree-sitter parse tree
-│   └── witcherscript-lsp/         LSP server binary (~2860 lines across 6 files)
+│   └── witcherscript-lsp/         LSP server binary (~3150 lines across 10 files + tests/)
 │       ├── main.rs                tokio entry point, tracing setup, Backend wiring
 │       ├── backend.rs             Backend struct + all LanguageServer handler impls
+│       ├── config.rs              Config struct, settings parsing
 │       ├── convert.rs             LSP↔internal conversion (ranges, completion items, hover, file reader)
+│       ├── cst_cache.rs           per-file CST diagnostic cache
+│       ├── diagnostics_publish.rs publish_diagnostics helper
 │       ├── indexing.rs            workspace + base-script indexing (game dir, modSharedImports, settings refresh)
 │       ├── logging.rs             LspLogSender tracing layer + level parsing
-│       └── tests.rs               #[cfg(test)] LSP-specific tests
+│       ├── watcher.rs             file-system watcher integration
+│       ├── tests.rs               #[cfg(test)] LSP-specific unit tests
+│       └── tests/                 E2E and integration tests (8 files + e2e/ subdir)
 ├── document.rs                     parse orchestration, ParsedDocument
-├── diagnostics.rs                  ParseDiagnostic, collect_diagnostics, format_tree
+├── diagnostics/                    ParseDiagnostic, collect_diagnostics, per-pass modules
+│   ├── mod.rs                      public API: collect_diagnostics, ParseDiagnostic
+│   ├── cst_walker.rs               tree-sitter CST traversal
+│   ├── duplicate_local.rs          duplicate local variable check
+│   ├── duplicate_symbols.rs        duplicate top-level symbol check
+│   ├── shadowing.rs                variable shadowing check
+│   ├── unknown_method.rs           unknown method call check
+│   ├── unknown_symbol.rs           unknown symbol reference check
+│   └── wrapped_method.rs           wrapped-method signature check
 ├── files.rs                        recursive .ws file discovery
 ├── line_index.rs                   byte ↔ UTF-16 position mapping (LSP-compatible)
 ├── script_env.rs                   INI script globals parser
 ├── symbols.rs                      SymbolKind, Symbol, DocumentSymbols, extract_symbols
 ├── resolve/
-│   ├── mod.rs                      WorkspaceIndex, SymbolDb, resolve_definition, completions
-│   └── tests.rs                    ~1800 lines of resolution + completion tests
+│   ├── mod.rs                      public API: WorkspaceIndex, SymbolDb, resolve_definition
+│   ├── ast.rs                      AST helpers
+│   ├── db.rs                       WorkspaceIndex internals, SymbolDb construction
+│   ├── definition.rs               goto-definition logic
+│   ├── inference.rs                type inference
+│   ├── references.rs               find-references logic
+│   ├── signature.rs                signature-help logic
+│   ├── completion/                 completion submodule (5 files)
+│   │   ├── mod.rs
+│   │   ├── bodies.rs               completions inside function bodies
+│   │   ├── headers.rs              completions in declarations/headers
+│   │   ├── members.rs              member-access completions
+│   │   └── types.rs                type-name completions
+│   └── tests/                      ~16 files of resolution + completion tests
 └── semantic_tokens/
     ├── mod.rs                      TOKEN_TYPES, collect_semantic_tokens, classify
     └── tests.rs                    ~230 lines of semantic token tests
@@ -77,24 +102,25 @@ ParsedDocument { source, tree, line_index, diagnostics, symbols }
     │       superclass_by_name, doc_idents
     │
     └─► LSP response handlers                        [bin/witcherscript-lsp/backend.rs]
-            SymbolDb::new(workspace, base).with_script_env(env)
+            SymbolDb::new(workspace, base).with_script_env(env).with_builtins(builtins)
             resolve_definition / completion_members / statement_completions / …
 ```
 
 ## Three-index model
 
-The LSP server maintains three separate, parallel indexes:
+The LSP server maintains four separate, parallel indexes:
 
 | Name | Type | Source |
 |------|------|--------|
 | `workspace_index` | `WorkspaceIndex` | user project .ws files |
 | `base_scripts_index` | `WorkspaceIndex` | Witcher 3 game scripts (read-only) |
+| `builtins_index` | `Arc<WorkspaceIndex>` | embedded builtin types (never mutated) |
 | open `documents` | `HashMap<Url, ParsedDocument>` | editor-open files (not yet re-indexed) |
 
 `workspace_documents` and `base_scripts_documents` hold the `ParsedDocument` cache for background-indexed files so semantic tokens / references can read their trees without re-parsing.
 
 When constructing a `SymbolDb` for a request:
-- workspace shadows base: `SymbolDb::new(&workspace_index, &base_scripts_index)`
+- workspace shadows base, builtins are always visible: `SymbolDb::new(&workspace_index, &base_scripts_index).with_script_env(&env).with_builtins(&builtins_index)`
 - open documents take precedence over `workspace_documents` for the file being edited
 
 ## Key types and who produces/consumes them
