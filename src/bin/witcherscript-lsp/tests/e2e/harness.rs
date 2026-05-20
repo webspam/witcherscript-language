@@ -80,7 +80,7 @@ impl LspClient {
             });
 
             let mut router: Router<Backend> = Router::from_language_server(backend);
-            crate::ignore_unhandled_notifications(&mut router);
+            crate::register_notification_handlers(&mut router);
 
             ServiceBuilder::new()
                 .layer(TracingLayer::default())
@@ -133,6 +133,13 @@ impl LspClient {
                 text: None,
             })
             .await;
+    }
+
+    pub(crate) async fn notify<N: lsp_types::notification::Notification>(
+        &mut self,
+        params: N::Params,
+    ) {
+        self.rpc.notify::<N>(params).await;
     }
 
     pub(crate) async fn request<R: Request>(&mut self, params: R::Params) -> R::Result {

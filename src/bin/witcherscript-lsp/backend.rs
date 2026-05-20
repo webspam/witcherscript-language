@@ -12,18 +12,20 @@ use lsp_types::{
     CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
     CodeActionResponse, CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
     CompletionResponse, Diagnostic, DidChangeConfigurationParams, DidChangeTextDocumentParams,
-    DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverContents, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, InitializedParams, InsertTextFormat, Location,
-    MarkupContent, MarkupKind, OneOf, PrepareRenameResponse, PublishDiagnosticsParams,
-    ReferenceParams, RenameOptions, RenameParams, SemanticToken, SemanticTokenModifier,
-    SemanticTokenType, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
-    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-    SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelp, SignatureHelpOptions,
-    SignatureHelpParams, TextDocumentPositionParams, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit, Url, WorkDoneProgressOptions, WorkspaceEdit,
-    WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
+    DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentFormattingParams, DocumentSymbolParams,
+    DocumentSymbolResponse, FileOperationFilter, FileOperationPattern, FileOperationPatternKind,
+    FileOperationRegistrationOptions, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+    InitializedParams, InsertTextFormat, Location, MarkupContent, MarkupKind, OneOf,
+    PrepareRenameResponse, PublishDiagnosticsParams, ReferenceParams, RenameOptions, RenameParams,
+    SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokens,
+    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
+    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelp,
+    SignatureHelpOptions, SignatureHelpParams, TextDocumentPositionParams,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgressOptions,
+    WorkspaceEdit, WorkspaceFileOperationsServerCapabilities, WorkspaceFoldersServerCapabilities,
+    WorkspaceServerCapabilities,
 };
 use serde_json::{json, Value};
 use tokio::sync::{mpsc, Mutex, MutexGuard};
@@ -61,6 +63,7 @@ pub(crate) enum DocOp {
     Change(DidChangeTextDocumentParams),
     Close(DidCloseTextDocumentParams),
     WatchedFiles(DidChangeWatchedFilesParams),
+    WorkspaceFolders(DidChangeWorkspaceFoldersParams),
 }
 
 // Open editor docs shadow workspace docs which shadow base docs — unsaved edits win.
@@ -116,6 +119,34 @@ pub(crate) fn builtin_source_response(uri: &str) -> Result<Value> {
         Some(text) => json!({ "text": text }),
         None => Value::Null,
     })
+}
+
+fn uri_within_any(uri: &str, dirs: &[PathBuf]) -> bool {
+    let Some(path) = Url::parse(uri).ok().and_then(|u| u.to_file_path().ok()) else {
+        return false;
+    };
+    dirs.iter().any(|dir| path.starts_with(dir))
+}
+
+fn ws_file_operations_capabilities() -> WorkspaceFileOperationsServerCapabilities {
+    let registration = || {
+        Some(FileOperationRegistrationOptions {
+            filters: vec![FileOperationFilter {
+                scheme: Some("file".to_string()),
+                pattern: FileOperationPattern {
+                    glob: "**/*.ws".to_string(),
+                    matches: Some(FileOperationPatternKind::File),
+                    options: None,
+                },
+            }],
+        })
+    };
+    WorkspaceFileOperationsServerCapabilities {
+        did_create: registration(),
+        did_rename: registration(),
+        did_delete: registration(),
+        ..WorkspaceFileOperationsServerCapabilities::default()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -187,10 +218,11 @@ impl Backend {
             DocOp::Change(p) => self._did_change(p).await,
             DocOp::Close(p) => self._did_close(p).await,
             DocOp::WatchedFiles(p) => self._did_change_watched_files(p).await,
+            DocOp::WorkspaceFolders(p) => self._did_change_workspace_folders(p).await,
         }
     }
 
-    fn submit_doc_op(&self, op: DocOp) {
+    pub(crate) fn submit_doc_op(&self, op: DocOp) {
         if let Err(send_err) = self.doc_ops_tx.send(op) {
             error!(
                 error = %send_err,
@@ -464,9 +496,9 @@ impl Backend {
                 workspace: Some(WorkspaceServerCapabilities {
                     workspace_folders: Some(WorkspaceFoldersServerCapabilities {
                         supported: Some(true),
-                        change_notifications: None,
+                        change_notifications: Some(OneOf::Left(true)),
                     }),
-                    ..WorkspaceServerCapabilities::default()
+                    file_operations: Some(ws_file_operations_capabilities()),
                 }),
                 ..ServerCapabilities::default()
             },
@@ -547,6 +579,56 @@ impl Backend {
 
     async fn _did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
         self.apply_watched_file_events(params.changes).await;
+    }
+
+    async fn _did_change_workspace_folders(&self, params: DidChangeWorkspaceFoldersParams) {
+        let removed: Vec<PathBuf> = params
+            .event
+            .removed
+            .iter()
+            .filter_map(|folder| folder.uri.to_file_path().ok())
+            .collect();
+        let added: Vec<PathBuf> = params
+            .event
+            .added
+            .iter()
+            .filter_map(|folder| folder.uri.to_file_path().ok())
+            .collect();
+
+        {
+            let mut roots = self.workspace_roots.lock().await;
+            roots.retain(|root| !removed.iter().any(|dir| root.starts_with(dir)));
+            for path in &added {
+                if !roots.contains(path) {
+                    roots.push(path.clone());
+                }
+            }
+        }
+
+        // index_workspace only adds files; a removed folder's scripts must be dropped here.
+        if !removed.is_empty() {
+            let invalidated = {
+                let mut index = self.workspace_index.lock().await;
+                let mut docs = self.workspace_documents.lock().await;
+                let stale: Vec<String> = docs
+                    .keys()
+                    .filter(|uri| uri_within_any(uri, &removed))
+                    .cloned()
+                    .collect();
+                let mut invalidated: HashSet<String> = HashSet::new();
+                for uri in stale {
+                    invalidated.extend(index.remove_document(&uri));
+                    docs.remove(&uri);
+                }
+                invalidated
+            };
+            self.evict_cache_entries(&invalidated).await;
+        }
+
+        self.index_workspace().await;
+        if !removed.is_empty() {
+            self.publish_open_diagnostics().await;
+        }
     }
 
     async fn _did_change_configuration(&self, _: DidChangeConfigurationParams) {

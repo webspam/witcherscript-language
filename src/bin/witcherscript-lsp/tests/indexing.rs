@@ -436,19 +436,19 @@ mod legacy_routing {
     use crate::indexing::legacy_replaces_base;
     use crate::watcher::event_touches_legacy_dir;
 
-    struct LocalTempDir {
+    pub(super) struct LocalTempDir {
         path: PathBuf,
     }
 
     impl LocalTempDir {
-        fn new(name: &str) -> Self {
+        pub(super) fn new(name: &str) -> Self {
             let path = std::env::temp_dir().join(name);
             std::fs::remove_dir_all(&path).ok();
             std::fs::create_dir_all(&path).expect("mkdir tempdir");
             Self { path }
         }
 
-        fn path(&self) -> &Path {
+        pub(super) fn path(&self) -> &Path {
             &self.path
         }
     }
@@ -459,7 +459,7 @@ mod legacy_routing {
         }
     }
 
-    fn make_backend() -> Backend {
+    pub(super) fn make_backend() -> Backend {
         let (_main_loop, client) =
             async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
         let (doc_ops_tx, _doc_ops_rx) = mpsc::unbounded_channel();
@@ -489,7 +489,7 @@ mod legacy_routing {
         }
     }
 
-    fn write_script(dir: &Path, rel: &str, contents: &str) -> PathBuf {
+    pub(super) fn write_script(dir: &Path, rel: &str, contents: &str) -> PathBuf {
         let path = dir.join(rel);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).expect("mkdir parent");
@@ -866,6 +866,89 @@ mod legacy_routing {
         assert!(
             ws_docs.contains_key(legacy_url.as_str()),
             "legacy file must land in workspace_documents"
+        );
+    }
+}
+
+#[cfg(test)]
+mod workspace_folder_changes {
+    use lsp_types::{
+        DidChangeWorkspaceFoldersParams, Url, WorkspaceFolder, WorkspaceFoldersChangeEvent,
+    };
+
+    use super::legacy_routing::{make_backend, write_script, LocalTempDir};
+    use crate::backend::DocOp;
+
+    fn folders(uris: &[&Url]) -> Vec<WorkspaceFolder> {
+        uris.iter()
+            .map(|uri| WorkspaceFolder {
+                uri: (*uri).clone(),
+                name: "folder".to_string(),
+            })
+            .collect()
+    }
+
+    fn folder_change(added: &[&Url], removed: &[&Url]) -> DocOp {
+        DocOp::WorkspaceFolders(DidChangeWorkspaceFoldersParams {
+            event: WorkspaceFoldersChangeEvent {
+                added: folders(added),
+                removed: folders(removed),
+            },
+        })
+    }
+
+    #[tokio::test]
+    async fn adding_a_folder_indexes_its_scripts() {
+        let temp = LocalTempDir::new("ws_added_folder_indexes");
+        let script = write_script(temp.path(), "Helper.ws", "class CHelper {}\n");
+        let script_url = Url::from_file_path(&script).expect("script path -> url");
+        let folder_url = Url::from_file_path(temp.path()).expect("folder path -> url");
+
+        let backend = make_backend();
+        backend
+            .dispatch_doc_op(folder_change(&[&folder_url], &[]))
+            .await;
+
+        assert!(
+            backend
+                .workspace_documents
+                .lock()
+                .await
+                .contains_key(script_url.as_str()),
+            "a script in a newly added workspace folder must be indexed",
+        );
+    }
+
+    #[tokio::test]
+    async fn removing_a_folder_drops_its_scripts() {
+        let temp = LocalTempDir::new("ws_removed_folder_drops");
+        let script = write_script(temp.path(), "Helper.ws", "class CHelper {}\n");
+        let script_url = Url::from_file_path(&script).expect("script path -> url");
+        let folder_url = Url::from_file_path(temp.path()).expect("folder path -> url");
+
+        let backend = make_backend();
+        backend
+            .dispatch_doc_op(folder_change(&[&folder_url], &[]))
+            .await;
+        assert!(
+            backend
+                .workspace_documents
+                .lock()
+                .await
+                .contains_key(script_url.as_str()),
+            "folder must be indexed before removal can be exercised",
+        );
+
+        backend
+            .dispatch_doc_op(folder_change(&[], &[&folder_url]))
+            .await;
+        assert!(
+            !backend
+                .workspace_documents
+                .lock()
+                .await
+                .contains_key(script_url.as_str()),
+            "a script in a removed workspace folder must be dropped from the index",
         );
     }
 }
