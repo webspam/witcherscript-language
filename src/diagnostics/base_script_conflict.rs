@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::files::canonical_uri;
 use crate::resolve::WorkspaceIndex;
 use crate::symbols::{Symbol, SymbolKind};
 
@@ -176,15 +177,12 @@ fn is_same_file(a: &str, b: &str) -> bool {
     if a == b {
         return true;
     }
-    matches!((canonical_uri(a), canonical_uri(b)), (Some(x), Some(y)) if x == y)
+    matches!((canonical_uri_from_string(a), canonical_uri_from_string(b)), (Some(x), Some(y)) if x == y)
 }
 
-fn canonical_uri(uri: &str) -> Option<String> {
+fn canonical_uri_from_string(uri: &str) -> Option<String> {
     let url = lsp_types::Url::parse(uri).ok()?;
-    let path = url.to_file_path().ok()?;
-    lsp_types::Url::from_file_path(path)
-        .ok()
-        .map(|u| u.to_string())
+    canonical_uri(&url)
 }
 
 #[cfg(test)]

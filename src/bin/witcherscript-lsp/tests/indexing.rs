@@ -235,7 +235,7 @@ mod watched_files {
     fn canonicalises_percent_encoded_uri_for_open_file_skip() {
         let opened = Url::parse("file:///c%3A/proj/foo.ws").expect("client uri parses");
         let canonical_opened =
-            crate::convert::canonical_uri(&opened).expect("canonical uri builds");
+            witcherscript_language::files::canonical_uri(&opened).expect("canonical uri builds");
         assert_ne!(canonical_opened, opened.as_str());
 
         let watcher_url =

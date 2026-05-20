@@ -8,10 +8,11 @@ use lsp_types::{
 };
 use tracing::{debug, trace, warn};
 use witcherscript_language::document::parse_document;
-use witcherscript_language::files::{is_witcherscript_file, read_script_file, ExcludeFilter};
+use witcherscript_language::files::{
+    canonical_uri, is_witcherscript_file, read_script_file, ExcludeFilter,
+};
 
 use crate::backend::Backend;
-use crate::convert::canonical_uri;
 
 pub(crate) fn event_touches_legacy_dir(event: &FileEvent, legacy_dirs: &[PathBuf]) -> bool {
     if legacy_dirs.is_empty() {

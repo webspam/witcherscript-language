@@ -8,12 +8,12 @@ use rayon::prelude::*;
 use tracing::{debug, error, info, warn};
 use witcherscript_language::diagnostics::{basename_of, relative_from_scripts};
 use witcherscript_language::document::{parse_document, ParsedDocument};
-use witcherscript_language::files::{collect_witcherscript_files, read_script_file};
+use witcherscript_language::files::{canonical_uri, collect_witcherscript_files, read_script_file};
 use witcherscript_language::resolve::{resolve_definition, Definition, WorkspaceIndex};
 use witcherscript_language::script_env::parse_script_environment;
 
 use crate::backend::Backend;
-use crate::convert::{canonical_uri, source_position};
+use crate::convert::source_position;
 
 pub(crate) fn legacy_replaces_base(base_uri: &str, legacy_uri: &str) -> bool {
     let Some(tail) = relative_from_scripts(base_uri) else {

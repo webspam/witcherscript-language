@@ -5,6 +5,12 @@ use std::path::{Path, PathBuf};
 
 use ignore::overrides::{Override, OverrideBuilder};
 use ignore::WalkBuilder;
+use lsp_types::Url;
+
+pub fn canonical_uri(uri: &Url) -> Option<String> {
+    let path = uri.to_file_path().ok()?;
+    Url::from_file_path(path).ok().map(|u| u.to_string())
+}
 
 pub fn collect_witcherscript_files(
     paths: &[PathBuf],

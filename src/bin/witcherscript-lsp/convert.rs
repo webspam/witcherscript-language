@@ -17,11 +17,6 @@ use witcherscript_language::line_index::{SourcePosition, SourceRange};
 use witcherscript_language::resolve::{hover_text, Definition, SignatureHelpInfo, SymbolDb};
 use witcherscript_language::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
 
-pub(crate) fn canonical_uri(uri: &Url) -> Option<String> {
-    let path = uri.to_file_path().ok()?;
-    Url::from_file_path(path).ok().map(|url| url.to_string())
-}
-
 #[allow(deprecated)]
 pub(crate) fn workspace_roots(params: InitializeParams) -> Vec<PathBuf> {
     if let Some(folders) = params.workspace_folders {
