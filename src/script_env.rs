@@ -106,26 +106,7 @@ pub fn parse_script_environment(ini_path: &Path) -> Option<ScriptEnvironment> {
             name: name.to_string(),
             type_name: type_name.to_string(),
             ini_uri: ini_uri.clone(),
-            symbol: Symbol {
-                id: SymbolId(0),
-                name: name.to_string(),
-                kind: SymbolKind::Variable,
-                range,
-                selection_range: range,
-                byte_range: byte_start..byte_end,
-                selection_byte_range: byte_start..byte_end,
-                container: None,
-                container_name: None,
-                type_annotation: Some(type_name.to_string()),
-                signature: None,
-                base_class: None,
-                owner_class: None,
-                flavour: None,
-                annotations: Vec::new(),
-                access: AccessLevel::Public,
-                is_optional: false,
-                is_out: false,
-            },
+            symbol: global_symbol(name, type_name, range, byte_start..byte_end),
         });
     }
 
@@ -178,26 +159,35 @@ fn make_global(ini_uri: &str, name: &str, type_name: &str) -> ScriptGlobal {
         name: name.to_string(),
         type_name: type_name.to_string(),
         ini_uri: ini_uri.to_string(),
-        symbol: Symbol {
-            id: SymbolId(0),
-            name: name.to_string(),
-            kind: SymbolKind::Variable,
-            range,
-            selection_range: range,
-            byte_range: 0..0,
-            selection_byte_range: 0..0,
-            container: None,
-            container_name: None,
-            type_annotation: Some(type_name.to_string()),
-            signature: None,
-            base_class: None,
-            owner_class: None,
-            flavour: None,
-            annotations: Vec::new(),
-            access: AccessLevel::Public,
-            is_optional: false,
-            is_out: false,
-        },
+        symbol: global_symbol(name, type_name, range, 0..0),
+    }
+}
+
+fn global_symbol(
+    name: &str,
+    type_name: &str,
+    range: SourceRange,
+    byte_range: std::ops::Range<usize>,
+) -> Symbol {
+    Symbol {
+        id: SymbolId(0),
+        name: name.to_string(),
+        kind: SymbolKind::Variable,
+        range,
+        selection_range: range,
+        byte_range: byte_range.clone(),
+        selection_byte_range: byte_range,
+        container: None,
+        container_name: None,
+        type_annotation: Some(type_name.to_string()),
+        signature: None,
+        base_class: None,
+        owner_class: None,
+        flavour: None,
+        annotations: Vec::new(),
+        access: AccessLevel::Public,
+        is_optional: false,
+        is_out: false,
     }
 }
 

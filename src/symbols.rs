@@ -149,18 +149,6 @@ impl DocumentSymbols {
         None
     }
 
-    pub fn mark_optional(&mut self, id: SymbolId) {
-        if let Some(sym) = self.symbols.get_mut(id.0) {
-            sym.is_optional = true;
-        }
-    }
-
-    pub fn mark_out(&mut self, id: SymbolId) {
-        if let Some(sym) = self.symbols.get_mut(id.0) {
-            sym.is_out = true;
-        }
-    }
-
     fn push(&mut self, mut symbol: Symbol) -> SymbolId {
         let id = SymbolId(self.symbols.len());
         symbol.id = id;
@@ -252,6 +240,20 @@ struct SymbolExtractor<'a> {
     symbols: DocumentSymbols,
 }
 
+#[derive(Default)]
+struct SymbolSpec {
+    container: Option<SymbolId>,
+    annotations: Vec<Annotation>,
+    type_annotation: Option<String>,
+    signature: Option<String>,
+    base_class: Option<String>,
+    owner_class: Option<String>,
+    flavour: Option<String>,
+    access: AccessLevel,
+    is_optional: bool,
+    is_out: bool,
+}
+
 impl SymbolExtractor<'_> {
     fn visit_children(
         &mut self,
@@ -313,15 +315,13 @@ impl SymbolExtractor<'_> {
         let id = self.push_symbol(
             node,
             name_node,
-            container,
-            annotations,
             kind,
-            None,
-            None,
-            base_class,
-            None,
-            None,
-            AccessLevel::Public,
+            SymbolSpec {
+                container,
+                annotations,
+                base_class,
+                ..Default::default()
+            },
         );
 
         self.visit_children(node, Some(id), Vec::new());
@@ -341,15 +341,12 @@ impl SymbolExtractor<'_> {
         let enum_id = self.push_symbol(
             node,
             name_node,
-            container,
-            annotations,
             SymbolKind::Enum,
-            None,
-            None,
-            None,
-            None,
-            None,
-            AccessLevel::Public,
+            SymbolSpec {
+                container,
+                annotations,
+                ..Default::default()
+            },
         );
 
         self.visit_enum_variants(node, enum_id);
@@ -363,15 +360,11 @@ impl SymbolExtractor<'_> {
                     self.push_symbol(
                         child,
                         name_node,
-                        Some(enum_id),
-                        Vec::new(),
                         SymbolKind::EnumVariant,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        AccessLevel::Public,
+                        SymbolSpec {
+                            container: Some(enum_id),
+                            ..Default::default()
+                        },
                     );
                 }
             } else {
@@ -398,15 +391,14 @@ impl SymbolExtractor<'_> {
         let id = self.push_symbol(
             node,
             name_node,
-            container,
-            annotations,
             SymbolKind::State,
-            None,
-            None,
-            base_class,
-            owner_class,
-            None,
-            AccessLevel::Public,
+            SymbolSpec {
+                container,
+                annotations,
+                base_class,
+                owner_class,
+                ..Default::default()
+            },
         );
 
         self.visit_children(node, Some(id), Vec::new());
@@ -436,15 +428,16 @@ impl SymbolExtractor<'_> {
         let id = self.push_symbol(
             node,
             name_node,
-            container,
-            annotations,
             kind,
-            type_annotation,
-            signature,
-            None,
-            None,
-            flavour,
-            access,
+            SymbolSpec {
+                container,
+                annotations,
+                type_annotation,
+                signature,
+                flavour,
+                access,
+                ..Default::default()
+            },
         );
 
         self.visit_params(node, id);
@@ -504,25 +497,21 @@ impl SymbolExtractor<'_> {
 
         for child in node.children_by_field_name("names", &mut cursor) {
             if child.kind() == "ident" {
-                let id = self.push_symbol(
+                self.push_symbol(
                     node,
                     child,
-                    container,
-                    annotations.clone(),
                     kind,
-                    type_annotation.clone(),
-                    field_signature.clone(),
-                    None,
-                    None,
-                    None,
-                    access,
+                    SymbolSpec {
+                        container,
+                        annotations: annotations.clone(),
+                        type_annotation: type_annotation.clone(),
+                        signature: field_signature.clone(),
+                        access,
+                        is_optional,
+                        is_out,
+                        ..Default::default()
+                    },
                 );
-                if is_optional {
-                    self.symbols.mark_optional(id);
-                }
-                if is_out {
-                    self.symbols.mark_out(id);
-                }
             }
         }
     }
@@ -546,22 +535,15 @@ impl SymbolExtractor<'_> {
             .collect()
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn push_symbol(
         &mut self,
         node: Node,
         name_node: Node,
-        container: Option<SymbolId>,
-        annotations: Vec<Annotation>,
         kind: SymbolKind,
-        type_annotation: Option<String>,
-        signature: Option<String>,
-        base_class: Option<String>,
-        owner_class: Option<String>,
-        flavour: Option<String>,
-        access: AccessLevel,
+        spec: SymbolSpec,
     ) -> SymbolId {
-        let container_name = container
+        let container_name = spec
+            .container
             .and_then(|id| self.symbols.by_id(id))
             .map(|s| s.name.clone());
         self.symbols.push(Symbol {
@@ -580,17 +562,17 @@ impl SymbolExtractor<'_> {
             ),
             byte_range: node.start_byte()..node.end_byte(),
             selection_byte_range: name_node.start_byte()..name_node.end_byte(),
-            container,
+            container: spec.container,
             container_name,
-            type_annotation,
-            signature,
-            base_class,
-            owner_class,
-            flavour,
-            annotations,
-            access,
-            is_optional: false,
-            is_out: false,
+            type_annotation: spec.type_annotation,
+            signature: spec.signature,
+            base_class: spec.base_class,
+            owner_class: spec.owner_class,
+            flavour: spec.flavour,
+            annotations: spec.annotations,
+            access: spec.access,
+            is_optional: spec.is_optional,
+            is_out: spec.is_out,
         })
     }
 

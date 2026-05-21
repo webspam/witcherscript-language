@@ -1,5 +1,3 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -18,13 +16,10 @@ use lsp_types::{
 };
 use serde_json::Value;
 use tokio::io::{split, DuplexStream, ReadHalf, WriteHalf};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use tower::ServiceBuilder;
-use witcherscript_language::builtins::load_builtins_index;
-use witcherscript_language::resolve::WorkspaceIndex;
-use witcherscript_language::script_env::ScriptEnvironment;
 
 use super::super::jsonrpc_client::JsonRpcClient;
 use crate::backend::{Backend, DocOp};
@@ -50,32 +45,11 @@ impl LspClient {
 
         let (server, _client_socket) = MainLoop::new_server(move |client: ClientSocket| {
             let (doc_ops_tx, mut doc_ops_rx) = mpsc::unbounded_channel::<DocOp>();
-            let backend = Backend {
-                client,
-                config: Arc::new(ArcSwap::from_pointee(Config {
-                    diagnostics_enabled: true,
-                    ..Config::default()
-                })),
-                documents: Arc::new(Mutex::new(HashMap::new())),
-                published_diagnostics: Arc::new(Mutex::new(HashMap::new())),
-                workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
-                workspace_documents: Arc::new(Mutex::new(HashMap::new())),
-                workspace_roots: Arc::new(Mutex::new(Vec::new())),
-                files_exclude: Arc::new(Mutex::new(Vec::new())),
-                base_scripts_path: Arc::new(Mutex::new(None)),
-                additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
-                legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
-                legacy_indexed_uris: Arc::new(Mutex::new(HashSet::new())),
-                legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
-                sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
-                base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
-                base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
-                builtins_index: Arc::new(load_builtins_index()),
-                script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
-                cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
-                initial_index_done: Arc::new(AtomicBool::new(false)),
-                doc_ops_tx,
-            };
+            let config = Arc::new(ArcSwap::from_pointee(Config {
+                diagnostics_enabled: true,
+                ..Config::default()
+            }));
+            let backend = Backend::new(client, config, doc_ops_tx);
 
             let consumer_backend = backend.clone();
             tokio::spawn(async move {
