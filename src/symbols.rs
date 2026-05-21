@@ -220,7 +220,7 @@ impl DocumentSymbols {
     }
 }
 
-fn enclosing_callable_id(symbols: &[Symbol], sym: &Symbol) -> Option<SymbolId> {
+pub(crate) fn enclosing_callable_id(symbols: &[Symbol], sym: &Symbol) -> Option<SymbolId> {
     let mut current = sym.container?;
     loop {
         let owner = symbols.get(current.0)?;

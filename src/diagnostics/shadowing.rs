@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::resolve::WorkspaceIndex;
 use crate::script_env::ScriptEnvironment;
-use crate::symbols::{AccessLevel, Symbol, SymbolKind};
+use crate::symbols::{enclosing_callable_id, AccessLevel, Symbol, SymbolKind};
 
 use super::{RelatedLocation, Severity, WorkspaceDiagnostic};
 
@@ -94,7 +94,7 @@ fn class_field_shadow(
     doc_symbols: &[Symbol],
     index: &WorkspaceIndex,
 ) -> Option<WorkspaceDiagnostic> {
-    let callable = enclosing_callable(sym, doc_symbols)?;
+    let callable = doc_symbols.get(enclosing_callable_id(doc_symbols, sym)?.0)?;
     let class_sym = callable.container.and_then(|id| doc_symbols.get(id.0))?;
     if !matches!(
         class_sym.kind,
@@ -121,20 +121,6 @@ fn class_field_shadow(
         }],
         data: None,
     })
-}
-
-fn enclosing_callable<'a>(sym: &Symbol, doc_symbols: &'a [Symbol]) -> Option<&'a Symbol> {
-    let mut current = sym.container?;
-    loop {
-        let parent = doc_symbols.get(current.0)?;
-        if matches!(
-            parent.kind,
-            SymbolKind::Function | SymbolKind::Method | SymbolKind::Event
-        ) {
-            return Some(parent);
-        }
-        current = parent.container?;
-    }
 }
 
 fn is_in_exempt_callable(sym: &Symbol, doc_symbols: &[Symbol]) -> bool {

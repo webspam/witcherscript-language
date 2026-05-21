@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::resolve::WorkspaceIndex;
-use crate::symbols::{Symbol, SymbolId, SymbolKind};
+use crate::symbols::{enclosing_callable_id, Symbol, SymbolId, SymbolKind};
 
 use super::{RelatedLocation, Severity, WorkspaceDiagnostic};
 
@@ -18,7 +18,7 @@ pub fn collect_duplicate_local_diagnostics(
             if !matches!(sym.kind, SymbolKind::Parameter | SymbolKind::Variable) {
                 continue;
             }
-            let Some(func_id) = enclosing_callable_id(sym, syms) else {
+            let Some(func_id) = enclosing_callable_id(syms, sym) else {
                 continue;
             };
             let func = &syms[func_id.0];
@@ -65,20 +65,6 @@ pub fn collect_duplicate_local_diagnostics(
     }
 
     result
-}
-
-fn enclosing_callable_id(sym: &Symbol, doc_symbols: &[Symbol]) -> Option<SymbolId> {
-    let mut current = sym.container?;
-    loop {
-        let parent = doc_symbols.get(current.0)?;
-        if matches!(
-            parent.kind,
-            SymbolKind::Function | SymbolKind::Method | SymbolKind::Event
-        ) {
-            return Some(current);
-        }
-        current = parent.container?;
-    }
 }
 
 fn is_exempt(func: &Symbol) -> bool {
