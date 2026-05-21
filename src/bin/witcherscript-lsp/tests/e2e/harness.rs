@@ -16,6 +16,7 @@ use lsp_types::{
     ClientCapabilities, Diagnostic, DidSaveTextDocumentParams, InitializeParams, InitializeResult,
     InitializedParams, ServerCapabilities, TextDocumentIdentifier, Url,
 };
+use serde_json::Value;
 use tokio::io::{split, DuplexStream, ReadHalf, WriteHalf};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
@@ -28,6 +29,13 @@ use witcherscript_language::script_env::ScriptEnvironment;
 use super::super::jsonrpc_client::JsonRpcClient;
 use crate::backend::{Backend, DocOp};
 use crate::config::Config;
+
+enum PanicRequest {}
+impl Request for PanicRequest {
+    type Params = Value;
+    type Result = Value;
+    const METHOD: &'static str = "test/panic";
+}
 
 pub(crate) struct LspClient {
     rpc: JsonRpcClient<ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>,
@@ -83,6 +91,11 @@ impl LspClient {
 
             let mut router: Router<Backend> = Router::from_language_server(backend);
             crate::register_notification_handlers(&mut router);
+            router.request::<PanicRequest, _>(|_backend, _params| async move {
+                panic!("intentional panic from test/panic handler");
+                #[allow(unreachable_code)]
+                Ok(Value::Null)
+            });
 
             ServiceBuilder::new()
                 .layer(TracingLayer::default())
@@ -146,6 +159,10 @@ impl LspClient {
 
     pub(crate) async fn request<R: Request>(&mut self, params: R::Params) -> R::Result {
         self.rpc.request::<R>(params).await
+    }
+
+    pub(crate) async fn raw_request(&mut self, method: &str, params: Value) -> Value {
+        self.rpc.raw_request(method, params).await
     }
 
     pub(crate) async fn wait_diagnostics(&mut self, uri: &Url) -> Vec<Diagnostic> {

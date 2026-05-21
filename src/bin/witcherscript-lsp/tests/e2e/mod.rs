@@ -6,4 +6,5 @@ mod fixture;
 mod harness;
 mod hover;
 mod notifications;
+mod panic_boundary;
 mod rename;

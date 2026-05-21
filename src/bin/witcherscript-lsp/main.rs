@@ -107,13 +107,7 @@ async fn main() {
                 .catch_unwind()
                 .await;
                 if let Err(panic) = result {
-                    let payload = panic
-                        .downcast_ref::<&'static str>()
-                        .copied()
-                        .map(str::to_string)
-                        .or_else(|| panic.downcast_ref::<String>().cloned())
-                        .unwrap_or_else(|| "<non-string panic payload>".to_string());
-                    tracing::error!(panic = %payload, "doc op handler panicked; continuing");
+                    log_panic(panic, "doc op handler");
                 }
             }
         });
@@ -235,8 +229,29 @@ fn init_tracing(
         .init();
 }
 
-fn spawn_log_forwarder(mut client: ClientSocket, log_rx_holder: LogRxHolder) {
+pub(crate) fn log_panic(panic: Box<dyn std::any::Any + Send>, what: &str) {
+    let payload = panic
+        .downcast_ref::<&'static str>()
+        .copied()
+        .map(str::to_string)
+        .or_else(|| panic.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "<non-string panic payload>".to_string());
+    tracing::error!(task = what, panic = %payload, "background task panicked");
+}
+
+pub(crate) fn spawn_logged<F>(what: &'static str, fut: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
     tokio::spawn(async move {
+        if let Err(panic) = std::panic::AssertUnwindSafe(fut).catch_unwind().await {
+            log_panic(panic, what);
+        }
+    });
+}
+
+fn spawn_log_forwarder(mut client: ClientSocket, log_rx_holder: LogRxHolder) {
+    spawn_logged("log forwarder", async move {
         let mut log_rx = match log_rx_holder.lock().await.take() {
             Some(rx) => rx,
             None => return,
