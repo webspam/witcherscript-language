@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use crate::cst::ancestors::{find_ancestor_of_kind, has_ancestor_of_kind};
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::{AccessLevel, SymbolKind};
@@ -42,26 +43,13 @@ fn type_completions_inner(
             .and_then(|n| significant_node_before_byte(root, source, n.start_byte()))
             .is_some_and(is_type_annotation_boundary)
         // Gate 3: cursor already inside a type_annot subtree (generic type args, clean parses)
-        || nodes.iter().any(|n| has_type_annot_ancestor(*n));
+        || nodes.iter().any(|n| has_ancestor_of_kind(*n, &["type_annot"]));
 
     if !in_type_context {
         return None;
     }
 
     Some(db.all_types())
-}
-
-fn has_type_annot_ancestor(node: Node) -> bool {
-    let mut current = node;
-    loop {
-        if current.kind() == "type_annot" {
-            return true;
-        }
-        match current.parent() {
-            Some(p) => current = p,
-            None => return false,
-        }
-    }
 }
 
 pub fn annotation_name_completions(
@@ -124,17 +112,9 @@ const CLASS_ARG_ANNOTATIONS: &[&str] =
     &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"];
 
 fn has_annotation_arg_ancestor(node: Node, byte_offset: usize, source: &str) -> bool {
-    let mut current = node;
-    loop {
-        if current.kind() == "annotation" {
-            return takes_class_arg(current, source)
-                && is_inside_annotation_parens(current, byte_offset);
-        }
-        match current.parent() {
-            Some(p) => current = p,
-            None => return false,
-        }
-    }
+    find_ancestor_of_kind(node, &["annotation"]).is_some_and(|annotation| {
+        takes_class_arg(annotation, source) && is_inside_annotation_parens(annotation, byte_offset)
+    })
 }
 
 fn takes_class_arg(annotation: Node, source: &str) -> bool {
