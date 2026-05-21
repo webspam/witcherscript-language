@@ -275,8 +275,6 @@ mod watched_files {
 
 #[cfg(test)]
 mod concurrent_doc_ops {
-    use std::collections::{HashMap, HashSet};
-    use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
@@ -287,10 +285,7 @@ mod concurrent_doc_ops {
         DidChangeTextDocumentParams, DidOpenTextDocumentParams, Position, Range,
         TextDocumentContentChangeEvent, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
     };
-    use tokio::sync::{mpsc, Mutex};
-    use witcherscript_language::builtins::load_builtins_index;
-    use witcherscript_language::resolve::WorkspaceIndex;
-    use witcherscript_language::script_env::ScriptEnvironment;
+    use tokio::sync::mpsc;
 
     use crate::backend::{Backend, DocOp};
     use crate::config::Config;
@@ -299,32 +294,11 @@ mod concurrent_doc_ops {
         let (_main_loop, client) =
             async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
         let (doc_ops_tx, doc_ops_rx) = mpsc::unbounded_channel();
-        let backend = Backend {
-            client,
-            config: Arc::new(ArcSwap::from_pointee(Config {
-                diagnostics_enabled: false,
-                ..Config::default()
-            })),
-            documents: Arc::new(Mutex::new(HashMap::new())),
-            published_diagnostics: Arc::new(Mutex::new(HashMap::new())),
-            workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
-            workspace_documents: Arc::new(Mutex::new(HashMap::new())),
-            workspace_roots: Arc::new(Mutex::new(Vec::new())),
-            files_exclude: Arc::new(Mutex::new(Vec::new())),
-            base_scripts_path: Arc::new(Mutex::new(None)),
-            additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
-            legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
-            legacy_indexed_uris: Arc::new(Mutex::new(HashSet::new())),
-            legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
-            sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
-            base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
-            base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
-            builtins_index: Arc::new(load_builtins_index()),
-            script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
-            cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
-            initial_index_done: Arc::new(AtomicBool::new(false)),
-            doc_ops_tx,
-        };
+        let config = Arc::new(ArcSwap::from_pointee(Config {
+            diagnostics_enabled: false,
+            ..Config::default()
+        }));
+        let backend = Backend::new(client, config, doc_ops_tx);
         (backend, doc_ops_rx)
     }
 
@@ -436,7 +410,6 @@ mod concurrent_doc_ops {
 mod legacy_routing {
     use std::collections::{HashMap, HashSet};
     use std::path::{Path, PathBuf};
-    use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
 
     use arc_swap::ArcSwap;
@@ -446,14 +419,11 @@ mod legacy_routing {
         DidCloseTextDocumentParams, DidOpenTextDocumentParams, FileChangeType, FileEvent,
         TextDocumentIdentifier, TextDocumentItem, Url,
     };
-    use tokio::sync::{mpsc, Mutex};
-    use witcherscript_language::builtins::load_builtins_index;
+    use tokio::sync::mpsc;
     use witcherscript_language::diagnostics::{
         collect_base_script_conflict_diagnostics, collect_duplicate_symbol_diagnostics,
     };
     use witcherscript_language::files::canonical_uri;
-    use witcherscript_language::resolve::WorkspaceIndex;
-    use witcherscript_language::script_env::ScriptEnvironment;
 
     use crate::backend::{Backend, DocOp};
     use crate::config::Config;
@@ -487,32 +457,11 @@ mod legacy_routing {
         let (_main_loop, client) =
             async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
         let (doc_ops_tx, _doc_ops_rx) = mpsc::unbounded_channel();
-        Backend {
-            client,
-            config: Arc::new(ArcSwap::from_pointee(Config {
-                diagnostics_enabled: false,
-                ..Config::default()
-            })),
-            documents: Arc::new(Mutex::new(HashMap::new())),
-            published_diagnostics: Arc::new(Mutex::new(HashMap::new())),
-            workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
-            workspace_documents: Arc::new(Mutex::new(HashMap::new())),
-            workspace_roots: Arc::new(Mutex::new(Vec::new())),
-            files_exclude: Arc::new(Mutex::new(Vec::new())),
-            base_scripts_path: Arc::new(Mutex::new(None)),
-            additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
-            legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
-            legacy_indexed_uris: Arc::new(Mutex::new(HashSet::new())),
-            legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
-            sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
-            base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
-            base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
-            builtins_index: Arc::new(load_builtins_index()),
-            script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
-            cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
-            initial_index_done: Arc::new(AtomicBool::new(false)),
-            doc_ops_tx,
-        }
+        let config = Arc::new(ArcSwap::from_pointee(Config {
+            diagnostics_enabled: false,
+            ..Config::default()
+        }));
+        Backend::new(client, config, doc_ops_tx)
     }
 
     pub(super) fn write_script(dir: &Path, rel: &str, contents: &str) -> PathBuf {

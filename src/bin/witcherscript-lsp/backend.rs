@@ -30,7 +30,7 @@ use lsp_types::{
 use serde_json::{json, Value};
 use tokio::sync::{mpsc, Mutex, MutexGuard};
 use tracing::{error, info, trace};
-use witcherscript_language::builtins::builtin_source;
+use witcherscript_language::builtins::{builtin_source, load_builtins_index};
 use witcherscript_language::document::{apply_content_change, ParsedDocument};
 use witcherscript_language::formatter::format_document;
 use witcherscript_language::line_index::LineIndex;
@@ -202,6 +202,36 @@ impl<'a> DbHandles<'a> {
 }
 
 impl Backend {
+    pub(crate) fn new(
+        client: ClientSocket,
+        config: Arc<ArcSwap<Config>>,
+        doc_ops_tx: mpsc::UnboundedSender<DocOp>,
+    ) -> Backend {
+        Backend {
+            client,
+            config,
+            documents: Arc::new(Mutex::new(HashMap::new())),
+            published_diagnostics: Arc::new(Mutex::new(HashMap::new())),
+            workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
+            workspace_documents: Arc::new(Mutex::new(HashMap::new())),
+            workspace_roots: Arc::new(Mutex::new(Vec::new())),
+            files_exclude: Arc::new(Mutex::new(Vec::new())),
+            base_scripts_path: Arc::new(Mutex::new(None)),
+            additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
+            legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
+            legacy_indexed_uris: Arc::new(Mutex::new(HashSet::new())),
+            legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
+            sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
+            base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
+            base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
+            builtins_index: Arc::new(load_builtins_index()),
+            script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
+            cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
+            initial_index_done: Arc::new(AtomicBool::new(false)),
+            doc_ops_tx,
+        }
+    }
+
     pub(crate) async fn db_handles(&self) -> DbHandles<'_> {
         DbHandles {
             workspace: self.workspace_index.lock().await,
