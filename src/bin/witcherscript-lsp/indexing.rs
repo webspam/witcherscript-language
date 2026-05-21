@@ -40,11 +40,15 @@ pub(crate) fn legacy_base_replacements(
         else {
             continue;
         };
+        let canonical = Url::parse(legacy_uri)
+            .ok()
+            .and_then(|u| canonical_uri(&u))
+            .unwrap_or_else(|| legacy_uri.clone());
         for base_uri in candidates {
             if legacy_replaces_base(base_uri, legacy_uri) {
                 skip_base.insert((*base_uri).clone());
                 if let Some(rel) = relative_from_scripts(base_uri) {
-                    replacements.insert(legacy_uri.clone(), rel.to_string());
+                    replacements.insert(canonical.clone(), rel.to_string());
                 }
             }
         }
@@ -495,17 +499,7 @@ impl Backend {
             *idx = base_new_index;
             *docs = base_new_docs;
         }
-        {
-            let mut map = self.legacy_replacements.lock().await;
-            map.clear();
-            for (raw_uri, rel) in legacy_replacements {
-                let canon = Url::parse(&raw_uri)
-                    .ok()
-                    .and_then(|u| canonical_uri(&u))
-                    .unwrap_or(raw_uri);
-                map.insert(canon, rel);
-            }
-        }
+        *self.legacy_replacements.lock().await = legacy_replacements;
         self.merge_open_base_documents().await;
 
         self.reconcile_legacy_workspace_files(legacy_parsed).await;
