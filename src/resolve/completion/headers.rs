@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use crate::cst::ancestors::ancestors;
+use crate::cst::ancestors::node_and_ancestors;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 
@@ -106,7 +106,7 @@ pub(super) fn header_state_and_kind(
 }
 
 fn enclosing_header_node(start: Node) -> Option<Node> {
-    ancestors(start).find_map(|current| match current.kind() {
+    node_and_ancestors(start).find_map(|current| match current.kind() {
         "class_decl" | "state_decl" => Some(current),
         "ERROR" => {
             if let Some(p) = current.parent() {
