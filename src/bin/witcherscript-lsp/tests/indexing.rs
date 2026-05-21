@@ -208,6 +208,24 @@ mod watched_files {
     }
 
     #[test]
+    fn delete_of_open_file_returns_remove() {
+        let url = uri_under_root("open.ws");
+        let mut open = HashSet::new();
+        open.insert(url.to_string());
+        let decision = classify_watched_event(
+            &event(url.as_str(), FileChangeType::DELETED),
+            &open,
+            &no_filter(),
+        );
+        assert_eq!(
+            decision,
+            Some(WatchedEvent::Remove {
+                canonical: url.to_string()
+            })
+        );
+    }
+
+    #[test]
     fn skips_event_for_excluded_path() {
         let url = uri_under_root("vendor/lib.ws");
         let filter = ExcludeFilter::new(&[workspace_root()], &["vendor/**".to_string()]);
