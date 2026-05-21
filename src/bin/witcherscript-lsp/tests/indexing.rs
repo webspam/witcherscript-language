@@ -443,7 +443,8 @@ mod legacy_routing {
     use async_lsp::router::Router;
     use async_lsp::ClientSocket;
     use lsp_types::{
-        DidCloseTextDocumentParams, FileChangeType, FileEvent, TextDocumentIdentifier, Url,
+        DidCloseTextDocumentParams, DidOpenTextDocumentParams, FileChangeType, FileEvent,
+        TextDocumentIdentifier, TextDocumentItem, Url,
     };
     use tokio::sync::{mpsc, Mutex};
     use witcherscript_language::builtins::load_builtins_index;
@@ -553,6 +554,17 @@ mod legacy_routing {
         *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
         backend.index_base_scripts().await;
         (temp, backend, override_url, new_url)
+    }
+
+    fn open_op(uri: &Url, text: &str) -> DocOp {
+        DocOp::Open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "witcherscript".to_string(),
+                version: 1,
+                text: text.to_string(),
+            },
+        })
     }
 
     #[test]
@@ -955,10 +967,10 @@ mod legacy_routing {
             indexed_legacy_override("ws_legacy_status_open").await;
 
         backend
-            .update_open_document(override_url.clone(), "class CR4Player {}\n".to_string())
+            .dispatch_doc_op(open_op(&override_url, "class CR4Player {}\n"))
             .await;
         backend
-            .update_open_document(new_url.clone(), "class CMyNewMod {}\n".to_string())
+            .dispatch_doc_op(open_op(&new_url, "class CMyNewMod {}\n"))
             .await;
 
         let sent = backend.sent_legacy_status.lock().await;
@@ -985,7 +997,7 @@ mod legacy_routing {
         let (_temp, backend, override_url, _new_url) =
             indexed_legacy_override("ws_legacy_status_close").await;
         backend
-            .update_open_document(override_url.clone(), "class CR4Player {}\n".to_string())
+            .dispatch_doc_op(open_op(&override_url, "class CR4Player {}\n"))
             .await;
 
         backend

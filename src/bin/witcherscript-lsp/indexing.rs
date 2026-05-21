@@ -124,7 +124,6 @@ impl Backend {
                 self.evict_cache_entries(&invalidated).await;
                 self.documents.lock().await.insert(uri.clone(), document);
                 self.publish_open_diagnostics().await;
-                self.publish_legacy_script_status().await;
             }
             Err(err) => {
                 error!(uri = %uri, error = %err, "failed to parse document");

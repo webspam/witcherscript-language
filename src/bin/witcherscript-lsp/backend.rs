@@ -536,6 +536,7 @@ impl Backend {
         self.sent_legacy_status.lock().await.remove(&uri);
         self.update_open_document(uri, params.text_document.text)
             .await;
+        self.publish_legacy_script_status().await;
     }
 
     #[tracing::instrument(skip_all, fields(uri = %params.text_document.uri), level = "debug")]

@@ -104,7 +104,7 @@ did_close()
 
 `witcherscript/legacyScriptStatus` is a custom server→client notification (defined in `legacy_status.rs`, payload `LegacyScriptStatusParams`). It tells the editor whether an open `.ws` file actually replaces a base game script of the same game-relative path, so the VS Code "legacy script" status bar shows only for real overrides — not for brand-new scripts that merely sit in a legacy folder.
 
-`index_base_scripts` builds `legacy_replacements` (canonical legacy URI → replaced game-relative path) while it computes which base scripts a legacy file shadows. `publish_legacy_script_status` then pushes one notification per open document, deduped against `sent_legacy_status`. It fires after base-script indexing and after `update_open_document` (document open/change).
+`index_base_scripts` builds `legacy_replacements` (canonical legacy URI → replaced game-relative path) while it computes which base scripts a legacy file shadows. `publish_legacy_script_status` then pushes one notification per open document, deduped against `sent_legacy_status`. It fires after base-script indexing and on document open.
 
 ## Workspace indexing
 
