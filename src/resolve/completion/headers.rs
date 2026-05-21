@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use crate::cst::ancestors::node_and_ancestors;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 
@@ -105,24 +106,22 @@ pub(super) fn header_state_and_kind(
 }
 
 fn enclosing_header_node(start: Node) -> Option<Node> {
-    let mut current = start;
-    loop {
-        match current.kind() {
-            "class_decl" | "state_decl" => return Some(current),
-            "ERROR" => {
-                if let Some(p) = current.parent() {
-                    if matches!(p.kind(), "class_decl" | "state_decl") {
-                        return Some(p);
-                    }
-                }
-                if node_contains_kind_any(current, &["class", "state"]) {
-                    return Some(current);
+    node_and_ancestors(start).find_map(|current| match current.kind() {
+        "class_decl" | "state_decl" => Some(current),
+        "ERROR" => {
+            if let Some(p) = current.parent() {
+                if matches!(p.kind(), "class_decl" | "state_decl") {
+                    return Some(p);
                 }
             }
-            _ => {}
+            if node_contains_kind_any(current, &["class", "state"]) {
+                Some(current)
+            } else {
+                None
+            }
         }
-        current = current.parent()?;
-    }
+        _ => None,
+    })
 }
 
 fn header_walk(node: Node, byte_offset: usize, source: &[u8], ctx: &mut HeaderContext) {

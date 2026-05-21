@@ -1,0 +1,34 @@
+use tree_sitter::Node;
+
+pub(crate) fn first_child_kind<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
+    nth_child_kind(node, kind, 0)
+}
+
+pub(crate) fn nth_child_kind<'tree>(
+    node: Node<'tree>,
+    kind: &str,
+    index: usize,
+) -> Option<Node<'tree>> {
+    let mut cursor = node.walk();
+    let child = node
+        .children(&mut cursor)
+        .filter(|child| child.kind() == kind)
+        .nth(index);
+    child
+}
+
+pub(crate) fn first_named_child(node: Node) -> Option<Node> {
+    let mut cursor = node.walk();
+    let child = node.named_children(&mut cursor).next();
+    child
+}
+
+pub(crate) fn child_nodes(node: Node) -> Vec<Node> {
+    let mut c = node.walk();
+    node.children(&mut c).collect()
+}
+
+pub(crate) fn named_child_nodes(node: Node) -> Vec<Node> {
+    let mut c = node.walk();
+    node.named_children(&mut c).collect()
+}

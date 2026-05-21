@@ -1,4 +1,5 @@
 pub mod builtins;
+pub(crate) mod cst;
 pub mod diagnostics;
 pub mod document;
 pub mod files;

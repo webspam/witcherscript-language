@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use tracing::{debug, trace};
 use tree_sitter::Node;
 
+use crate::cst::grammar::{call_callee, member_access_member};
+use crate::cst::nav::first_named_child;
 use crate::document::ParsedDocument;
 use crate::resolve::{infer_expr_type_memo, SymbolDb};
 use crate::symbols::{AccessLevel, SymbolKind};
@@ -55,11 +57,7 @@ pub fn collect_unknown_method_diagnostics(
 }
 
 fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
-    let Some(func) = node.child_by_field_name("func").or_else(|| {
-        let mut cursor = node.walk();
-        let child = node.named_children(&mut cursor).next();
-        child
-    }) else {
+    let Some(func) = call_callee(node) else {
         return;
     };
 
@@ -67,19 +65,11 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         return;
     }
 
-    let Some(receiver) = ({
-        let mut cursor = func.walk();
-        let child = func.named_children(&mut cursor).next();
-        child
-    }) else {
+    let Some(receiver) = first_named_child(func) else {
         return;
     };
 
-    let Some(method_ident) = func.child_by_field_name("member").or_else(|| {
-        let mut cursor = func.walk();
-        let child = func.named_children(&mut cursor).nth(1);
-        child
-    }) else {
+    let Some(method_ident) = member_access_member(func) else {
         return;
     };
 

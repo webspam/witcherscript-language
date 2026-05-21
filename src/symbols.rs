@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
+use crate::cst::nav::{first_child_kind, nth_child_kind};
 use crate::line_index::{LineIndex, SourceRange};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -219,7 +220,7 @@ impl DocumentSymbols {
     }
 }
 
-fn enclosing_callable_id(symbols: &[Symbol], sym: &Symbol) -> Option<SymbolId> {
+pub(crate) fn enclosing_callable_id(symbols: &[Symbol], sym: &Symbol) -> Option<SymbolId> {
     let mut current = sym.container?;
     loop {
         let owner = symbols.get(current.0)?;
@@ -610,19 +611,6 @@ impl SymbolExtractor<'_> {
 
 pub fn node_text(node: Node, source: &str) -> String {
     source[node.start_byte()..node.end_byte()].to_string()
-}
-
-pub fn first_child_kind<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
-    nth_child_kind(node, kind, 0)
-}
-
-pub fn nth_child_kind<'tree>(node: Node<'tree>, kind: &str, index: usize) -> Option<Node<'tree>> {
-    let mut cursor = node.walk();
-    let child = node
-        .children(&mut cursor)
-        .filter(|child| child.kind() == kind)
-        .nth(index);
-    child
 }
 
 fn direct_child_text(node: Node, kind: &str, source: &str) -> Option<String> {
