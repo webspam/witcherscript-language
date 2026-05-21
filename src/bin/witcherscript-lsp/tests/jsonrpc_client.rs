@@ -65,6 +65,32 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
         result.unwrap_or_else(|_| panic!("request {} timed out", Req::METHOD))
     }
 
+    pub(crate) async fn raw_request(&mut self, method: &str, params: Value) -> Value {
+        let id = self.next_id;
+        self.next_id += 1;
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params,
+        });
+        self.send_raw(&msg).await;
+
+        let result = timeout(REQUEST_TIMEOUT, async {
+            loop {
+                let v = self.read_raw().await;
+                if v.get("id").and_then(|i| i.as_i64()) == Some(id) {
+                    return v;
+                }
+                if let Some(reply) = self.handle_inbound(v) {
+                    self.send_raw(&reply).await;
+                }
+            }
+        })
+        .await;
+        result.unwrap_or_else(|_| panic!("raw request {method} timed out"))
+    }
+
     pub(crate) async fn notify<N: Notification>(&mut self, params: N::Params) {
         let msg = json!({
             "jsonrpc": "2.0",
