@@ -534,6 +534,27 @@ mod legacy_routing {
         (game_dir, url)
     }
 
+    async fn indexed_legacy_override(name: &str) -> (LocalTempDir, Backend, Url, Url) {
+        let temp = LocalTempDir::new(name);
+        let (game_dir, _base_url) =
+            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+        let legacy_dir = temp.path().join("legacy");
+        let override_path = write_script(
+            &legacy_dir,
+            "game/r4Player.ws",
+            "class CR4Player {}\n// legacy\n",
+        );
+        let new_path = write_script(&legacy_dir, "game/MyNewMod.ws", "class CMyNewMod {}\n");
+        let override_url = Url::from_file_path(&override_path).expect("override path -> url");
+        let new_url = Url::from_file_path(&new_path).expect("new path -> url");
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+        *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+        backend.index_base_scripts().await;
+        (temp, backend, override_url, new_url)
+    }
+
     #[test]
     fn legacy_replaces_base_matches_same_relpath() {
         assert!(legacy_replaces_base(
@@ -911,23 +932,8 @@ mod legacy_routing {
 
     #[tokio::test]
     async fn index_base_scripts_records_only_real_legacy_overrides() {
-        let temp = LocalTempDir::new("ws_legacy_replacements_map");
-        let (game_dir, _base_url) =
-            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
-        let legacy_dir = temp.path().join("legacy");
-        let override_path = write_script(
-            &legacy_dir,
-            "game/r4Player.ws",
-            "class CR4Player {}\n// legacy\n",
-        );
-        let new_path = write_script(&legacy_dir, "game/MyNewMod.ws", "class CMyNewMod {}\n");
-        let override_url = Url::from_file_path(&override_path).expect("override path -> url");
-        let new_url = Url::from_file_path(&new_path).expect("new path -> url");
-
-        let backend = make_backend();
-        *backend.base_scripts_path.lock().await = Some(game_dir);
-        *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
-        backend.index_base_scripts().await;
+        let (_temp, backend, override_url, new_url) =
+            indexed_legacy_override("ws_legacy_replacements_map").await;
 
         let map = backend.legacy_replacements.lock().await;
         let override_key = canonical_uri(&override_url).expect("canonical override uri");
@@ -945,23 +951,8 @@ mod legacy_routing {
 
     #[tokio::test]
     async fn opening_a_legacy_override_marks_it_as_replacing_a_base_script() {
-        let temp = LocalTempDir::new("ws_legacy_status_open");
-        let (game_dir, _base_url) =
-            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
-        let legacy_dir = temp.path().join("legacy");
-        let override_path = write_script(
-            &legacy_dir,
-            "game/r4Player.ws",
-            "class CR4Player {}\n// legacy\n",
-        );
-        let new_path = write_script(&legacy_dir, "game/MyNewMod.ws", "class CMyNewMod {}\n");
-        let override_url = Url::from_file_path(&override_path).expect("override path -> url");
-        let new_url = Url::from_file_path(&new_path).expect("new path -> url");
-
-        let backend = make_backend();
-        *backend.base_scripts_path.lock().await = Some(game_dir);
-        *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
-        backend.index_base_scripts().await;
+        let (_temp, backend, override_url, new_url) =
+            indexed_legacy_override("ws_legacy_status_open").await;
 
         backend
             .update_open_document(override_url.clone(), "class CR4Player {}\n".to_string())
@@ -991,21 +982,8 @@ mod legacy_routing {
 
     #[tokio::test]
     async fn closing_a_legacy_override_keeps_its_status_dedup_entry() {
-        let temp = LocalTempDir::new("ws_legacy_status_close");
-        let (game_dir, _base_url) =
-            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
-        let legacy_dir = temp.path().join("legacy");
-        let override_path = write_script(
-            &legacy_dir,
-            "game/r4Player.ws",
-            "class CR4Player {}\n// legacy\n",
-        );
-        let override_url = Url::from_file_path(&override_path).expect("override path -> url");
-
-        let backend = make_backend();
-        *backend.base_scripts_path.lock().await = Some(game_dir);
-        *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
-        backend.index_base_scripts().await;
+        let (_temp, backend, override_url, _new_url) =
+            indexed_legacy_override("ws_legacy_status_close").await;
         backend
             .update_open_document(override_url.clone(), "class CR4Player {}\n".to_string())
             .await;
