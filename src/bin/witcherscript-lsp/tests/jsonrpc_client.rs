@@ -33,38 +33,6 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
         }
     }
 
-    pub(crate) async fn request<Req: Request>(&mut self, params: Req::Params) -> Req::Result {
-        let id = self.next_id;
-        self.next_id += 1;
-        let msg = json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": Req::METHOD,
-            "params": params,
-        });
-        self.send_raw(&msg).await;
-
-        let result = timeout(REQUEST_TIMEOUT, async {
-            loop {
-                let v = self.read_raw().await;
-                if v.get("id").and_then(|i| i.as_i64()) == Some(id) {
-                    if let Some(err) = v.get("error") {
-                        panic!("request {} returned error: {err}", Req::METHOD);
-                    }
-                    let result = v.get("result").cloned().unwrap_or(Value::Null);
-                    return serde_json::from_value::<Req::Result>(result.clone()).unwrap_or_else(
-                        |e| panic!("decode failed for {}: {e}\nresponse: {v}", Req::METHOD),
-                    );
-                }
-                if let Some(reply) = self.handle_inbound(v) {
-                    self.send_raw(&reply).await;
-                }
-            }
-        })
-        .await;
-        result.unwrap_or_else(|_| panic!("request {} timed out", Req::METHOD))
-    }
-
     pub(crate) async fn raw_request(&mut self, method: &str, params: Value) -> Value {
         let id = self.next_id;
         self.next_id += 1;
@@ -89,6 +57,17 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
         })
         .await;
         result.unwrap_or_else(|_| panic!("raw request {method} timed out"))
+    }
+
+    pub(crate) async fn request<Req: Request>(&mut self, params: Req::Params) -> Req::Result {
+        let params = serde_json::to_value(params).expect("serialize request params");
+        let v = self.raw_request(Req::METHOD, params).await;
+        if let Some(err) = v.get("error") {
+            panic!("request {} returned error: {err}", Req::METHOD);
+        }
+        let result = v.get("result").cloned().unwrap_or(Value::Null);
+        serde_json::from_value::<Req::Result>(result)
+            .unwrap_or_else(|e| panic!("decode failed for {}: {e}\nresponse: {v}", Req::METHOD))
     }
 
     pub(crate) async fn notify<N: Notification>(&mut self, params: N::Params) {
