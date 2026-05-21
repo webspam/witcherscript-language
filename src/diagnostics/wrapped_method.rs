@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use tracing::{debug, trace};
 use tree_sitter::Node;
 
+use crate::cst::grammar::call_callee;
 use crate::cst::nav::first_child_kind;
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
@@ -114,13 +115,7 @@ fn collect_wrapped_method_calls<'tree>(
 }
 
 fn bare_call_ident<'tree>(call: Node<'tree>) -> Option<Node<'tree>> {
-    let func = if let Some(f) = call.child_by_field_name("func") {
-        f
-    } else {
-        let mut cursor = call.walk();
-        let first = call.named_children(&mut cursor).next();
-        first?
-    };
+    let func = call_callee(call)?;
     if func.kind() == "ident" {
         Some(func)
     } else {

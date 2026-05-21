@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
+use crate::cst::grammar::{call_callee, member_access_member};
 use crate::document::ParsedDocument;
 use crate::symbols::{AccessLevel, Symbol, SymbolKind};
 
@@ -70,18 +71,12 @@ pub(crate) fn infer_expr_type(
                 .or_else(|| db.script_global_type(name))
         }
         "func_call_expr" => {
-            let func = node
-                .child_by_field_name("func")
-                .or_else(|| first_named_child(node))?;
+            let func = call_callee(node)?;
             infer_expr_type(uri, document, db, func, context_byte)
         }
         "member_access_expr" => {
             let accessor = first_named_child(node)?;
-            let member = node.child_by_field_name("member").or_else(|| {
-                let mut cursor = node.walk();
-                let child = node.named_children(&mut cursor).nth(1);
-                child
-            })?;
+            let member = member_access_member(node)?;
             if member.kind() != "ident" {
                 return None;
             }

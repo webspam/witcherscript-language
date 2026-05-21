@@ -275,6 +275,7 @@ mod tests {
     use tree_sitter::Node;
 
     use super::{run_rules_on_document, CstRule, CstRuleCtx};
+    use crate::cst::grammar::call_callee;
     use crate::document::parse_document;
     use crate::resolve::{infer_expr_type_memo, SymbolDb, WorkspaceIndex};
 
@@ -307,14 +308,8 @@ mod tests {
             kind == "func_call_expr"
         }
         fn visit<'tree>(&self, node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
-            let func = if let Some(f) = node.child_by_field_name("func") {
-                f
-            } else {
-                let mut cursor = node.walk();
-                let Some(f) = node.named_children(&mut cursor).next() else {
-                    return;
-                };
-                f
+            let Some(func) = call_callee(node) else {
+                return;
             };
             if func.kind() != "member_access_expr" {
                 return;
