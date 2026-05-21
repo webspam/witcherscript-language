@@ -124,6 +124,10 @@ pub(crate) fn run_rules_on_document(
     diagnostics
 }
 
+fn is_error_subtree_root(node: Node) -> bool {
+    node.is_error() || node.is_missing() || node.kind() == "incomplete_member_access_expr"
+}
+
 #[allow(clippy::too_many_arguments)]
 fn walk<'tree>(
     node: Node<'tree>,
@@ -138,10 +142,7 @@ fn walk<'tree>(
     in_error_subtree: bool,
 ) {
     let kind = node.kind();
-    let in_error_subtree = in_error_subtree
-        || node.is_error()
-        || node.is_missing()
-        || kind == "incomplete_member_access_expr";
+    let in_error_subtree = in_error_subtree || is_error_subtree_root(node);
     for (i, rule) in rules.iter().enumerate() {
         if rule.interested_in(kind) {
             let start = Instant::now();
@@ -201,10 +202,7 @@ fn collect_nodes_walk<'tree>(
     out: &mut Vec<(Node<'tree>, bool)>,
 ) {
     let kind = node.kind();
-    let in_error_subtree = in_error_subtree
-        || node.is_error()
-        || node.is_missing()
-        || kind == "incomplete_member_access_expr";
+    let in_error_subtree = in_error_subtree || is_error_subtree_root(node);
     if predicate(kind) {
         out.push((node, in_error_subtree));
     }
