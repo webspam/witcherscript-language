@@ -4,6 +4,7 @@ mod convert;
 mod cst_cache;
 mod diagnostics_publish;
 mod indexing;
+mod legacy_status;
 mod logging;
 #[cfg(test)]
 mod tests;
@@ -53,12 +54,6 @@ impl Request for BuiltinSourceRequest {
     type Params = Value;
     type Result = Value;
     const METHOD: &'static str = "witcherscript/builtinSource";
-}
-
-enum LegacyScriptStatusNotification {}
-impl lsp_types::notification::Notification for LegacyScriptStatusNotification {
-    type Params = backend::LegacyScriptStatusParams;
-    const METHOD: &'static str = "witcherscript/legacyScriptStatus";
 }
 
 #[tokio::main]

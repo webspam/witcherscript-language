@@ -54,6 +54,7 @@ use crate::convert::{
     lsp_range, script_body_item, signature_help_response, source_position, source_range,
     this_super_item, type_completion_item, workspace_roots, wrap_method_snippet,
 };
+use crate::legacy_status::LegacyScriptStatusParams;
 use crate::logging::{level_from_str, level_to_u8};
 
 type Result<T> = std::result::Result<T, ResponseError>;
@@ -147,16 +148,6 @@ fn ws_file_operations_capabilities() -> WorkspaceFileOperationsServerCapabilitie
         did_delete: registration(),
         ..WorkspaceFileOperationsServerCapabilities::default()
     }
-}
-
-// camelCase to match the VS Code client's TypeScript interface.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct LegacyScriptStatusParams {
-    pub uri: String,
-    pub replaces_base_script: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub replaced_script_path: Option<String>,
 }
 
 #[derive(Debug, Clone)]

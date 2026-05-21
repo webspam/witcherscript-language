@@ -12,9 +12,10 @@ use witcherscript_language::files::canonical_uri;
 use witcherscript_language::line_index::SourceRange;
 use witcherscript_language::resolve::SymbolDb;
 
-use crate::backend::{Backend, LegacyScriptStatusParams};
+use crate::backend::Backend;
 use crate::convert::{lsp_diagnostics, lsp_workspace_diagnostic};
 use crate::cst_cache::{cst_diagnostics_with_cache, DbFingerprint};
+use crate::legacy_status::{LegacyScriptStatusNotification, LegacyScriptStatusParams};
 
 impl Backend {
     #[tracing::instrument(skip(self), level = "debug")]
@@ -202,9 +203,7 @@ impl Backend {
             list
         };
         for params in to_send {
-            let _ = self
-                .client
-                .notify::<crate::LegacyScriptStatusNotification>(params);
+            let _ = self.client.notify::<LegacyScriptStatusNotification>(params);
         }
     }
 

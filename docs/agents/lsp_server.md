@@ -1,6 +1,6 @@
 # LSP server
 
-**Module:** `src/bin/witcherscript-lsp/` (~3150 lines across 10 files)
+**Module:** `src/bin/witcherscript-lsp/` (~3150 lines across 11 files)
 
 | File | Purpose |
 |---|---|
@@ -12,6 +12,7 @@
 | `config.rs` | `fetch_config`, `apply_diagnostics_toggle`, `ConfigChange` plumbing for `workspace/configuration`. |
 | `diagnostics_publish.rs` | `publish_open_diagnostics`, `publish_syntactic_only` — diagnostic emission for open documents; `publish_legacy_script_status` — `witcherscript/legacyScriptStatus` push. |
 | `watcher.rs` | `register_file_watchers`, `apply_watched_file_events`, `classify_watched_event` — file-watcher integration. |
+| `legacy_status.rs` | `LegacyScriptStatusParams` + `LegacyScriptStatusNotification` — the `witcherscript/legacyScriptStatus` protocol type. |
 | `logging.rs` | `LspLogSender` tracing layer, level enum/parsing, `DEFAULT_LOG_LEVEL`. |
 | `tests.rs` | Module root that declares the `tests/` submodules. |
 | `tests/{completion,diagnostics,file_io,hover,indexing,refactoring}.rs` | `#[cfg(test)]` LSP-specific tests split per feature. |
@@ -101,7 +102,7 @@ did_close()
 
 ## Legacy script status notification
 
-`witcherscript/legacyScriptStatus` is a custom server→client notification (defined in `main.rs`, payload `LegacyScriptStatusParams`). It tells the editor whether an open `.ws` file actually replaces a base game script of the same game-relative path, so the VS Code "legacy script" status bar shows only for real overrides — not for brand-new scripts that merely sit in a legacy folder.
+`witcherscript/legacyScriptStatus` is a custom server→client notification (defined in `legacy_status.rs`, payload `LegacyScriptStatusParams`). It tells the editor whether an open `.ws` file actually replaces a base game script of the same game-relative path, so the VS Code "legacy script" status bar shows only for real overrides — not for brand-new scripts that merely sit in a legacy folder.
 
 `index_base_scripts` builds `legacy_replacements` (canonical legacy URI → replaced game-relative path) while it computes which base scripts a legacy file shadows. `publish_legacy_script_status` then pushes one notification per open document, deduped against `sent_legacy_status`. It fires after base-script indexing and after `update_open_document` (document open/change).
 
