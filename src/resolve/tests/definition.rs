@@ -589,3 +589,28 @@ fn goto_def_add_method_no_class_body_returns_annotated() {
     assert_eq!(defs.len(), 1, "@addMethod has no class-body counterpart");
     assert_eq!(defs[0].uri, "file:///a.ws");
 }
+
+#[test]
+fn member_access_resolves_through_a_top_level_receiver() {
+    // Drift guard: resolve_member_access once skipped the top-level lookup that bare-ident resolution has.
+    let helper = make_doc("class CHelper {\n  public function Run() {}\n}\n");
+    let main = make_doc("var gHelper : CHelper;\nfunction Test() {\n  gHelper.Run();\n}\n");
+    let index = index_docs(&[("file:///helper.ws", &helper), ("file:///main.ws", &main)]);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
+
+    let definition = resolve_definition(
+        "file:///main.ws",
+        &main,
+        &db,
+        SourcePosition {
+            line: 2,
+            character: 10,
+        },
+    )
+    .expect("member access through a top-level receiver should resolve");
+
+    assert_eq!(definition.symbol.name, "Run");
+    assert_eq!(definition.symbol.kind, SymbolKind::Method);
+    assert_eq!(definition.uri, "file:///helper.ws");
+}

@@ -44,31 +44,7 @@ pub(crate) fn infer_expr_type(
     match node.kind() {
         "ident" => {
             let name = node.utf8_text(document.source.as_bytes()).ok()?;
-            resolve_local_or_parameter(uri, document, context_byte, name)
-                .or_else(|| {
-                    let current_type = current_type_name(document, db, context_byte)?;
-                    resolve_document_member(
-                        uri,
-                        document,
-                        &current_type,
-                        name,
-                        AccessLevel::Private,
-                    )
-                    .or_else(|| db.find_member(&current_type, name, AccessLevel::Private))
-                })
-                .or_else(|| resolve_document_top_level(uri, document, name))
-                .or_else(|| db.find_top_level(name))
-                .or_else(|| db.find_enum_variant(name))
-                .and_then(|def| {
-                    def.symbol.type_annotation.clone().or_else(|| {
-                        if def.symbol.kind == SymbolKind::EnumVariant {
-                            def.symbol.container_name.clone()
-                        } else {
-                            None
-                        }
-                    })
-                })
-                .or_else(|| db.script_global_type(name))
+            infer_name_type(uri, document, db, context_byte, name)
         }
         "func_call_expr" => {
             let func = call_callee(node)?;
@@ -134,23 +110,7 @@ pub(super) fn resolve_member_access(
         }
         "ident" => {
             let receiver_name = receiver.utf8_text(document.source.as_bytes()).ok()?;
-            let type_name =
-                resolve_local_or_parameter(uri, document, ident.start_byte(), receiver_name)
-                    .or_else(|| {
-                        let current_type = current_type_name(document, db, ident.start_byte())?;
-                        resolve_document_member(
-                            uri,
-                            document,
-                            &current_type,
-                            receiver_name,
-                            AccessLevel::Private,
-                        )
-                        .or_else(|| {
-                            db.find_member(&current_type, receiver_name, AccessLevel::Private)
-                        })
-                    })
-                    .and_then(|def| def.symbol.type_annotation)
-                    .or_else(|| db.script_global_type(receiver_name))?;
+            let type_name = infer_name_type(uri, document, db, ident.start_byte(), receiver_name)?;
             resolve_document_member(uri, document, &type_name, name, AccessLevel::Public)
                 .or_else(|| db.find_member(&type_name, name, AccessLevel::Public))
         }
@@ -161,6 +121,53 @@ pub(super) fn resolve_member_access(
         }
         _ => None,
     }
+}
+
+pub(super) fn resolve_name_local_to_workspace(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_offset: usize,
+    name: &str,
+) -> Option<Definition> {
+    resolve_local_or_parameter(uri, document, byte_offset, name)
+        .or_else(|| resolve_current_type_member(uri, document, db, byte_offset, name))
+        .or_else(|| resolve_document_top_level(uri, document, name))
+        .or_else(|| db.find_top_level(name))
+        .or_else(|| db.find_enum_variant(name))
+}
+
+pub(super) fn resolve_name(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_offset: usize,
+    name: &str,
+) -> Option<Definition> {
+    resolve_name_local_to_workspace(uri, document, db, byte_offset, name)
+        .or_else(|| db.find_script_global(name))
+}
+
+pub(super) fn definition_type_name(definition: &Definition) -> Option<String> {
+    definition.symbol.type_annotation.clone().or_else(|| {
+        if definition.symbol.kind == SymbolKind::EnumVariant {
+            definition.symbol.container_name.clone()
+        } else {
+            None
+        }
+    })
+}
+
+pub(super) fn infer_name_type(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_offset: usize,
+    name: &str,
+) -> Option<String> {
+    resolve_name_local_to_workspace(uri, document, db, byte_offset, name)
+        .and_then(|def| definition_type_name(&def))
+        .or_else(|| db.script_global_type(name))
 }
 
 pub(super) fn resolve_local_or_parameter(

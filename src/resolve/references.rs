@@ -5,27 +5,13 @@ use crate::line_index::SourceRange;
 use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::db::SymbolDb;
-use super::definition::{definition_key, logical_member, resolve_definition};
-use super::{dedup_definitions, Definition};
+use super::definition::{all_declarations_of, definition_key, resolve_definition};
+use super::Definition;
 
 enum SearchScope {
     AllDocuments,
     SingleFile,
     SingleFileRange(std::ops::Range<usize>),
-}
-
-fn member_equivalence_set(definition: &Definition, db: &SymbolDb) -> Vec<Definition> {
-    let Some((container, name)) = logical_member(&definition.symbol) else {
-        return vec![definition.clone()];
-    };
-    let mut decls = db.all_member_declarations(&container, &name);
-    if !decls
-        .iter()
-        .any(|d| definition_key(d) == definition_key(definition))
-    {
-        decls.push(definition.clone());
-    }
-    dedup_definitions(decls)
 }
 
 fn definition_search_scope(
@@ -67,7 +53,7 @@ pub fn find_references(
     let name = &definition.symbol.name;
 
     // All declarations of the logical member count as one symbol.
-    let equiv = member_equivalence_set(definition, db);
+    let equiv = all_declarations_of(definition, db);
     let equiv_keys: Vec<(String, std::ops::Range<usize>)> =
         equiv.iter().map(definition_key).collect();
 

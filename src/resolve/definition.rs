@@ -7,8 +7,7 @@ use crate::symbols::{Symbol, SymbolKind};
 use super::ast::{find_ancestor_of_kind, first_named_child, identifier_at, nodes_at_offset};
 use super::db::SymbolDb;
 use super::inference::{
-    enclosing_type_context, resolve_current_type_member, resolve_document_top_level,
-    resolve_local_or_parameter, resolve_member_access,
+    enclosing_type_context, resolve_document_top_level, resolve_member_access, resolve_name,
 };
 use super::{annotation_target_class, dedup_definitions, Definition};
 
@@ -87,12 +86,7 @@ fn resolve_for_ident_no_site_fallback(
         }
     }
 
-    resolve_local_or_parameter(uri, document, byte_offset, name)
-        .or_else(|| resolve_current_type_member(uri, document, db, byte_offset, name))
-        .or_else(|| resolve_document_top_level(uri, document, name))
-        .or_else(|| db.find_top_level(name))
-        .or_else(|| db.find_enum_variant(name))
-        .or_else(|| db.find_script_global(name))
+    resolve_name(uri, document, db, byte_offset, name)
 }
 
 /// All declaration sites at `position`, class-body declaration first.
@@ -105,17 +99,20 @@ pub fn resolve_all_definitions(
     let Some(primary) = resolve_definition(uri, document, db, position) else {
         return Vec::new();
     };
+    all_declarations_of(&primary, db)
+}
 
-    let Some((container, name)) = logical_member(&primary.symbol) else {
-        return vec![primary];
+pub(super) fn all_declarations_of(definition: &Definition, db: &SymbolDb) -> Vec<Definition> {
+    let Some((container, name)) = logical_member(&definition.symbol) else {
+        return vec![definition.clone()];
     };
 
     let mut decls = db.all_member_declarations(&container, &name);
     if !decls
         .iter()
-        .any(|d| definition_key(d) == definition_key(&primary))
+        .any(|d| definition_key(d) == definition_key(definition))
     {
-        decls.push(primary);
+        decls.push(definition.clone());
     }
     dedup_definitions(decls)
 }
