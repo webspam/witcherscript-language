@@ -78,7 +78,7 @@ opt-level = 3
 # Do NOT set `panic = "abort"`. witcherscript-lsp is a long-lived server and
 # depends on unwinding: async-lsp's CatchUnwindLayer turns a panic in one
 # request into an error response instead of aborting the whole process.
-# `panic` is per-profile, not per-binary, so this also covers the CLI — fine.
+# `panic` is per-profile, not per-binary, so this also covers the CLI - fine.
 
 # The bench profile inherits release. iai-callgrind needs symbols to attach
 # callgrind's collection toggle — stripped binaries make every counter read zero.
