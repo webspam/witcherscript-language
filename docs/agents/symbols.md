@@ -98,7 +98,10 @@ The vec is the only storage; `SymbolId(n)` directly indexes `symbols[n]`. IDs ar
 | `by_id(id)` | O(1) lookup by ID |
 | `children_of(parent_id)` | Iterate symbols whose `.container == parent_id` |
 | `enclosing_symbol_at(byte, kinds)` | Smallest symbol of given kinds that contains `byte`; used to determine "which function/class am I in?" |
-| `mark_optional(id)` | Sets `is_optional = true` (called during parameter extraction) |
+| `top_level_by_name(name)` | First top-level symbol with that name |
+| `type_by_name(name)` | Class, struct, or state symbol with that name |
+| `member_of(container, name)` | Iterate members of `container` with that name |
+| `local_at_byte(function, name, before_byte)` | Local or parameter named `name` in scope at `before_byte` |
 
 ## Grammar nodes handled during extraction
 
