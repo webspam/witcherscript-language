@@ -149,6 +149,16 @@ fn ws_file_operations_capabilities() -> WorkspaceFileOperationsServerCapabilitie
     }
 }
 
+// camelCase to match the VS Code client's TypeScript interface.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LegacyScriptStatusParams {
+    pub uri: String,
+    pub replaces_base_script: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replaced_script_path: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Backend {
     pub(crate) client: ClientSocket,
@@ -164,6 +174,10 @@ pub(crate) struct Backend {
     pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     // URIs last indexed into the workspace from legacy dirs, so a vanished one can be dropped.
     pub(crate) legacy_indexed_uris: Arc<Mutex<HashSet<String>>>,
+    // Keyed by canonical URI so it matches open documents under any URI spelling.
+    pub(crate) legacy_replacements: Arc<Mutex<HashMap<String, String>>>,
+    // Dedups sends so an unchanged status is not resent on every keystroke.
+    pub(crate) sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     pub(crate) builtins_index: Arc<WorkspaceIndex>,
@@ -568,10 +582,12 @@ impl Backend {
     }
 
     async fn _did_close(&self, params: DidCloseTextDocumentParams) {
+        let uri = params.text_document.uri;
+        self.sent_legacy_status.lock().await.remove(&uri);
         let _ = self
             .client
             .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
-                uri: params.text_document.uri,
+                uri,
                 diagnostics: Vec::new(),
                 version: None,
             });

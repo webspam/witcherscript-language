@@ -55,6 +55,12 @@ impl Request for BuiltinSourceRequest {
     const METHOD: &'static str = "witcherscript/builtinSource";
 }
 
+enum LegacyScriptStatusNotification {}
+impl lsp_types::notification::Notification for LegacyScriptStatusNotification {
+    type Params = backend::LegacyScriptStatusParams;
+    const METHOD: &'static str = "witcherscript/legacyScriptStatus";
+}
+
 #[tokio::main]
 async fn main() {
     let listen_port = parse_listen_port();
@@ -85,6 +91,8 @@ async fn main() {
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_indexed_uris: Arc::new(Mutex::new(HashSet::new())),
+            legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
+            sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
             builtins_index: Arc::new(load_builtins_index()),

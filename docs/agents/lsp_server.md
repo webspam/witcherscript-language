@@ -10,7 +10,7 @@
 | `cst_cache.rs` | Per-document parse-tree cache with invalidation hooks. |
 | `indexing.rs` | Workspace + base-script discovery and indexing helpers (game-directory scan, `modSharedImports` auto-load, settings refresh). |
 | `config.rs` | `fetch_config`, `apply_diagnostics_toggle`, `ConfigChange` plumbing for `workspace/configuration`. |
-| `diagnostics_publish.rs` | `publish_open_diagnostics`, `publish_syntactic_only` — diagnostic emission for open documents. |
+| `diagnostics_publish.rs` | `publish_open_diagnostics`, `publish_syntactic_only` — diagnostic emission for open documents; `publish_legacy_script_status` — `witcherscript/legacyScriptStatus` push. |
 | `watcher.rs` | `register_file_watchers`, `apply_watched_file_events`, `classify_watched_event` — file-watcher integration. |
 | `logging.rs` | `LspLogSender` tracing layer, level enum/parsing, `DEFAULT_LOG_LEVEL`. |
 | `tests.rs` | Module root that declares the `tests/` submodules. |
@@ -39,6 +39,8 @@ struct Backend {
     additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,                        // extra script directories to index
     base_scripts_index: Arc<Mutex<WorkspaceIndex>>,                          // base game scripts symbol index
     base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,     // parsed base scripts
+    legacy_replacements: Arc<Mutex<HashMap<String, String>>>,                // canonical legacy URI → replaced base script's game-relative path
+    sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,  // last legacy-script status pushed per open document
     builtins_index: Arc<WorkspaceIndex>,                                     // built-in type symbol index (read-only, no Mutex)
     script_env: Arc<Mutex<ScriptEnvironment>>,                               // INI-loaded globals
     cst_diag_cache: Arc<Mutex<HashMap<Url, cst_cache::CstCacheEntry>>>,      // cached CST diagnostics per document
@@ -96,6 +98,12 @@ did_close()
     client.publish_diagnostics(uri, vec![])    // clear diagnostics
     (document stays in workspace_index)
 ```
+
+## Legacy script status notification
+
+`witcherscript/legacyScriptStatus` is a custom server→client notification (defined in `main.rs`, payload `LegacyScriptStatusParams`). It tells the editor whether an open `.ws` file actually replaces a base game script of the same game-relative path, so the VS Code "legacy script" status bar shows only for real overrides — not for brand-new scripts that merely sit in a legacy folder.
+
+`index_base_scripts` builds `legacy_replacements` (canonical legacy URI → replaced game-relative path) while it computes which base scripts a legacy file shadows. `publish_legacy_script_status` then pushes one notification per open document, deduped against `sent_legacy_status`. It fires after base-script indexing and after `update_open_document` (document open/change).
 
 ## Workspace indexing
 

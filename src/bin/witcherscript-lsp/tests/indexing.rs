@@ -315,6 +315,8 @@ mod concurrent_doc_ops {
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_indexed_uris: Arc::new(Mutex::new(HashSet::new())),
+            legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
+            sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
             builtins_index: Arc::new(load_builtins_index()),
@@ -446,12 +448,13 @@ mod legacy_routing {
     use witcherscript_language::diagnostics::{
         collect_base_script_conflict_diagnostics, collect_duplicate_symbol_diagnostics,
     };
+    use witcherscript_language::files::canonical_uri;
     use witcherscript_language::resolve::WorkspaceIndex;
     use witcherscript_language::script_env::ScriptEnvironment;
 
     use crate::backend::Backend;
     use crate::config::Config;
-    use crate::indexing::legacy_replaces_base;
+    use crate::indexing::{legacy_base_replacements, legacy_replaces_base};
     use crate::watcher::event_touches_legacy_dir;
 
     pub(super) struct LocalTempDir {
@@ -497,6 +500,8 @@ mod legacy_routing {
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_indexed_uris: Arc::new(Mutex::new(HashSet::new())),
+            legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
+            sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
             builtins_index: Arc::new(load_builtins_index()),
@@ -847,6 +852,138 @@ mod legacy_routing {
                 .documents()
                 .any(|(uri, _)| uri == base_url.as_str()),
             "an open, legacy-overridden base script must survive a re-index",
+        );
+    }
+
+    #[test]
+    fn legacy_base_replacements_maps_only_real_overrides() {
+        struct Case {
+            name: &'static str,
+            base: &'static [&'static str],
+            legacy: &'static [&'static str],
+            expect_skip: &'static [&'static str],
+            expect_map: &'static [(&'static str, &'static str)],
+        }
+        let cases = [
+            Case {
+                name: "legacy file at the same game-relative path replaces the base script",
+                base: &["file:///game/content/content0/scripts/game/r4Player.ws"],
+                legacy: &["file:///mod/legacy/game/r4Player.ws"],
+                expect_skip: &["file:///game/content/content0/scripts/game/r4Player.ws"],
+                expect_map: &[("file:///mod/legacy/game/r4Player.ws", "game/r4Player.ws")],
+            },
+            Case {
+                name: "brand-new script in a legacy folder replaces nothing",
+                base: &["file:///game/content/content0/scripts/game/r4Player.ws"],
+                legacy: &["file:///mod/legacy/game/MyNewMod.ws"],
+                expect_skip: &[],
+                expect_map: &[],
+            },
+            Case {
+                name: "same basename but a different relative path replaces nothing",
+                base: &["file:///game/content/content0/scripts/game/r4Player.ws"],
+                legacy: &["file:///mod/legacy/other/r4Player.ws"],
+                expect_skip: &[],
+                expect_map: &[],
+            },
+        ];
+        for c in cases {
+            let base: Vec<String> = c.base.iter().map(|s| s.to_string()).collect();
+            let legacy: Vec<String> = c.legacy.iter().map(|s| s.to_string()).collect();
+            let (skip, map) = legacy_base_replacements(&base, &legacy);
+            let expect_skip: HashSet<String> =
+                c.expect_skip.iter().map(|s| s.to_string()).collect();
+            let expect_map: HashMap<String, String> = c
+                .expect_map
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+            assert_eq!(skip, expect_skip, "case '{}': skip set mismatch", c.name);
+            assert_eq!(
+                map, expect_map,
+                "case '{}': replacement map mismatch",
+                c.name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn index_base_scripts_records_only_real_legacy_overrides() {
+        let temp = LocalTempDir::new("ws_legacy_replacements_map");
+        let (game_dir, _base_url) =
+            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+        let legacy_dir = temp.path().join("legacy");
+        let override_path = write_script(
+            &legacy_dir,
+            "game/r4Player.ws",
+            "class CR4Player {}\n// legacy\n",
+        );
+        let new_path = write_script(&legacy_dir, "game/MyNewMod.ws", "class CMyNewMod {}\n");
+        let override_url = Url::from_file_path(&override_path).expect("override path -> url");
+        let new_url = Url::from_file_path(&new_path).expect("new path -> url");
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+        *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+        backend.index_base_scripts().await;
+
+        let map = backend.legacy_replacements.lock().await;
+        let override_key = canonical_uri(&override_url).expect("canonical override uri");
+        assert_eq!(
+            map.get(&override_key).map(String::as_str),
+            Some("game/r4Player.ws"),
+            "a legacy file overriding a base script must record the replaced path",
+        );
+        let new_key = canonical_uri(&new_url).expect("canonical new uri");
+        assert!(
+            !map.contains_key(&new_key),
+            "a brand-new script in a legacy folder must not be recorded as a replacement",
+        );
+    }
+
+    #[tokio::test]
+    async fn opening_a_legacy_override_marks_it_as_replacing_a_base_script() {
+        let temp = LocalTempDir::new("ws_legacy_status_open");
+        let (game_dir, _base_url) =
+            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+        let legacy_dir = temp.path().join("legacy");
+        let override_path = write_script(
+            &legacy_dir,
+            "game/r4Player.ws",
+            "class CR4Player {}\n// legacy\n",
+        );
+        let new_path = write_script(&legacy_dir, "game/MyNewMod.ws", "class CMyNewMod {}\n");
+        let override_url = Url::from_file_path(&override_path).expect("override path -> url");
+        let new_url = Url::from_file_path(&new_path).expect("new path -> url");
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+        *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+        backend.index_base_scripts().await;
+
+        backend
+            .update_open_document(override_url.clone(), "class CR4Player {}\n".to_string())
+            .await;
+        backend
+            .update_open_document(new_url.clone(), "class CMyNewMod {}\n".to_string())
+            .await;
+
+        let sent = backend.sent_legacy_status.lock().await;
+        let override_status = sent
+            .get(&override_url)
+            .expect("status sent for the override file");
+        assert!(
+            override_status.replaces_base_script,
+            "an open legacy override must be reported as replacing a base script",
+        );
+        assert_eq!(
+            override_status.replaced_script_path.as_deref(),
+            Some("game/r4Player.ws"),
+        );
+        let new_status = sent.get(&new_url).expect("status sent for the new file");
+        assert!(
+            !new_status.replaces_base_script,
+            "a brand-new script in a legacy folder must not be reported as replacing a base script",
         );
     }
 
