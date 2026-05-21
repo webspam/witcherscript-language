@@ -10,6 +10,16 @@ pub(crate) struct LegacyScriptStatusParams {
     pub replaced_script_path: Option<String>,
 }
 
+impl LegacyScriptStatusParams {
+    pub(crate) fn new(uri: String, replaced_script_path: Option<String>) -> Self {
+        Self {
+            uri,
+            replaces_base_script: replaced_script_path.is_some(),
+            replaced_script_path,
+        }
+    }
+}
+
 pub(crate) enum LegacyScriptStatusNotification {}
 
 impl Notification for LegacyScriptStatusNotification {

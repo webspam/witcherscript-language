@@ -189,11 +189,7 @@ impl Backend {
             for uri in documents.keys() {
                 let replaced =
                     canonical_uri(uri).and_then(|canon| replacements.get(&canon).cloned());
-                let params = LegacyScriptStatusParams {
-                    uri: uri.to_string(),
-                    replaces_base_script: replaced.is_some(),
-                    replaced_script_path: replaced,
-                };
+                let params = LegacyScriptStatusParams::new(uri.to_string(), replaced);
                 if sent.get(uri) == Some(&params) {
                     continue;
                 }
