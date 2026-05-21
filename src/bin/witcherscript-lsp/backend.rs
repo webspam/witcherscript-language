@@ -537,10 +537,13 @@ impl Backend {
     }
 
     async fn _did_open(&self, params: DidOpenTextDocumentParams) {
-        if builtin_source(params.text_document.uri.as_str()).is_some() {
+        let uri = params.text_document.uri;
+        if builtin_source(uri.as_str()).is_some() {
             return;
         }
-        self.update_open_document(params.text_document.uri, params.text_document.text)
+        // The client drops a file's legacy status on close; force a fresh push.
+        self.sent_legacy_status.lock().await.remove(&uri);
+        self.update_open_document(uri, params.text_document.text)
             .await;
     }
 
@@ -582,12 +585,10 @@ impl Backend {
     }
 
     async fn _did_close(&self, params: DidCloseTextDocumentParams) {
-        let uri = params.text_document.uri;
-        self.sent_legacy_status.lock().await.remove(&uri);
         let _ = self
             .client
             .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
-                uri,
+                uri: params.text_document.uri,
                 diagnostics: Vec::new(),
                 version: None,
             });

@@ -442,7 +442,9 @@ mod legacy_routing {
     use arc_swap::ArcSwap;
     use async_lsp::router::Router;
     use async_lsp::ClientSocket;
-    use lsp_types::{FileChangeType, FileEvent, Url};
+    use lsp_types::{
+        DidCloseTextDocumentParams, FileChangeType, FileEvent, TextDocumentIdentifier, Url,
+    };
     use tokio::sync::{mpsc, Mutex};
     use witcherscript_language::builtins::load_builtins_index;
     use witcherscript_language::diagnostics::{
@@ -452,7 +454,7 @@ mod legacy_routing {
     use witcherscript_language::resolve::WorkspaceIndex;
     use witcherscript_language::script_env::ScriptEnvironment;
 
-    use crate::backend::Backend;
+    use crate::backend::{Backend, DocOp};
     use crate::config::Config;
     use crate::indexing::{legacy_base_replacements, legacy_replaces_base};
     use crate::watcher::event_touches_legacy_dir;
@@ -984,6 +986,46 @@ mod legacy_routing {
         assert!(
             !new_status.replaces_base_script,
             "a brand-new script in a legacy folder must not be reported as replacing a base script",
+        );
+    }
+
+    #[tokio::test]
+    async fn closing_a_legacy_override_keeps_its_status_dedup_entry() {
+        let temp = LocalTempDir::new("ws_legacy_status_close");
+        let (game_dir, _base_url) =
+            make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+        let legacy_dir = temp.path().join("legacy");
+        let override_path = write_script(
+            &legacy_dir,
+            "game/r4Player.ws",
+            "class CR4Player {}\n// legacy\n",
+        );
+        let override_url = Url::from_file_path(&override_path).expect("override path -> url");
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+        *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+        backend.index_base_scripts().await;
+        backend
+            .update_open_document(override_url.clone(), "class CR4Player {}\n".to_string())
+            .await;
+
+        backend
+            .dispatch_doc_op(DocOp::Close(DidCloseTextDocumentParams {
+                text_document: TextDocumentIdentifier {
+                    uri: override_url.clone(),
+                },
+            }))
+            .await;
+
+        assert!(
+            backend
+                .sent_legacy_status
+                .lock()
+                .await
+                .contains_key(&override_url),
+            "closing a file must keep its status dedup entry, or an unrelated edit \
+             would re-push a notification for the closed file",
         );
     }
 
