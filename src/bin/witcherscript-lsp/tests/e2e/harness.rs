@@ -58,6 +58,8 @@ impl LspClient {
                 additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
                 legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
                 legacy_indexed_uris: Arc::new(Mutex::new(HashSet::new())),
+                legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
+                sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
                 base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
                 base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
                 builtins_index: Arc::new(load_builtins_index()),

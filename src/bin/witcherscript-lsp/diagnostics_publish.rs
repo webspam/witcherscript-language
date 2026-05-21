@@ -8,12 +8,14 @@ use witcherscript_language::diagnostics::{
     collect_base_script_conflict_diagnostics, collect_duplicate_local_diagnostics,
     collect_duplicate_symbol_diagnostics, collect_shadowing_diagnostics, WorkspaceDiagnostic,
 };
+use witcherscript_language::files::canonical_uri;
 use witcherscript_language::line_index::SourceRange;
 use witcherscript_language::resolve::SymbolDb;
 
 use crate::backend::Backend;
 use crate::convert::{lsp_diagnostics, lsp_workspace_diagnostic};
 use crate::cst_cache::{cst_diagnostics_with_cache, DbFingerprint};
+use crate::legacy_status::{LegacyScriptStatusNotification, LegacyScriptStatusParams};
 
 impl Backend {
     #[tracing::instrument(skip(self), level = "debug")]
@@ -175,6 +177,29 @@ impl Backend {
                     diagnostics,
                     version: None,
                 });
+        }
+    }
+
+    pub(crate) async fn publish_legacy_script_status(&self) {
+        let to_send: Vec<LegacyScriptStatusParams> = {
+            let documents = self.documents.lock().await;
+            let replacements = self.legacy_replacements.lock().await;
+            let mut sent = self.sent_legacy_status.lock().await;
+            let mut list = Vec::new();
+            for uri in documents.keys() {
+                let replaced =
+                    canonical_uri(uri).and_then(|canon| replacements.get(&canon).cloned());
+                let params = LegacyScriptStatusParams::new(uri.to_string(), replaced);
+                if sent.get(uri) == Some(&params) {
+                    continue;
+                }
+                sent.insert(uri.clone(), params.clone());
+                list.push(params);
+            }
+            list
+        };
+        for params in to_send {
+            let _ = self.client.notify::<LegacyScriptStatusNotification>(params);
         }
     }
 

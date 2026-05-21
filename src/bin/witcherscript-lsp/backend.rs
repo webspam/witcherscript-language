@@ -54,6 +54,7 @@ use crate::convert::{
     lsp_range, script_body_item, signature_help_response, source_position, source_range,
     this_super_item, type_completion_item, workspace_roots, wrap_method_snippet,
 };
+use crate::legacy_status::LegacyScriptStatusParams;
 use crate::logging::{level_from_str, level_to_u8};
 
 type Result<T> = std::result::Result<T, ResponseError>;
@@ -164,6 +165,10 @@ pub(crate) struct Backend {
     pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     // URIs last indexed into the workspace from legacy dirs, so a vanished one can be dropped.
     pub(crate) legacy_indexed_uris: Arc<Mutex<HashSet<String>>>,
+    // Keyed by canonical URI so it matches open documents under any URI spelling.
+    pub(crate) legacy_replacements: Arc<Mutex<HashMap<String, String>>>,
+    // Dedups sends so an unchanged status is not resent on every keystroke.
+    pub(crate) sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     pub(crate) builtins_index: Arc<WorkspaceIndex>,
@@ -523,11 +528,15 @@ impl Backend {
     }
 
     async fn _did_open(&self, params: DidOpenTextDocumentParams) {
-        if builtin_source(params.text_document.uri.as_str()).is_some() {
+        let uri = params.text_document.uri;
+        if builtin_source(uri.as_str()).is_some() {
             return;
         }
-        self.update_open_document(params.text_document.uri, params.text_document.text)
+        // The client drops a file's legacy status on close; force a fresh push.
+        self.sent_legacy_status.lock().await.remove(&uri);
+        self.update_open_document(uri, params.text_document.text)
             .await;
+        self.publish_legacy_script_status().await;
     }
 
     #[tracing::instrument(skip_all, fields(uri = %params.text_document.uri), level = "debug")]

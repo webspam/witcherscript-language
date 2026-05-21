@@ -23,6 +23,39 @@ pub(crate) fn legacy_replaces_base(base_uri: &str, legacy_uri: &str) -> bool {
     legacy_uri.ends_with(&needle)
 }
 
+pub(crate) fn legacy_base_replacements(
+    base_uris: &[String],
+    legacy_uris: &[String],
+) -> (HashSet<String>, HashMap<String, String>) {
+    let mut base_by_basename: HashMap<&str, Vec<&String>> = HashMap::new();
+    for base_uri in base_uris {
+        if let Some(name) = basename_of(base_uri) {
+            base_by_basename.entry(name).or_default().push(base_uri);
+        }
+    }
+    let mut skip_base: HashSet<String> = HashSet::new();
+    let mut replacements: HashMap<String, String> = HashMap::new();
+    for legacy_uri in legacy_uris {
+        let Some(candidates) = basename_of(legacy_uri).and_then(|name| base_by_basename.get(name))
+        else {
+            continue;
+        };
+        let canonical = Url::parse(legacy_uri)
+            .ok()
+            .and_then(|u| canonical_uri(&u))
+            .unwrap_or_else(|| legacy_uri.clone());
+        for base_uri in candidates {
+            if legacy_replaces_base(base_uri, legacy_uri) {
+                skip_base.insert((*base_uri).clone());
+                if let Some(rel) = relative_from_scripts(base_uri) {
+                    replacements.insert(canonical.clone(), rel.to_string());
+                }
+            }
+        }
+    }
+    (skip_base, replacements)
+}
+
 pub(crate) fn build_index_segments(
     game_dir: Option<&Path>,
     extras: &[PathBuf],
@@ -284,8 +317,10 @@ impl Backend {
                 *idx = WorkspaceIndex::default();
                 docs.clear();
             }
+            self.legacy_replacements.lock().await.clear();
             self.reconcile_legacy_workspace_files(Vec::new()).await;
             self.publish_open_diagnostics().await;
+            self.publish_legacy_script_status().await;
             return;
         }
 
@@ -418,26 +453,11 @@ impl Backend {
                 legacy_parsed.extend(parsed);
             }
 
-            // A legacy file can only replace a base script with the same filename.
-            let mut base_by_basename: HashMap<&str, Vec<&String>> = HashMap::new();
-            for base_uri in base_docs.keys() {
-                if let Some(name) = basename_of(base_uri) {
-                    base_by_basename.entry(name).or_default().push(base_uri);
-                }
-            }
-            let mut skip_base: HashSet<String> = HashSet::new();
-            for (legacy_uri, _) in &legacy_parsed {
-                let Some(candidates) = basename_of(legacy_uri)
-                    .and_then(|name| base_by_basename.get(name))
-                else {
-                    continue;
-                };
-                for base_uri in candidates {
-                    if legacy_replaces_base(base_uri, legacy_uri) {
-                        skip_base.insert((*base_uri).clone());
-                    }
-                }
-            }
+            let base_uris: Vec<String> = base_docs.keys().cloned().collect();
+            let legacy_uris: Vec<String> =
+                legacy_parsed.iter().map(|(uri, _)| uri.clone()).collect();
+            let (skip_base, legacy_replacements) =
+                legacy_base_replacements(&base_uris, &legacy_uris);
             for skip_uri in &skip_base {
                 base_index.remove_document(skip_uri);
                 base_docs.remove(skip_uri);
@@ -452,18 +472,26 @@ impl Backend {
                 legacy_parsed,
                 legacy_total,
                 matched_count,
+                legacy_replacements,
             )
         })
         .await;
 
-        let (base_new_index, base_new_docs, base_total, legacy_parsed, legacy_total, matched_count) =
-            match join_result {
-                Ok(tuple) => tuple,
-                Err(err) => {
-                    error!(error = %err, "base scripts indexing task panicked");
-                    return;
-                }
-            };
+        let (
+            base_new_index,
+            base_new_docs,
+            base_total,
+            legacy_parsed,
+            legacy_total,
+            matched_count,
+            legacy_replacements,
+        ) = match join_result {
+            Ok(tuple) => tuple,
+            Err(err) => {
+                error!(error = %err, "base scripts indexing task panicked");
+                return;
+            }
+        };
 
         {
             let mut idx = self.base_scripts_index.lock().await;
@@ -471,6 +499,7 @@ impl Backend {
             *idx = base_new_index;
             *docs = base_new_docs;
         }
+        *self.legacy_replacements.lock().await = legacy_replacements;
         self.merge_open_base_documents().await;
 
         self.reconcile_legacy_workspace_files(legacy_parsed).await;
@@ -487,5 +516,6 @@ impl Backend {
         );
 
         self.publish_open_diagnostics().await;
+        self.publish_legacy_script_status().await;
     }
 }
