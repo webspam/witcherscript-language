@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use tracing::{debug, trace};
 use tree_sitter::Node;
 
+use crate::cst::nav::first_child_kind;
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use crate::symbols::SymbolKind;
@@ -125,12 +126,6 @@ fn bare_call_ident<'tree>(call: Node<'tree>) -> Option<Node<'tree>> {
     } else {
         None
     }
-}
-
-fn first_child_kind<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
-    let mut cursor = node.walk();
-    let found = node.children(&mut cursor).find(|c| c.kind() == kind);
-    found
 }
 
 fn push<'tree>(ctx: &mut CstRuleCtx<'_, 'tree>, anchor: Node<'tree>, kind: &str, message: String) {

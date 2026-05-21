@@ -2,6 +2,7 @@ use tree_sitter::Node;
 
 use crate::symbols::SymbolKind;
 
+pub(super) use crate::cst::nav::first_named_child;
 pub(super) use crate::cst::offsets::{
     identifier_at, is_kind_or_error_wrapped_kind, is_statement_boundary,
     is_type_annotation_boundary, nodes_at_offset, significant_node_before_byte,
@@ -49,12 +50,6 @@ pub(super) fn nearest_enclosing_block<'a>(mut node: Node<'a>) -> Option<Node<'a>
         }
         node = node.parent()?;
     }
-}
-
-pub(super) fn first_named_child(node: Node) -> Option<Node> {
-    let mut cursor = node.walk();
-    let child = node.named_children(&mut cursor).next();
-    child
 }
 
 pub(super) fn is_type_like(kind: SymbolKind) -> bool {

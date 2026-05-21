@@ -79,15 +79,7 @@ pub(super) fn try_split_call_args(node: Node, source: &str) -> Option<(String, V
     Some((prefix, args))
 }
 
-pub(super) fn child_nodes(node: Node) -> Vec<Node> {
-    let mut c = node.walk();
-    node.children(&mut c).collect()
-}
-
-pub(super) fn named_child_nodes(node: Node) -> Vec<Node> {
-    let mut c = node.walk();
-    node.named_children(&mut c).collect()
-}
+pub(super) use crate::cst::nav::{child_nodes, named_child_nodes};
 
 pub(super) fn is_alignable_field(node: Node) -> bool {
     if node.kind() != "member_var_decl" || node.is_error() {
