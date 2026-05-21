@@ -43,6 +43,7 @@ use witcherscript_language::script_env::ScriptEnvironment;
 
 use backend::{Backend, DocOp};
 use config::Config;
+use convert::{created_files_to_watched, deleted_files_to_watched, renamed_files_to_watched};
 use logging::LspLogSender;
 
 type LogRxHolder = Arc<Mutex<Option<mpsc::UnboundedReceiver<(MessageType, String)>>>>;
@@ -120,7 +121,7 @@ async fn main() {
             async move { backend.handle_builtin_source(params).await }
         });
 
-        ignore_unhandled_notifications(&mut router);
+        register_notification_handlers(&mut router);
 
         ServiceBuilder::new()
             .layer(TracingLayer::default())
@@ -137,15 +138,35 @@ async fn main() {
 }
 
 /// async-lsp's default for an unhandled notification (e.g. didSave) is to terminate the server.
-pub(crate) fn ignore_unhandled_notifications(router: &mut Router<Backend>) {
+pub(crate) fn register_notification_handlers(router: &mut Router<Backend>) {
     router
         .notification::<DidSaveTextDocument>(|_, _| ControlFlow::Continue(()))
         .notification::<WillSaveTextDocument>(|_, _| ControlFlow::Continue(()))
-        .notification::<DidCreateFiles>(|_, _| ControlFlow::Continue(()))
-        .notification::<DidRenameFiles>(|_, _| ControlFlow::Continue(()))
-        .notification::<DidDeleteFiles>(|_, _| ControlFlow::Continue(()))
-        .notification::<DidChangeWorkspaceFolders>(|_, _| ControlFlow::Continue(()))
         .notification::<WorkDoneProgressCancel>(|_, _| ControlFlow::Continue(()))
+        .notification::<DidCreateFiles>(|backend, params| {
+            tracing::debug!(count = params.files.len(), "workspace/didCreateFiles");
+            backend.submit_doc_op(DocOp::WatchedFiles(created_files_to_watched(params)));
+            ControlFlow::Continue(())
+        })
+        .notification::<DidRenameFiles>(|backend, params| {
+            tracing::debug!(count = params.files.len(), "workspace/didRenameFiles");
+            backend.submit_doc_op(DocOp::WatchedFiles(renamed_files_to_watched(params)));
+            ControlFlow::Continue(())
+        })
+        .notification::<DidDeleteFiles>(|backend, params| {
+            tracing::debug!(count = params.files.len(), "workspace/didDeleteFiles");
+            backend.submit_doc_op(DocOp::WatchedFiles(deleted_files_to_watched(params)));
+            ControlFlow::Continue(())
+        })
+        .notification::<DidChangeWorkspaceFolders>(|backend, params| {
+            tracing::debug!(
+                added = params.event.added.len(),
+                removed = params.event.removed.len(),
+                "workspace/didChangeWorkspaceFolders"
+            );
+            backend.submit_doc_op(DocOp::WorkspaceFolders(params));
+            ControlFlow::Continue(())
+        })
         .unhandled_notification(|_, notif| {
             tracing::debug!(method = %notif.method, "ignoring unhandled notification");
             ControlFlow::Continue(())

@@ -2,10 +2,11 @@ use std::path::{Path, PathBuf};
 
 use lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, Command, CompletionItem, CompletionItemKind,
-    CompletionTextEdit, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
-    DocumentSymbol, Documentation, InitializeParams, InsertTextFormat, Location, MarkupContent,
-    MarkupKind, NumberOrString, ParameterInformation, ParameterLabel, Position, Range,
-    SignatureHelp, SignatureInformation, TextEdit, Url,
+    CompletionTextEdit, CreateFilesParams, DeleteFilesParams, Diagnostic,
+    DiagnosticRelatedInformation, DiagnosticSeverity, DidChangeWatchedFilesParams, DocumentSymbol,
+    Documentation, FileChangeType, FileEvent, InitializeParams, InsertTextFormat, Location,
+    MarkupContent, MarkupKind, NumberOrString, ParameterInformation, ParameterLabel, Position,
+    Range, RenameFilesParams, SignatureHelp, SignatureInformation, TextEdit, Url,
 };
 use tracing::warn;
 use witcherscript_language::diagnostics::{
@@ -32,6 +33,42 @@ pub(crate) fn workspace_roots(params: InitializeParams) -> Vec<PathBuf> {
         .filter(|path| path.is_dir() || is_witcherscript_file(path))
         .into_iter()
         .collect()
+}
+
+// File-operation notifications reuse the watched-file pipeline rather than a parallel one.
+pub(crate) fn created_files_to_watched(params: CreateFilesParams) -> DidChangeWatchedFilesParams {
+    DidChangeWatchedFilesParams {
+        changes: params
+            .files
+            .into_iter()
+            .filter_map(|file| Url::parse(&file.uri).ok())
+            .map(|uri| FileEvent::new(uri, FileChangeType::CREATED))
+            .collect(),
+    }
+}
+
+pub(crate) fn deleted_files_to_watched(params: DeleteFilesParams) -> DidChangeWatchedFilesParams {
+    DidChangeWatchedFilesParams {
+        changes: params
+            .files
+            .into_iter()
+            .filter_map(|file| Url::parse(&file.uri).ok())
+            .map(|uri| FileEvent::new(uri, FileChangeType::DELETED))
+            .collect(),
+    }
+}
+
+pub(crate) fn renamed_files_to_watched(params: RenameFilesParams) -> DidChangeWatchedFilesParams {
+    let mut changes = Vec::new();
+    for file in params.files {
+        if let Ok(old_uri) = Url::parse(&file.old_uri) {
+            changes.push(FileEvent::new(old_uri, FileChangeType::DELETED));
+        }
+        if let Ok(new_uri) = Url::parse(&file.new_uri) {
+            changes.push(FileEvent::new(new_uri, FileChangeType::CREATED));
+        }
+    }
+    DidChangeWatchedFilesParams { changes }
 }
 
 pub(crate) fn lsp_diagnostics(document: &ParsedDocument) -> Vec<Diagnostic> {
@@ -510,4 +547,75 @@ fn hover_location_markdown(definition: &Definition) -> String {
     uri.set_fragment(Some(&format!("L{line}")));
 
     format!("[{label}:{line}]({uri})")
+}
+
+#[cfg(test)]
+mod file_operation_conversion {
+    use super::*;
+    use lsp_types::{FileCreate, FileDelete, FileRename};
+
+    #[test]
+    fn created_files_become_created_events() {
+        let changes = created_files_to_watched(CreateFilesParams {
+            files: vec![
+                FileCreate {
+                    uri: "file:///a.ws".to_string(),
+                },
+                FileCreate {
+                    uri: "file:///b.ws".to_string(),
+                },
+            ],
+        })
+        .changes;
+        assert_eq!(changes.len(), 2);
+        assert!(changes.iter().all(|e| e.typ == FileChangeType::CREATED));
+        assert_eq!(changes[0].uri.as_str(), "file:///a.ws");
+        assert_eq!(changes[1].uri.as_str(), "file:///b.ws");
+    }
+
+    #[test]
+    fn deleted_files_become_deleted_events() {
+        let changes = deleted_files_to_watched(DeleteFilesParams {
+            files: vec![FileDelete {
+                uri: "file:///gone.ws".to_string(),
+            }],
+        })
+        .changes;
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].typ, FileChangeType::DELETED);
+        assert_eq!(changes[0].uri.as_str(), "file:///gone.ws");
+    }
+
+    #[test]
+    fn rename_becomes_delete_old_then_create_new() {
+        let changes = renamed_files_to_watched(RenameFilesParams {
+            files: vec![FileRename {
+                old_uri: "file:///old.ws".to_string(),
+                new_uri: "file:///new.ws".to_string(),
+            }],
+        })
+        .changes;
+        assert_eq!(changes.len(), 2);
+        assert_eq!(changes[0].typ, FileChangeType::DELETED);
+        assert_eq!(changes[0].uri.as_str(), "file:///old.ws");
+        assert_eq!(changes[1].typ, FileChangeType::CREATED);
+        assert_eq!(changes[1].uri.as_str(), "file:///new.ws");
+    }
+
+    #[test]
+    fn unparseable_uris_are_skipped() {
+        let changes = created_files_to_watched(CreateFilesParams {
+            files: vec![
+                FileCreate {
+                    uri: "not a uri".to_string(),
+                },
+                FileCreate {
+                    uri: "file:///ok.ws".to_string(),
+                },
+            ],
+        })
+        .changes;
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].uri.as_str(), "file:///ok.ws");
+    }
 }
