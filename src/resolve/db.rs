@@ -294,7 +294,7 @@ impl<'a> SymbolDb<'a> {
                         .map(|b| b.all_types())
                         .unwrap_or_default()
                         .into_iter()
-                        .filter(|d| d.symbol.kind == SymbolKind::Enum),
+                        .filter(|d| d.uri != crate::builtins::BUILTIN_ARRAY_URI),
                 ),
         )
     }

@@ -9,10 +9,18 @@ pub const BUILTIN_ENUMS_URI: &str = "witcherscript-builtin:/enums.ws";
 
 pub const GENERIC_ELEMENT_PLACEHOLDER: &str = "T";
 
+const CLASS_BUILTINS: &[(&str, &str)] = &[(
+    "witcherscript-builtin:/CR4HudModule.ws",
+    include_str!("../builtins/CR4HudModule.ws"),
+)];
+
 pub fn load_builtins_index() -> WorkspaceIndex {
     let mut index = WorkspaceIndex::default();
     insert_builtin(&mut index, BUILTIN_ARRAY_URI, ARRAY_WS);
     insert_builtin(&mut index, BUILTIN_ENUMS_URI, ENUMS_WS);
+    for &(uri, source) in CLASS_BUILTINS {
+        insert_builtin(&mut index, uri, source);
+    }
     index
 }
 
@@ -20,7 +28,10 @@ pub fn builtin_source(uri: &str) -> Option<&'static str> {
     match uri {
         BUILTIN_ARRAY_URI => Some(ARRAY_WS),
         BUILTIN_ENUMS_URI => Some(ENUMS_WS),
-        _ => None,
+        _ => CLASS_BUILTINS
+            .iter()
+            .find(|(u, _)| *u == uri)
+            .map(|&(_, source)| source),
     }
 }
 
