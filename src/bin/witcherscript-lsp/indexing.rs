@@ -59,26 +59,15 @@ pub(crate) fn legacy_base_replacements(
 pub(crate) fn build_index_segments(
     game_dir: Option<&Path>,
     extras: &[PathBuf],
-    auto_load_mod_shared_imports: bool,
-) -> Vec<(&'static str, PathBuf, bool)> {
-    let mut segments: Vec<(&'static str, PathBuf, bool)> = Vec::new();
+) -> Vec<(&'static str, PathBuf)> {
+    let mut segments: Vec<(&'static str, PathBuf)> = Vec::new();
     let mut seen: HashSet<PathBuf> = HashSet::new();
     let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
 
     if let Some(gd) = game_dir {
         let base = gd.join(r"content\content0\scripts");
         if seen.insert(canon(&base)) {
-            segments.push(("gameDirectory", base, false));
-        }
-        if auto_load_mod_shared_imports {
-            let msi = gd.join(r"Mods\modSharedImports");
-            if msi.is_dir() {
-                let key = canon(&msi);
-                if !seen.contains(&key) {
-                    seen.insert(key);
-                    segments.push(("modSharedImports", msi, true));
-                }
-            }
+            segments.push(("gameDirectory", base));
         }
     }
 
@@ -88,11 +77,18 @@ pub(crate) fn build_index_segments(
             continue;
         }
         if seen.insert(canon(extra)) {
-            segments.push(("additionalScriptDirectory", extra.clone(), false));
+            segments.push(("additionalScriptDirectory", extra.clone()));
         }
     }
 
     segments
+}
+
+// modSharedImports ships replacement scripts, so it is indexed as a legacy
+// script dir rather than a base overlay.
+pub(crate) fn mod_shared_imports_dir(game_dir: &Path) -> Option<PathBuf> {
+    let msi = game_dir.join(r"Mods\modSharedImports");
+    msi.is_dir().then_some(msi)
 }
 
 #[tracing::instrument(skip(index, document), fields(uri = %uri), level = "debug")]
@@ -135,13 +131,27 @@ impl Backend {
         }
     }
 
+    // Auto-detected modSharedImports counts as legacy without being in the setting.
+    pub(crate) async fn effective_legacy_dirs(&self) -> Vec<PathBuf> {
+        let mut dirs = self.legacy_script_dirs.lock().await.clone();
+        if self.config.load().auto_load_mod_shared_imports {
+            if let Some(gd) = self.base_scripts_path.lock().await.as_ref() {
+                if let Some(msi) = mod_shared_imports_dir(gd) {
+                    if !dirs.contains(&msi) {
+                        dirs.push(msi);
+                    }
+                }
+            }
+        }
+        dirs
+    }
+
     async fn is_base_script_uri(&self, uri: &Url) -> bool {
         let Ok(path) = uri.to_file_path() else {
             return false;
         };
         if self
-            .legacy_script_dirs
-            .lock()
+            .effective_legacy_dirs()
             .await
             .iter()
             .any(|dir| path.starts_with(dir))
@@ -307,8 +317,7 @@ impl Backend {
     pub(crate) async fn index_base_scripts(&self) {
         let game_dir_opt = self.base_scripts_path.lock().await.clone();
         let extras = self.additional_script_dirs.lock().await.clone();
-        let legacy_dirs = self.legacy_script_dirs.lock().await.clone();
-        let auto_load = self.config.load().auto_load_mod_shared_imports;
+        let legacy_dirs = self.effective_legacy_dirs().await;
 
         if game_dir_opt.is_none() && extras.is_empty() && legacy_dirs.is_empty() {
             {
@@ -359,8 +368,7 @@ impl Backend {
             })
             .collect();
 
-        let base_segments =
-            build_index_segments(game_dir_opt.as_deref(), &extras_filtered, auto_load);
+        let base_segments = build_index_segments(game_dir_opt.as_deref(), &extras_filtered);
         let base_segments_count = base_segments.len();
         let total_start = Instant::now();
         let legacy_dirs_for_task = legacy_dirs_valid.clone();
@@ -370,7 +378,7 @@ impl Backend {
             let mut base_docs: HashMap<String, ParsedDocument> = HashMap::new();
             let mut base_total: usize = 0;
 
-            for (label, root, is_auto) in &base_segments {
+            for (label, root) in &base_segments {
                 let seg_start = Instant::now();
                 let Ok(files) = collect_witcherscript_files(std::slice::from_ref(root), &[]) else {
                     warn!(label, path = %root.display(), "failed to collect script files");
@@ -399,24 +407,13 @@ impl Backend {
                     base_docs.insert(uri, doc);
                 }
                 let elapsed_ms = seg_start.elapsed().as_millis();
-                if *is_auto {
-                    info!(
-                        label,
-                        path = %root.display(),
-                        indexed = count,
-                        elapsed_ms,
-                        auto_loaded = true,
-                        "[auto-detected] indexed modSharedImports"
-                    );
-                } else {
-                    info!(
-                        label,
-                        path = %root.display(),
-                        indexed = count,
-                        elapsed_ms,
-                        "indexed scripts segment"
-                    );
-                }
+                info!(
+                    label,
+                    path = %root.display(),
+                    indexed = count,
+                    elapsed_ms,
+                    "indexed scripts segment"
+                );
             }
 
             let mut legacy_parsed: Vec<(String, ParsedDocument)> = Vec::new();

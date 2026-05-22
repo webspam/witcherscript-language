@@ -33,47 +33,16 @@ fn opening_a_workspace_indexed_file_does_not_self_conflict() {
 
 #[test]
 fn build_index_segments_empty_inputs() {
-    let segments = crate::indexing::build_index_segments(None, &[], true);
+    let segments = crate::indexing::build_index_segments(None, &[]);
     assert!(segments.is_empty());
 }
 
 #[test]
 fn build_index_segments_game_dir_only() {
     let game_dir = std::env::temp_dir().join("ws_test_segments_game_only");
-    let segments = crate::indexing::build_index_segments(Some(&game_dir), &[], true);
+    let segments = crate::indexing::build_index_segments(Some(&game_dir), &[]);
     assert_eq!(segments.len(), 1);
     assert_eq!(segments[0].0, "gameDirectory");
-    assert!(!segments[0].2);
-}
-
-#[test]
-fn build_index_segments_auto_loads_mod_shared_imports_when_present() {
-    let game_dir = std::env::temp_dir().join("ws_test_segments_msi_present");
-    let msi = game_dir.join("Mods").join("modSharedImports");
-    std::fs::create_dir_all(&msi).expect("mkdir mods");
-    let segments = crate::indexing::build_index_segments(Some(&game_dir), &[], true);
-    let labels: Vec<&str> = segments.iter().map(|(l, _, _)| *l).collect();
-    assert!(labels.contains(&"modSharedImports"));
-    let msi_seg = segments
-        .iter()
-        .find(|(l, _, _)| *l == "modSharedImports")
-        .unwrap();
-    assert!(
-        msi_seg.2,
-        "modSharedImports segment must be flagged as auto-loaded"
-    );
-    std::fs::remove_dir_all(game_dir.join("Mods")).ok();
-}
-
-#[test]
-fn build_index_segments_skips_mod_shared_imports_when_flag_off() {
-    let game_dir = std::env::temp_dir().join("ws_test_segments_msi_flag_off");
-    let msi = game_dir.join("Mods").join("modSharedImports");
-    std::fs::create_dir_all(&msi).expect("mkdir mods");
-    let segments = crate::indexing::build_index_segments(Some(&game_dir), &[], false);
-    let labels: Vec<&str> = segments.iter().map(|(l, _, _)| *l).collect();
-    assert!(!labels.contains(&"modSharedImports"));
-    std::fs::remove_dir_all(game_dir.join("Mods")).ok();
 }
 
 #[test]
@@ -82,23 +51,42 @@ fn build_index_segments_skips_missing_extra_dir() {
     let missing = std::env::temp_dir().join("ws_test_segments_definitely_not_a_dir_xyz");
     std::fs::remove_dir_all(&missing).ok();
     let extras = vec![missing];
-    let segments = crate::indexing::build_index_segments(Some(&game_dir), &extras, false);
-    let labels: Vec<&str> = segments.iter().map(|(l, _, _)| *l).collect();
+    let segments = crate::indexing::build_index_segments(Some(&game_dir), &extras);
+    let labels: Vec<&str> = segments.iter().map(|(l, _)| *l).collect();
     assert!(!labels.contains(&"additionalScriptDirectory"));
 }
 
 #[test]
-fn build_index_segments_dedups_extra_that_overlaps_mod_shared_imports() {
-    let game_dir = std::env::temp_dir().join("ws_test_segments_dedup");
+fn build_index_segments_never_emits_mod_shared_imports() {
+    let game_dir = std::env::temp_dir().join("ws_test_segments_no_msi");
     let msi = game_dir.join("Mods").join("modSharedImports");
     std::fs::create_dir_all(&msi).expect("mkdir mods");
-    let extras = vec![msi.clone()];
-    let segments = crate::indexing::build_index_segments(Some(&game_dir), &extras, true);
-    let msi_segs: Vec<_> = segments.iter().filter(|(_, p, _)| p == &msi).collect();
-    assert_eq!(msi_segs.len(), 1, "overlapping path must appear once");
-    assert_eq!(msi_segs[0].0, "modSharedImports");
-    assert!(msi_segs[0].2, "first-inserted (modSharedImports) wins");
+    let segments = crate::indexing::build_index_segments(Some(&game_dir), &[]);
+    let labels: Vec<&str> = segments.iter().map(|(l, _)| *l).collect();
+    assert!(
+        !labels.contains(&"modSharedImports"),
+        "modSharedImports must be routed through legacy dirs, not base segments"
+    );
     std::fs::remove_dir_all(game_dir.join("Mods")).ok();
+}
+
+#[test]
+fn mod_shared_imports_dir_detects_present_dir() {
+    let game_dir = std::env::temp_dir().join("ws_test_msi_detect");
+    let msi = game_dir.join("Mods").join("modSharedImports");
+    std::fs::create_dir_all(&msi).expect("mkdir mods");
+    assert_eq!(
+        crate::indexing::mod_shared_imports_dir(&game_dir).as_deref(),
+        Some(msi.as_path())
+    );
+    std::fs::remove_dir_all(game_dir.join("Mods")).ok();
+}
+
+#[test]
+fn mod_shared_imports_dir_none_when_absent() {
+    let game_dir = std::env::temp_dir().join("ws_test_msi_absent");
+    std::fs::remove_dir_all(game_dir.join("Mods")).ok();
+    assert!(crate::indexing::mod_shared_imports_dir(&game_dir).is_none());
 }
 
 #[cfg(test)]
@@ -622,6 +610,87 @@ mod legacy_routing {
             ws_docs.contains_key(legacy_url.as_str()),
             "legacy file should be in workspace_documents; got keys {:?}",
             ws_docs.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn mod_shared_imports_override_drops_base_and_lands_in_workspace() {
+        let temp = LocalTempDir::new("ws_mod_shared_imports_override");
+        let (game_dir, base_url) = make_game_dir(
+            temp.path(),
+            "local/CDestructionComponent.ws",
+            "class CDestructionComponent {}\n",
+        );
+        let override_path = write_script(
+            &game_dir.join("Mods").join("modSharedImports"),
+            "content/scripts/local/CDestructionComponent.ws",
+            "class CDestructionComponent {}\n// shared imports\n",
+        );
+        let override_url = Url::from_file_path(&override_path).expect("override path -> url");
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+
+        backend.index_base_scripts().await;
+
+        assert!(
+            !backend
+                .base_scripts_documents
+                .lock()
+                .await
+                .contains_key(base_url.as_str()),
+            "a modSharedImports replacement script must drop the base script it overrides"
+        );
+        assert!(
+            backend
+                .workspace_documents
+                .lock()
+                .await
+                .contains_key(override_url.as_str()),
+            "a modSharedImports replacement script must land in workspace_documents"
+        );
+    }
+
+    #[tokio::test]
+    async fn mod_shared_imports_skipped_when_auto_load_off() {
+        let temp = LocalTempDir::new("ws_mod_shared_imports_auto_off");
+        let (game_dir, base_url) = make_game_dir(
+            temp.path(),
+            "local/CDestructionComponent.ws",
+            "class CDestructionComponent {}\n",
+        );
+        let override_path = write_script(
+            &game_dir.join("Mods").join("modSharedImports"),
+            "content/scripts/local/CDestructionComponent.ws",
+            "class CDestructionComponent {}\n// shared imports\n",
+        );
+        let override_url = Url::from_file_path(&override_path).expect("override path -> url");
+
+        let backend = make_backend();
+        *backend.base_scripts_path.lock().await = Some(game_dir);
+        backend.config.store(Arc::new(Config {
+            auto_load_mod_shared_imports: false,
+            diagnostics_enabled: false,
+            ..Config::default()
+        }));
+
+        backend.index_base_scripts().await;
+
+        assert!(
+            backend
+                .base_scripts_documents
+                .lock()
+                .await
+                .contains_key(base_url.as_str()),
+            "with auto-load off the base script must stay in the base index"
+        );
+        assert!(
+            !backend
+                .workspace_documents
+                .lock()
+                .await
+                .contains_key(override_url.as_str()),
+            "with auto-load off the modSharedImports script must not be indexed"
         );
     }
 
