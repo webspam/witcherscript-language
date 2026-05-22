@@ -152,6 +152,13 @@ impl<'a> SymbolDb<'a> {
             .or_else(|| self.virtual_object_base(class_name))
     }
 
+    pub fn inherits_from(&self, class_name: &str, ancestor: &str) -> bool {
+        self.try_in_chain(class_name, AccessLevel::Private, |current, _, _| {
+            (current == ancestor).then_some(())
+        })
+        .is_some()
+    }
+
     fn virtual_object_base(&self, class_name: &str) -> Option<String> {
         if OBJECT_ROOT_CHAIN.contains(&class_name) {
             return None;

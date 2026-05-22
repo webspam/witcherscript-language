@@ -195,6 +195,14 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 if name == "autoState" && enclosing.is_state_machine {
                     return None;
                 }
+                // `default instanceClass` is valid in IBehTreeObjectDefinition subclasses despite its private base-script field.
+                if name == "instanceClass"
+                    && ctx
+                        .db
+                        .inherits_from(&enclosing.name, "IBehTreeObjectDefinition")
+                {
+                    return None;
+                }
                 let container_name = enclosing.name.clone();
                 ctx.telemetry.member_lookups += 1;
                 if ctx
@@ -616,6 +624,32 @@ mod tests {
         let diags = result.get("file:///t.ws").unwrap();
         assert_eq!(kinds(diags), vec!["unknown_member"]);
         assert!(diags[0].message.contains("autoState"));
+    }
+
+    #[test]
+    fn default_instance_class_not_flagged_on_beh_tree_subclass() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "class IBehTreeObjectDefinition { private var instanceClass : name; } \
+             class CBTTaskAttack extends IBehTreeObjectDefinition { default instanceClass = 'CR4Task'; }\n",
+        )]);
+        let result = check(&idx, &docs);
+        assert!(
+            result.is_empty(),
+            "default instanceClass on a IBehTreeObjectDefinition subclass is valid, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn default_instance_class_in_unrelated_class_still_flagged() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "class Plain { default instanceClass = 'CR4Task'; }\n",
+        )]);
+        let result = check(&idx, &docs);
+        let diags = result.get("file:///t.ws").unwrap();
+        assert_eq!(kinds(diags), vec!["unknown_member"]);
+        assert!(diags[0].message.contains("instanceClass"));
     }
 
     #[test]
