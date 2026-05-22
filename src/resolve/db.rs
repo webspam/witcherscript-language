@@ -13,6 +13,11 @@ use super::{
     MAX_INHERITANCE_DEPTH,
 };
 
+const OBJECT_BASE_CLASS: &str = "CObject";
+
+// These sit at/above CObject; a virtual CObject base would form a cycle.
+const OBJECT_ROOT_CHAIN: [&str; 3] = ["CObject", "IScriptable", "ISerializable"];
+
 pub struct SymbolDb<'a> {
     pub(super) workspace: &'a WorkspaceIndex,
     pub(super) base: &'a WorkspaceIndex,
@@ -144,6 +149,15 @@ impl<'a> SymbolDb<'a> {
             .superclass_of(class_name)
             .or_else(|| self.base.superclass_of(class_name))
             .or_else(|| self.builtins.and_then(|b| b.superclass_of(class_name)))
+            .or_else(|| self.virtual_object_base(class_name))
+    }
+
+    fn virtual_object_base(&self, class_name: &str) -> Option<String> {
+        if OBJECT_ROOT_CHAIN.contains(&class_name) {
+            return None;
+        }
+        let def = self.find_top_level(class_name)?;
+        (def.symbol.kind == SymbolKind::Class).then(|| OBJECT_BASE_CLASS.to_string())
     }
 
     pub fn find_member(
@@ -272,11 +286,7 @@ impl<'a> SymbolDb<'a> {
             if let Some(found) = visit(&current, depth, access) {
                 return Some(found);
             }
-            let superclass = self
-                .workspace
-                .superclass_of(&current)
-                .or_else(|| self.base.superclass_of(&current))
-                .or_else(|| self.builtins.and_then(|b| b.superclass_of(&current)))?;
+            let superclass = self.superclass_of(&current)?;
             depth += 1;
             access = access.max(AccessLevel::Protected);
             current = superclass;
