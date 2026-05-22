@@ -40,6 +40,17 @@ pub(crate) struct LspClient {
 
 impl LspClient {
     pub(crate) async fn spawn() -> Self {
+        Self::spawn_with(None).await
+    }
+
+    pub(crate) async fn spawn_open_files_scope() -> Self {
+        Self::spawn_with(Some(serde_json::json!({
+            "diagnostics": { "scope": "openFiles" }
+        })))
+        .await
+    }
+
+    async fn spawn_with(init_options: Option<Value>) -> Self {
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (server_read, server_write) = split(server_io);
 
@@ -91,6 +102,7 @@ impl LspClient {
         let init_result: <Initialize as Request>::Result = rpc
             .request::<Initialize>(InitializeParams {
                 capabilities: ClientCapabilities::default(),
+                initialization_options: init_options,
                 ..InitializeParams::default()
             })
             .await;
@@ -113,6 +125,10 @@ impl LspClient {
 
     pub(crate) async fn change_full(&mut self, uri: &Url, version: i32, text: &str) {
         self.rpc.did_change_full(uri, version, text).await;
+    }
+
+    pub(crate) async fn close(&mut self, uri: &Url) {
+        self.rpc.did_close(uri).await;
     }
 
     pub(crate) async fn did_save(&mut self, uri: &Url) {

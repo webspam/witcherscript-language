@@ -13,17 +13,28 @@ use witcherscript_language::files::canonical_uri;
 use witcherscript_language::line_index::SourceRange;
 use witcherscript_language::resolve::SymbolDb;
 
-use crate::backend::Backend;
+use crate::backend::{diagnostics_document_set, Backend};
+use crate::config::DiagnosticsScope;
 use crate::convert::{lsp_diagnostics, lsp_workspace_diagnostic};
 use crate::cst_cache::{cst_diagnostics_with_cache, DbFingerprint};
 use crate::file_scope::{classify_file_scope, FileScope};
 use crate::file_scope_status::{FileScopeStatusNotification, FileScopeStatusParams};
 use crate::legacy_status::{LegacyScriptStatusNotification, LegacyScriptStatusParams};
 
+// A file is published under its canonical URI so its key is stable whether or not it is open.
+pub(crate) fn publish_url(diag_key: &str) -> Option<Url> {
+    let parsed = Url::parse(diag_key).ok()?;
+    match canonical_uri(&parsed) {
+        Some(canonical) => Url::parse(&canonical).ok(),
+        None => Some(parsed),
+    }
+}
+
 impl Backend {
     #[tracing::instrument(skip(self), level = "debug")]
     pub(crate) async fn publish_open_diagnostics(&self) {
-        if !self.config.load().diagnostics_enabled {
+        let cfg = self.config.load();
+        if !cfg.diagnostics_enabled {
             return;
         }
 
@@ -32,25 +43,23 @@ impl Backend {
             return;
         }
 
+        let whole_workspace = matches!(cfg.diagnostics_scope, DiagnosticsScope::Workspace);
         let start = Instant::now();
 
         let documents = self.documents.lock().await;
         let legacy_dirs = self.effective_legacy_dirs().await;
         let loose_uris = self.loose_open_uris(&documents).await;
 
-        let (
-            dup_by_uri,
-            shadow_by_uri,
-            dup_local_by_uri,
-            base_conflict_by_uri,
-            cst_by_uri,
-            cst_stats,
-        ) = {
+        let (to_publish, cst_stats): (Vec<(Url, Vec<Diagnostic>)>, _) = {
             let mut workspace = self.workspace_index.lock().await;
             let mut loose = self.loose_index.lock().await;
             let base = self.base_scripts_index.lock().await;
             let env = self.script_env.lock().await;
             let mut cache = self.cst_diag_cache.lock().await;
+            let workspace_documents = self.workspace_documents.lock().await;
+
+            let diag_docs =
+                diagnostics_document_set(&workspace_documents, &documents, whole_workspace);
 
             let mut dup = tracing::debug_span!("dup_symbols")
                 .in_scope(|| collect_duplicate_symbol_diagnostics(&workspace));
@@ -70,86 +79,83 @@ impl Backend {
                 base_surface: base.surface_hash(),
                 env: env.version(),
             };
-            let result = {
+            let loose_uri_strs: HashSet<String> =
+                loose_uris.iter().map(|u| u.to_string()).collect();
+            let cst = {
                 let ws_db = SymbolDb::new(&workspace, &base)
                     .with_script_env(&env)
                     .with_builtins(&self.builtins_index);
                 let loose_db = SymbolDb::new(&loose, &base)
                     .with_script_env(&env)
                     .with_builtins(&self.builtins_index);
-                tracing::debug_span!("cst_diagnostics", open_docs = documents.len()).in_scope(
-                    || {
-                        cst_diagnostics_with_cache(
-                            &documents,
-                            &ws_db,
-                            Some((&loose_db, &loose_uris)),
-                            fingerprint,
-                            &mut cache,
-                        )
-                    },
-                )
+                tracing::debug_span!("cst_diagnostics", docs = diag_docs.len()).in_scope(|| {
+                    cst_diagnostics_with_cache(
+                        &diag_docs,
+                        &ws_db,
+                        Some((&loose_db, &loose_uri_strs)),
+                        fingerprint,
+                        &mut cache,
+                    )
+                })
             };
-            let loose_uri_strs: HashSet<&str> = loose_uris.iter().map(|u| u.as_str()).collect();
-            for (uri, observations) in result.new_subscriptions {
-                if loose_uri_strs.contains(uri.as_str()) {
+            let cst_stats = cst.stats;
+            for (uri, observations) in cst.new_subscriptions {
+                if loose_uri_strs.contains(&uri) {
                     loose.register_subscription(&uri, observations);
                 } else {
                     workspace.register_subscription(&uri, observations);
                 }
             }
 
-            (
-                dup,
-                shadow,
-                dup_local,
-                base_conflict,
-                result.by_uri,
-                result.stats,
-            )
-        };
-
-        let collect_us = start.elapsed().as_micros();
-
-        let to_publish: Vec<(Url, Vec<Diagnostic>)> = {
             let mut published = self.published_diagnostics.lock().await;
-            let mut list = Vec::new();
-            for (uri, document) in documents.iter() {
+            let mut current: HashSet<Url> = HashSet::new();
+            let mut list: Vec<(Url, Vec<Diagnostic>)> = Vec::new();
+            for (diag_key, document) in diag_docs.iter() {
                 let mut diagnostics = lsp_diagnostics(document);
-                let base_conflicts = base_conflict_by_uri
-                    .get(uri.as_str())
+                let base_conflicts = base_conflict
+                    .get(diag_key.as_str())
                     .map(Vec::as_slice)
                     .unwrap_or(&[]);
-                if let Some(dups) = dup_by_uri.get(uri.as_str()) {
+                if let Some(dups) = dup.get(diag_key.as_str()) {
                     diagnostics.extend(
                         duplicates_not_explained_by_conflict(dups, base_conflicts)
                             .map(lsp_workspace_diagnostic),
                     );
                 }
                 diagnostics.extend(base_conflicts.iter().map(lsp_workspace_diagnostic));
-                if let Some(shadows) = shadow_by_uri.get(uri.as_str()) {
+                if let Some(shadows) = shadow.get(diag_key.as_str()) {
                     diagnostics.extend(shadows.iter().map(lsp_workspace_diagnostic));
                 }
-                if let Some(dup_locals) = dup_local_by_uri.get(uri.as_str()) {
+                if let Some(dup_locals) = dup_local.get(diag_key.as_str()) {
                     diagnostics.extend(dup_locals.iter().map(lsp_workspace_diagnostic));
                 }
-                if let Some(cst) = cst_by_uri.get(uri.as_str()) {
-                    diagnostics.extend(cst.iter().map(lsp_workspace_diagnostic));
+                if let Some(cst_diags) = cst.by_uri.get(diag_key.as_str()) {
+                    diagnostics.extend(cst_diags.iter().map(lsp_workspace_diagnostic));
                 }
-                if published.get(uri) == Some(&diagnostics) {
+                let Some(publish_uri) = publish_url(diag_key) else {
+                    continue;
+                };
+                current.insert(publish_uri.clone());
+                if published.get(&publish_uri) == Some(&diagnostics) {
                     continue;
                 }
-                published.insert(uri.clone(), diagnostics.clone());
-                list.push((uri.clone(), diagnostics));
+                published.insert(publish_uri.clone(), diagnostics.clone());
+                list.push((publish_uri, diagnostics));
             }
-            list
+
+            // A file that left the diagnosed set (closed, deleted, or scope narrowed) has its diagnostics retracted.
+            let stale: Vec<Url> = published
+                .keys()
+                .filter(|uri| !current.contains(*uri))
+                .cloned()
+                .collect();
+            for uri in stale {
+                published.remove(&uri);
+                list.push((uri, Vec::new()));
+            }
+            (list, cst_stats)
         };
 
-        let open_documents = documents.len();
-        let flagged_uris = dup_by_uri.len();
-        let shadow_uris = shadow_by_uri.len();
-        let dup_local_uris = dup_local_by_uri.len();
-        let base_conflict_uris = base_conflict_by_uri.len();
-        let cst_uris = cst_by_uri.len();
         drop(documents);
 
         let republished = to_publish.len();
@@ -164,18 +170,11 @@ impl Backend {
         }
 
         trace!(
-            open_documents,
-            flagged_uris,
-            shadow_uris,
-            dup_local_uris,
-            base_conflict_uris,
-            cst_uris,
+            republished,
             cst_cache_hits = cst_stats.hits,
             cst_cache_misses = cst_stats.misses,
-            republished,
-            collect_us,
             total_us = start.elapsed().as_micros(),
-            "recomputed workspace diagnostics for open documents"
+            "recomputed workspace diagnostics"
         );
     }
 
@@ -186,11 +185,14 @@ impl Backend {
             let mut list = Vec::new();
             for (uri, document) in documents.iter() {
                 let diagnostics = lsp_diagnostics(document);
-                if published.get(uri) == Some(&diagnostics) {
+                let Some(publish_uri) = publish_url(uri.as_str()) else {
+                    continue;
+                };
+                if published.get(&publish_uri) == Some(&diagnostics) {
                     continue;
                 }
-                published.insert(uri.clone(), diagnostics.clone());
-                list.push((uri.clone(), diagnostics));
+                published.insert(publish_uri.clone(), diagnostics.clone());
+                list.push((publish_uri, diagnostics));
             }
             list
         };
@@ -271,7 +273,7 @@ impl Backend {
         }
     }
 
-    pub(crate) async fn apply_diagnostics_toggle(&self) {
+    pub(crate) async fn reconcile_published_diagnostics(&self) {
         if self.config.load().diagnostics_enabled {
             self.publish_open_diagnostics().await;
         } else {

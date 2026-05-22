@@ -7,7 +7,6 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
 use futures::future::BoxFuture;
-use lsp_types::notification::PublishDiagnostics;
 use lsp_types::{
     CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
     CodeActionResponse, CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
@@ -18,13 +17,13 @@ use lsp_types::{
     FileOperationRegistrationOptions, GotoDefinitionParams, GotoDefinitionResponse, Hover,
     HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
     InitializedParams, InsertTextFormat, Location, MarkupContent, MarkupKind, OneOf,
-    PrepareRenameResponse, PublishDiagnosticsParams, ReferenceParams, RenameOptions, RenameParams,
-    SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokens,
-    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
-    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelp,
-    SignatureHelpOptions, SignatureHelpParams, TextDocumentPositionParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgressOptions,
-    WorkspaceEdit, WorkspaceFileOperationsServerCapabilities, WorkspaceFoldersServerCapabilities,
+    PrepareRenameResponse, ReferenceParams, RenameOptions, RenameParams, SemanticToken,
+    SemanticTokenModifier, SemanticTokenType, SemanticTokens, SemanticTokensFullOptions,
+    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelp, SignatureHelpOptions,
+    SignatureHelpParams, TextDocumentPositionParams, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, Url, WorkDoneProgressOptions, WorkspaceEdit,
+    WorkspaceFileOperationsServerCapabilities, WorkspaceFoldersServerCapabilities,
     WorkspaceServerCapabilities,
 };
 use serde_json::{json, Value};
@@ -32,6 +31,7 @@ use tokio::sync::{mpsc, Mutex, MutexGuard};
 use tracing::{error, info, trace};
 use witcherscript_language::builtins::{builtin_source, load_builtins_index};
 use witcherscript_language::document::{apply_content_change, ParsedDocument};
+use witcherscript_language::files::canonical_uri;
 use witcherscript_language::formatter::format_document;
 use witcherscript_language::line_index::LineIndex;
 use witcherscript_language::resolve::{
@@ -47,7 +47,7 @@ use witcherscript_language::semantic_tokens::{
     collect_semantic_tokens, TOKEN_MODIFIERS, TOKEN_TYPES,
 };
 
-use crate::config::Config;
+use crate::config::{Config, DiagnosticsScope};
 use crate::convert::{
     annotation_name_items, base_script_conflict_code_actions, builtin_type_item,
     class_body_kw_item, completion_item, document_symbols, hover_markdown, keyword_snippet_item,
@@ -92,6 +92,27 @@ pub(crate) fn merge_documents<'a>(
         if open_loose_uris.contains(url) == target_is_loose {
             merged.insert(url.to_string(), doc);
         }
+    }
+    merged
+}
+
+// The diagnosed set excludes read-only base scripts, so it cannot reuse merge_documents.
+pub(crate) fn diagnostics_document_set<'a>(
+    workspace_docs: &'a HashMap<String, ParsedDocument>,
+    open_documents: &'a HashMap<Url, ParsedDocument>,
+    whole_workspace: bool,
+) -> HashMap<String, &'a ParsedDocument> {
+    let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
+    if whole_workspace {
+        for (uri, doc) in workspace_docs.iter() {
+            merged.insert(uri.clone(), doc);
+        }
+    }
+    for (url, doc) in open_documents.iter() {
+        if let Some(canonical) = canonical_uri(url) {
+            merged.remove(&canonical);
+        }
+        merged.insert(url.to_string(), doc);
     }
     merged
 }
@@ -186,7 +207,7 @@ pub(crate) struct Backend {
     pub(crate) loose_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) builtins_index: Arc<WorkspaceIndex>,
     pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
-    pub(crate) cst_diag_cache: Arc<Mutex<HashMap<Url, crate::cst_cache::CstCacheEntry>>>,
+    pub(crate) cst_diag_cache: Arc<Mutex<HashMap<String, crate::cst_cache::CstCacheEntry>>>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
     pub(crate) doc_ops_tx: mpsc::UnboundedSender<DocOp>,
 }
@@ -521,6 +542,9 @@ impl Backend {
                 if let Some(b) = diag.get("enable").and_then(|v| v.as_bool()) {
                     cfg.diagnostics_enabled = b;
                 }
+                if let Some(s) = diag.get("scope").and_then(|v| v.as_str()) {
+                    cfg.diagnostics_scope = DiagnosticsScope::from_setting(s);
+                }
             }
             if let Some(level_str) = opts.get("logLevel").and_then(|v| v.as_str()) {
                 cfg.log_level = level_to_u8(level_from_str(level_str));
@@ -678,26 +702,22 @@ impl Backend {
 
     async fn _did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
-
-        // A loose file is a transient compilation member: closing it drops it.
-        if self.file_scope_of(&uri).await.is_loose() {
+        if builtin_source(uri.as_str()).is_some() {
+            return;
+        }
+        let scope = self.file_scope_of(&uri).await;
+        self.documents.lock().await.remove(&uri);
+        if scope.is_loose() {
+            // A loose file is a transient compilation member: closing it drops it from the index entirely.
             let invalidated = {
                 let mut index = self.loose_index.lock().await;
                 crate::indexing::remove_document_all_spellings(&mut index, &uri)
             };
-            self.documents.lock().await.remove(&uri);
-            self.published_diagnostics.lock().await.remove(&uri);
             self.evict_cache_entries(&invalidated).await;
-            self.publish_open_diagnostics().await;
+        } else {
+            self.reindex_closed_file(&uri).await;
         }
-
-        let _ = self
-            .client
-            .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
-                uri: uri.clone(),
-                diagnostics: Vec::new(),
-                version: None,
-            });
+        self.publish_open_diagnostics().await;
         self.publish_file_scope_status().await;
         self.sent_file_scope_status.lock().await.remove(&uri);
     }
@@ -774,9 +794,9 @@ impl Backend {
                 "did_change_configuration: no index-relevant config change, skipping re-index"
             );
         }
-        if change.diagnostics_toggled {
-            tracing::trace!("did_change_configuration: diagnostics toggle changed, applying");
-            self.apply_diagnostics_toggle().await;
+        if change.diagnostics_changed {
+            tracing::trace!("did_change_configuration: diagnostics setting changed, applying");
+            self.reconcile_published_diagnostics().await;
         }
         self.publish_file_scope_status().await;
     }

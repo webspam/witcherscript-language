@@ -8,11 +8,28 @@ use tracing::{info, trace, warn};
 use crate::backend::Backend;
 use crate::logging::{level_from_str, level_to_u8, DEFAULT_LOG_LEVEL};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DiagnosticsScope {
+    Workspace,
+    OpenFiles,
+}
+
+impl DiagnosticsScope {
+    pub(crate) fn from_setting(value: &str) -> Self {
+        if value == "openFiles" {
+            Self::OpenFiles
+        } else {
+            Self::Workspace
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Config {
     pub(crate) log_level: u8,
     pub(crate) auto_load_mod_shared_imports: bool,
     pub(crate) diagnostics_enabled: bool,
+    pub(crate) diagnostics_scope: DiagnosticsScope,
     pub(crate) formatter_line_limit: u32,
     pub(crate) formatter_compact_colon: bool,
     pub(crate) formatter_align_member_colons: bool,
@@ -24,6 +41,7 @@ impl Default for Config {
             log_level: level_to_u8(DEFAULT_LOG_LEVEL),
             auto_load_mod_shared_imports: true,
             diagnostics_enabled: true,
+            diagnostics_scope: DiagnosticsScope::Workspace,
             formatter_line_limit: 100,
             formatter_compact_colon: false,
             formatter_align_member_colons: false,
@@ -40,7 +58,7 @@ fn log_setting_change<T: PartialEq + std::fmt::Display>(setting: &str, prev: T, 
 #[derive(Default, Debug, Clone, Copy)]
 pub(crate) struct ConfigChange {
     pub(crate) needs_reindex: bool,
-    pub(crate) diagnostics_toggled: bool,
+    pub(crate) diagnostics_changed: bool,
 }
 
 impl Backend {
@@ -91,6 +109,10 @@ impl Backend {
             ConfigurationItem {
                 scope_uri: None,
                 section: Some("witcherscript.legacyScriptDirectories".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.diagnostics.scope".to_string()),
             },
         ];
         let Ok(values) = self
@@ -187,6 +209,10 @@ impl Backend {
                 self.legacy_script_dirs.lock().await.clear();
             }
         }
+        next_cfg.diagnostics_scope = match iter.next() {
+            Some(Value::String(s)) => DiagnosticsScope::from_setting(&s),
+            _ => DiagnosticsScope::Workspace,
+        };
 
         self.config.store(Arc::new(next_cfg.clone()));
 
@@ -198,7 +224,8 @@ impl Backend {
         let legacy_changed = *self.legacy_script_dirs.lock().await != prev_legacy;
         let auto_load_changed =
             next_cfg.auto_load_mod_shared_imports != prev_cfg.auto_load_mod_shared_imports;
-        let diagnostics_toggled = next_cfg.diagnostics_enabled != prev_cfg.diagnostics_enabled;
+        let diagnostics_changed = next_cfg.diagnostics_enabled != prev_cfg.diagnostics_enabled
+            || next_cfg.diagnostics_scope != prev_cfg.diagnostics_scope;
         if base_scripts_changed {
             trace!(setting = "gameDirectory", "setting changed");
         }
@@ -221,13 +248,8 @@ impl Backend {
                 "setting changed"
             );
         }
-        if diagnostics_toggled {
-            trace!(
-                setting = "diagnostics.enable",
-                prev = prev_cfg.diagnostics_enabled,
-                new = next_cfg.diagnostics_enabled,
-                "setting changed"
-            );
+        if diagnostics_changed {
+            trace!(setting = "diagnostics", "setting changed");
         }
         if legacy_changed {
             trace!(setting = "legacyScriptDirectories", "setting changed");
@@ -238,14 +260,48 @@ impl Backend {
                 || additional_changed
                 || legacy_changed
                 || auto_load_changed,
-            diagnostics_toggled,
+            diagnostics_changed,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::ConfigChange;
+    use super::{ConfigChange, DiagnosticsScope};
+
+    #[test]
+    fn diagnostics_scope_parses_setting_string() {
+        struct Case {
+            name: &'static str,
+            input: &'static str,
+            expected: DiagnosticsScope,
+        }
+        let cases = [
+            Case {
+                name: "explicit openFiles",
+                input: "openFiles",
+                expected: DiagnosticsScope::OpenFiles,
+            },
+            Case {
+                name: "explicit workspace",
+                input: "workspace",
+                expected: DiagnosticsScope::Workspace,
+            },
+            Case {
+                name: "unknown value falls back to workspace",
+                input: "garbage",
+                expected: DiagnosticsScope::Workspace,
+            },
+        ];
+        for c in cases {
+            assert_eq!(
+                DiagnosticsScope::from_setting(c.input),
+                c.expected,
+                "case {}: scope mismatch",
+                c.name
+            );
+        }
+    }
 
     #[test]
     fn config_change_default_is_no_op() {
@@ -265,15 +321,15 @@ mod tests {
                 name: "reindex only",
                 change: ConfigChange {
                     needs_reindex: true,
-                    diagnostics_toggled: false,
+                    diagnostics_changed: false,
                 },
                 expect_any_action: true,
             },
             Case {
-                name: "diagnostics toggle only",
+                name: "diagnostics change only",
                 change: ConfigChange {
                     needs_reindex: false,
-                    diagnostics_toggled: true,
+                    diagnostics_changed: true,
                 },
                 expect_any_action: true,
             },
@@ -281,13 +337,13 @@ mod tests {
                 name: "both at once",
                 change: ConfigChange {
                     needs_reindex: true,
-                    diagnostics_toggled: true,
+                    diagnostics_changed: true,
                 },
                 expect_any_action: true,
             },
         ];
         for c in cases {
-            let any = c.change.needs_reindex || c.change.diagnostics_toggled;
+            let any = c.change.needs_reindex || c.change.diagnostics_changed;
             assert_eq!(
                 any, c.expect_any_action,
                 "case {}: action predicate wrong",
