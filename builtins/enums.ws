@@ -66,5 +66,7 @@ enum EVehicleSlot { EVS_driver_slot = 0, EVS_passenger_slot = 1 }
 enum EVehicleType { EVT_Boat = 1, EVT_Horse = 0, EVT_Undefined = 2 }
 enum EWitcherSwordType { WST_Silver = 0, WST_Steel = 1 }
 enum EWoundTypeFlags { WTF_All = 7, WTF_Cut = 1, WTF_Explosion = 2, WTF_Frost = 4 }
+enum eGwintEffect { GwintEffect_11thCard = 8, GwintEffect_Bin2Pick1 = 17, GwintEffect_ClearSky = 30, GwintEffect_ClearWeather = 9, GwintEffect_CounterKingAbility = 22, GwintEffect_Draw2 = 34, GwintEffect_Horn = 27, GwintEffect_ImproveNeightbours = 32, GwintEffect_Melee = 23, GwintEffect_MeleeHorn = 18, GwintEffect_MeleeScorch = 7, GwintEffect_None = 0, GwintEffect_Nurse = 33, GwintEffect_PickFogCard = 12, GwintEffect_PickFrostCard = 13, GwintEffect_PickRainCard = 11, GwintEffect_PickWeatherCard = 10, GwintEffect_Ranged = 24, GwintEffect_RangedHorn = 19, GwintEffect_ResurectCard = 15, GwintEffect_ResurectFromEnemy = 16, GwintEffect_SameTypeMorale = 35, GwintEffect_Scorch = 29, GwintEffect_Siege = 25, GwintEffect_SiegeHorn = 20, GwintEffect_SiegeScorch = 21, GwintEffect_SummonClones = 31, GwintEffect_UnsummonDummy = 26, GwintEffect_View3EnemyCard = 14 }
 enum eGwintFaction { GwintFaction_Neutral = 0, GwintFaction_Nilfgaard = 2, GwintFaction_NoMansLand = 1, GwintFaction_NothernKingdom = 3, GwintFaction_Scoiatael = 4, GwintFaction_Skellige = 5 }
+enum eGwintType { GwintType_Creature = 8, GwintType_Hero = 128, GwintType_Melee = 1, GwintType_Ranged = 2, GwintType_Siege = 4, GwintType_Weather = 16 }
 enum eQuestType { Chapter = 1, MonsterHunt = 3, Side = 2, Story = 0, TreasureHunt = 4 }
