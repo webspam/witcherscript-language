@@ -22,6 +22,22 @@ static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock
             "witcherscript-builtin:/CR4HudModule.ws",
             include_str!("../builtins/CR4HudModule.ws"),
         ),
+        (
+            "witcherscript-builtin:/unknown-classes.ws",
+            include_str!("../builtins/unknown-classes.ws"),
+        ),
+        (
+            "witcherscript-builtin:/unknown-enums.ws",
+            include_str!("../builtins/unknown-enums.ws"),
+        ),
+        (
+            "witcherscript-builtin:/unknown-interfaces.ws",
+            include_str!("../builtins/unknown-interfaces.ws"),
+        ),
+        (
+            "witcherscript-builtin:/unknown-structs.ws",
+            include_str!("../builtins/unknown-structs.ws"),
+        ),
     ])
 });
 

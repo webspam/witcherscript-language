@@ -10,6 +10,8 @@ WitcherScript has engine-magic types — `array<T>`, a fixed set of engine enums
 
 Engine classes get one file each, named after the class (`builtins/CR4HudModule.ws`); the synthetic URI is derived from the file name. They are listed in the `CLASS_BUILTINS` table in `src/builtins.rs`, so adding the next class is one `include_str!` row.
 
+`builtins/unknown-classes.ws`, `unknown-enums.ws`, `unknown-interfaces.ws`, and `unknown-structs.ws` are bulk catch-all files: minimal declarations for engine types that exist at runtime but have no declaration in any shipped script, so the LSP would otherwise emit "unknown type" diagnostics. They are deliberately bare (empty bodies, shallow hierarchies) — their job is to silence false diagnostics, not to model the real API. They may be filled in over time from user submissions. Each is one `include_str!` row in `BUILTIN_SOURCES`.
+
 ## Source of truth
 
 `builtins/array.ws` is a real `.ws` file embedded at build time via `include_str!`. To change the array API, edit that file and rebuild — no Rust changes required.
