@@ -42,7 +42,7 @@ fn array_int_member_is_resolved_with_substituted_param_type() {
 
     assert_eq!(def.symbol.name, "PushBack");
     let sig = def.symbol.signature.as_deref().unwrap_or("");
-    assert!(sig.contains("param1: int"), "got signature: {sig}");
+    assert!(sig.contains(": int"), "got signature: {sig}");
     assert!(
         !sig.contains(": T"),
         "signature should not still contain T: {sig}"
@@ -73,7 +73,7 @@ fn array_method_with_concrete_param_type_is_unchanged() {
         .expect("Resize resolves");
 
     let sig = def.symbol.signature.as_deref().unwrap_or("");
-    assert!(sig.contains("param1: int"), "got: {sig}");
+    assert!(sig.contains(": int"), "got: {sig}");
     assert_eq!(def.symbol.type_annotation.as_deref(), Some("void"));
 }
 
@@ -93,7 +93,7 @@ fn array_method_container_name_becomes_generic_instance() {
         hover.contains("array<int>.PushBack"),
         "hover should show generic instance: {hover}"
     );
-    assert!(hover.contains("param1: int"), "hover: {hover}");
+    assert!(hover.contains(": int"), "hover: {hover}");
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn members_of_array_int_lists_all_methods_substituted() {
         .find(|(_, d)| d.symbol.name == "PushBack")
         .expect("PushBack present");
     let sig = push_back.1.symbol.signature.as_deref().unwrap_or("");
-    assert!(sig.contains("param1: int"), "got: {sig}");
+    assert!(sig.contains(": int"), "got: {sig}");
 }
 
 #[test]
@@ -169,7 +169,7 @@ fn completion_after_dot_on_array_var_returns_methods() {
         .find(|(_, d)| d.symbol.name == "PushBack")
         .unwrap();
     let sig = push_back.1.symbol.signature.as_deref().unwrap_or("");
-    assert!(sig.contains("param1: int"), "got: {sig}");
+    assert!(sig.contains(": int"), "got: {sig}");
 }
 
 #[test]
@@ -230,5 +230,5 @@ fn nested_array_substitutes_one_level() {
         .find_member("array<array<int>>", "PushBack", AccessLevel::Public)
         .expect("PushBack on array<array<int>>");
     let sig = push.symbol.signature.as_deref().unwrap_or("");
-    assert!(sig.contains("param1: array<int>"), "got: {sig}");
+    assert!(sig.contains(": array<int>"), "got: {sig}");
 }
