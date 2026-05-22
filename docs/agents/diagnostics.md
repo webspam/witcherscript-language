@@ -6,6 +6,10 @@
   `collect_diagnostics`, `format_tree`), the shared workspace-diagnostic types, and the
   per-document CST dispatcher `collect_cst_diagnostics_for_document`.
 - `src/diagnostics/duplicate_symbols.rs` — workspace-wide index-walking rule.
+- `src/diagnostics/base_script_conflict.rs` — workspace-wide index-walking rule. Flags a
+  workspace file that re-declares a symbol already declared in a base game script at a
+  matching `/scripts/` path, unless the file sits under a
+  `witcherscript.legacyScriptDirectories` entry. Emits `"base_script_conflict"`.
 - `src/diagnostics/duplicate_local.rs` — workspace-wide index-walking rule; flags
   parameters or local variables that share a name within the same function. Emits
   `"duplicate_local"`. Skips functions annotated with `@wrapMethod` or `@replaceMethod`.
