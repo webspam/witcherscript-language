@@ -82,8 +82,9 @@ For any `ternary_cond_expr` node. WitcherScript parses `cond ? a : b` but the co
 always evaluates it to `0 / false / void`:
 
 ```
-kind:    "ternary_cond_expr"
-message: "ternary expression is not supported: ..."
+kind:     "ternary_cond_expr"
+message:  "ternary expression is not supported: ..."
+severity: WARNING
 ```
 
 ### Condition 4: Late local variable declarations (`collect_late_local_vars_in_block`)
@@ -127,8 +128,8 @@ document's syntactic `ParseDiagnostic`s.
 ## LSP conversion
 
 All diagnostics are published as:
-- Severity: `ERROR` for most rules; `WARNING` for shadowing and any rule that sets
-  `Severity::Warning` on its `WorkspaceDiagnostic`
+- Severity: `ERROR` for most rules; `WARNING` for shadowing, the `ternary_cond_expr`
+  `ParseDiagnostic`, and any rule that sets `Severity::Warning` on its `WorkspaceDiagnostic`
 - Code: the `kind` string
 - Source: `"witcherscript"`
 - Range: `ParseDiagnostic` is converted from `byte_range` via
