@@ -115,6 +115,7 @@ pub(crate) fn lsp_workspace_diagnostic(diagnostic: &WorkspaceDiagnostic) -> Diag
         severity: Some(match diagnostic.severity {
             Severity::Error => DiagnosticSeverity::ERROR,
             Severity::Warning => DiagnosticSeverity::WARNING,
+            Severity::Info => DiagnosticSeverity::INFORMATION,
         }),
         code: Some(lsp_types::NumberOrString::String(diagnostic.kind.clone())),
         source: Some("witcherscript".to_string()),

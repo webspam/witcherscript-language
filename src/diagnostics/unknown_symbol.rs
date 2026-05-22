@@ -105,7 +105,7 @@ enum IdentRole<'tree> {
     Declaration,
     TypeRef,
     MemberOfAccess(Node<'tree>),
-    MemberOfDefault,
+    MemberOfDefault { is_hint: bool },
     FuncBareCall,
     Bare,
 }
@@ -185,7 +185,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             ctx.telemetry.branch_member_access_visits += 1;
             r
         }
-        IdentRole::MemberOfDefault => {
+        IdentRole::MemberOfDefault { is_hint } => {
             let r = (|| {
                 let enclosing = ctx.document.symbols.enclosing_symbol_at(
                     ident.start_byte(),
@@ -212,11 +212,18 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 {
                     return None;
                 }
-                push(
+                // The compiler tolerates a `hint` for a member that does not exist.
+                let severity = if is_hint {
+                    Severity::Info
+                } else {
+                    Severity::Error
+                };
+                push_with_severity(
                     ctx,
                     ident,
                     "unknown_member",
                     format!("no member '{name}' on type '{container_name}'"),
+                    severity,
                 );
                 Some(())
             })();
@@ -282,7 +289,8 @@ fn classify(ident: Node<'_>) -> Option<IdentRole<'_>> {
         "member_default_val" | "member_default_val_block_assign" | "member_hint"
     ) && parent.child_by_field_name("member").map(|n| n.id()) == Some(ident.id())
     {
-        return Some(IdentRole::MemberOfDefault);
+        let is_hint = parent.kind() == "member_hint";
+        return Some(IdentRole::MemberOfDefault { is_hint });
     }
 
     if parent.kind() == "member_access_expr" {
@@ -371,6 +379,16 @@ fn is_inside_wrap_method<'tree>(ident: Node<'tree>, ctx: &CstRuleCtx<'_, 'tree>)
 }
 
 fn push<'tree>(ctx: &mut CstRuleCtx<'_, 'tree>, ident: Node<'tree>, kind: &str, message: String) {
+    push_with_severity(ctx, ident, kind, message, Severity::Error);
+}
+
+fn push_with_severity<'tree>(
+    ctx: &mut CstRuleCtx<'_, 'tree>,
+    ident: Node<'tree>,
+    kind: &str,
+    message: String,
+    severity: Severity,
+) {
     let range = ctx.document.line_index.byte_range_to_range(
         &ctx.document.source,
         ident.start_byte(),
@@ -379,7 +397,7 @@ fn push<'tree>(ctx: &mut CstRuleCtx<'_, 'tree>, ident: Node<'tree>, kind: &str, 
     ctx.diagnostics.push(WorkspaceDiagnostic {
         kind: kind.to_string(),
         message,
-        severity: Severity::Error,
+        severity,
         range,
         related: vec![],
         data: None,
@@ -665,7 +683,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_member_hint() {
+    fn unknown_member_hint_is_info_level() {
         let (idx, docs) = index_and_docs(&[(
             "file:///t.ws",
             "class A { var known : int; hint bogus = \"tip\"; }\n",
@@ -674,6 +692,7 @@ mod tests {
         let diags = result.get("file:///t.ws").unwrap();
         assert_eq!(kinds(diags), vec!["unknown_member"]);
         assert!(diags[0].message.contains("bogus"));
+        assert_eq!(diags[0].severity, super::Severity::Info);
     }
 
     #[test]
