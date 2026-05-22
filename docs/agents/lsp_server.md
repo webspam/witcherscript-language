@@ -30,16 +30,16 @@ The binary is intentionally thin. All parse/resolve logic lives in the library (
 struct Backend {
     client: ClientSocket,                                                    // async-lsp client handle
     config: Arc<ArcSwap<Config>>,                                            // user-facing settings (log level, formatter, diagnostics, …)
-    documents: Arc<Mutex<HashMap<Url, ParsedDocument>>>,                     // editor-open files
+    documents: Arc<Mutex<HashMap<Url, ParsedDocument>>>,                     // editor-open files, keyed by the client's raw Url
     published_diagnostics: Arc<Mutex<HashMap<Url, Vec<Diagnostic>>>>,        // last-published diagnostics per URI
     workspace_index: Arc<Mutex<WorkspaceIndex>>,                             // user project symbol index
-    workspace_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,        // parsed user project files
+    workspace_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,        // parsed user project files, keyed by canonical URI
     workspace_roots: Arc<Mutex<Vec<PathBuf>>>,                               // workspace root directories
     files_exclude: Arc<Mutex<Vec<String>>>,                                  // glob patterns excluded from indexing
     base_scripts_path: Arc<Mutex<Option<PathBuf>>>,                          // path to game directory
     additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,                        // extra script directories to index
     base_scripts_index: Arc<Mutex<WorkspaceIndex>>,                          // base game scripts symbol index
-    base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,     // parsed base scripts
+    base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,     // parsed base scripts, keyed by canonical URI
     legacy_replacements: Arc<Mutex<HashMap<String, String>>>,                // canonical legacy URI → replaced base script's game-relative path
     sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,  // last legacy-script status pushed per open document
     builtins_index: Arc<WorkspaceIndex>,                                     // built-in type symbol index (read-only, no Mutex)
@@ -64,6 +64,24 @@ struct DbHandles<'a> {
 ```
 
 `Backend::db_handles()` acquires the three mutex guards simultaneously and returns a `DbHandles`. Callers then call `.db()` on it to get a fully assembled `SymbolDb` without having to lock each field individually. This prevents lock-order bugs and keeps handler code concise.
+
+## URI handling
+
+Every document request arrives with a `Url`. The catch is that the same file can reach the server under two different spellings. On Windows, VS Code sends `file:///c%3A/mod/script.ws` (percent-encoded drive colon, lowercase letter), while `Url::from_file_path` — used when the indexer walks the disk — produces `file:///C:/mod/script.ws`. Those two strings are unequal, so a map keyed by one spelling misses a lookup made with the other, which surfaces as duplicate-symbol diagnostics or an open file that resolution can't find.
+
+`files::canonical_uri(uri: &Url) -> Option<String>` settles this. It round-trips the `Url` through `to_file_path()` / `from_file_path()`, letting the OS pick one spelling. It returns `None` for any URI that is not a `file://` path — builtins use a synthetic scheme — so callers handle that with `?` or `filter_map` rather than unwrapping.
+
+Because of this, `Backend`'s document maps fall into two groups:
+
+| Map | Key type | Spelling |
+|---|---|---|
+| `documents` | `Url` | raw — exactly as the client sent it |
+| `workspace_documents`, `base_scripts_documents`, `legacy_replacements` | `String` | canonical |
+| `WorkspaceIndex::documents` (inside `workspace_index` / `base_scripts_index`) | `String` | canonical |
+
+`documents` is the deliberate exception. The client sends the same raw `Url` back for every follow-up request (hover, completion, …), so `documents.get(&uri)` has to match that spelling. Every other map is keyed canonically so that the background-indexed copy of a file and the editor-open copy resolve to the same entry.
+
+When you add a map keyed by a document URI, or compare two URIs to decide whether they point at the same file, run them through `canonical_uri` first — comparing `Url`s or raw `to_string()` output directly will be wrong on Windows. `index_open_document` (`indexing.rs`) and `base_script_conflict::is_same_file` are the existing worked examples to follow.
 
 ## Implemented LSP capabilities
 

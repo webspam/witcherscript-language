@@ -14,7 +14,7 @@ This is a Rust crate (`witcherscript-language`) that produces two binaries:
 | `src/lib.rs`                   | Module declarations, public API surface                                        |                                                      |
 | `src/document.rs`              | `ParsedDocument`, parse entry points                                           |                                                      |
 | `src/diagnostics/`             | `ParseDiagnostic`/`collect_diagnostics` (syntactic), `WorkspaceDiagnostic` (cross-file) | [diagnostics.md](docs/agents/diagnostics.md)         |
-| `src/files.rs`                 | Recursive `.ws` file collection via `walkdir`                                  |                                                      |
+| `src/files.rs`                 | Recursive `.ws` file collection via `walkdir`; `canonical_uri` URI normalisation | [lsp_server.md](docs/agents/lsp_server.md#uri-handling) |
 | `src/line_index.rs`            | Byte ↔ UTF-16 position mapping (LSP-compatible)                                |                                                      |
 | `src/script_env.rs`            | Script globals from `redscripts.ini`                                           |                                                      |
 | `src/symbols.rs`               | `DocumentSymbols`, `Symbol`, `SymbolKind`, `extract_symbols`                   | [symbols.md](docs/agents/symbols.md)                 |
