@@ -1,6 +1,6 @@
 # Resolution and workspace indexing
 
-**Module:** `src/resolve/` — split across `mod.rs` (helpers, `Definition`, `ObservationSet`), `db.rs` (`WorkspaceIndex`, `SymbolDb`, generic substitution), `definition.rs` (`resolve_definition` and self/super/this resolution), `references.rs` (`find_references`), `inference.rs` (`infer_expr_type` and type-context helpers), `signature.rs` (`signature_help`, `hover_text`), `ast.rs` (CST navigation helpers), and `completion/{members,types,bodies,headers}.rs`. Tests live under `src/resolve/tests/`.
+**Module:** `src/resolve/` — split across `mod.rs` (helpers, `Definition`, `ObservationSet`), `db.rs` (`WorkspaceIndex`, `SymbolDb`, generic substitution), `definition.rs` (`resolve_definition` and self/super/this resolution), `references.rs` (`find_references`), `inference.rs` (`infer_expr_type` and type-context helpers), `signature.rs` (`signature_help`, `hover_text`), `ast.rs` (re-exports the shared `cst/` navigation helpers; defines `BUILTIN_TYPES`), and `completion/{members,types,bodies,headers}.rs`. Tests live under `src/resolve/tests/`.
 
 ## WorkspaceIndex
 
@@ -129,7 +129,7 @@ Access level: `Public` for global use; `Protected` from within the same class.
 ### `type_completions(document, db, position)`
 Called in type annotation context. Returns:
 - All `Class`, `Struct`, `Enum`, `State` symbols from workspace + base
-- `BUILTIN_TYPES`: `["bool", "byte", "float", "int", "name", "string", "void"]`
+- `BUILTIN_TYPE_COMPLETIONS`: `["bool", "byte", "float", "int", "name", "string", "void"]`
 
 ### `statement_completions(uri, document, db, position)`
 Called in function body context. Returns `StatementCompletions`:
@@ -188,13 +188,25 @@ Formats a symbol as a multi-line string for LSP hover:
 
 Annotations are prepended as `@name(arg), @name2(arg2)`.
 
-## BUILTIN_TYPES
+## Built-in type names
+
+Two `&[&str]` constants live in `ast.rs`, both re-exported from `resolve`:
 
 ```rust
-pub const BUILTIN_TYPES: &[&str] = &["bool", "byte", "float", "int", "name", "string", "void"];
+// Full set of names treated as known types — engine primitives plus their
+// CamelCase aliases. `unknown_symbol` consults this so it never flags them.
+pub const BUILTIN_TYPES: &[&str] = &[
+    "bool", "byte", "float", "int", "name", "string", "void",
+    "Bool", "Float", "String", "CName",
+    "Int32", "Int16", "Int8", "Uint8", "Uint16", "Uint32", "Uint64", "StringAnsi",
+];
+
+// Primitive subset offered as completions in a type-annotation context.
+pub const BUILTIN_TYPE_COMPLETIONS: &[&str] =
+    &["bool", "byte", "float", "int", "name", "string", "void"];
 ```
 
-These are not in any `WorkspaceIndex` but are returned by `type_completions()` and treated as primitive types during resolution.
+Neither set lives in any `WorkspaceIndex`. `type_completions()` offers `BUILTIN_TYPE_COMPLETIONS`; resolution and the `unknown_symbol` diagnostic treat every name in `BUILTIN_TYPES` as a valid primitive.
 
 ## Script environment (INI globals)
 

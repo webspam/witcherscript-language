@@ -11,14 +11,16 @@ This is a Rust crate (`witcherscript-language`) that produces two binaries:
 
 | File                           | Purpose                                                                        | Detail doc                                           |
 | ------------------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| `src/lib.rs`                   | Module declarations, public API surface                                        |                                                      |
+| `src/lib.rs`                   | Module declarations                                                             |                                                      |
 | `src/document.rs`              | `ParsedDocument`, parse entry points                                           |                                                      |
+| `src/cst/`                     | Shared tree-sitter CST traversal primitives — use these, never hand-roll a walk | _no detail doc yet_                                  |
 | `src/diagnostics/`             | `ParseDiagnostic`/`collect_diagnostics` (syntactic), `WorkspaceDiagnostic` (cross-file) | [diagnostics.md](docs/agents/diagnostics.md)         |
 | `src/files.rs`                 | Recursive `.ws` file collection via `walkdir`; `canonical_uri` URI normalisation | [lsp_server.md](docs/agents/lsp_server.md#uri-handling) |
 | `src/line_index.rs`            | Byte ↔ UTF-16 position mapping (LSP-compatible)                                |                                                      |
 | `src/script_env.rs`            | Script globals from `redscripts.ini`                                           |                                                      |
 | `src/symbols.rs`               | `DocumentSymbols`, `Symbol`, `SymbolKind`, `extract_symbols`                   | [symbols.md](docs/agents/symbols.md)                 |
 | `src/builtins.rs` + `builtins/` | Synthetic engine types (`array<T>`) embedded from `.ws` files                  | [builtins.md](docs/agents/builtins.md)               |
+| `src/formatter.rs` + `formatter/` | Document formatter — powers `textDocument/formatting`                        | _no detail doc yet_                                  |
 | `src/resolve/`                 | Resolution + completion split across `mod.rs` (helpers, `Definition`), `db.rs` (`WorkspaceIndex`, `SymbolDb`), `definition.rs` (`resolve_definition`), `references.rs` (`find_references`), `inference.rs` (type inference), `signature.rs` (`signature_help`, `hover_text`), `ast.rs` (CST helpers), `completion/{members,types,bodies,headers}.rs` | [resolution.md](docs/agents/resolution.md)           |
 | `src/resolve/tests/`           | ~3400-line test suite split across 11 focused files — use as pattern reference | [testing.md](docs/agents/testing.md)                 |
 | `src/semantic_tokens/mod.rs`   | `TOKEN_TYPES`, `collect_semantic_tokens`, classify                             | [semantic_tokens.md](docs/agents/semantic_tokens.md) |
@@ -89,7 +91,7 @@ These are the non-obvious constraints that will cause silent bugs if violated:
 
 5. **Optional parameters are excluded from `parameters_of()`.** `is_optional = true` symbols are skipped when building completion snippet parameter lists. Do not change this — optional params should not appear as required snippet slots.
 
-6. **Three separate indexes.** The LSP maintains `workspace_index` (user project), `base_scripts_index` (read-only game scripts), and the open `documents` map (editor-open files). Requests use `SymbolDb::new(workspace, base)` — workspace shadows base for same-name symbols. Open documents take precedence over the indexed copy of the same file.
+6. **Three symbol indexes, plus an override.** The LSP maintains three `WorkspaceIndex` instances: `workspace_index` (user project), `base_scripts_index` (read-only game scripts), and `builtins_index` (embedded engine types). Requests build `SymbolDb::new(workspace, base).with_builtins(builtins)` — for same-name symbols, workspace shadows base shadows builtins. The open `documents` map is not an index: it holds editor-open `ParsedDocument`s that take precedence over the indexed copy of the same file.
 
 7. **Exec/quest functions excluded from global completions.** `all_top_level_callables()` filters signatures starting with `"exec "` or `"quest "`. These are special engine entry-points, not normal callables.
 
