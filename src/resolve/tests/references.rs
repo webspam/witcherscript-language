@@ -144,6 +144,71 @@ fn find_references_for_private_member_scoped_to_defining_file() {
     );
 }
 
+// --- @addField with same name on different classes are independent symbols ---
+
+#[test]
+fn addfield_same_name_different_classes_are_independent() {
+    let source = concat!(
+        "@addField(CR4Game)\n",
+        "private var lightRewriteSettings : CLightRewriteSettings;\n",
+        "@addField(CR4IngameMenu)\n",
+        "private var lightRewriteSettings : CLightRewriteSettings;\n",
+        "class CR4Game {}\n",
+        "class CR4IngameMenu {}\n",
+        "class CLightRewriteSettings {}\n",
+    );
+    let document = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &document);
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &base);
+
+    let def_game = resolve_definition(
+        "file:///test.ws",
+        &document,
+        &db,
+        SourcePosition {
+            line: 1,
+            character: 12,
+        },
+    )
+    .expect("CR4Game field should resolve");
+    assert_eq!(def_game.symbol.name, "lightRewriteSettings");
+
+    let def_menu = resolve_definition(
+        "file:///test.ws",
+        &document,
+        &db,
+        SourcePosition {
+            line: 3,
+            character: 12,
+        },
+    )
+    .expect("CR4IngameMenu field should resolve");
+    assert_eq!(def_menu.symbol.name, "lightRewriteSettings");
+
+    assert_ne!(
+        def_game.symbol.selection_byte_range, def_menu.symbol.selection_byte_range,
+        "both @addField declarations must not be treated as the same symbol"
+    );
+
+    let search_docs = vec![("file:///test.ws", &document)];
+
+    let refs_game = find_references(&def_game, &document, &search_docs, &db, true);
+    let refs_menu = find_references(&def_menu, &document, &search_docs, &db, true);
+
+    assert_eq!(
+        refs_game.len(),
+        1,
+        "CR4Game field references must not include CR4IngameMenu's field"
+    );
+    assert_eq!(
+        refs_menu.len(),
+        1,
+        "CR4IngameMenu field references must not include CR4Game's field"
+    );
+}
+
 // --- find_references unifies class-body + @wrapMethod/@replaceMethod declarations ---
 
 fn index_docs(docs: &[(&str, &crate::document::ParsedDocument)]) -> WorkspaceIndex {
