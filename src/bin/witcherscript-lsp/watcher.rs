@@ -91,7 +91,7 @@ impl Backend {
         };
         let roots = self.workspace_roots.lock().await.clone();
         let filter = ExcludeFilter::new(&roots, &self.files_exclude.lock().await.clone());
-        let legacy_dirs = self.legacy_script_dirs.lock().await.clone();
+        let legacy_dirs = self.effective_legacy_dirs().await;
 
         let (legacy_events, normal_events): (Vec<FileEvent>, Vec<FileEvent>) = events
             .into_iter()

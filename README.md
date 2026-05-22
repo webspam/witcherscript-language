@@ -176,9 +176,9 @@ The server reads the following user-configurable settings:
 
 Most modern Witcher 3 mods depend on a specific community mod called **Shared Imports**, installed at `<gameDirectory>\Mods\modSharedImports`. It carves out a shared set of `import function` headers so multiple mods do not redeclare clashing imports.
 
-Because that mod is a near-universal dependency, **the LSP loads it automatically** whenever `gameDirectory` is set and the `Mods\modSharedImports` directory exists. The user does not need to list it under `additionalScriptDirectories`.
+Because that mod is a near-universal dependency, **the LSP loads it automatically** whenever `gameDirectory` is set and the `Mods\modSharedImports` directory exists. The user does not need to list it under `additionalScriptDirectories` or `legacyScriptDirectories`.
 
-When the auto-load fires, the LSP log line carries `auto_loaded = true` and the message starts with `[auto-detected]`. Search the server log for `[auto-detected]` if you are surprised to see symbols you did not configure.
+It ships replacement scripts that stand in for base-game files, so the LSP indexes it as a legacy script directory: each override takes the place of the base script it replaces instead of colliding with it.
 
 To opt out entirely, set `witcherscript.autoLoadModSharedImports` to `false`.
 

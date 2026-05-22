@@ -32,7 +32,7 @@ impl Backend {
         let start = Instant::now();
 
         let documents = self.documents.lock().await;
-        let legacy_dirs = self.legacy_script_dirs.lock().await.clone();
+        let legacy_dirs = self.effective_legacy_dirs().await;
 
         let (
             dup_by_uri,
