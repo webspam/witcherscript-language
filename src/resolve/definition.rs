@@ -62,10 +62,9 @@ fn resolve_for_ident(
     ident: Node,
     byte_offset: usize,
 ) -> Option<Definition> {
-    resolve_for_ident_no_site_fallback(uri, document, db, ident, byte_offset).or_else(|| {
-        let name = ident.utf8_text(document.source.as_bytes()).ok()?;
-        resolve_at_definition_site(uri, document, byte_offset, name)
-    })
+    let name = ident.utf8_text(document.source.as_bytes()).ok()?;
+    resolve_at_definition_site(uri, document, byte_offset, name)
+        .or_else(|| resolve_for_ident_no_site_fallback(uri, document, db, ident, byte_offset))
 }
 
 fn resolve_for_ident_no_site_fallback(
