@@ -289,7 +289,7 @@ impl SymbolExtractor<'_> {
             "event_decl" => {
                 self.visit_callable_decl(node, container, annotations, SymbolKind::Event)
             }
-            "member_var_decl" => {
+            "member_var_decl" | "autobind_decl" => {
                 self.visit_var_decl(node, container, annotations, SymbolKind::Field)
             }
             "local_var_decl_stmt" => {
@@ -494,8 +494,13 @@ impl SymbolExtractor<'_> {
             result
         };
         let mut cursor = node.walk();
+        let names_field = if node.kind() == "autobind_decl" {
+            "name"
+        } else {
+            "names"
+        };
 
-        for child in node.children_by_field_name("names", &mut cursor) {
+        for child in node.children_by_field_name(names_field, &mut cursor) {
             if child.kind() == "ident" {
                 self.push_symbol(
                     node,
@@ -666,6 +671,21 @@ mod tests {
                 .collect();
             assert_eq!(&vars[..], *expected, "{msg}");
         }
+    }
+
+    #[test]
+    fn autobind_decl_is_extracted_as_a_field() {
+        let source = "class C {\n  private autobind theInput : CInputManager = single;\n}\n";
+        let tree = parse(source);
+        let symbols = extract_symbols(tree.root_node(), source, &LineIndex::new(source));
+
+        let field = symbols
+            .all()
+            .iter()
+            .find(|s| s.name == "theInput")
+            .expect("autobind member must be extracted");
+        assert_eq!(field.kind, SymbolKind::Field);
+        assert_eq!(field.type_annotation.as_deref(), Some("CInputManager"));
     }
 
     fn parse(source: &str) -> tree_sitter::Tree {

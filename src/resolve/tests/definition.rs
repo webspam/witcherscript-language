@@ -614,3 +614,28 @@ fn member_access_resolves_through_a_top_level_receiver() {
     assert_eq!(definition.symbol.kind, SymbolKind::Method);
     assert_eq!(definition.uri, "file:///helper.ws");
 }
+
+#[test]
+fn autobind_member_resolves_like_a_var() {
+    let main = make_doc(
+        "class C {\n  autobind theInput : CInputManager = single;\n  function Use() {\n    theInput.Foo();\n  }\n}\n",
+    );
+    let index = index_docs(&[("file:///main.ws", &main)]);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
+
+    let definition = resolve_definition(
+        "file:///main.ws",
+        &main,
+        &db,
+        SourcePosition {
+            line: 3,
+            character: 4,
+        },
+    )
+    .expect("a reference to an autobind member should resolve");
+
+    assert_eq!(definition.symbol.name, "theInput");
+    assert_eq!(definition.symbol.kind, SymbolKind::Field);
+    assert_eq!(definition.uri, "file:///main.ws");
+}
