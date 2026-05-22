@@ -57,6 +57,7 @@ pub struct Symbol {
     pub access: AccessLevel,
     pub is_optional: bool,
     pub is_out: bool,
+    pub is_state_machine: bool,
 }
 
 impl Symbol {
@@ -252,6 +253,7 @@ struct SymbolSpec {
     access: AccessLevel,
     is_optional: bool,
     is_out: bool,
+    is_state_machine: bool,
 }
 
 impl SymbolExtractor<'_> {
@@ -312,6 +314,14 @@ impl SymbolExtractor<'_> {
             return;
         };
         let base_class = base_type(node, self.source);
+        let is_state_machine = {
+            let mut c = node.walk();
+            let result = node.children(&mut c).any(|child| {
+                child.kind() == "specifier"
+                    && &self.source[child.start_byte()..child.end_byte()] == "statemachine"
+            });
+            result
+        };
         let id = self.push_symbol(
             node,
             name_node,
@@ -320,6 +330,7 @@ impl SymbolExtractor<'_> {
                 container,
                 annotations,
                 base_class,
+                is_state_machine,
                 ..Default::default()
             },
         );
@@ -578,6 +589,7 @@ impl SymbolExtractor<'_> {
             access: spec.access,
             is_optional: spec.is_optional,
             is_out: spec.is_out,
+            is_state_machine: spec.is_state_machine,
         })
     }
 

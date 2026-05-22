@@ -191,6 +191,10 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                     ident.start_byte(),
                     &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
                 )?;
+                // `default autoState` sets a statemachine's initial state, not a declared member.
+                if name == "autoState" && enclosing.is_state_machine {
+                    return None;
+                }
                 let container_name = enclosing.name.clone();
                 ctx.telemetry.member_lookups += 1;
                 if ctx
@@ -587,6 +591,31 @@ mod tests {
         let diags = result.get("file:///t.ws").unwrap();
         assert_eq!(kinds(diags), vec!["unknown_member"]);
         assert!(diags[0].message.contains("bogus"));
+    }
+
+    #[test]
+    fn default_auto_state_not_flagged() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "statemachine class Player { default autoState = 'Exploration'; }\n",
+        )]);
+        let result = check(&idx, &docs);
+        assert!(
+            result.is_empty(),
+            "default autoState is a statemachine construct, not a member, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn default_auto_state_in_plain_class_still_flagged() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "class Player { default autoState = 'Exploration'; }\n",
+        )]);
+        let result = check(&idx, &docs);
+        let diags = result.get("file:///t.ws").unwrap();
+        assert_eq!(kinds(diags), vec!["unknown_member"]);
+        assert!(diags[0].message.contains("autoState"));
     }
 
     #[test]

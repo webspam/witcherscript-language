@@ -188,6 +188,7 @@ fn global_symbol(
         access: AccessLevel::Public,
         is_optional: false,
         is_out: false,
+        is_state_machine: false,
     }
 }
 
