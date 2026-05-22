@@ -4,7 +4,9 @@
 
 WitcherScript has engine-magic types — `array<T>`, a fixed set of engine enums, and a handful of engine classes — that have no declaration anywhere in user code or shipped game scripts. The LSP synthesises their definitions so that completion, hover, and go-to-definition work on them.
 
-`builtins/enums.ws` holds the engine enums. Each enum type is a global type and each enum variant is a global symbol (variants are referenced by bare name, not qualified through the type). Both flow through the normal symbol pipeline once the file is parsed into the builtins index — no enum-specific Rust logic.
+`builtins/enums.ws` holds the engine enums. Each enum is a global type and each of its values is a global symbol, used by bare name (`AD_Back`, not `EAttackDirection.AD_Back`). Both flow through the normal symbol pipeline once the file is parsed into the builtins index — no enum-specific Rust logic.
+
+`builtins/orphan_enums.ws` collects engine enum values whose enclosing enum is unknown, under one catch-all enum. That catch-all is not a real type, so it is hidden from type completion (see Guardrails).
 
 Engine classes get one file each, named after the class (`builtins/CR4HudModule.ws`); the synthetic URI is derived from the file name. They are listed in the `CLASS_BUILTINS` table in `src/builtins.rs`, so adding the next class is one `include_str!` row.
 
@@ -38,7 +40,7 @@ Nested generics (`array<array<int>>`) substitute one level: `Last() : T` becomes
 
 - `prepare_rename` and `rename` reject any symbol whose URI is a builtin URI (`builtin_source(uri).is_some()`).
 - `rename_changes` filters out reference sites that land inside a builtin file — same shape as the base-scripts guard.
-- `SymbolDb::all_types()` includes builtin enums and classes (they are real, usable types) but excludes the builtin `array` class, which is generic-magic and must not appear as a bare type. `all_enum_variants()` includes builtin enum variants.
+- `SymbolDb::all_types()` includes builtin enums and classes (real, usable types) but excludes whatever `is_non_type_builtin()` flags — `array` (only valid as `array<T>`) and the orphan catch-all enum — since neither can be written as a plain type name. `all_enum_variants()` still includes every builtin enum value, the orphan ones included.
 
 ## Adding a new built-in
 

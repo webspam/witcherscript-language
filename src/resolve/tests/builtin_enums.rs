@@ -100,6 +100,26 @@ fn enum_variants_appear_in_enum_variant_globals() {
 }
 
 #[test]
+fn orphan_variant_bucket_is_excluded_from_type_completions() {
+    let builtins = load_builtins_index();
+    let empty = WorkspaceIndex::default();
+    let db = builtins_db(&empty, &empty, &builtins);
+
+    assert!(
+        !db.all_types()
+            .iter()
+            .any(|d| d.symbol.name == "WLSP_TooHardBasket"),
+        "the synthetic orphan-variant bucket enum must not appear in all_types()"
+    );
+    assert!(
+        db.all_enum_variants()
+            .iter()
+            .any(|d| d.symbol.name == "FLAG_OnlyActors"),
+        "orphan enum variants must still appear in all_enum_variants()"
+    );
+}
+
+#[test]
 fn goto_definition_on_enum_variant_resolves_into_builtin_file() {
     let source = concat!(
         "function Test() {\n",
