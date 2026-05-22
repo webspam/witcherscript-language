@@ -3,6 +3,8 @@ mod config;
 mod convert;
 mod cst_cache;
 mod diagnostics_publish;
+mod file_scope;
+mod file_scope_status;
 mod indexing;
 mod legacy_status;
 mod logging;

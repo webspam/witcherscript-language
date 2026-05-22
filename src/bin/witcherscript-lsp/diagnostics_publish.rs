@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
@@ -15,6 +16,8 @@ use witcherscript_language::resolve::SymbolDb;
 use crate::backend::Backend;
 use crate::convert::{lsp_diagnostics, lsp_workspace_diagnostic};
 use crate::cst_cache::{cst_diagnostics_with_cache, DbFingerprint};
+use crate::file_scope::{classify_file_scope, FileScope};
+use crate::file_scope_status::{FileScopeStatusNotification, FileScopeStatusParams};
 use crate::legacy_status::{LegacyScriptStatusNotification, LegacyScriptStatusParams};
 
 impl Backend {
@@ -33,6 +36,7 @@ impl Backend {
 
         let documents = self.documents.lock().await;
         let legacy_dirs = self.effective_legacy_dirs().await;
+        let loose_uris = self.loose_open_uris(&documents).await;
 
         let (
             dup_by_uri,
@@ -42,34 +46,56 @@ impl Backend {
             cst_by_uri,
             cst_stats,
         ) = {
-            let mut index = self.workspace_index.lock().await;
+            let mut workspace = self.workspace_index.lock().await;
+            let mut loose = self.loose_index.lock().await;
             let base = self.base_scripts_index.lock().await;
             let env = self.script_env.lock().await;
             let mut cache = self.cst_diag_cache.lock().await;
 
-            let dup = tracing::debug_span!("dup_symbols")
-                .in_scope(|| collect_duplicate_symbol_diagnostics(&index));
-            let shadow = tracing::debug_span!("shadowing")
-                .in_scope(|| collect_shadowing_diagnostics(&index, &env));
-            let dup_local = tracing::debug_span!("dup_locals")
-                .in_scope(|| collect_duplicate_local_diagnostics(&index));
-            let base_conflict = tracing::debug_span!("base_script_conflict")
-                .in_scope(|| collect_base_script_conflict_diagnostics(&index, &base, &legacy_dirs));
+            let mut dup = tracing::debug_span!("dup_symbols")
+                .in_scope(|| collect_duplicate_symbol_diagnostics(&workspace));
+            let mut shadow = tracing::debug_span!("shadowing")
+                .in_scope(|| collect_shadowing_diagnostics(&workspace, &env));
+            let mut dup_local = tracing::debug_span!("dup_locals")
+                .in_scope(|| collect_duplicate_local_diagnostics(&workspace));
+            let base_conflict = tracing::debug_span!("base_script_conflict").in_scope(|| {
+                collect_base_script_conflict_diagnostics(&workspace, &base, &legacy_dirs)
+            });
+            // Loose files compile in isolation; duplicates among them are still real.
+            dup.extend(collect_duplicate_symbol_diagnostics(&loose));
+            shadow.extend(collect_shadowing_diagnostics(&loose, &env));
+            dup_local.extend(collect_duplicate_local_diagnostics(&loose));
 
             let fingerprint = DbFingerprint {
                 base_surface: base.surface_hash(),
                 env: env.version(),
             };
             let result = {
-                let db = SymbolDb::new(&index, &base)
+                let ws_db = SymbolDb::new(&workspace, &base)
+                    .with_script_env(&env)
+                    .with_builtins(&self.builtins_index);
+                let loose_db = SymbolDb::new(&loose, &base)
                     .with_script_env(&env)
                     .with_builtins(&self.builtins_index);
                 tracing::debug_span!("cst_diagnostics", open_docs = documents.len()).in_scope(
-                    || cst_diagnostics_with_cache(&documents, &db, fingerprint, &mut cache),
+                    || {
+                        cst_diagnostics_with_cache(
+                            &documents,
+                            &ws_db,
+                            Some((&loose_db, &loose_uris)),
+                            fingerprint,
+                            &mut cache,
+                        )
+                    },
                 )
             };
+            let loose_uri_strs: HashSet<&str> = loose_uris.iter().map(|u| u.as_str()).collect();
             for (uri, observations) in result.new_subscriptions {
-                index.register_subscription(&uri, observations);
+                if loose_uri_strs.contains(uri.as_str()) {
+                    loose.register_subscription(&uri, observations);
+                } else {
+                    workspace.register_subscription(&uri, observations);
+                }
             }
 
             (
@@ -200,6 +226,48 @@ impl Backend {
         };
         for params in to_send {
             let _ = self.client.notify::<LegacyScriptStatusNotification>(params);
+        }
+    }
+
+    pub(crate) async fn publish_file_scope_status(&self) {
+        let to_send: Vec<FileScopeStatusParams> = {
+            let documents = self.documents.lock().await;
+            let roots = self.workspace_roots.lock().await.clone();
+            let legacy_dirs = self.effective_legacy_dirs().await;
+            let game_dir = self.base_scripts_path.lock().await.clone();
+            let additional = self.additional_script_dirs.lock().await.clone();
+            let replacements = self.legacy_replacements.lock().await;
+            let mut sent = self.sent_file_scope_status.lock().await;
+            let mut list = Vec::new();
+            for uri in documents.keys() {
+                let scope = classify_file_scope(
+                    uri,
+                    &roots,
+                    &legacy_dirs,
+                    &replacements,
+                    game_dir.as_deref(),
+                    &additional,
+                );
+                let replaced_script_path = if matches!(scope, FileScope::LegacyOverride) {
+                    canonical_uri(uri).and_then(|canon| replacements.get(&canon).cloned())
+                } else {
+                    None
+                };
+                let params = FileScopeStatusParams {
+                    uri: uri.to_string(),
+                    scope,
+                    replaced_script_path,
+                };
+                if sent.get(uri) == Some(&params) {
+                    continue;
+                }
+                sent.insert(uri.clone(), params.clone());
+                list.push(params);
+            }
+            list
+        };
+        for params in to_send {
+            let _ = self.client.notify::<FileScopeStatusNotification>(params);
         }
     }
 

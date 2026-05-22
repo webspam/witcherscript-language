@@ -14,6 +14,7 @@ use witcherscript_language::script_env::parse_script_environment;
 
 use crate::backend::Backend;
 use crate::convert::source_position;
+use crate::file_scope::FileScope;
 
 pub(crate) fn legacy_replaces_base(base_uri: &str, legacy_uri: &str) -> bool {
     let Some(tail) = relative_from_scripts(base_uri) else {
@@ -107,28 +108,56 @@ pub(crate) fn index_open_document(
     invalidated
 }
 
+pub(crate) fn remove_document_all_spellings(
+    index: &mut WorkspaceIndex,
+    uri: &Url,
+) -> HashSet<String> {
+    let mut invalidated = index.remove_document(uri.as_str());
+    if let Some(canonical) = canonical_uri(uri) {
+        if canonical != uri.as_str() {
+            invalidated.extend(index.remove_document(&canonical));
+        }
+    }
+    invalidated
+}
+
 impl Backend {
     #[tracing::instrument(skip(self, text), fields(uri = %uri, bytes = text.len()), level = "debug")]
     pub(crate) async fn update_open_document(&self, uri: Url, text: String) {
         let parsed = tracing::debug_span!("parse_document").in_scope(|| parse_document(text));
-        match parsed {
-            Ok(document) => {
-                // Indexing an opened base script as a workspace declaration duplicates its override.
-                let invalidated = if self.is_base_script_uri(&uri).await {
-                    let mut index = self.base_scripts_index.lock().await;
-                    index_open_document(&mut index, &uri, &document)
-                } else {
-                    let mut index = self.workspace_index.lock().await;
-                    index_open_document(&mut index, &uri, &document)
-                };
-                self.evict_cache_entries(&invalidated).await;
-                self.documents.lock().await.insert(uri.clone(), document);
-                self.publish_open_diagnostics().await;
-            }
+        let document = match parsed {
+            Ok(document) => document,
             Err(err) => {
                 error!(uri = %uri, error = %err, "failed to parse document");
+                return;
             }
+        };
+
+        let scope = self.file_scope_of(&uri).await;
+        let mut invalidated = HashSet::new();
+        // A config change can move a file between scopes; drop every stale copy first.
+        for index in [
+            &self.workspace_index,
+            &self.base_scripts_index,
+            &self.loose_index,
+        ] {
+            let mut index = index.lock().await;
+            invalidated.extend(remove_document_all_spellings(&mut index, &uri));
         }
+
+        let target = match scope {
+            FileScope::AdditionalBase => &self.base_scripts_index,
+            FileScope::OutOfScope | FileScope::SingleFile => &self.loose_index,
+            _ => &self.workspace_index,
+        };
+        {
+            let mut index = target.lock().await;
+            invalidated.extend(index.update_document(uri.as_str(), &document));
+        }
+
+        self.evict_cache_entries(&invalidated).await;
+        self.documents.lock().await.insert(uri.clone(), document);
+        self.publish_open_diagnostics().await;
     }
 
     // Auto-detected modSharedImports counts as legacy without being in the setting.
@@ -147,27 +176,7 @@ impl Backend {
     }
 
     async fn is_base_script_uri(&self, uri: &Url) -> bool {
-        let Ok(path) = uri.to_file_path() else {
-            return false;
-        };
-        if self
-            .effective_legacy_dirs()
-            .await
-            .iter()
-            .any(|dir| path.starts_with(dir))
-        {
-            return false;
-        }
-        if let Some(game_dir) = self.base_scripts_path.lock().await.as_ref() {
-            if path.starts_with(game_dir) {
-                return true;
-            }
-        }
-        self.additional_script_dirs
-            .lock()
-            .await
-            .iter()
-            .any(|dir| path.starts_with(dir))
+        matches!(self.file_scope_of(uri).await, FileScope::AdditionalBase)
     }
 
     // index_base_scripts rebuilds the base index from disk, dropping any open base script.
@@ -282,7 +291,7 @@ impl Backend {
     pub(crate) async fn resolve_at(&self, uri: &Url, position: Position) -> Option<Definition> {
         let documents = self.documents.lock().await;
         let document = documents.get(uri)?;
-        let handles = self.db_handles().await;
+        let handles = self.db_handles_for(uri).await;
         let db = handles.db();
         resolve_definition(uri.as_str(), document, &db, source_position(position))
     }
@@ -330,6 +339,7 @@ impl Backend {
             self.reconcile_legacy_workspace_files(Vec::new()).await;
             self.publish_open_diagnostics().await;
             self.publish_legacy_script_status().await;
+            self.publish_file_scope_status().await;
             return;
         }
 
@@ -514,5 +524,6 @@ impl Backend {
 
         self.publish_open_diagnostics().await;
         self.publish_legacy_script_status().await;
+        self.publish_file_scope_status().await;
     }
 }
