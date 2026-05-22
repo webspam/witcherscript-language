@@ -70,6 +70,7 @@ pub enum Severity {
     #[default]
     Error,
     Warning,
+    Info,
 }
 
 #[derive(Debug, Clone)]
