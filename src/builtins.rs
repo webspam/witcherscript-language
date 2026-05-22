@@ -2,20 +2,24 @@ use crate::document::{parse_document, ParsedDocument};
 use crate::resolve::WorkspaceIndex;
 
 const ARRAY_WS: &str = include_str!("../builtins/array.ws");
+const ENUMS_WS: &str = include_str!("../builtins/enums.ws");
 
 pub const BUILTIN_ARRAY_URI: &str = "witcherscript-builtin:/array.ws";
+pub const BUILTIN_ENUMS_URI: &str = "witcherscript-builtin:/enums.ws";
 
 pub const GENERIC_ELEMENT_PLACEHOLDER: &str = "T";
 
 pub fn load_builtins_index() -> WorkspaceIndex {
     let mut index = WorkspaceIndex::default();
     insert_builtin(&mut index, BUILTIN_ARRAY_URI, ARRAY_WS);
+    insert_builtin(&mut index, BUILTIN_ENUMS_URI, ENUMS_WS);
     index
 }
 
 pub fn builtin_source(uri: &str) -> Option<&'static str> {
     match uri {
         BUILTIN_ARRAY_URI => Some(ARRAY_WS),
+        BUILTIN_ENUMS_URI => Some(ENUMS_WS),
         _ => None,
     }
 }

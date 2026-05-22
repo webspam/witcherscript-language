@@ -1,4 +1,5 @@
 mod builtin_array;
+mod builtin_enums;
 mod chaining;
 mod completion_annotation;
 mod completion_keywords;

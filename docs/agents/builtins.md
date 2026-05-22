@@ -2,7 +2,9 @@
 
 **Files:** [src/builtins.rs](../../src/builtins.rs), [builtins/](../../builtins/)
 
-WitcherScript has engine-magic types — most importantly `array<T>` — that have no declaration anywhere in user code or shipped game scripts. The LSP synthesises their definitions so that completion, hover, and go-to-definition work on them.
+WitcherScript has engine-magic types — `array<T>` and a fixed set of engine enums — that have no declaration anywhere in user code or shipped game scripts. The LSP synthesises their definitions so that completion, hover, and go-to-definition work on them.
+
+`builtins/enums.ws` holds the engine enums. Each enum type is a global type and each enum variant is a global symbol (variants are referenced by bare name, not qualified through the type). Both flow through the normal symbol pipeline once the file is parsed into the builtins index — no enum-specific Rust logic.
 
 ## Source of truth
 
@@ -34,7 +36,7 @@ Nested generics (`array<array<int>>`) substitute one level: `Last() : T` becomes
 
 - `prepare_rename` and `rename` reject any symbol whose URI is a builtin URI (`builtin_source(uri).is_some()`).
 - `rename_changes` filters out reference sites that land inside a builtin file — same shape as the base-scripts guard.
-- `SymbolDb::all_types()` excludes builtins so `array` doesn't pollute the type-completion list.
+- `SymbolDb::all_types()` includes builtin enums (they are real, usable types) but excludes the builtin `array` class, which is generic-magic and must not appear as a bare type. `all_enum_variants()` includes builtin enum variants.
 
 ## Adding a new built-in
 
