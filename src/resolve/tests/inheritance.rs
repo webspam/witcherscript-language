@@ -120,6 +120,59 @@ fn class_without_explicit_extends_defaults_to_cobject() {
 }
 
 #[test]
+fn baseless_class_inherits_cobject_members() {
+    let source = concat!(
+        "class CObject {\n",
+        "  function GetCurrentStateName() : name {}\n",
+        "}\n",
+        "class PlayerAiming {}\n",
+        "class CR4Player {\n",
+        "  var playerAiming : PlayerAiming;\n",
+        "  function Test() {\n",
+        "    playerAiming.GetCurrentStateName();\n",
+        "  }\n",
+        "}\n",
+    );
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///a.ws", &doc);
+
+    // cursor on 'GetCurrentStateName' (line 7, col 20)
+    let definition = resolve_definition(
+        "file:///a.ws",
+        &doc,
+        &SymbolDb::new(&index, &WorkspaceIndex::default()),
+        SourcePosition {
+            line: 7,
+            character: 20,
+        },
+    )
+    .expect("a class with no extends still inherits CObject's members");
+
+    assert_eq!(definition.symbol.name, "GetCurrentStateName");
+}
+
+#[test]
+fn engine_root_chain_does_not_loop_through_virtual_base() {
+    let source = concat!(
+        "class ISerializable {}\n",
+        "class IScriptable extends ISerializable {}\n",
+        "class CObject extends IScriptable {}\n",
+    );
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///a.ws", &doc);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
+
+    // The root must not gain a virtual CObject base that closes the cycle.
+    assert_eq!(db.superclass_of("ISerializable"), None);
+    assert!(db
+        .find_member("CObject", "missing", AccessLevel::Public)
+        .is_none());
+}
+
+#[test]
 fn resolves_inherited_method_unqualified_inside_subclass() {
     let source_a = "class A extends B {\n function Test() {\n  Inherited();\n }\n}\n";
     let source_b = "class B {\n function Inherited() {}\n}\n";
