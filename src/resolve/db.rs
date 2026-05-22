@@ -129,7 +129,12 @@ impl<'a> SymbolDb<'a> {
             self.workspace
                 .all_enum_variants()
                 .into_iter()
-                .chain(self.base.all_enum_variants()),
+                .chain(self.base.all_enum_variants())
+                .chain(
+                    self.builtins
+                        .map(|b| b.all_enum_variants())
+                        .unwrap_or_default(),
+                ),
         )
     }
 
@@ -283,7 +288,14 @@ impl<'a> SymbolDb<'a> {
             self.workspace
                 .all_types()
                 .into_iter()
-                .chain(self.base.all_types()),
+                .chain(self.base.all_types())
+                .chain(
+                    self.builtins
+                        .map(|b| b.all_types())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|d| d.uri != crate::builtins::BUILTIN_ARRAY_URI),
+                ),
         )
     }
 

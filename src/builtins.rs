@@ -1,23 +1,35 @@
+use std::collections::HashMap;
+use std::sync::LazyLock;
+
 use crate::document::{parse_document, ParsedDocument};
 use crate::resolve::WorkspaceIndex;
 
-const ARRAY_WS: &str = include_str!("../builtins/array.ws");
-
 pub const BUILTIN_ARRAY_URI: &str = "witcherscript-builtin:/array.ws";
+pub const BUILTIN_ENUMS_URI: &str = "witcherscript-builtin:/enums.ws";
 
 pub const GENERIC_ELEMENT_PLACEHOLDER: &str = "T";
 
+static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
+    HashMap::from([
+        (BUILTIN_ARRAY_URI, include_str!("../builtins/array.ws")),
+        (BUILTIN_ENUMS_URI, include_str!("../builtins/enums.ws")),
+        (
+            "witcherscript-builtin:/CR4HudModule.ws",
+            include_str!("../builtins/CR4HudModule.ws"),
+        ),
+    ])
+});
+
 pub fn load_builtins_index() -> WorkspaceIndex {
     let mut index = WorkspaceIndex::default();
-    insert_builtin(&mut index, BUILTIN_ARRAY_URI, ARRAY_WS);
+    for (&uri, &source) in BUILTIN_SOURCES.iter() {
+        insert_builtin(&mut index, uri, source);
+    }
     index
 }
 
 pub fn builtin_source(uri: &str) -> Option<&'static str> {
-    match uri {
-        BUILTIN_ARRAY_URI => Some(ARRAY_WS),
-        _ => None,
-    }
+    BUILTIN_SOURCES.get(uri).copied()
 }
 
 fn insert_builtin(index: &mut WorkspaceIndex, uri: &str, source: &'static str) {
