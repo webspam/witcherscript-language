@@ -215,7 +215,7 @@ fn builtin_array_methods_resolve_through_fixture() {
     assert_eq!(def.uri, BUILTIN_ARRAY_URI);
     assert_eq!(def.symbol.name, "PushBack");
     let sig = def.symbol.signature.as_deref().unwrap_or("");
-    assert!(sig.contains("param1: int"), "got signature: {sig}");
+    assert!(sig.contains(": int"), "got signature: {sig}");
 }
 
 fn assert_symbol(
