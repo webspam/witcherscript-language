@@ -294,7 +294,7 @@ impl<'a> SymbolDb<'a> {
                         .map(|b| b.all_types())
                         .unwrap_or_default()
                         .into_iter()
-                        .filter(|d| d.uri != crate::builtins::BUILTIN_ARRAY_URI),
+                        .filter(|d| !crate::builtins::is_non_type_builtin(&d.uri)),
                 ),
         )
     }
