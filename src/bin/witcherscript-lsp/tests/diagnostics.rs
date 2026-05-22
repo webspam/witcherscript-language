@@ -23,6 +23,28 @@ fn maps_core_diagnostics_to_lsp_diagnostics() {
 }
 
 #[test]
+fn ternary_diagnostic_maps_to_warning() {
+    let document = parse_document("function Pick() {\n var x : int;\n x = true ? 1 : 2;\n}\n")
+        .expect("document should parse");
+
+    let diagnostics = lsp_diagnostics(&document);
+
+    let ternary = diagnostics
+        .iter()
+        .find(|d| {
+            d.code
+                == Some(lsp_types::NumberOrString::String(
+                    "ternary_cond_expr".to_string(),
+                ))
+        })
+        .expect("expected a ternary_cond_expr diagnostic");
+    assert_eq!(
+        ternary.severity,
+        Some(lsp_types::DiagnosticSeverity::WARNING)
+    );
+}
+
+#[test]
 fn signature_help_response_maps_label_offsets_and_active_parameter() {
     let info = SignatureHelpInfo {
         label: "Find(name : string, range : float)".to_string(),

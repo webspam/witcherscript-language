@@ -81,7 +81,10 @@ pub(crate) fn lsp_diagnostics(document: &ParsedDocument) -> Vec<Diagnostic> {
                 diagnostic.byte_range.start,
                 diagnostic.byte_range.end,
             )),
-            severity: Some(DiagnosticSeverity::ERROR),
+            severity: Some(match diagnostic.kind.as_str() {
+                "ternary_cond_expr" => DiagnosticSeverity::WARNING,
+                _ => DiagnosticSeverity::ERROR,
+            }),
             code: Some(lsp_types::NumberOrString::String(diagnostic.kind.clone())),
             source: Some("witcherscript".to_string()),
             message: diagnostic.message.clone(),
