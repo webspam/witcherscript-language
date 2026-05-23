@@ -539,9 +539,6 @@ impl Backend {
                 cfg.auto_load_mod_shared_imports = b;
             }
             if let Some(diag) = opts.get("diagnostics") {
-                if let Some(b) = diag.get("enable").and_then(|v| v.as_bool()) {
-                    cfg.diagnostics_enabled = b;
-                }
                 if let Some(s) = diag.get("scope").and_then(|v| v.as_str()) {
                     cfg.diagnostics_scope = DiagnosticsScope::from_setting(s);
                 }

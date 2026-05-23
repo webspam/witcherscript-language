@@ -12,14 +12,15 @@ use crate::logging::{level_from_str, level_to_u8, DEFAULT_LOG_LEVEL};
 pub(crate) enum DiagnosticsScope {
     Workspace,
     OpenFiles,
+    None,
 }
 
 impl DiagnosticsScope {
     pub(crate) fn from_setting(value: &str) -> Self {
-        if value == "openFiles" {
-            Self::OpenFiles
-        } else {
-            Self::Workspace
+        match value {
+            "openFiles" => Self::OpenFiles,
+            "none" => Self::None,
+            _ => Self::Workspace,
         }
     }
 }
@@ -28,7 +29,6 @@ impl DiagnosticsScope {
 pub(crate) struct Config {
     pub(crate) log_level: u8,
     pub(crate) auto_load_mod_shared_imports: bool,
-    pub(crate) diagnostics_enabled: bool,
     pub(crate) diagnostics_scope: DiagnosticsScope,
     pub(crate) formatter_line_limit: u32,
     pub(crate) formatter_compact_colon: bool,
@@ -40,7 +40,6 @@ impl Default for Config {
         Self {
             log_level: level_to_u8(DEFAULT_LOG_LEVEL),
             auto_load_mod_shared_imports: true,
-            diagnostics_enabled: true,
             diagnostics_scope: DiagnosticsScope::Workspace,
             formatter_line_limit: 100,
             formatter_compact_colon: false,
@@ -101,10 +100,6 @@ impl Backend {
             ConfigurationItem {
                 scope_uri: None,
                 section: Some("witcherscript.autoLoadModSharedImports".to_string()),
-            },
-            ConfigurationItem {
-                scope_uri: None,
-                section: Some("witcherscript.diagnostics.enable".to_string()),
             },
             ConfigurationItem {
                 scope_uri: None,
@@ -190,10 +185,6 @@ impl Backend {
             Some(Value::Bool(b)) => b,
             _ => true,
         };
-        next_cfg.diagnostics_enabled = match iter.next() {
-            Some(Value::Bool(b)) => b,
-            _ => true,
-        };
         match iter.next() {
             Some(Value::Array(arr)) => {
                 let dirs: Vec<std::path::PathBuf> = arr
@@ -224,8 +215,7 @@ impl Backend {
         let legacy_changed = *self.legacy_script_dirs.lock().await != prev_legacy;
         let auto_load_changed =
             next_cfg.auto_load_mod_shared_imports != prev_cfg.auto_load_mod_shared_imports;
-        let diagnostics_changed = next_cfg.diagnostics_enabled != prev_cfg.diagnostics_enabled
-            || next_cfg.diagnostics_scope != prev_cfg.diagnostics_scope;
+        let diagnostics_changed = next_cfg.diagnostics_scope != prev_cfg.diagnostics_scope;
         if base_scripts_changed {
             trace!(setting = "gameDirectory", "setting changed");
         }
@@ -286,6 +276,11 @@ mod tests {
                 name: "explicit workspace",
                 input: "workspace",
                 expected: DiagnosticsScope::Workspace,
+            },
+            Case {
+                name: "explicit none",
+                input: "none",
+                expected: DiagnosticsScope::None,
             },
             Case {
                 name: "unknown value falls back to workspace",

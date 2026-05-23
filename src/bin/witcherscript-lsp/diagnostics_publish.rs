@@ -34,7 +34,7 @@ impl Backend {
     #[tracing::instrument(skip(self), level = "debug")]
     pub(crate) async fn publish_open_diagnostics(&self) {
         let cfg = self.config.load();
-        if !cfg.diagnostics_enabled {
+        if matches!(cfg.diagnostics_scope, DiagnosticsScope::None) {
             return;
         }
 
@@ -274,24 +274,24 @@ impl Backend {
     }
 
     pub(crate) async fn reconcile_published_diagnostics(&self) {
-        if self.config.load().diagnostics_enabled {
+        if !matches!(self.config.load().diagnostics_scope, DiagnosticsScope::None) {
             self.publish_open_diagnostics().await;
-        } else {
-            let uris: Vec<Url> = {
-                let mut published = self.published_diagnostics.lock().await;
-                let keys: Vec<Url> = published.keys().cloned().collect();
-                published.clear();
-                keys
-            };
-            for uri in uris {
-                let _ = self
-                    .client
-                    .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
-                        uri,
-                        diagnostics: Vec::new(),
-                        version: None,
-                    });
-            }
+            return;
+        }
+        let uris: Vec<Url> = {
+            let mut published = self.published_diagnostics.lock().await;
+            let keys: Vec<Url> = published.keys().cloned().collect();
+            published.clear();
+            keys
+        };
+        for uri in uris {
+            let _ = self
+                .client
+                .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
+                    uri,
+                    diagnostics: Vec::new(),
+                    version: None,
+                });
         }
     }
 }

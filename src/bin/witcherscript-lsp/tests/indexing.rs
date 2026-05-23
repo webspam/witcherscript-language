@@ -276,14 +276,14 @@ mod concurrent_doc_ops {
     use tokio::sync::mpsc;
 
     use crate::backend::{Backend, DocOp};
-    use crate::config::Config;
+    use crate::config::{Config, DiagnosticsScope};
 
     fn make_backend() -> (Backend, mpsc::UnboundedReceiver<DocOp>) {
         let (_main_loop, client) =
             async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
         let (doc_ops_tx, doc_ops_rx) = mpsc::unbounded_channel();
         let config = Arc::new(ArcSwap::from_pointee(Config {
-            diagnostics_enabled: false,
+            diagnostics_scope: DiagnosticsScope::None,
             ..Config::default()
         }));
         let backend = Backend::new(client, config, doc_ops_tx);
@@ -414,7 +414,7 @@ mod legacy_routing {
     use witcherscript_language::files::canonical_uri;
 
     use crate::backend::{Backend, DocOp};
-    use crate::config::Config;
+    use crate::config::{Config, DiagnosticsScope};
     use crate::indexing::{legacy_base_replacements, legacy_replaces_base};
     use crate::watcher::event_touches_legacy_dir;
 
@@ -446,7 +446,7 @@ mod legacy_routing {
             async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
         let (doc_ops_tx, _doc_ops_rx) = mpsc::unbounded_channel();
         let config = Arc::new(ArcSwap::from_pointee(Config {
-            diagnostics_enabled: false,
+            diagnostics_scope: DiagnosticsScope::None,
             ..Config::default()
         }));
         Backend::new(client, config, doc_ops_tx)
@@ -670,7 +670,7 @@ mod legacy_routing {
         *backend.base_scripts_path.lock().await = Some(game_dir);
         backend.config.store(Arc::new(Config {
             auto_load_mod_shared_imports: false,
-            diagnostics_enabled: false,
+            diagnostics_scope: DiagnosticsScope::None,
             ..Config::default()
         }));
 
@@ -1178,7 +1178,6 @@ mod diagnostics_scope {
             async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
         let (doc_ops_tx, _doc_ops_rx) = mpsc::unbounded_channel();
         let config = Arc::new(ArcSwap::from_pointee(Config {
-            diagnostics_enabled: true,
             diagnostics_scope: scope,
             ..Config::default()
         }));

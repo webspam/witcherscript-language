@@ -56,10 +56,7 @@ impl LspClient {
 
         let (server, _client_socket) = MainLoop::new_server(move |client: ClientSocket| {
             let (doc_ops_tx, mut doc_ops_rx) = mpsc::unbounded_channel::<DocOp>();
-            let config = Arc::new(ArcSwap::from_pointee(Config {
-                diagnostics_enabled: true,
-                ..Config::default()
-            }));
+            let config = Arc::new(ArcSwap::from_pointee(Config::default()));
             let backend = Backend::new(client, config, doc_ops_tx);
 
             let consumer_backend = backend.clone();
