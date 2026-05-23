@@ -54,6 +54,8 @@ use crate::convert::{
     lsp_range, script_body_item, signature_help_response, source_position, source_range,
     this_super_item, type_completion_item, workspace_roots, wrap_method_snippet,
 };
+use crate::file_scope::{classify_file_scope, FileScope};
+use crate::file_scope_status::FileScopeStatusParams;
 use crate::legacy_status::LegacyScriptStatusParams;
 use crate::logging::{level_from_str, level_to_u8};
 
@@ -68,20 +70,28 @@ pub(crate) enum DocOp {
 }
 
 // Open editor docs shadow workspace docs which shadow base docs — unsaved edits win.
+// Loose files form a compilation isolated from the workspace, so a search whose
+// target is loose sees base + loose docs, and a workspace search excludes loose docs.
 pub(crate) fn merge_documents<'a>(
     base_docs: &'a HashMap<String, ParsedDocument>,
     workspace_docs: &'a HashMap<String, ParsedDocument>,
     open_documents: &'a HashMap<Url, ParsedDocument>,
+    open_loose_uris: &HashSet<Url>,
+    target_is_loose: bool,
 ) -> HashMap<String, &'a ParsedDocument> {
     let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
     for (uri, doc) in base_docs.iter() {
         merged.insert(uri.clone(), doc);
     }
-    for (uri, doc) in workspace_docs.iter() {
-        merged.insert(uri.clone(), doc);
+    if !target_is_loose {
+        for (uri, doc) in workspace_docs.iter() {
+            merged.insert(uri.clone(), doc);
+        }
     }
     for (url, doc) in open_documents.iter() {
-        merged.insert(url.to_string(), doc);
+        if open_loose_uris.contains(url) == target_is_loose {
+            merged.insert(url.to_string(), doc);
+        }
     }
     merged
 }
@@ -169,8 +179,11 @@ pub(crate) struct Backend {
     pub(crate) legacy_replacements: Arc<Mutex<HashMap<String, String>>>,
     // Dedups sends so an unchanged status is not resent on every keystroke.
     pub(crate) sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,
+    pub(crate) sent_file_scope_status: Arc<Mutex<HashMap<Url, FileScopeStatusParams>>>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
+    // Transient index for editor-open files belonging to no project root.
+    pub(crate) loose_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) builtins_index: Arc<WorkspaceIndex>,
     pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
     pub(crate) cst_diag_cache: Arc<Mutex<HashMap<Url, crate::cst_cache::CstCacheEntry>>>,
@@ -222,8 +235,10 @@ impl Backend {
             legacy_indexed_uris: Arc::new(Mutex::new(HashSet::new())),
             legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
             sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
+            sent_file_scope_status: Arc::new(Mutex::new(HashMap::new())),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
+            loose_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             builtins_index: Arc::new(load_builtins_index()),
             script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
             cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
@@ -232,9 +247,58 @@ impl Backend {
         }
     }
 
-    pub(crate) async fn db_handles(&self) -> DbHandles<'_> {
+    pub(crate) async fn file_scope_of(&self, uri: &Url) -> FileScope {
+        let roots = self.workspace_roots.lock().await.clone();
+        let legacy_dirs = self.effective_legacy_dirs().await;
+        let game_dir = self.base_scripts_path.lock().await.clone();
+        let additional = self.additional_script_dirs.lock().await.clone();
+        let replacements = self.legacy_replacements.lock().await;
+        classify_file_scope(
+            uri,
+            &roots,
+            &legacy_dirs,
+            &replacements,
+            game_dir.as_deref(),
+            &additional,
+        )
+    }
+
+    pub(crate) async fn loose_open_uris(
+        &self,
+        documents: &HashMap<Url, ParsedDocument>,
+    ) -> HashSet<Url> {
+        let roots = self.workspace_roots.lock().await.clone();
+        let legacy_dirs = self.effective_legacy_dirs().await;
+        let game_dir = self.base_scripts_path.lock().await.clone();
+        let additional = self.additional_script_dirs.lock().await.clone();
+        let replacements = self.legacy_replacements.lock().await;
+        documents
+            .keys()
+            .filter(|uri| {
+                classify_file_scope(
+                    uri,
+                    &roots,
+                    &legacy_dirs,
+                    &replacements,
+                    game_dir.as_deref(),
+                    &additional,
+                )
+                .is_loose()
+            })
+            .cloned()
+            .collect()
+    }
+
+    // A loose file resolves against loose_index in the workspace slot, isolating
+    // it from the real project's symbols.
+    pub(crate) async fn db_handles_for(&self, uri: &Url) -> DbHandles<'_> {
+        let workspace = if self.file_scope_of(uri).await.is_loose() {
+            self.loose_index.lock().await
+        } else {
+            self.workspace_index.lock().await
+        };
         DbHandles {
-            workspace: self.workspace_index.lock().await,
+            workspace,
             base: self.base_scripts_index.lock().await,
             script_env: self.script_env.lock().await,
             builtins: self.builtins_index.as_ref(),
@@ -566,11 +630,13 @@ impl Backend {
         if builtin_source(uri.as_str()).is_some() {
             return;
         }
-        // The client drops a file's legacy status on close; force a fresh push.
+        // The client drops a file's status on close; force a fresh push.
         self.sent_legacy_status.lock().await.remove(&uri);
+        self.sent_file_scope_status.lock().await.remove(&uri);
         self.update_open_document(uri, params.text_document.text)
             .await;
         self.publish_legacy_script_status().await;
+        self.publish_file_scope_status().await;
     }
 
     #[tracing::instrument(skip_all, fields(uri = %params.text_document.uri), level = "debug")]
@@ -611,13 +677,29 @@ impl Backend {
     }
 
     async fn _did_close(&self, params: DidCloseTextDocumentParams) {
+        let uri = params.text_document.uri;
+
+        // A loose file is a transient compilation member: closing it drops it.
+        if self.file_scope_of(&uri).await.is_loose() {
+            let invalidated = {
+                let mut index = self.loose_index.lock().await;
+                crate::indexing::remove_document_all_spellings(&mut index, &uri)
+            };
+            self.documents.lock().await.remove(&uri);
+            self.published_diagnostics.lock().await.remove(&uri);
+            self.evict_cache_entries(&invalidated).await;
+            self.publish_open_diagnostics().await;
+        }
+
         let _ = self
             .client
             .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
-                uri: params.text_document.uri,
+                uri: uri.clone(),
                 diagnostics: Vec::new(),
                 version: None,
             });
+        self.publish_file_scope_status().await;
+        self.sent_file_scope_status.lock().await.remove(&uri);
     }
 
     async fn _did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
@@ -669,9 +751,9 @@ impl Backend {
         }
 
         self.index_workspace().await;
-        if !removed.is_empty() {
-            self.publish_open_diagnostics().await;
-        }
+        self.reindex_open_documents().await;
+        self.publish_open_diagnostics().await;
+        self.publish_file_scope_status().await;
     }
 
     async fn _did_change_configuration(&self, _: DidChangeConfigurationParams) {
@@ -685,6 +767,8 @@ impl Backend {
             tracing::trace!("did_change_configuration: index-relevant config changed, re-indexing");
             self.index_workspace().await;
             self.index_base_scripts().await;
+            self.reindex_open_documents().await;
+            self.publish_open_diagnostics().await;
         } else {
             tracing::trace!(
                 "did_change_configuration: no index-relevant config change, skipping re-index"
@@ -694,6 +778,7 @@ impl Backend {
             tracing::trace!("did_change_configuration: diagnostics toggle changed, applying");
             self.apply_diagnostics_toggle().await;
         }
+        self.publish_file_scope_status().await;
     }
 
     async fn _definition(
@@ -706,7 +791,7 @@ impl Backend {
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let handles = self.db_handles().await;
+        let handles = self.db_handles_for(&uri).await;
         let db = handles.db();
         let definitions =
             resolve_all_definitions(uri.as_str(), document, &db, source_position(position));
@@ -735,7 +820,7 @@ impl Backend {
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let handles = self.db_handles().await;
+        let handles = self.db_handles_for(&uri).await;
         let db = handles.db();
         let Some(definition) =
             resolve_definition(uri.as_str(), document, &db, source_position(position))
@@ -759,7 +844,7 @@ impl Backend {
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let handles = self.db_handles().await;
+        let handles = self.db_handles_for(&uri).await;
         let db = handles.db();
         let compact_colon = self.config.load().formatter_compact_colon;
 
@@ -798,7 +883,7 @@ impl Backend {
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let handles = self.db_handles().await;
+        let handles = self.db_handles_for(&uri).await;
         let db = handles.db();
         let data = collect_semantic_tokens(uri.as_str(), document, &db);
         let tokens: Vec<SemanticToken> = data
@@ -826,7 +911,7 @@ impl Backend {
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let handles = self.db_handles().await;
+        let handles = self.db_handles_for(&uri).await;
         let db = handles.db();
 
         let ws_kb = handles.workspace().doc_idents_bytes() / 1024;
@@ -846,8 +931,16 @@ impl Backend {
 
         let workspace_docs = self.workspace_documents.lock().await;
         let base_docs = self.base_scripts_documents.lock().await;
+        let loose_uris = self.loose_open_uris(&documents).await;
+        let target_is_loose = loose_uris.contains(&uri);
 
-        let merged = merge_documents(&base_docs, &workspace_docs, &documents);
+        let merged = merge_documents(
+            &base_docs,
+            &workspace_docs,
+            &documents,
+            &loose_uris,
+            target_is_loose,
+        );
 
         let definition_document = merged.get(&definition.uri).copied().unwrap_or(document);
 
@@ -919,7 +1012,7 @@ impl Backend {
         };
 
         let documents = self.documents.lock().await;
-        let handles = self.db_handles().await;
+        let handles = self.db_handles_for(&uri).await;
         let workspace_docs = self.workspace_documents.lock().await;
         let base_docs = self.base_scripts_documents.lock().await;
 
@@ -938,7 +1031,14 @@ impl Backend {
 
         let db = handles.db();
 
-        let merged = merge_documents(&base_docs, &workspace_docs, &documents);
+        let loose_uris = self.loose_open_uris(&documents).await;
+        let merged = merge_documents(
+            &base_docs,
+            &workspace_docs,
+            &documents,
+            &loose_uris,
+            loose_uris.contains(&uri),
+        );
 
         let Some(definition_document) = merged.get(&definition.uri).copied() else {
             return Ok(None);
@@ -966,7 +1066,7 @@ impl Backend {
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let handles = self.db_handles().await;
+        let handles = self.db_handles_for(&uri).await;
         let db = handles.db();
 
         let pos = source_position(position);
