@@ -5,6 +5,7 @@ use tree_sitter::{Node, Point};
 
 use crate::line_index::SourceRange;
 
+mod abstract_instantiation;
 mod base_script_conflict;
 mod cst_walker;
 mod duplicate_local;
@@ -14,6 +15,7 @@ mod unknown_method;
 mod unknown_symbol;
 mod wrapped_method;
 
+pub use abstract_instantiation::collect_abstract_instantiation_diagnostics;
 pub use base_script_conflict::{
     basename_of, collect_base_script_conflict_diagnostics, relative_from_scripts,
     KIND as BASE_SCRIPT_CONFLICT_KIND,
@@ -31,6 +33,7 @@ pub use wrapped_method::collect_wrapped_method_diagnostics;
 
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
+use abstract_instantiation::AbstractInstantiationRule;
 use unknown_method::UnknownMethodRule;
 use unknown_symbol::run_unknown_symbol_parallel;
 use wrapped_method::WrappedMethodRule;
@@ -42,7 +45,8 @@ pub fn collect_cst_diagnostics_for_document(
 ) -> Vec<WorkspaceDiagnostic> {
     let method_rule = UnknownMethodRule;
     let wrapped_rule = WrappedMethodRule;
-    let rules: Vec<&dyn CstRule> = vec![&method_rule, &wrapped_rule];
+    let abstract_rule = AbstractInstantiationRule;
+    let rules: Vec<&dyn CstRule> = vec![&method_rule, &wrapped_rule, &abstract_rule];
     let mut diagnostics = run_rules_on_document(uri, document, db, &rules);
 
     let shard = run_unknown_symbol_parallel(uri, document, db);

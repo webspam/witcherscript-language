@@ -70,6 +70,7 @@ pub(super) fn make_env(name: &str, type_name: &str) -> ScriptEnvironment {
             is_optional: false,
             is_out: false,
             is_state_machine: false,
+            is_abstract: false,
         },
     }])
 }

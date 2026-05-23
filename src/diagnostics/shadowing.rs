@@ -189,6 +189,7 @@ mod tests {
                     is_optional: false,
                     is_out: false,
                     is_state_machine: false,
+                    is_abstract: false,
                 },
             })
             .collect();

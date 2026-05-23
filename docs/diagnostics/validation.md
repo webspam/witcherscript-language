@@ -20,6 +20,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 12 | `missing_wrapped_method` | error | `@wrapMethod` body has no `wrappedMethod(...)` call |
 | 13 | `duplicate_wrapped_method` | error | More than one `wrappedMethod(...)` call in a `@wrapMethod` body |
 | 14 | `ternary_cond_expr` | warning | `cond ? a : b` always evaluates to 0 / false / void |
+| 15 | `abstract_instantiation` | error | `new T` on an abstract class |
 
 ## Details
 
@@ -102,3 +103,7 @@ Every bare `wrappedMethod(...)` call after the first inside the same `@wrapMetho
 ### 14. Ternary expression
 
 The grammar accepts `cond ? a : b`, but the compiler always evaluates it to `0` / `false` / `void`. Flagged so the construct is rewritten as an `if` / `else` before it silently returns wrong values.
+
+### 15. Abstract class instantiation
+
+`new T` where `T` is a class declared with the `abstract` specifier. Abstract classes cannot be instantiated directly.
