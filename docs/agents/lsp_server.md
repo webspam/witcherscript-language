@@ -9,8 +9,8 @@
 | `convert.rs` | LSP↔internal type conversion: `lsp_range`, `source_position`, `lsp_symbol_kind`, `completion_item`, `document_symbols`, `hover_markdown`, `read_script_file`, `workspace_roots`. |
 | `cst_cache.rs` | Per-document parse-tree cache with invalidation hooks. |
 | `indexing.rs` | Workspace + base-script discovery and indexing helpers (game-directory scan, `modSharedImports` auto-load, settings refresh). |
-| `config.rs` | `fetch_config`, `apply_diagnostics_toggle`, `ConfigChange` plumbing for `workspace/configuration`. |
-| `diagnostics_publish.rs` | `publish_open_diagnostics`, `publish_syntactic_only` — diagnostic emission for open documents; `publish_legacy_script_status` — `witcherscript/legacyScriptStatus` push. |
+| `config.rs` | `fetch_config`, `DiagnosticsScope`, `ConfigChange` plumbing for `workspace/configuration`. |
+| `diagnostics_publish.rs` | `publish_open_diagnostics` (whole-workspace or open-files scope), `publish_syntactic_only`, `reconcile_published_diagnostics`; `publish_legacy_script_status` — `witcherscript/legacyScriptStatus` push. |
 | `watcher.rs` | `register_file_watchers`, `apply_watched_file_events`, `classify_watched_event` — file-watcher integration. |
 | `legacy_status.rs` | `LegacyScriptStatusParams` + `LegacyScriptStatusNotification` — the `witcherscript/legacyScriptStatus` protocol type. |
 | `logging.rs` | `LspLogSender` tracing layer, level enum/parsing, `DEFAULT_LOG_LEVEL`. |
@@ -114,9 +114,19 @@ update_open_document(uri, text)
 Editor closes file
     ↓
 did_close()
-    client.publish_diagnostics(uri, vec![])    // clear diagnostics
-    (document stays in workspace_index)
+    documents.remove(uri)                      // drop the editor buffer
+    reindex_closed_file(uri)                   // revert the index to on-disk content
+    publish_open_diagnostics()                 // workspace scope keeps it; openFiles scope retracts it
 ```
+
+## Diagnostics scope
+
+`witcherscript.diagnostics.scope` (`DiagnosticsScope`) decides which files `publish_open_diagnostics` emits for:
+
+- `Workspace` (default) — every workspace file is diagnosed; the Problems list is complete on project open and unaffected by opening/closing tabs.
+- `OpenFiles` — only editor-open files are diagnosed; symbols are still indexed project-wide.
+
+`diagnostics_document_set` builds the diagnosed document set: `workspace_documents` (workspace scope only) plus open buffers, with open buffers winning. Files are published under their canonical URI so the key is stable across open/close. `publish_open_diagnostics` retracts the diagnostics of any file that left the set.
 
 ## Legacy script status notification
 

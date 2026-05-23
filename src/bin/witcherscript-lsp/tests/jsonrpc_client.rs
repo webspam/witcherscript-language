@@ -2,12 +2,14 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use lsp_types::notification::{
-    DidChangeTextDocument, DidOpenTextDocument, Notification, PublishDiagnostics,
+    DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification,
+    PublishDiagnostics,
 };
 use lsp_types::request::Request;
 use lsp_types::{
-    Diagnostic, DidChangeTextDocumentParams, DidOpenTextDocumentParams, PublishDiagnosticsParams,
-    TextDocumentContentChangeEvent, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
+    Diagnostic, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    PublishDiagnosticsParams, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+    TextDocumentItem, Url, VersionedTextDocumentIdentifier,
 };
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
@@ -107,6 +109,14 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
         .await;
         self.diagnostics.remove(uri);
         let _ = self.wait_diagnostics(uri).await;
+    }
+
+    pub(crate) async fn did_close(&mut self, uri: &Url) {
+        self.notify::<DidCloseTextDocument>(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+        })
+        .await;
+        self.diagnostics.remove(uri);
     }
 
     pub(crate) async fn wait_diagnostics(&mut self, uri: &Url) -> Vec<Diagnostic> {

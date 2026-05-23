@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
-use lsp_types::Url;
 use witcherscript_language::diagnostics::{
     collect_cst_diagnostics_for_document, WorkspaceDiagnostic,
 };
@@ -34,53 +33,53 @@ pub(crate) struct CstDiagnosticsResult {
 }
 
 pub(crate) fn cst_diagnostics_with_cache(
-    documents: &HashMap<Url, ParsedDocument>,
+    documents: &HashMap<String, &ParsedDocument>,
     db: &SymbolDb,
-    loose: Option<(&SymbolDb, &HashSet<Url>)>,
+    loose: Option<(&SymbolDb, &HashSet<String>)>,
     fingerprint: DbFingerprint,
-    cache: &mut HashMap<Url, CstCacheEntry>,
+    cache: &mut HashMap<String, CstCacheEntry>,
 ) -> CstDiagnosticsResult {
     let mut out: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
     let mut stats = CstCacheStats::default();
     let mut new_subscriptions: Vec<(String, ObservationSet)> = Vec::new();
 
-    for (url, document) in documents.iter() {
-        let reuse = cache.get(url).is_some_and(|e| {
+    for (uri, document) in documents.iter() {
+        let reuse = cache.get(uri).is_some_and(|e| {
             e.parse_version == document.parse_version && e.db_fingerprint == fingerprint
         });
         let diagnostics = if reuse {
             stats.hits += 1;
-            cache.get(url).unwrap().diagnostics.clone()
+            cache.get(uri).unwrap().diagnostics.clone()
         } else {
             stats.misses += 1;
             let observations = Mutex::new(ObservationSet::default());
             let doc_db = match loose {
-                Some((loose_db, loose_uris)) if loose_uris.contains(url) => loose_db,
+                Some((loose_db, loose_uris)) if loose_uris.contains(uri.as_str()) => loose_db,
                 _ => db,
             };
             let recording_db = doc_db.with_observer(&observations);
             let d =
-                tracing::debug_span!("cst_doc", uri = url.as_str(), bytes = document.source.len())
+                tracing::debug_span!("cst_doc", uri = uri.as_str(), bytes = document.source.len())
                     .in_scope(|| {
-                        collect_cst_diagnostics_for_document(url.as_str(), document, &recording_db)
+                        collect_cst_diagnostics_for_document(uri.as_str(), document, &recording_db)
                     });
             cache.insert(
-                url.clone(),
+                uri.clone(),
                 CstCacheEntry {
                     parse_version: document.parse_version,
                     db_fingerprint: fingerprint,
                     diagnostics: d.clone(),
                 },
             );
-            new_subscriptions.push((url.to_string(), observations.into_inner().unwrap()));
+            new_subscriptions.push((uri.clone(), observations.into_inner().unwrap()));
             d
         };
         if !diagnostics.is_empty() {
-            out.insert(url.to_string(), diagnostics);
+            out.insert(uri.clone(), diagnostics);
         }
     }
 
-    cache.retain(|url, _| documents.contains_key(url));
+    cache.retain(|uri, _| documents.contains_key(uri));
 
     CstDiagnosticsResult {
         by_uri: out,
@@ -92,7 +91,6 @@ pub(crate) fn cst_diagnostics_with_cache(
 #[cfg(test)]
 mod tests {
     use super::{cst_diagnostics_with_cache, CstCacheEntry, DbFingerprint};
-    use lsp_types::Url;
     use std::collections::HashMap;
     use witcherscript_language::document::{parse_document, ParsedDocument};
     use witcherscript_language::resolve::{SymbolDb, WorkspaceIndex};
@@ -101,8 +99,11 @@ mod tests {
         parse_document(src).expect("parse should succeed")
     }
 
-    fn url(s: &str) -> Url {
-        Url::parse(s).expect("valid url")
+    fn fp() -> DbFingerprint {
+        DbFingerprint {
+            base_surface: 0,
+            env: 0,
+        }
     }
 
     #[test]
@@ -115,20 +116,16 @@ mod tests {
         let base = WorkspaceIndex::default();
         let db = SymbolDb::new(&idx, &base);
 
-        let mut documents: HashMap<Url, ParsedDocument> = HashMap::new();
-        documents.insert(url("file:///a.ws"), doc_a);
-        documents.insert(url("file:///b.ws"), doc_b);
-        let fp = DbFingerprint {
-            base_surface: 0,
-            env: 0,
-        };
+        let mut documents: HashMap<String, &ParsedDocument> = HashMap::new();
+        documents.insert("file:///a.ws".to_string(), &doc_a);
+        documents.insert("file:///b.ws".to_string(), &doc_b);
 
-        let mut cache: HashMap<Url, CstCacheEntry> = HashMap::new();
-        let r1 = cst_diagnostics_with_cache(&documents, &db, None, fp, &mut cache);
+        let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
+        let r1 = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
         assert_eq!(r1.stats.hits, 0);
         assert_eq!(r1.stats.misses, 2);
 
-        let r2 = cst_diagnostics_with_cache(&documents, &db, None, fp, &mut cache);
+        let r2 = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
         assert_eq!(r2.stats.hits, 2);
         assert_eq!(r2.stats.misses, 0);
     }
@@ -141,29 +138,23 @@ mod tests {
         idx.update_document("file:///a.ws", &doc_a);
         idx.update_document("file:///b.ws", &doc_b);
         let base = WorkspaceIndex::default();
-        let db = SymbolDb::new(&idx, &base);
 
-        let mut documents: HashMap<Url, ParsedDocument> = HashMap::new();
-        documents.insert(url("file:///a.ws"), doc_a);
-        documents.insert(url("file:///b.ws"), doc_b);
+        let mut documents: HashMap<String, &ParsedDocument> = HashMap::new();
+        documents.insert("file:///a.ws".to_string(), &doc_a);
+        documents.insert("file:///b.ws".to_string(), &doc_b);
 
-        let fp0 = DbFingerprint {
-            base_surface: 0,
-            env: 0,
-        };
-        let mut cache: HashMap<Url, CstCacheEntry> = HashMap::new();
-        let _ = cst_diagnostics_with_cache(&documents, &db, None, fp0, &mut cache);
+        let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
+        {
+            let db = SymbolDb::new(&idx, &base);
+            let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
+        }
 
         let fresh_a = make_doc("class A {} // comment-only edit\n");
         idx.update_document("file:///a.ws", &fresh_a);
-        documents.insert(url("file:///a.ws"), fresh_a);
+        documents.insert("file:///a.ws".to_string(), &fresh_a);
 
         let db = SymbolDb::new(&idx, &base);
-        let fp1 = DbFingerprint {
-            base_surface: 0,
-            env: 0,
-        };
-        let r = cst_diagnostics_with_cache(&documents, &db, None, fp1, &mut cache);
+        let r = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
         assert_eq!(r.stats.hits, 1, "doc b should still be a cache hit");
         assert_eq!(
             r.stats.misses, 1,
@@ -181,21 +172,17 @@ mod tests {
         let base = WorkspaceIndex::default();
         let db = SymbolDb::new(&idx, &base);
 
-        let mut documents: HashMap<Url, ParsedDocument> = HashMap::new();
-        documents.insert(url("file:///a.ws"), doc_a);
-        documents.insert(url("file:///b.ws"), doc_b);
-        let fp = DbFingerprint {
-            base_surface: 0,
-            env: 0,
-        };
+        let mut documents: HashMap<String, &ParsedDocument> = HashMap::new();
+        documents.insert("file:///a.ws".to_string(), &doc_a);
+        documents.insert("file:///b.ws".to_string(), &doc_b);
 
-        let mut cache: HashMap<Url, CstCacheEntry> = HashMap::new();
-        let _ = cst_diagnostics_with_cache(&documents, &db, None, fp, &mut cache);
+        let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
+        let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
 
         let fresh_a = make_doc("class A {} // edit\n");
-        documents.insert(url("file:///a.ws"), fresh_a);
+        documents.insert("file:///a.ws".to_string(), &fresh_a);
 
-        let r = cst_diagnostics_with_cache(&documents, &db, None, fp, &mut cache);
+        let r = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
         assert_eq!(r.stats.hits, 1);
         assert_eq!(r.stats.misses, 1);
     }
@@ -210,19 +197,15 @@ mod tests {
         let base = WorkspaceIndex::default();
         let db = SymbolDb::new(&idx, &base);
 
-        let mut documents: HashMap<Url, ParsedDocument> = HashMap::new();
-        documents.insert(url("file:///a.ws"), doc_a);
-        documents.insert(url("file:///b.ws"), doc_b);
-        let fp = DbFingerprint {
-            base_surface: 0,
-            env: 0,
-        };
+        let mut documents: HashMap<String, &ParsedDocument> = HashMap::new();
+        documents.insert("file:///a.ws".to_string(), &doc_a);
+        documents.insert("file:///b.ws".to_string(), &doc_b);
 
-        let mut cache: HashMap<Url, CstCacheEntry> = HashMap::new();
-        let _ = cst_diagnostics_with_cache(&documents, &db, None, fp, &mut cache);
+        let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
+        let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
 
         let fp_bumped = DbFingerprint {
-            base_surface: fp.base_surface.wrapping_add(1),
+            base_surface: fp().base_surface.wrapping_add(1),
             env: 0,
         };
         let r = cst_diagnostics_with_cache(&documents, &db, None, fp_bumped, &mut cache);
@@ -240,20 +223,16 @@ mod tests {
         let base = WorkspaceIndex::default();
         let db = SymbolDb::new(&idx, &base);
 
-        let mut documents: HashMap<Url, ParsedDocument> = HashMap::new();
-        documents.insert(url("file:///a.ws"), doc_a);
-        documents.insert(url("file:///b.ws"), doc_b);
-        let fp = DbFingerprint {
-            base_surface: 0,
-            env: 0,
-        };
+        let mut documents: HashMap<String, &ParsedDocument> = HashMap::new();
+        documents.insert("file:///a.ws".to_string(), &doc_a);
+        documents.insert("file:///b.ws".to_string(), &doc_b);
 
-        let mut cache: HashMap<Url, CstCacheEntry> = HashMap::new();
-        let _ = cst_diagnostics_with_cache(&documents, &db, None, fp, &mut cache);
+        let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
+        let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
         assert_eq!(cache.len(), 2);
 
-        documents.remove(&url("file:///b.ws"));
-        let _ = cst_diagnostics_with_cache(&documents, &db, None, fp, &mut cache);
+        documents.remove("file:///b.ws");
+        let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
         assert_eq!(cache.len(), 1);
     }
 
@@ -268,18 +247,14 @@ mod tests {
         let _ = idx.update_document(user_uri, &user);
         let base = WorkspaceIndex::default();
 
-        let mut documents: HashMap<Url, ParsedDocument> = HashMap::new();
-        documents.insert(url(user_uri), user);
-        documents.insert(url(helper_uri), helper);
-        let fp = DbFingerprint {
-            base_surface: 0,
-            env: 0,
-        };
-        let mut cache: HashMap<Url, CstCacheEntry> = HashMap::new();
+        let mut documents: HashMap<String, &ParsedDocument> = HashMap::new();
+        documents.insert(user_uri.to_string(), &user);
+        documents.insert(helper_uri.to_string(), &helper);
+        let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
 
         let warm = {
             let db = SymbolDb::new(&idx, &base);
-            cst_diagnostics_with_cache(&documents, &db, None, fp, &mut cache)
+            cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache)
         };
         for (uri, obs) in warm.new_subscriptions {
             idx.register_subscription(&uri, obs);
@@ -288,12 +263,12 @@ mod tests {
 
         let fresh_helper = make_doc("function Log() {} function Trace() {}\n");
         let invalidated = idx.update_document(helper_uri, &fresh_helper);
-        documents.insert(url(helper_uri), fresh_helper);
+        documents.insert(helper_uri.to_string(), &fresh_helper);
         cache.retain(|u, _| !invalidated.contains(u.as_str()));
 
         let stats = {
             let db = SymbolDb::new(&idx, &base);
-            cst_diagnostics_with_cache(&documents, &db, None, fp, &mut cache).stats
+            cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache).stats
         };
         assert!(
             !invalidated.contains(user_uri),

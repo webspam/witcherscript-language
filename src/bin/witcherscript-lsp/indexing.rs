@@ -121,6 +121,31 @@ pub(crate) fn remove_document_all_spellings(
     invalidated
 }
 
+// A closed file reverts to disk content, re-keyed from the open spelling to canonical.
+fn reindex_into(
+    index: &mut WorkspaceIndex,
+    docs: &mut HashMap<String, ParsedDocument>,
+    client_uri: &str,
+    canonical: &str,
+    parsed: Option<ParsedDocument>,
+) -> HashSet<String> {
+    let mut invalidated = HashSet::new();
+    if client_uri != canonical {
+        invalidated.extend(index.remove_document(client_uri));
+    }
+    match parsed {
+        Some(document) => {
+            invalidated.extend(index.update_document(canonical, &document));
+            docs.insert(canonical.to_string(), document);
+        }
+        None => {
+            invalidated.extend(index.remove_document(canonical));
+            docs.remove(canonical);
+        }
+    }
+    invalidated
+}
+
 impl Backend {
     // A workspace-folder or config change reroutes open docs now, not on next keystroke.
     #[tracing::instrument(skip(self), level = "debug")]
@@ -173,6 +198,28 @@ impl Backend {
             }
         }
         drop(documents);
+        self.evict_cache_entries(&invalidated).await;
+    }
+
+    // Closing a non-loose file reverts it from buffer to on-disk content in the workspace/base index.
+    pub(crate) async fn reindex_closed_file(&self, uri: &Url) {
+        let canonical = canonical_uri(uri).unwrap_or_else(|| uri.to_string());
+        let is_base = self.is_base_script_uri(uri).await;
+        let parsed = uri
+            .to_file_path()
+            .ok()
+            .and_then(|path| read_script_file(&path).ok())
+            .and_then(|text| parse_document(text).ok());
+
+        let invalidated = if is_base {
+            let mut index = self.base_scripts_index.lock().await;
+            let mut docs = self.base_scripts_documents.lock().await;
+            reindex_into(&mut index, &mut docs, uri.as_str(), &canonical, parsed)
+        } else {
+            let mut index = self.workspace_index.lock().await;
+            let mut docs = self.workspace_documents.lock().await;
+            reindex_into(&mut index, &mut docs, uri.as_str(), &canonical, parsed)
+        };
         self.evict_cache_entries(&invalidated).await;
     }
 
