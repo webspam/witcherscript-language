@@ -449,6 +449,65 @@ fn state_parent_dot_cannot_see_protected_owner_method() {
 }
 
 #[test]
+fn state_without_explicit_extends_defaults_to_cscriptablestate() {
+    let source = concat!(
+        "statemachine class Owner {}\n",
+        "state SpawnBoatLatentHack in Owner {}\n",
+    );
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///a.ws", &doc);
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&index, &empty);
+
+    assert_eq!(
+        db.superclass_of("SpawnBoatLatentHack").as_deref(),
+        Some("CScriptableState")
+    );
+    // CScriptableState is not declared; the chain must terminate without looping.
+    assert!(db
+        .find_member("SpawnBoatLatentHack", "someMethod", AccessLevel::Public)
+        .is_none());
+}
+
+#[test]
+fn baseless_state_inherits_cscriptablestate_members() {
+    let source = concat!(
+        "class IScriptable {}\n",
+        "class CScriptableState extends IScriptable {\n",
+        "  function OnEnterState(prevName : name) {}\n",
+        "}\n",
+        "statemachine class Owner {}\n",
+        "state SpawnBoatLatentHack in Owner {\n",
+        "  entry function Run() {\n",
+        "    OnEnterState('Foo');\n",
+        "  }\n",
+        "}\n",
+    );
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+
+    // cursor on 'OnEnterState' inside Run (line 7, col 5)
+    let definition = resolve_definition(
+        "file:///test.ws",
+        &doc,
+        &SymbolDb::new(&index, &WorkspaceIndex::default()),
+        SourcePosition {
+            line: 7,
+            character: 5,
+        },
+    )
+    .expect("a state with no extends still inherits CScriptableState's members");
+
+    assert_eq!(definition.symbol.name, "OnEnterState");
+    assert_eq!(
+        definition.symbol.container_name.as_deref(),
+        Some("CScriptableState")
+    );
+}
+
+#[test]
 fn state_method_resolves_through_extends_chain() {
     let source = concat!(
         "statemachine class Owner {}\n",
