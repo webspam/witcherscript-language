@@ -3,6 +3,7 @@ mod builtin_classes;
 mod builtin_enums;
 mod chaining;
 mod completion_annotation;
+mod completion_default_hint;
 mod completion_keywords;
 mod completion_members;
 mod completion_script_keywords;

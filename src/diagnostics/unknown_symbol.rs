@@ -105,7 +105,7 @@ enum IdentRole<'tree> {
     Declaration,
     TypeRef,
     MemberOfAccess(Node<'tree>),
-    MemberOfDefault { is_hint: bool },
+    MemberOfDefaultOrHint { is_hint: bool },
     FuncBareCall,
     Bare,
 }
@@ -185,7 +185,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             ctx.telemetry.branch_member_access_visits += 1;
             r
         }
-        IdentRole::MemberOfDefault { is_hint } => {
+        IdentRole::MemberOfDefaultOrHint { is_hint } => {
             let r = (|| {
                 let enclosing = ctx.document.symbols.enclosing_symbol_at(
                     ident.start_byte(),
@@ -195,24 +195,15 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 if name == "autoState" && enclosing.is_state_machine {
                     return None;
                 }
-                // `default instanceClass` is valid in IBehTreeObjectDefinition subclasses despite its private base-script field.
-                if name == "instanceClass"
-                    && ctx
-                        .db
-                        .inherits_from(&enclosing.name, "IBehTreeObjectDefinition")
-                {
-                    return None;
-                }
                 let container_name = enclosing.name.clone();
                 ctx.telemetry.member_lookups += 1;
                 if ctx
                     .db
-                    .find_member(&container_name, name, AccessLevel::Private)
+                    .find_member_for_default_or_hint(&container_name, name)
                     .is_some()
                 {
                     return None;
                 }
-                // The compiler tolerates a `hint` for a member that does not exist.
                 let severity = if is_hint {
                     Severity::Info
                 } else {
@@ -284,13 +275,9 @@ fn classify(ident: Node<'_>) -> Option<IdentRole<'_>> {
         return Some(IdentRole::TypeRef);
     }
 
-    if matches!(
-        parent.kind(),
-        "member_default_val" | "member_default_val_block_assign" | "member_hint"
-    ) && parent.child_by_field_name("member").map(|n| n.id()) == Some(ident.id())
-    {
-        let is_hint = parent.kind() == "member_hint";
-        return Some(IdentRole::MemberOfDefault { is_hint });
+    if let Some(kind) = crate::cst::grammar::ident_default_or_hint_kind(ident) {
+        let is_hint = matches!(kind, crate::cst::grammar::DefaultOrHintKind::Hint);
+        return Some(IdentRole::MemberOfDefaultOrHint { is_hint });
     }
 
     if parent.kind() == "member_access_expr" {
@@ -645,29 +632,43 @@ mod tests {
     }
 
     #[test]
-    fn default_instance_class_not_flagged_on_beh_tree_subclass() {
+    fn default_on_private_inherited_field_not_flagged() {
         let (idx, docs) = index_and_docs(&[(
             "file:///t.ws",
-            "class IBehTreeObjectDefinition { private var instanceClass : name; } \
-             class CBTTaskAttack extends IBehTreeObjectDefinition { default instanceClass = 'CR4Task'; }\n",
+            "class Super { private var hidden : int; default hidden = 1; } \
+             class Sub extends Super { default hidden = 2; }\n",
         )]);
         let result = check(&idx, &docs);
         assert!(
             result.is_empty(),
-            "default instanceClass on a IBehTreeObjectDefinition subclass is valid, got {result:?}"
+            "subclass may override a private inherited default, got {result:?}"
         );
     }
 
     #[test]
-    fn default_instance_class_in_unrelated_class_still_flagged() {
+    fn hint_on_private_inherited_field_not_flagged() {
         let (idx, docs) = index_and_docs(&[(
             "file:///t.ws",
-            "class Plain { default instanceClass = 'CR4Task'; }\n",
+            "class Super { private var hidden : int; } \
+             class Sub extends Super { hint hidden = \"tip\"; }\n",
+        )]);
+        let result = check(&idx, &docs);
+        assert!(
+            result.is_empty(),
+            "subclass may set the hint of a private inherited field, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn default_for_unknown_member_in_unrelated_class_still_flagged() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "class Plain { default missing = 'CR4Task'; }\n",
         )]);
         let result = check(&idx, &docs);
         let diags = result.get("file:///t.ws").unwrap();
         assert_eq!(kinds(diags), vec!["unknown_member"]);
-        assert!(diags[0].message.contains("instanceClass"));
+        assert!(diags[0].message.contains("missing"));
     }
 
     #[test]

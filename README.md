@@ -79,10 +79,10 @@ diagnostics:
 - Unknown member (`unknown_member`): `receiver.field` on a known workspace type where
   `field` is not a member of that type or any supertype. Also fires inside `default
   field = …;`, `defaults { field = …; }`, and `hint field = "…";` blocks when the
-  enclosing class/struct/state has no such field. The `hint` case is reported at info
-  level, since the compiler accepts a hint for any member name. Skipped when the receiver
-  type can't be inferred (cascading) or is primitive; method-call cases are owned by
-  `unknown_method`.
+  enclosing class/struct/state has no such field; inherited private fields count as
+  visible there, since a subclass may set their default or hint. The `hint` case is
+  reported at info level. Skipped when the receiver type can't be inferred (cascading)
+  or is primitive; method-call cases are owned by `unknown_method`.
 - Unknown function (`unknown_function`): a bare `Foo()` call where `Foo` doesn't resolve
   to a top-level function, a method on `this` (this-shorthand, including up the
   inheritance chain), or a script-environment global.

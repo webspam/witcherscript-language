@@ -17,9 +17,9 @@ pub use ast::{BUILTIN_TYPES, BUILTIN_TYPE_COMPLETIONS};
 pub use completion::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
-    expression_completions, extends_completions, script_body_completions, state_owner_completions,
-    statement_completions, type_completions, AfterWrapMethodCompletions, ExpressionCompletions,
-    StatementCompletions,
+    default_or_hint_member_completions, expression_completions, extends_completions,
+    script_body_completions, state_owner_completions, statement_completions, type_completions,
+    AfterWrapMethodCompletions, ExpressionCompletions, StatementCompletions,
 };
 pub use db::{ObservedKey, SymbolDb, WorkspaceIndex};
 pub use definition::{

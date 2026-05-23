@@ -103,10 +103,10 @@ resolve_definition(uri, document, db, position)
 `find_member_chain_cross(container, name, depth, min_access)`:
 1. Check direct members of `container` in workspace, then base.
 2. If not found, look up `superclass_of(container)` (workspace first, then base).
-3. Recurse with `depth + 1` and `min_access.max(Protected)`.
+3. Recurse with `depth + 1`. Access is normally bumped to `min_access.max(Protected)` so private members stop being visible after the first hop; callers that pass `allow_private = true` (see `find_member_for_default_or_hint`) skip the bump and keep private visible at every hop.
 4. Hard stop at depth 32 (prevents infinite loops from circular inheritance in malformed code).
 
-When inherited: `Private` members are never visible. `Protected` members are visible when accessed from within a subclass. `Public` members are always visible.
+When inherited: `Private` members are not visible by default. `Protected` members are visible when accessed from within a subclass. `Public` members are always visible. The `default x = ...` / `defaults { x = ...; }` / `hint x = ...` contexts are the one exception: a subclass can override the default value or hint of a private inherited field, so those lookups go through `find_member_for_default_or_hint` (and `members_of_for_default_or_hint` for completions) which keep private visible.
 
 ## infer_expr_type
 
@@ -129,6 +129,9 @@ Called when the trigger character is `.` or `:`. Returns `Vec<(u8, Definition)>`
 - `1` = inherited member
 
 Access level: `Public` for global use; `Protected` from within the same class.
+
+### `default_or_hint_member_completions(document, db, position)`
+Called when the cursor sits in the `member` position of `default x = ...`, `defaults { x = ...; }`, or `hint x = ...`. Returns members of the enclosing class with private inherited fields included (a subclass may override the default or hint of a private inherited field).
 
 ### `type_completions(document, db, position)`
 Called in type annotation context. Returns:

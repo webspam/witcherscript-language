@@ -37,10 +37,10 @@ use witcherscript_language::line_index::LineIndex;
 use witcherscript_language::resolve::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
-    expression_completions, extends_completions, find_references, resolve_all_definitions,
-    resolve_definition, script_body_completions, signature_help, state_owner_completions,
-    statement_completions, type_completions, AfterWrapMethodCompletions, SymbolDb, WorkspaceIndex,
-    BUILTIN_TYPE_COMPLETIONS,
+    default_or_hint_member_completions, expression_completions, extends_completions,
+    find_references, resolve_all_definitions, resolve_definition, script_body_completions,
+    signature_help, state_owner_completions, statement_completions, type_completions,
+    AfterWrapMethodCompletions, SymbolDb, WorkspaceIndex, BUILTIN_TYPE_COMPLETIONS,
 };
 use witcherscript_language::script_env::ScriptEnvironment;
 use witcherscript_language::semantic_tokens::{
@@ -1100,6 +1100,20 @@ impl Backend {
                 .collect();
         if !member_items.is_empty() {
             return Ok(Some(CompletionResponse::Array(member_items)));
+        }
+
+        let default_or_hint = default_or_hint_member_completions(document, &db, pos);
+        if !default_or_hint.is_empty() {
+            let items: Vec<CompletionItem> = default_or_hint
+                .iter()
+                .map(|def| {
+                    let params = db.parameters_of(&def.uri, def.symbol.id);
+                    let mut item = completion_item(def, &params);
+                    item.sort_text = Some(format!("0_{}", def.symbol.name));
+                    item
+                })
+                .collect();
+            return Ok(Some(CompletionResponse::Array(items)));
         }
 
         let annotation_arg = annotation_arg_completions(document, &db, pos);
