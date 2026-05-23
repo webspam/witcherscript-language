@@ -154,10 +154,8 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn inherits_from(&self, class_name: &str, ancestor: &str) -> bool {
-        self.try_in_chain(class_name, AccessLevel::Private, false, |current, _, _| {
-            (current == ancestor).then_some(())
-        })
-        .is_some()
+        self.try_in_chain(class_name, |current, _| (current == ancestor).then_some(()))
+            .is_some()
     }
 
     fn virtual_object_base(&self, class_name: &str) -> Option<String> {
@@ -180,41 +178,25 @@ impl<'a> SymbolDb<'a> {
         name: &str,
         min_access: AccessLevel,
     ) -> Option<Definition> {
-        self.walk_chain_for_member(container, name, min_access, false)
+        let def = self.walk_chain_for_member(container, name)?;
+        (def.symbol.access >= min_access).then_some(def)
     }
 
-    /// `default`/`hint` may target a private inherited field.
-    pub fn find_member_for_default_or_hint(
-        &self,
-        container: &str,
-        name: &str,
-    ) -> Option<Definition> {
-        self.walk_chain_for_member(container, name, AccessLevel::Private, true)
-    }
-
-    fn walk_chain_for_member(
-        &self,
-        container: &str,
-        name: &str,
-        min_access: AccessLevel,
-        allow_private: bool,
-    ) -> Option<Definition> {
+    fn walk_chain_for_member(&self, container: &str, name: &str) -> Option<Definition> {
         let (lookup, element) = generic_lookup_target(container);
-        let def = self.try_in_chain(
-            lookup,
-            min_access,
-            allow_private,
-            |container, _depth, access| {
-                self.record_member(container, name);
-                self.workspace
-                    .direct_member_of(container, name, access)
-                    .or_else(|| self.base.direct_member_of(container, name, access))
-                    .or_else(|| {
-                        self.builtins
-                            .and_then(|b| b.direct_member_of(container, name, access))
-                    })
-            },
-        );
+        let def = self.try_in_chain(lookup, |container, _depth| {
+            self.record_member(container, name);
+            self.workspace
+                .direct_member_of(container, name, AccessLevel::Private)
+                .or_else(|| {
+                    self.base
+                        .direct_member_of(container, name, AccessLevel::Private)
+                })
+                .or_else(|| {
+                    self.builtins
+                        .and_then(|b| b.direct_member_of(container, name, AccessLevel::Private))
+                })
+        });
         match (def, element) {
             (Some(d), Some(elem)) => Some(substitute_in_definition(d, container, elem)),
             (d, _) => d,
@@ -259,34 +241,25 @@ impl<'a> SymbolDb<'a> {
         container: &str,
         min_access: AccessLevel,
     ) -> Vec<(u8, Definition)> {
-        self.walk_chain_for_members(container, min_access, false)
-    }
-
-    pub fn members_of_for_default_or_hint(&self, container: &str) -> Vec<Definition> {
-        self.walk_chain_for_members(container, AccessLevel::Private, true)
+        self.walk_chain_for_members(container)
             .into_iter()
-            .map(|(_, def)| def)
+            .filter(|(_, def)| def.symbol.access >= min_access)
             .collect()
     }
 
-    fn walk_chain_for_members(
-        &self,
-        container: &str,
-        min_access: AccessLevel,
-        allow_private: bool,
-    ) -> Vec<(u8, Definition)> {
+    fn walk_chain_for_members(&self, container: &str) -> Vec<(u8, Definition)> {
         let (lookup, element) = generic_lookup_target(container);
         let mut seen: HashMap<String, (u8, Definition)> = HashMap::new();
-        self.try_in_chain::<(), _>(lookup, min_access, allow_private, |c, depth, access| {
+        self.try_in_chain::<(), _>(lookup, |c, depth| {
             let tier = if depth == 0 { 0u8 } else { 1u8 };
             for def in self
                 .workspace
-                .direct_members_of(c, access)
+                .direct_members_of(c, AccessLevel::Private)
                 .into_iter()
-                .chain(self.base.direct_members_of(c, access))
+                .chain(self.base.direct_members_of(c, AccessLevel::Private))
                 .chain(
                     self.builtins
-                        .map(|b| b.direct_members_of(c, access))
+                        .map(|b| b.direct_members_of(c, AccessLevel::Private))
                         .unwrap_or_default(),
                 )
             {
@@ -325,32 +298,22 @@ impl<'a> SymbolDb<'a> {
         dedup_definitions(decls)
     }
 
-    fn try_in_chain<T, F>(
-        &self,
-        start: &str,
-        min_access: AccessLevel,
-        allow_private: bool,
-        mut visit: F,
-    ) -> Option<T>
+    fn try_in_chain<T, F>(&self, start: &str, mut visit: F) -> Option<T>
     where
-        F: FnMut(&str, usize, AccessLevel) -> Option<T>,
+        F: FnMut(&str, usize) -> Option<T>,
     {
         let mut current: String = start.to_string();
         let mut depth: usize = 0;
-        let mut access = min_access;
         loop {
             if depth > MAX_INHERITANCE_DEPTH {
                 return None;
             }
             self.record_top_level(&current);
-            if let Some(found) = visit(&current, depth, access) {
+            if let Some(found) = visit(&current, depth) {
                 return Some(found);
             }
             let superclass = self.superclass_of(&current)?;
             depth += 1;
-            if !allow_private {
-                access = access.max(AccessLevel::Protected);
-            }
             current = superclass;
         }
     }
