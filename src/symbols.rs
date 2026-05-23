@@ -58,6 +58,7 @@ pub struct Symbol {
     pub is_optional: bool,
     pub is_out: bool,
     pub is_state_machine: bool,
+    pub is_abstract: bool,
 }
 
 impl Symbol {
@@ -254,6 +255,7 @@ struct SymbolSpec {
     is_optional: bool,
     is_out: bool,
     is_state_machine: bool,
+    is_abstract: bool,
 }
 
 impl SymbolExtractor<'_> {
@@ -314,13 +316,21 @@ impl SymbolExtractor<'_> {
             return;
         };
         let base_class = base_type(node, self.source);
-        let is_state_machine = {
+        let (is_state_machine, is_abstract) = {
             let mut c = node.walk();
-            let result = node.children(&mut c).any(|child| {
-                child.kind() == "specifier"
-                    && &self.source[child.start_byte()..child.end_byte()] == "statemachine"
-            });
-            result
+            let mut sm = false;
+            let mut ab = false;
+            for child in node.children(&mut c) {
+                if child.kind() != "specifier" {
+                    continue;
+                }
+                match &self.source[child.start_byte()..child.end_byte()] {
+                    "statemachine" => sm = true,
+                    "abstract" => ab = true,
+                    _ => {}
+                }
+            }
+            (sm, ab)
         };
         let id = self.push_symbol(
             node,
@@ -331,6 +341,7 @@ impl SymbolExtractor<'_> {
                 annotations,
                 base_class,
                 is_state_machine,
+                is_abstract,
                 ..Default::default()
             },
         );
@@ -590,6 +601,7 @@ impl SymbolExtractor<'_> {
             is_optional: spec.is_optional,
             is_out: spec.is_out,
             is_state_machine: spec.is_state_machine,
+            is_abstract: spec.is_abstract,
         })
     }
 
