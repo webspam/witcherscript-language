@@ -2,9 +2,8 @@
 
 How to cut a new version of `witcherscript-language`.
 
-There is currently no published artifact — `publish = false` in `Cargo.toml`, so
-nothing goes to crates.io. A "release" today just means a recorded version bump
-so local builds and binaries carry a meaningful version number.
+The package has `publish = false` in `Cargo.toml`, so nothing goes to crates.io.
+Releases are cut as GitHub Releases with prebuilt Windows binaries attached.
 
 ## Versioning
 
@@ -37,12 +36,20 @@ Semantic versioning (`MAJOR.MINOR.PATCH`):
 
    Keep the bump in its own commit — no unrelated changes.
 
-## Public releases (not yet in use)
+5. Push the bump to `master` (via PR or direct push, per repo policy).
 
-When the project starts producing public releases, extend the process with:
+6. Trigger the `Create Release` workflow ([.github/workflows/release.yml](.github/workflows/release.yml))
+   from the Actions tab:
 
-- A git tag `vX.Y.Z` on the version-bump commit, pushed to the remote.
-- Release notes / a changelog covering what changed since the previous tag.
-- Entire process to be run through GitHub Actions (in runner context, for clean from-source audit trail)
+   - **tag** — `vX.Y.Z` (must match the version in `Cargo.toml`)
+   - **title** — leave blank to use the tag
+   - **summary** — optional prose to prepend above the auto-generated notes
+   - **prerelease** — leave unchecked for a normal release
 
-Until then, tags are unnecessary for local-only version bumps.
+   The workflow builds release binaries on `windows-latest`, packages
+   `witcherscript-check.exe` + `witcherscript-lsp.exe` (plus `README.md`) into
+   `witcherscript-language-vX.Y.Z-windows-x64.zip`, creates the tag, and opens
+   a **draft** GitHub Release with auto-generated notes from commits since the
+   previous tag.
+
+7. Review the draft release on GitHub, edit notes if needed, and publish.

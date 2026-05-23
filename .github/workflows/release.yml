@@ -1,0 +1,76 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag (e.g., v0.3.2)"
+        required: true
+        type: string
+      title:
+        description: "Title (defaults to tag)"
+        required: false
+        type: string
+      summary:
+        description: "Summary (appears above auto-generated notes)"
+        required: false
+        type: string
+      prerelease:
+        description: "Mark as pre-release"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  create-release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Build release binaries
+        run: cargo build --release --bins
+
+      - name: Package binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zipPath = "witcherscript-language-${{ inputs.tag }}-windows-x64.zip"
+          $stage = "stage"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item target/release/witcherscript-check.exe $stage/
+          Copy-Item target/release/witcherscript-lsp.exe   $stage/
+          Copy-Item README.md  $stage/
+          Copy-Item LICENSE*   $stage/ -ErrorAction SilentlyContinue
+          Compress-Archive -Path "$stage/*" -DestinationPath $zipPath -Force
+
+      - name: Create Draft Release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $releaseTitle = "${{ inputs.title }}"
+          if ([string]::IsNullOrWhiteSpace($releaseTitle)) { $releaseTitle = "${{ inputs.tag }}" }
+
+          $releaseArgs = @()
+          if ("${{ inputs.prerelease }}" -eq "true") { $releaseArgs += "--prerelease" }
+
+          if (-not [string]::IsNullOrWhiteSpace("${{ inputs.summary }}")) {
+            "${{ inputs.summary }}" | Out-File -FilePath "summary.md" -Encoding utf8
+            $releaseArgs += "--notes-file", "summary.md"
+          }
+
+          gh release create "${{ inputs.tag }}" `
+            --title $releaseTitle `
+            --draft `
+            @releaseArgs `
+            --generate-notes `
+            "witcherscript-language-${{ inputs.tag }}-windows-x64.zip"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
