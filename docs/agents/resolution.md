@@ -60,6 +60,10 @@ SymbolDb::new(&workspace_index, &base_scripts_index)
 
 `SymbolDb` mirrors most `WorkspaceIndex` queries but searches workspace first, then base, then builtins. For member resolution it uses `find_member_chain_cross()` which can traverse inheritance across all three indexes simultaneously.
 
+### Implicit base classes
+
+A class with no `extends` implicitly extends `CObject`; a state with no `extends` implicitly extends `CScriptableState`. The engine enforces this; the workspace doesn't write it in source. `SymbolDb::superclass_of()` synthesises the fallback so every inheritance walk sees the implicit base — callers must go through `superclass_of`, not read `Symbol.base_class` directly, or the fallback is missed (see invariant 4 in [AGENTS.md](../../AGENTS.md)). Cycle protection: `CObject`/`IScriptable`/`ISerializable` and `CScriptableState` itself get no synthesised base.
+
 ### Generic type lookup (array<T>)
 
 When `find_member` / `members_of_tiered` / `direct_members_of` are called with a container like `array<int>`, `SymbolDb` extracts the constructor (`array`) and element (`int`) via `parse_generic_type()`, looks up members of `array` in the chain, and then substitutes the placeholder ident `T` with `int` in each returned `Definition`'s `type_annotation`, `signature`, `detail`, and `container_name`. Substitution is whole-ident only (`T` and `<T>` match, `TArray` does not). See [docs/agents/builtins.md](builtins.md) for the full story.
