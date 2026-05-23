@@ -61,8 +61,8 @@ for four conditions in sequence, collecting into a single Vec:
 ### Condition 1: Tree-sitter errors
 
 For any node where `node.is_error() || node.is_missing()`:
-- **Error node:** `kind = node.kind()`, `message = "syntax error"`
-- **Missing node:** `kind = node.kind()`, `message = "missing {kind}"`
+- **Error node:** `kind = node.kind()`, `message = "Syntax error"`
+- **Missing node:** `kind = node.kind()`, `message = "Missing {kind}"`
 
 These cover all structural parse failures detected by tree-sitter's error recovery.
 
@@ -73,7 +73,7 @@ but no identifier follows, e.g. `obj.` at end of line):
 
 ```
 kind:    "incomplete_member_access_expr"
-message: "incomplete member access: expected identifier after '.'"
+message: "Incomplete member access: expected identifier after '.'"
 ```
 
 ### Condition 3: Ternary expressions
@@ -83,7 +83,7 @@ always evaluates it to `0 / false / void`:
 
 ```
 kind:     "ternary_cond_expr"
-message:  "ternary expression is not supported: ..."
+message:  "Ternary expression is not supported: ..."
 severity: WARNING
 ```
 
@@ -93,7 +93,7 @@ Scans inside each `func_block` node. Tracks whether any executable statement has
 
 ```
 kind:    "late_local_var_decl"
-message: "local variable declarations must precede executable statements"
+message: "Local variable declarations must precede executable statements"
 ```
 
 **Rules for what counts as "code statement":**

@@ -46,9 +46,9 @@ pub fn collect_shadowing_diagnostics(
 fn script_global_shadow(sym: &Symbol, env: &ScriptEnvironment) -> Option<WorkspaceDiagnostic> {
     let global = env.find(&sym.name)?;
     let label = if sym.kind == SymbolKind::Parameter {
-        "parameter"
+        "Parameter"
     } else {
-        "local"
+        "Local"
     };
     Some(WorkspaceDiagnostic {
         kind: "shadows_script_global".to_string(),
@@ -75,7 +75,7 @@ fn field_shadows_script_global(
     Some(WorkspaceDiagnostic {
         kind: "shadows_script_global".to_string(),
         message: format!(
-            "field '{}' shadows the engine global declared in redscripts.ini",
+            "Field '{}' shadows the engine global declared in redscripts.ini",
             sym.name
         ),
         severity: Severity::Warning,
@@ -109,7 +109,7 @@ fn class_field_shadow(
     Some(WorkspaceDiagnostic {
         kind: "shadows_class_field".to_string(),
         message: format!(
-            "local '{}' shadows field declared in {}",
+            "Local '{}' shadows field declared in {}",
             sym.name, class_sym.name
         ),
         severity: Severity::Warning,
@@ -117,7 +117,7 @@ fn class_field_shadow(
         related: vec![RelatedLocation {
             uri: field.uri.clone(),
             range: field.symbol.selection_range,
-            message: format!("field '{}' declared here", sym.name),
+            message: format!("Field '{}' declared here", sym.name),
         }],
         data: None,
     })
@@ -252,7 +252,7 @@ mod tests {
         let a = result.get("file:///a.ws").expect("a.ws flagged");
         assert_eq!(a.len(), 1);
         assert_eq!(a[0].kind, "shadows_class_field");
-        assert!(a[0].message.contains("local 'x'"));
+        assert!(a[0].message.contains("Local 'x'"));
         assert!(a[0].message.contains("C"));
     }
 
@@ -269,7 +269,7 @@ mod tests {
         let a = result.get("file:///a.ws").expect("a.ws flagged");
         assert_eq!(a.len(), 1);
         assert_eq!(a[0].kind, "shadows_script_global");
-        assert!(a[0].message.contains("field 'thePlayer'"));
+        assert!(a[0].message.contains("Field 'thePlayer'"));
     }
 
     #[test]

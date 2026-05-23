@@ -28,8 +28,8 @@ fn invalid_fixture_files_report_tree_sitter_errors() {
         assert!(
             diagnostics
                 .iter()
-                .any(|diagnostic| diagnostic.message == "syntax error"
-                    || diagnostic.message.starts_with("missing ")),
+                .any(|diagnostic| diagnostic.message == "Syntax error"
+                    || diagnostic.message.starts_with("Missing ")),
             "{} should report a tree-sitter syntax diagnostic, got: {diagnostics:#?}",
             path.display()
         );

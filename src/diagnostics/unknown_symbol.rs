@@ -134,7 +134,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             let r = if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
                 None
             } else {
-                push(ctx, ident, "unknown_type", format!("unknown type '{name}'"));
+                push(ctx, ident, "unknown_type", format!("Unknown type '{name}'"));
                 Some(())
             };
             ctx.telemetry.branch_type_ref_us += branch_start.elapsed().as_micros() as u64;
@@ -177,7 +177,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                     ctx,
                     ident,
                     "unknown_member",
-                    format!("no member '{name}' on type '{receiver_type}'"),
+                    format!("No member '{name}' on type '{receiver_type}'"),
                 );
                 Some(())
             })();
@@ -213,7 +213,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                     ctx,
                     ident,
                     "unknown_member",
-                    format!("no member '{name}' on type '{container_name}'"),
+                    format!("No member '{name}' on type '{container_name}'"),
                     severity,
                 );
                 Some(())
@@ -231,7 +231,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                     ctx,
                     ident,
                     "unknown_function",
-                    format!("unknown function '{name}'"),
+                    format!("Unknown function '{name}'"),
                 );
                 Some(())
             };
@@ -251,7 +251,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                         ctx,
                         ident,
                         "unknown_identifier",
-                        format!("unknown identifier '{name}'"),
+                        format!("Unknown identifier '{name}'"),
                     );
                     Some(())
                 }

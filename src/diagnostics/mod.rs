@@ -152,7 +152,7 @@ fn collect_walk(node: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>
 fn incomplete_member_access_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
     ParseDiagnostic {
         kind: "incomplete_member_access_expr".to_string(),
-        message: "incomplete member access: expected identifier after '.'".to_string(),
+        message: "Incomplete member access: expected identifier after '.'".to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),
@@ -163,7 +163,7 @@ fn incomplete_member_access_diagnostic(node: Node, source: &str) -> ParseDiagnos
 fn ternary_expr_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
     ParseDiagnostic {
         kind: "ternary_cond_expr".to_string(),
-        message: "ternary expression is not supported: WitcherScript parses `cond ? a : b` \
+        message: "Ternary expression is not supported: WitcherScript parses `cond ? a : b` \
                   but always evaluates it to 0 / false / void"
             .to_string(),
         start: node.start_position(),
@@ -200,9 +200,9 @@ fn collect_late_local_vars_in_block(
 fn tree_error_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
     let kind = node.kind().to_string();
     let message = if node.is_missing() {
-        format!("missing {}", node.kind())
+        format!("Missing {}", node.kind())
     } else {
-        "syntax error".to_string()
+        "Syntax error".to_string()
     };
 
     ParseDiagnostic {
@@ -218,7 +218,7 @@ fn tree_error_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
 fn late_local_var_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
     ParseDiagnostic {
         kind: "late_local_var_decl".to_string(),
-        message: "local variable declarations must precede executable statements".to_string(),
+        message: "Local variable declarations must precede executable statements".to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),
