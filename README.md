@@ -15,16 +15,10 @@ Two binaries are produced:
 The command accepts one or more file or directory paths. Directory inputs are searched
 recursively for `.ws` files.
 
-```powershell
-cargo run -- path\to\file.ws
-cargo run -- path\to\src path\to\debug
-cargo run -- path\to\file.ws --dump-tree
 ```
-
-If Cargo is not on `PATH` in PowerShell, use:
-
-```powershell
-& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -- path\to\src
+cargo run -- path/to/file.ws
+cargo run -- path/to/src path/to/debug
+cargo run -- path/to/file.ws --dump-tree
 ```
 
 `--dump-tree` prints a concrete syntax tree with node kinds plus line/column and byte
@@ -113,7 +107,7 @@ diagnostics:
 The LSP server communicates over stdin/stdout and can be integrated with any LSP-capable
 editor. Build with:
 
-```powershell
+```
 cargo build --bin witcherscript-lsp --release
 ```
 
@@ -124,7 +118,7 @@ The resulting binary is `target/release/witcherscript-lsp.exe`.
 For diagnosing issues, run the server in TCP listen mode and attach your editor as a
 client:
 
-```powershell
+```
 cargo run --bin witcherscript-lsp -- --listen 9257
 ```
 
@@ -245,7 +239,7 @@ cross-file go-to-definition lookups.
 
 ## Tests
 
-```powershell
+```
 just test
 ```
 
