@@ -23,6 +23,10 @@ static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock
             include_str!("../builtins/CR4HudModule.ws"),
         ),
         (
+            "witcherscript-builtin:/CGuiObject.ws",
+            include_str!("../builtins/CGuiObject.ws"),
+        ),
+        (
             "witcherscript-builtin:/unknown-classes.ws",
             include_str!("../builtins/unknown-classes.ws"),
         ),
