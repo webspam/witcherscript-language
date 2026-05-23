@@ -21,6 +21,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 13 | `duplicate_wrapped_method` | error | More than one `wrappedMethod(...)` call in a `@wrapMethod` body |
 | 14 | `ternary_cond_expr` | warning | `cond ? a : b` always evaluates to 0 / false / void |
 | 15 | `abstract_instantiation` | error | `new T` on an abstract class |
+| 16 | `super_field_access` | error | `super.x` used outside of a method call |
 
 ## Details
 
@@ -107,3 +108,9 @@ The grammar accepts `cond ? a : b`, but the compiler always evaluates it to `0` 
 ### 15. Abstract class instantiation
 
 `new T` where `T` is a class declared with the `abstract` specifier. Abstract classes cannot be instantiated directly.
+
+### 16. `super.` outside a method call
+
+`super.x` used as a field access (read, assignment target, or anywhere other than the callee of a `(...)` call).
+
+The compiler only resolves the `super.` qualifier for method dispatch. Inherited `protected` and `public` fields (and `private` ones from a `protected`/`public`-typed view of the base) are reachable on `this` without the qualifier; `super.` itself is reserved for explicitly dispatching to a base-class method.

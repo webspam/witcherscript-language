@@ -11,6 +11,7 @@ mod cst_walker;
 mod duplicate_local;
 mod duplicate_symbols;
 mod shadowing;
+mod super_field_access;
 mod unknown_method;
 mod unknown_symbol;
 mod wrapped_method;
@@ -27,6 +28,7 @@ pub(crate) use cst_walker::{
 pub use duplicate_local::collect_duplicate_local_diagnostics;
 pub use duplicate_symbols::collect_duplicate_symbol_diagnostics;
 pub use shadowing::collect_shadowing_diagnostics;
+pub use super_field_access::collect_super_field_access_diagnostics;
 pub use unknown_method::collect_unknown_method_diagnostics;
 pub use unknown_symbol::collect_unknown_symbol_diagnostics;
 pub use wrapped_method::collect_wrapped_method_diagnostics;
@@ -34,6 +36,7 @@ pub use wrapped_method::collect_wrapped_method_diagnostics;
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use abstract_instantiation::AbstractInstantiationRule;
+use super_field_access::SuperFieldAccessRule;
 use unknown_method::UnknownMethodRule;
 use unknown_symbol::run_unknown_symbol_parallel;
 use wrapped_method::WrappedMethodRule;
@@ -46,7 +49,13 @@ pub fn collect_cst_diagnostics_for_document(
     let method_rule = UnknownMethodRule;
     let wrapped_rule = WrappedMethodRule;
     let abstract_rule = AbstractInstantiationRule;
-    let rules: Vec<&dyn CstRule> = vec![&method_rule, &wrapped_rule, &abstract_rule];
+    let super_field_rule = SuperFieldAccessRule;
+    let rules: Vec<&dyn CstRule> = vec![
+        &method_rule,
+        &wrapped_rule,
+        &abstract_rule,
+        &super_field_rule,
+    ];
     let mut diagnostics = run_rules_on_document(uri, document, db, &rules);
 
     let shard = run_unknown_symbol_parallel(uri, document, db);
