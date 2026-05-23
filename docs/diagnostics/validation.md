@@ -24,17 +24,17 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 
 ## Details
 
-### 1. `late_local_var_decl`
+### 1. Local var declared after a statement
 
 Local `var` declarations must precede executable statements within each function block. Blank lines, comments, and bare semicolons do not count as executable statements.
 
-### 2. `duplicate_symbol`
+### 2. Duplicate top-level symbol
 
 A class, struct, enum, state, function, or event must not share a name with another top-level declaration anywhere in the workspace. Each conflicting declaration is flagged, with related-information links to the others.
 
 Modding-annotation member injections (`@addMethod`, `@wrapMethod`, ...) are exempt.
 
-### 3. `base_script_conflict`
+### 3. Base-script conflict
 
 Fires on a workspace file whose path and name match a base game script (e.g. a copied-and-edited `game/r4Player.ws`) and which redeclares the base script's top-level symbols. Each clashing declaration is flagged with a related-information link to the base declaration.
 
@@ -42,37 +42,37 @@ This is a legacy full-script override. The message asks the user to either mark 
 
 Inside such a file the generic `duplicate_symbol` error is suppressed in favour of this clearer one.
 
-### 4. `duplicate_local`
+### 4. Duplicate local declaration
 
 Two parameters, two local `var`s, or a parameter and a local `var` with the same name inside one function.
 
 `@wrapMethod` and `@replaceMethod` functions are exempt; they intentionally mirror the wrapped or replaced signature.
 
-### 5. `shadows_script_global`
+### 5. Shadows a script global
 
 A parameter, local `var`, or member field whose name collides with a `redscripts.ini` `[globals]` entry.
 
 `@wrapMethod` and `@replaceMethod` functions are exempt.
 
-### 6. `shadows_class_field`
+### 6. Shadows a class field
 
 A local `var` whose name collides with a field declared in the enclosing class, struct, or state.
 
 `@wrapMethod` and `@replaceMethod` functions are exempt.
 
-### 7. `unknown_method`
+### 7. Unknown method
 
 A `receiver.Method()` call where `receiver` resolves to a workspace `class`, `struct`, or `state`, but `Method` is not declared on that type or any of its supertypes (inheritance traversed up to depth 32).
 
 Calls on unknown or primitive receivers, on `super` / `parent` / `virtualParent`, on casts, or through indexed or parenthesised expressions are skipped to avoid false positives. Private members count as known.
 
-### 8. `unknown_type`
+### 8. Unknown type
 
 A type-position identifier that doesn't resolve to a workspace `class`, `struct`, `enum`, or `state`, or a built-in primitive.
 
 Covers `extends Foo`, `state S in Foo`, `: Foo` annotations (including nested generics), `new Foo in owner`, `(Foo) value` casts, and `@addMethod(Foo)` / `@addField(Foo)` annotation arguments.
 
-### 9. `unknown_member`
+### 9. Unknown member
 
 `receiver.field` on a known workspace type where `field` is not a member of that type or any supertype.
 
@@ -80,11 +80,11 @@ Also fires inside `default field = ...;`, `defaults { field = ...; }`, and `hint
 
 Skipped when the receiver type can't be inferred (cascading) or is primitive. Method-call cases are owned by `unknown_method`.
 
-### 10. `unknown_function`
+### 10. Unknown function
 
 A bare `Foo()` call where `Foo` doesn't resolve to a top-level function, a method on `this` (this-shorthand, including up the inheritance chain), or a script-environment global.
 
-### 11. `unknown_identifier`
+### 11. Unknown identifier
 
 A bare identifier used as a value that doesn't resolve to a local, parameter, field via this-shorthand, top-level symbol, or script-environment global.
 
@@ -92,18 +92,18 @@ Identifiers inside tree-sitter error or missing subtrees and inside `incomplete_
 
 The `wrappedMethod` modding macro is recognised as a valid call site when it appears inside the body of a `@wrapMethod`-annotated function, and is therefore not flagged.
 
-### 12. `missing_wrapped_method`
+### 12. Missing wrapped-method call
 
 A `@wrapMethod`-annotated function whose body does not contain a bare `wrappedMethod(...)` call. The mod compiler refuses to link such a function.
 
-### 13. `duplicate_wrapped_method`
+### 13. Duplicate wrapped-method call
 
 Every bare `wrappedMethod(...)` call after the first inside the same `@wrapMethod` body. Only the first call is expanded by the compiler.
 
-### 14. `ternary_cond_expr`
+### 14. Ternary expression
 
 The grammar accepts `cond ? a : b`, but the compiler always evaluates it to `0` / `false` / `void`. Flagged so the construct is rewritten as an `if` / `else` before it silently returns wrong values.
 
-### 15. `abstract_instantiation`
+### 15. Abstract class instantiation
 
 `new T` where `T` is a class declared with the `abstract` specifier. Abstract classes cannot be instantiated directly.
