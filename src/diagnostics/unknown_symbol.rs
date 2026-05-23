@@ -6,7 +6,9 @@ use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
-use crate::resolve::{infer_expr_type_memo, resolve_definition_at_ident, SymbolDb, BUILTIN_TYPES};
+use crate::resolve::{
+    infer_expr_type_memo, resolve_definition_at_ident, Definition, SymbolDb, BUILTIN_TYPES,
+};
 use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::{
@@ -165,12 +167,23 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 }
                 ctx.telemetry.member_lookups += 1;
                 let member_start = Instant::now();
-                let found = ctx
+                let member = ctx
                     .db
-                    .find_member(&receiver_type, name, AccessLevel::Private)
-                    .is_some();
+                    .find_member(&receiver_type, name, AccessLevel::Private);
                 ctx.telemetry.member_access_member_us += member_start.elapsed().as_micros() as u64;
-                if found {
+                if let Some(def) = member {
+                    if def.symbol.access == AccessLevel::Private
+                        && !access_is_inside_declaring_class(ident, &def, ctx)
+                    {
+                        let declarer = def.symbol.container_name.as_deref().unwrap_or("");
+                        push(
+                            ctx,
+                            ident,
+                            "private_member_access",
+                            format!("Private member '{name}' of class '{declarer}' is not accessible here."),
+                        );
+                        return Some(());
+                    }
                     return None;
                 }
                 push(
@@ -199,7 +212,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 ctx.telemetry.member_lookups += 1;
                 if ctx
                     .db
-                    .find_member_for_default_or_hint(&container_name, name)
+                    .find_member(&container_name, name, AccessLevel::Private)
                     .is_some()
                 {
                     return None;
@@ -353,6 +366,23 @@ fn resolves_as_local<'tree>(ctx: &CstRuleCtx<'_, 'tree>, ident: Node<'tree>, nam
         .symbols
         .local_at_byte(callable.id, name, byte)
         .is_some()
+}
+
+fn access_is_inside_declaring_class<'tree>(
+    ident: Node<'tree>,
+    def: &Definition,
+    ctx: &CstRuleCtx<'_, 'tree>,
+) -> bool {
+    let Some(declarer) = def.symbol.container_name.as_deref() else {
+        return false;
+    };
+    let Some(enclosing) = ctx.document.symbols.enclosing_symbol_at(
+        ident.start_byte(),
+        &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
+    ) else {
+        return false;
+    };
+    enclosing.name == declarer
 }
 
 fn is_inside_wrap_method<'tree>(ident: Node<'tree>, ctx: &CstRuleCtx<'_, 'tree>) -> bool {
@@ -711,6 +741,57 @@ mod tests {
         let (idx, docs) = index_and_docs(&[(
             "file:///t.ws",
             "class A { private var hidden : int; function R() { var a : A; a.hidden = 1; } }\n",
+        )]);
+        let result = check(&idx, &docs);
+        assert!(result.is_empty(), "got {result:?}");
+    }
+
+    #[test]
+    fn private_member_flagged_from_outside_class() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "class A { private var hidden : int; } function F() { var a : A; a.hidden = 1; }\n",
+        )]);
+        let result = check(&idx, &docs);
+        let diags = result.get("file:///t.ws").unwrap();
+        assert_eq!(kinds(diags), vec!["private_member_access"]);
+        assert!(diags[0].message.contains("hidden"));
+        assert!(diags[0].message.contains("'A'"));
+    }
+
+    #[test]
+    fn private_member_flagged_from_sibling_class() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "class A { private var hidden : int; } \
+             class B { function R() { var a : A; a.hidden = 1; } }\n",
+        )]);
+        let result = check(&idx, &docs);
+        let diags = result.get("file:///t.ws").unwrap();
+        assert_eq!(kinds(diags), vec!["private_member_access"]);
+        assert!(diags[0].message.contains("hidden"));
+        assert!(diags[0].message.contains("'A'"));
+    }
+
+    #[test]
+    fn private_member_flagged_from_subclass() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "class Super { private var hidden : int; } \
+             class Sub extends Super { function R() { var s : Sub; s.hidden = 1; } }\n",
+        )]);
+        let result = check(&idx, &docs);
+        let diags = result.get("file:///t.ws").unwrap();
+        assert_eq!(kinds(diags), vec!["private_member_access"]);
+        assert!(diags[0].message.contains("hidden"));
+        assert!(diags[0].message.contains("'Super'"));
+    }
+
+    #[test]
+    fn protected_member_not_flagged() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "class A { protected var visible : int; } function F() { var a : A; a.visible = 1; }\n",
         )]);
         let result = check(&idx, &docs);
         assert!(result.is_empty(), "got {result:?}");
