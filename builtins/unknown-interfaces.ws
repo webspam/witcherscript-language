@@ -1,5 +1,6 @@
 abstract class IActorConditionType {}
-abstract class IBoidLairEntity {}
+/** See W3LessunClue */
+abstract class IBoidLairEntity extends CGameplayEntity {}
 abstract class ICustomCameraPositionController {}
 abstract class IGameSystem {}
 abstract class IGameplayDLCMounter {}
