@@ -508,6 +508,83 @@ fn baseless_state_inherits_cscriptablestate_members() {
 }
 
 #[test]
+fn super_dot_x_resolves_in_baseless_type() {
+    struct Case {
+        label: &'static str,
+        source: &'static str,
+        cursor: SourcePosition,
+        expected_member: &'static str,
+        expected_container: &'static str,
+    }
+    let cases = [
+        Case {
+            label: "baseless class falls back to CObject",
+            source: concat!(
+                "class CObject {\n",
+                "  function GetName() : name {}\n",
+                "}\n",
+                "class Foo {\n",
+                "  function Bar() {\n",
+                "    super.GetName();\n",
+                "  }\n",
+                "}\n",
+            ),
+            cursor: SourcePosition {
+                line: 5,
+                character: 12,
+            },
+            expected_member: "GetName",
+            expected_container: "CObject",
+        },
+        Case {
+            label: "baseless state falls back to CScriptableState",
+            source: concat!(
+                "class IScriptable {}\n",
+                "class CScriptableState extends IScriptable {\n",
+                "  function OnEnterState(prevName : name) {}\n",
+                "}\n",
+                "statemachine class Owner {}\n",
+                "state SpawnBoatLatentHack in Owner {\n",
+                "  entry function Run() {\n",
+                "    super.OnEnterState('Foo');\n",
+                "  }\n",
+                "}\n",
+            ),
+            cursor: SourcePosition {
+                line: 7,
+                character: 12,
+            },
+            expected_member: "OnEnterState",
+            expected_container: "CScriptableState",
+        },
+    ];
+    for c in cases {
+        let doc = make_doc(c.source);
+        let mut index = WorkspaceIndex::default();
+        index.update_document("file:///test.ws", &doc);
+
+        let definition = resolve_definition(
+            "file:///test.ws",
+            &doc,
+            &SymbolDb::new(&index, &WorkspaceIndex::default()),
+            c.cursor,
+        )
+        .unwrap_or_else(|| panic!("case {}: super.X did not resolve", c.label));
+        assert_eq!(
+            definition.symbol.name, c.expected_member,
+            "case {}: member name mismatch",
+            c.label
+        );
+        assert_eq!(
+            definition.symbol.container_name.as_deref(),
+            Some(c.expected_container),
+            "case {}: container mismatch",
+            c.label
+        );
+    }
+}
+
+#[test]
 fn state_method_resolves_through_extends_chain() {
     let source = concat!(
         "statemachine class Owner {}\n",

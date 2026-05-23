@@ -257,7 +257,7 @@ pub(super) fn enclosing_type_context(
     if let Some(symbol) = current_type_symbol(document, byte_offset) {
         return Some(TypeContext {
             name: symbol.name.clone(),
-            base_class: symbol.base_class.clone(),
+            base_class: db.superclass_of(&symbol.name),
             owner_class: symbol.owner_class.clone(),
         });
     }
@@ -270,10 +270,11 @@ pub(super) fn enclosing_type_context(
         return None;
     }
     let target = annotation_target_class(callable)?;
-    let class = db.find_top_level(target);
     Some(TypeContext {
         name: target.to_string(),
-        base_class: class.as_ref().and_then(|def| def.symbol.base_class.clone()),
-        owner_class: class.and_then(|def| def.symbol.owner_class.clone()),
+        base_class: db.superclass_of(target),
+        owner_class: db
+            .find_top_level(target)
+            .and_then(|def| def.symbol.owner_class.clone()),
     })
 }
