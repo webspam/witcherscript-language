@@ -154,7 +154,7 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn inherits_from(&self, class_name: &str, ancestor: &str) -> bool {
-        self.try_in_chain(class_name, AccessLevel::Private, |current, _, _| {
+        self.try_in_chain(class_name, AccessLevel::Private, false, |current, _, _| {
             (current == ancestor).then_some(())
         })
         .is_some()
@@ -180,17 +180,41 @@ impl<'a> SymbolDb<'a> {
         name: &str,
         min_access: AccessLevel,
     ) -> Option<Definition> {
+        self.walk_chain_for_member(container, name, min_access, false)
+    }
+
+    /// `default`/`hint` may target a private inherited field.
+    pub fn find_member_for_default_or_hint(
+        &self,
+        container: &str,
+        name: &str,
+    ) -> Option<Definition> {
+        self.walk_chain_for_member(container, name, AccessLevel::Private, true)
+    }
+
+    fn walk_chain_for_member(
+        &self,
+        container: &str,
+        name: &str,
+        min_access: AccessLevel,
+        allow_private: bool,
+    ) -> Option<Definition> {
         let (lookup, element) = generic_lookup_target(container);
-        let def = self.try_in_chain(lookup, min_access, |container, _depth, access| {
-            self.record_member(container, name);
-            self.workspace
-                .direct_member_of(container, name, access)
-                .or_else(|| self.base.direct_member_of(container, name, access))
-                .or_else(|| {
-                    self.builtins
-                        .and_then(|b| b.direct_member_of(container, name, access))
-                })
-        });
+        let def = self.try_in_chain(
+            lookup,
+            min_access,
+            allow_private,
+            |container, _depth, access| {
+                self.record_member(container, name);
+                self.workspace
+                    .direct_member_of(container, name, access)
+                    .or_else(|| self.base.direct_member_of(container, name, access))
+                    .or_else(|| {
+                        self.builtins
+                            .and_then(|b| b.direct_member_of(container, name, access))
+                    })
+            },
+        );
         match (def, element) {
             (Some(d), Some(elem)) => Some(substitute_in_definition(d, container, elem)),
             (d, _) => d,
@@ -235,9 +259,25 @@ impl<'a> SymbolDb<'a> {
         container: &str,
         min_access: AccessLevel,
     ) -> Vec<(u8, Definition)> {
+        self.walk_chain_for_members(container, min_access, false)
+    }
+
+    pub fn members_of_for_default_or_hint(&self, container: &str) -> Vec<Definition> {
+        self.walk_chain_for_members(container, AccessLevel::Private, true)
+            .into_iter()
+            .map(|(_, def)| def)
+            .collect()
+    }
+
+    fn walk_chain_for_members(
+        &self,
+        container: &str,
+        min_access: AccessLevel,
+        allow_private: bool,
+    ) -> Vec<(u8, Definition)> {
         let (lookup, element) = generic_lookup_target(container);
         let mut seen: HashMap<String, (u8, Definition)> = HashMap::new();
-        self.try_in_chain::<(), _>(lookup, min_access, |c, depth, access| {
+        self.try_in_chain::<(), _>(lookup, min_access, allow_private, |c, depth, access| {
             let tier = if depth == 0 { 0u8 } else { 1u8 };
             for def in self
                 .workspace
@@ -285,7 +325,13 @@ impl<'a> SymbolDb<'a> {
         dedup_definitions(decls)
     }
 
-    fn try_in_chain<T, F>(&self, start: &str, min_access: AccessLevel, mut visit: F) -> Option<T>
+    fn try_in_chain<T, F>(
+        &self,
+        start: &str,
+        min_access: AccessLevel,
+        allow_private: bool,
+        mut visit: F,
+    ) -> Option<T>
     where
         F: FnMut(&str, usize, AccessLevel) -> Option<T>,
     {
@@ -302,7 +348,9 @@ impl<'a> SymbolDb<'a> {
             }
             let superclass = self.superclass_of(&current)?;
             depth += 1;
-            access = access.max(AccessLevel::Protected);
+            if !allow_private {
+                access = access.max(AccessLevel::Protected);
+            }
             current = superclass;
         }
     }

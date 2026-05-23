@@ -18,3 +18,25 @@ pub(crate) fn member_access_member(node: Node) -> Option<Node> {
         member
     })
 }
+
+pub(crate) const DEFAULT_OR_HINT_ASSIGN_KINDS: &[&str] = &[
+    "member_default_val",
+    "member_default_val_block_assign",
+    "member_hint",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DefaultOrHintKind {
+    Default,
+    Hint,
+}
+
+pub(crate) fn ident_default_or_hint_kind(ident: Node) -> Option<DefaultOrHintKind> {
+    let parent = ident.parent()?;
+    let kind = match parent.kind() {
+        "member_default_val" | "member_default_val_block_assign" => DefaultOrHintKind::Default,
+        "member_hint" => DefaultOrHintKind::Hint,
+        _ => return None,
+    };
+    (parent.child_by_field_name("member").map(|n| n.id()) == Some(ident.id())).then_some(kind)
+}

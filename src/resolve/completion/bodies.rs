@@ -1,5 +1,7 @@
 use tree_sitter::Node;
 
+use crate::cst::ancestors::node_and_ancestors;
+use crate::cst::grammar::DEFAULT_OR_HINT_ASSIGN_KINDS;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::{AccessLevel, SymbolKind};
@@ -13,6 +15,56 @@ use super::super::inference::enclosing_type_context;
 use super::super::Definition;
 
 const MODDING_ANNOTATIONS: &[&str] = &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"];
+
+pub fn default_or_hint_member_completions(
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Vec<Definition> {
+    let Some(byte_offset) = document
+        .line_index
+        .position_to_byte(&document.source, position)
+    else {
+        return Vec::new();
+    };
+    let root = document.tree.root_node();
+
+    if !at_default_or_hint_member_pos(root, byte_offset) {
+        return Vec::new();
+    }
+
+    let Some(enclosing) = document.symbols.enclosing_symbol_at(
+        byte_offset,
+        &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
+    ) else {
+        return Vec::new();
+    };
+
+    db.members_of_for_default_or_hint(&enclosing.name)
+}
+
+fn at_default_or_hint_member_pos(root: Node, byte_offset: usize) -> bool {
+    for n in nodes_at_offset(root, byte_offset) {
+        for ancestor in node_and_ancestors(n) {
+            if DEFAULT_OR_HINT_ASSIGN_KINDS.contains(&ancestor.kind()) {
+                return cursor_before_eq(ancestor, byte_offset);
+            }
+            if ancestor.kind() == "member_default_val_block" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn cursor_before_eq(assign: Node, byte_offset: usize) -> bool {
+    let mut cursor = assign.walk();
+    let eq = assign.children(&mut cursor).find(|c| c.kind() == "=");
+    match eq {
+        Some(eq) => byte_offset <= eq.start_byte(),
+        None => true,
+    }
+}
 
 pub struct StatementCompletions {
     pub locals: Vec<Definition>,
