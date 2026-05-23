@@ -122,7 +122,7 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
 
     ctx.diagnostics.push(WorkspaceDiagnostic {
         kind: "unknown_method".to_string(),
-        message: format!("no method '{method_name}' on type '{receiver_type}'"),
+        message: format!("No method '{method_name}' on type '{receiver_type}'"),
         severity: Severity::Error,
         range,
         related: vec![],

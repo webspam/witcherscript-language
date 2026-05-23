@@ -73,7 +73,7 @@ pub fn collect_base_script_conflict_diagnostics(
                     related: vec![RelatedLocation {
                         uri: entry.uri.to_string(),
                         range: base_sym.selection_range,
-                        message: format!("base script '{basename}' declares '{}' here", sym.name),
+                        message: format!("Base script '{basename}' declares '{}' here", sym.name),
                     }],
                     data: conflict_data(workspace_uri, entry.relative_path),
                 });

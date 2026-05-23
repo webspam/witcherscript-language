@@ -18,7 +18,7 @@ fn maps_core_diagnostics_to_lsp_diagnostics() {
     assert_eq!(diagnostics[0].source.as_deref(), Some("witcherscript"));
     assert_eq!(
         diagnostics[0].message,
-        "local variable declarations must precede executable statements"
+        "Local variable declarations must precede executable statements"
     );
 }
 
