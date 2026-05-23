@@ -508,6 +508,75 @@ fn baseless_state_inherits_cscriptablestate_members() {
 }
 
 #[test]
+fn super_dot_x_resolves_in_baseless_class() {
+    let source = concat!(
+        "class CObject {\n",
+        "  function GetName() : name {}\n",
+        "}\n",
+        "class Foo {\n",
+        "  function Bar() {\n",
+        "    super.GetName();\n",
+        "  }\n",
+        "}\n",
+    );
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+
+    let definition = resolve_definition(
+        "file:///test.ws",
+        &doc,
+        &SymbolDb::new(&index, &WorkspaceIndex::default()),
+        SourcePosition {
+            line: 5,
+            character: 12,
+        },
+    )
+    .expect("super.X in a baseless class should resolve to CObject's member");
+    assert_eq!(definition.symbol.name, "GetName");
+    assert_eq!(
+        definition.symbol.container_name.as_deref(),
+        Some("CObject")
+    );
+}
+
+#[test]
+fn super_dot_x_resolves_in_baseless_state() {
+    let source = concat!(
+        "class IScriptable {}\n",
+        "class CScriptableState extends IScriptable {\n",
+        "  function OnEnterState(prevName : name) {}\n",
+        "}\n",
+        "statemachine class Owner {}\n",
+        "state SpawnBoatLatentHack in Owner {\n",
+        "  entry function Run() {\n",
+        "    super.OnEnterState('Foo');\n",
+        "  }\n",
+        "}\n",
+    );
+    let doc = make_doc(source);
+    let mut index = WorkspaceIndex::default();
+    index.update_document("file:///test.ws", &doc);
+
+    let definition = resolve_definition(
+        "file:///test.ws",
+        &doc,
+        &SymbolDb::new(&index, &WorkspaceIndex::default()),
+        SourcePosition {
+            line: 7,
+            character: 12,
+        },
+    )
+    .expect("super.X in a baseless state should resolve to CScriptableState's member");
+
+    assert_eq!(definition.symbol.name, "OnEnterState");
+    assert_eq!(
+        definition.symbol.container_name.as_deref(),
+        Some("CScriptableState")
+    );
+}
+
+#[test]
 fn state_method_resolves_through_extends_chain() {
     let source = concat!(
         "statemachine class Owner {}\n",
