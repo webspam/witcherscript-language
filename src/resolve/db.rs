@@ -14,6 +14,7 @@ use super::{
 };
 
 const OBJECT_BASE_CLASS: &str = "CObject";
+const STATE_BASE_CLASS: &str = "CScriptableState";
 
 // These sit at/above CObject; a virtual CObject base would form a cycle.
 const OBJECT_ROOT_CHAIN: [&str; 3] = ["CObject", "IScriptable", "ISerializable"];
@@ -164,7 +165,13 @@ impl<'a> SymbolDb<'a> {
             return None;
         }
         let def = self.find_top_level(class_name)?;
-        (def.symbol.kind == SymbolKind::Class).then(|| OBJECT_BASE_CLASS.to_string())
+        match def.symbol.kind {
+            SymbolKind::Class => Some(OBJECT_BASE_CLASS.to_string()),
+            SymbolKind::State if class_name != STATE_BASE_CLASS => {
+                Some(STATE_BASE_CLASS.to_string())
+            }
+            _ => None,
+        }
     }
 
     pub fn find_member(
