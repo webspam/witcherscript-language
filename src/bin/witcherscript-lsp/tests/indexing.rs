@@ -1597,6 +1597,63 @@ mod loose_files {
     }
 
     #[tokio::test]
+    async fn adding_a_workspace_folder_reroutes_open_loose_files() {
+        use lsp_types::{
+            DidChangeWorkspaceFoldersParams, WorkspaceFolder, WorkspaceFoldersChangeEvent,
+        };
+
+        let temp = LocalTempDir::new("ws_reindex_open_on_folder_add");
+        let path = write_script(temp.path(), "File.ws", "class CFile {}\n");
+        let url = Url::from_file_path(&path).unwrap();
+
+        let backend = make_backend();
+        backend
+            .dispatch_doc_op(open_op(&url, "class CFile {}\n"))
+            .await;
+        assert!(
+            backend
+                .loose_index
+                .lock()
+                .await
+                .documents()
+                .any(|(u, _)| u == url.as_str()),
+            "the file must start in loose_index (no workspace open yet)",
+        );
+
+        let folder_url = Url::from_file_path(temp.path()).unwrap();
+        backend
+            .dispatch_doc_op(DocOp::WorkspaceFolders(DidChangeWorkspaceFoldersParams {
+                event: WorkspaceFoldersChangeEvent {
+                    added: vec![WorkspaceFolder {
+                        uri: folder_url,
+                        name: "folder".to_string(),
+                    }],
+                    removed: vec![],
+                },
+            }))
+            .await;
+
+        assert!(
+            !backend
+                .loose_index
+                .lock()
+                .await
+                .documents()
+                .any(|(u, _)| u == url.as_str()),
+            "adding the containing folder must drop the file from loose_index immediately, not on next keystroke",
+        );
+        assert!(
+            backend
+                .workspace_index
+                .lock()
+                .await
+                .documents()
+                .any(|(u, _)| u == url.as_str()),
+            "the file must land in workspace_index without an edit",
+        );
+    }
+
+    #[tokio::test]
     async fn closing_a_loose_file_clears_its_file_scope_status_dedup_entry() {
         let temp = LocalTempDir::new("ws_loose_status_close");
         let path = write_script(temp.path(), "Solo.ws", "class CSolo {}\n");

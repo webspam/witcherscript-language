@@ -751,9 +751,8 @@ impl Backend {
         }
 
         self.index_workspace().await;
-        if !removed.is_empty() {
-            self.publish_open_diagnostics().await;
-        }
+        self.reindex_open_documents().await;
+        self.publish_open_diagnostics().await;
         self.publish_file_scope_status().await;
     }
 
@@ -768,6 +767,8 @@ impl Backend {
             tracing::trace!("did_change_configuration: index-relevant config changed, re-indexing");
             self.index_workspace().await;
             self.index_base_scripts().await;
+            self.reindex_open_documents().await;
+            self.publish_open_diagnostics().await;
         } else {
             tracing::trace!(
                 "did_change_configuration: no index-relevant config change, skipping re-index"

@@ -14,7 +14,7 @@ use witcherscript_language::script_env::parse_script_environment;
 
 use crate::backend::Backend;
 use crate::convert::source_position;
-use crate::file_scope::FileScope;
+use crate::file_scope::{classify_file_scope, FileScope};
 
 pub(crate) fn legacy_replaces_base(base_uri: &str, legacy_uri: &str) -> bool {
     let Some(tail) = relative_from_scripts(base_uri) else {
@@ -122,6 +122,60 @@ pub(crate) fn remove_document_all_spellings(
 }
 
 impl Backend {
+    // A workspace-folder or config change reroutes open docs now, not on next keystroke.
+    #[tracing::instrument(skip(self), level = "debug")]
+    pub(crate) async fn reindex_open_documents(&self) {
+        let documents = self.documents.lock().await;
+        if documents.is_empty() {
+            return;
+        }
+        let roots = self.workspace_roots.lock().await.clone();
+        let legacy_dirs = self.effective_legacy_dirs().await;
+        let game_dir = self.base_scripts_path.lock().await.clone();
+        let additional = self.additional_script_dirs.lock().await.clone();
+        let replacements = self.legacy_replacements.lock().await.clone();
+        let scopes: Vec<(Url, FileScope)> = documents
+            .keys()
+            .map(|uri| {
+                (
+                    uri.clone(),
+                    classify_file_scope(
+                        uri,
+                        &roots,
+                        &legacy_dirs,
+                        &replacements,
+                        game_dir.as_deref(),
+                        &additional,
+                    ),
+                )
+            })
+            .collect();
+
+        let mut invalidated: HashSet<String> = HashSet::new();
+        {
+            let mut workspace = self.workspace_index.lock().await;
+            let mut loose = self.loose_index.lock().await;
+            let mut base = self.base_scripts_index.lock().await;
+            for (uri, scope) in &scopes {
+                let Some(document) = documents.get(uri) else {
+                    continue;
+                };
+                invalidated.extend(remove_document_all_spellings(&mut workspace, uri));
+                invalidated.extend(remove_document_all_spellings(&mut loose, uri));
+                invalidated.extend(remove_document_all_spellings(&mut base, uri));
+                let target: &mut WorkspaceIndex = match scope {
+                    FileScope::AdditionalBase => &mut base,
+                    FileScope::OutOfScope | FileScope::SingleFile => &mut loose,
+                    _ => &mut workspace,
+                };
+                invalidated.extend(target.update_document(uri.as_str(), document));
+                invalidated.insert(uri.to_string());
+            }
+        }
+        drop(documents);
+        self.evict_cache_entries(&invalidated).await;
+    }
+
     #[tracing::instrument(skip(self, text), fields(uri = %uri, bytes = text.len()), level = "debug")]
     pub(crate) async fn update_open_document(&self, uri: Url, text: String) {
         let parsed = tracing::debug_span!("parse_document").in_scope(|| parse_document(text));
