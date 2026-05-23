@@ -12,7 +12,6 @@ class CEntityTemplateParam {}
 class CFormation {}
 class CGUID {}
 class CGuiManager {}
-class CGuiObject {}
 class CLayer {}
 class CMeshComponent extends CDrawableComponent {}
 class CMeshTypeComponent extends CMeshComponent {}
