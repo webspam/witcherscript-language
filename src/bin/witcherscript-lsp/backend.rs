@@ -34,8 +34,7 @@ use witcherscript_language::files::canonical_uri;
 use witcherscript_language::formatter::format_document;
 use witcherscript_language::line_index::LineIndex;
 use witcherscript_language::resolve::{
-    find_references, resolve_all_definitions, resolve_definition, signature_help, SymbolDb,
-    WorkspaceIndex,
+    resolve_all_definitions, resolve_definition, signature_help, SymbolDb, WorkspaceIndex,
 };
 use witcherscript_language::script_env::ScriptEnvironment;
 use witcherscript_language::semantic_tokens::{
@@ -62,33 +61,6 @@ pub(crate) enum DocOp {
     WorkspaceFolders(DidChangeWorkspaceFoldersParams),
 }
 
-// Open editor docs shadow workspace docs which shadow base docs — unsaved edits win.
-// Loose files form a compilation isolated from the workspace, so a search whose
-// target is loose sees base + loose docs, and a workspace search excludes loose docs.
-pub(crate) fn merge_documents<'a>(
-    base_docs: &'a HashMap<String, ParsedDocument>,
-    workspace_docs: &'a HashMap<String, ParsedDocument>,
-    open_documents: &'a HashMap<Url, ParsedDocument>,
-    open_loose_uris: &HashSet<Url>,
-    target_is_loose: bool,
-) -> HashMap<String, &'a ParsedDocument> {
-    let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
-    for (uri, doc) in base_docs.iter() {
-        merged.insert(uri.clone(), doc);
-    }
-    if !target_is_loose {
-        for (uri, doc) in workspace_docs.iter() {
-            merged.insert(uri.clone(), doc);
-        }
-    }
-    for (url, doc) in open_documents.iter() {
-        if open_loose_uris.contains(url) == target_is_loose {
-            merged.insert(url.to_string(), doc);
-        }
-    }
-    merged
-}
-
 // The diagnosed set excludes read-only base scripts, so it cannot reuse merge_documents.
 pub(crate) fn diagnostics_document_set<'a>(
     workspace_docs: &'a HashMap<String, ParsedDocument>,
@@ -108,29 +80,6 @@ pub(crate) fn diagnostics_document_set<'a>(
         merged.insert(url.to_string(), doc);
     }
     merged
-}
-
-// Base scripts are read-only: references found inside them must never become edits,
-// even when the renamed symbol's declaration lives in the workspace (e.g. an
-// @wrapMethod whose target's class-body declaration sits in a base script).
-pub(crate) fn rename_changes(
-    refs: &[(String, witcherscript_language::line_index::SourceRange)],
-    new_name: &str,
-    base_docs: &HashMap<String, ParsedDocument>,
-) -> HashMap<Url, Vec<TextEdit>> {
-    let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
-    for (ref_uri, range) in refs {
-        if base_docs.contains_key(ref_uri) || builtin_source(ref_uri).is_some() {
-            continue;
-        }
-        if let Ok(url) = Url::parse(ref_uri) {
-            changes.entry(url).or_default().push(TextEdit {
-                range: lsp_range(*range),
-                new_text: new_name.to_string(),
-            });
-        }
-    }
-    changes
 }
 
 pub(crate) fn builtin_source_response(uri: &str) -> Result<Value> {
@@ -910,163 +859,6 @@ impl Backend {
             result_id: None,
             data: tokens,
         })))
-    }
-
-    async fn _references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
-        let uri = params.text_document_position.text_document.uri;
-        let position = params.text_document_position.position;
-        let include_declaration = params.context.include_declaration;
-
-        let documents = self.documents.lock().await;
-        let Some(document) = documents.get(&uri) else {
-            return Ok(None);
-        };
-        let handles = self.db_handles_for(&uri).await;
-        let db = handles.db();
-
-        let ws_kb = handles.workspace().doc_idents_bytes() / 1024;
-        let base_kb = handles.base().doc_idents_bytes() / 1024;
-        info!(
-            ws_kb,
-            base_kb,
-            total_kb = ws_kb + base_kb,
-            "ident index memory"
-        );
-
-        let Some(definition) =
-            resolve_definition(uri.as_str(), document, &db, source_position(position))
-        else {
-            return Ok(Some(Vec::new()));
-        };
-
-        let workspace_docs = self.workspace_documents.lock().await;
-        let base_docs = self.base_scripts_documents.lock().await;
-        let loose_uris = self.loose_open_uris(&documents).await;
-        let target_is_loose = loose_uris.contains(&uri);
-
-        let merged = merge_documents(
-            &base_docs,
-            &workspace_docs,
-            &documents,
-            &loose_uris,
-            target_is_loose,
-        );
-
-        let definition_document = merged.get(&definition.uri).copied().unwrap_or(document);
-
-        let search_docs: Vec<(&str, &ParsedDocument)> = merged
-            .iter()
-            .map(|(uri, doc)| (uri.as_str(), *doc))
-            .collect();
-
-        let refs = find_references(
-            &definition,
-            definition_document,
-            &search_docs,
-            &db,
-            include_declaration,
-        );
-
-        let locations: Vec<Location> = refs
-            .into_iter()
-            .filter_map(|(ref_uri, range)| {
-                Url::parse(&ref_uri).ok().map(|url| Location {
-                    uri: url,
-                    range: lsp_range(range),
-                })
-            })
-            .collect();
-
-        Ok(Some(locations))
-    }
-
-    async fn _prepare_rename(
-        &self,
-        params: TextDocumentPositionParams,
-    ) -> Result<Option<PrepareRenameResponse>> {
-        let Some(definition) = self
-            .resolve_at(&params.text_document.uri, params.position)
-            .await
-        else {
-            return Ok(None);
-        };
-
-        let base_docs = self.base_scripts_documents.lock().await;
-        if base_docs.contains_key(&definition.uri) {
-            return Err(ResponseError::new(
-                ErrorCode::INVALID_REQUEST,
-                "Cannot rename a symbol declared in a base script (read-only)",
-            ));
-        }
-        if builtin_source(&definition.uri).is_some() {
-            return Err(ResponseError::new(
-                ErrorCode::INVALID_REQUEST,
-                "Cannot rename a built-in symbol",
-            ));
-        }
-
-        Ok(Some(PrepareRenameResponse::DefaultBehavior {
-            default_behavior: true,
-        }))
-    }
-
-    async fn _rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
-        let uri = params.text_document_position.text_document.uri;
-        let new_name = params.new_name;
-
-        let Some(definition) = self
-            .resolve_at(&uri, params.text_document_position.position)
-            .await
-        else {
-            return Ok(None);
-        };
-
-        let documents = self.documents.lock().await;
-        let handles = self.db_handles_for(&uri).await;
-        let workspace_docs = self.workspace_documents.lock().await;
-        let base_docs = self.base_scripts_documents.lock().await;
-
-        if base_docs.contains_key(&definition.uri) {
-            return Err(ResponseError::new(
-                ErrorCode::INVALID_REQUEST,
-                "Cannot rename a symbol declared in a base script (read-only)",
-            ));
-        }
-        if builtin_source(&definition.uri).is_some() {
-            return Err(ResponseError::new(
-                ErrorCode::INVALID_REQUEST,
-                "Cannot rename a built-in symbol",
-            ));
-        }
-
-        let db = handles.db();
-
-        let loose_uris = self.loose_open_uris(&documents).await;
-        let merged = merge_documents(
-            &base_docs,
-            &workspace_docs,
-            &documents,
-            &loose_uris,
-            loose_uris.contains(&uri),
-        );
-
-        let Some(definition_document) = merged.get(&definition.uri).copied() else {
-            return Ok(None);
-        };
-
-        let search_docs: Vec<(&str, &ParsedDocument)> = merged
-            .iter()
-            .map(|(uri, doc)| (uri.as_str(), *doc))
-            .collect();
-
-        let refs = find_references(&definition, definition_document, &search_docs, &db, true);
-
-        let changes = rename_changes(&refs, &new_name, &base_docs);
-
-        Ok(Some(WorkspaceEdit {
-            changes: Some(changes),
-            ..WorkspaceEdit::default()
-        }))
     }
 
     async fn _formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {

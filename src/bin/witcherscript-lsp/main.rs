@@ -9,6 +9,7 @@ mod file_scope_status;
 mod indexing;
 mod legacy_status;
 mod logging;
+mod references_rename;
 #[cfg(test)]
 mod tests;
 mod watcher;

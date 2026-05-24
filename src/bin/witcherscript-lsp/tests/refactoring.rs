@@ -52,7 +52,7 @@ fn rename_definition_in_base_script_is_flagged() {
 
 #[test]
 fn rename_does_not_edit_base_scripts() {
-    use crate::backend::rename_changes;
+    use crate::references_rename::rename_changes;
 
     let base_doc = parse_document("class CR4Player {\n  function Foo() { IsCiri(); }\n}\n")
         .expect("base should parse");
