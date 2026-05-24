@@ -9,21 +9,20 @@ use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
 use futures::future::BoxFuture;
 use lsp_types::{
     CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
-    CodeActionResponse, CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams,
-    CompletionResponse, Diagnostic, DidChangeConfigurationParams, DidChangeTextDocumentParams,
-    DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DocumentFormattingParams, DocumentSymbolParams,
-    DocumentSymbolResponse, FileOperationFilter, FileOperationPattern, FileOperationPatternKind,
-    FileOperationRegistrationOptions, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-    InitializedParams, InsertTextFormat, Location, MarkupContent, MarkupKind, OneOf,
-    PrepareRenameResponse, ReferenceParams, RenameOptions, RenameParams, SemanticToken,
-    SemanticTokenModifier, SemanticTokenType, SemanticTokens, SemanticTokensFullOptions,
-    SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-    SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelp, SignatureHelpOptions,
-    SignatureHelpParams, TextDocumentPositionParams, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit, Url, WorkDoneProgressOptions, WorkspaceEdit,
-    WorkspaceFileOperationsServerCapabilities, WorkspaceFoldersServerCapabilities,
+    CodeActionResponse, CompletionOptions, CompletionParams, CompletionResponse, Diagnostic,
+    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+    DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse, FileOperationFilter,
+    FileOperationPattern, FileOperationPatternKind, FileOperationRegistrationOptions,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
+    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, Location,
+    MarkupContent, MarkupKind, OneOf, PrepareRenameResponse, ReferenceParams, RenameOptions,
+    RenameParams, SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokens,
+    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
+    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelp,
+    SignatureHelpOptions, SignatureHelpParams, TextDocumentPositionParams,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkDoneProgressOptions,
+    WorkspaceEdit, WorkspaceFileOperationsServerCapabilities, WorkspaceFoldersServerCapabilities,
     WorkspaceServerCapabilities,
 };
 use serde_json::{json, Value};
@@ -35,12 +34,8 @@ use witcherscript_language::files::canonical_uri;
 use witcherscript_language::formatter::format_document;
 use witcherscript_language::line_index::LineIndex;
 use witcherscript_language::resolve::{
-    after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
-    class_body_keyword_completions, class_header_keyword_completions, completion_members,
-    default_or_hint_member_completions, expression_completions, extends_completions,
-    find_references, resolve_all_definitions, resolve_definition, script_body_completions,
-    signature_help, state_owner_completions, statement_completions, type_completions,
-    AfterWrapMethodCompletions, SymbolDb, WorkspaceIndex, BUILTIN_TYPE_COMPLETIONS,
+    find_references, resolve_all_definitions, resolve_definition, signature_help, SymbolDb,
+    WorkspaceIndex,
 };
 use witcherscript_language::script_env::ScriptEnvironment;
 use witcherscript_language::semantic_tokens::{
@@ -49,10 +44,8 @@ use witcherscript_language::semantic_tokens::{
 
 use crate::config::{Config, DiagnosticsScope};
 use crate::convert::{
-    annotation_name_items, base_script_conflict_code_actions, builtin_type_item,
-    class_body_kw_item, completion_item, document_symbols, hover_markdown, keyword_snippet_item,
-    lsp_range, script_body_item, signature_help_response, source_position, source_range,
-    this_super_item, type_completion_item, workspace_roots, wrap_method_snippet,
+    base_script_conflict_code_actions, document_symbols, hover_markdown, lsp_range,
+    signature_help_response, source_position, source_range, workspace_roots,
 };
 use crate::file_scope::{classify_file_scope, FileScope};
 use crate::file_scope_status::FileScopeStatusParams;
@@ -1074,238 +1067,6 @@ impl Backend {
             changes: Some(changes),
             ..WorkspaceEdit::default()
         }))
-    }
-
-    async fn _completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        let uri = params.text_document_position.text_document.uri;
-        let position = params.text_document_position.position;
-        let documents = self.documents.lock().await;
-        let Some(document) = documents.get(&uri) else {
-            return Ok(None);
-        };
-        let handles = self.db_handles_for(&uri).await;
-        let db = handles.db();
-
-        let pos = source_position(position);
-
-        let member_items: Vec<CompletionItem> =
-            completion_members(uri.as_str(), document, &db, pos)
-                .iter()
-                .map(|(tier, def)| {
-                    let params = db.parameters_of(&def.uri, def.symbol.id);
-                    let mut item = completion_item(def, &params);
-                    item.sort_text = Some(format!("{}_{}", tier, def.symbol.name));
-                    item
-                })
-                .collect();
-        if !member_items.is_empty() {
-            return Ok(Some(CompletionResponse::Array(member_items)));
-        }
-
-        let default_or_hint = default_or_hint_member_completions(document, &db, pos);
-        if !default_or_hint.is_empty() {
-            let items: Vec<CompletionItem> = default_or_hint
-                .iter()
-                .map(|def| {
-                    let params = db.parameters_of(&def.uri, def.symbol.id);
-                    let mut item = completion_item(def, &params);
-                    item.sort_text = Some(format!("0_{}", def.symbol.name));
-                    item
-                })
-                .collect();
-            return Ok(Some(CompletionResponse::Array(items)));
-        }
-
-        let annotation_arg = annotation_arg_completions(document, &db, pos);
-        if !annotation_arg.is_empty() {
-            return Ok(Some(CompletionResponse::Array(
-                annotation_arg.iter().map(type_completion_item).collect(),
-            )));
-        }
-
-        if let Some(at_pos) = annotation_name_completions(document, pos) {
-            let replace_range = lsp_range(source_range(at_pos, pos));
-            return Ok(Some(CompletionResponse::Array(annotation_name_items(
-                replace_range,
-            ))));
-        }
-
-        match after_wrap_method_completions(document, &db, pos) {
-            Some(AfterWrapMethodCompletions::FunctionKeyword) => {
-                return Ok(Some(CompletionResponse::Array(vec![keyword_snippet_item(
-                    "function", "function",
-                )])));
-            }
-            Some(AfterWrapMethodCompletions::MethodList(methods)) => {
-                let items = methods
-                    .iter()
-                    .map(|def| {
-                        let snippet = wrap_method_snippet(def, &db);
-                        CompletionItem {
-                            label: def.symbol.name.clone(),
-                            kind: Some(CompletionItemKind::METHOD),
-                            detail: def.symbol.signature.clone(),
-                            insert_text: Some(snippet),
-                            insert_text_format: Some(InsertTextFormat::SNIPPET),
-                            ..CompletionItem::default()
-                        }
-                    })
-                    .collect();
-                return Ok(Some(CompletionResponse::Array(items)));
-            }
-            None => {}
-        }
-
-        let extends = extends_completions(document, &db, pos);
-        if !extends.is_empty() {
-            return Ok(Some(CompletionResponse::Array(
-                extends.iter().map(type_completion_item).collect(),
-            )));
-        }
-
-        let state_owners = state_owner_completions(document, &db, pos);
-        if !state_owners.is_empty() {
-            return Ok(Some(CompletionResponse::Array(
-                state_owners.iter().map(type_completion_item).collect(),
-            )));
-        }
-
-        let header_kws = class_header_keyword_completions(document, pos);
-        if !header_kws.is_empty() {
-            return Ok(Some(CompletionResponse::Array(
-                header_kws
-                    .iter()
-                    .map(|kw| keyword_snippet_item(kw, &format!("{kw} ")))
-                    .collect(),
-            )));
-        }
-
-        let user_types = type_completions(document, &db, pos);
-        if !user_types.is_empty() {
-            let mut items: Vec<CompletionItem> = BUILTIN_TYPE_COMPLETIONS
-                .iter()
-                .map(|name| builtin_type_item(name))
-                .collect();
-            items.extend(user_types.iter().map(type_completion_item));
-            return Ok(Some(CompletionResponse::Array(items)));
-        }
-
-        let class_body_kws = class_body_keyword_completions(document, pos);
-        if !class_body_kws.is_empty() {
-            return Ok(Some(CompletionResponse::Array(
-                class_body_kws
-                    .iter()
-                    .map(|kw| class_body_kw_item(kw))
-                    .collect(),
-            )));
-        }
-
-        let script_body_kws = script_body_completions(document, pos);
-        if !script_body_kws.is_empty() {
-            return Ok(Some(CompletionResponse::Array(
-                script_body_kws
-                    .iter()
-                    .map(|kw| script_body_item(kw))
-                    .collect(),
-            )));
-        }
-
-        let stmt = statement_completions(uri.as_str(), document, &db, pos);
-        if stmt.has_this
-            || stmt.has_super
-            || !stmt.locals.is_empty()
-            || !stmt.members.is_empty()
-            || !stmt.globals.is_empty()
-        {
-            let mut items: Vec<CompletionItem> = Vec::new();
-            if stmt.has_this {
-                items.push(this_super_item("this"));
-            }
-            if stmt.has_super {
-                items.push(this_super_item("super"));
-            }
-            items.push(keyword_snippet_item("var", "var ${1:name} : ${2:Type};"));
-            items.push(keyword_snippet_item("if", "if (${1:condition})"));
-            items.push(keyword_snippet_item("else", "else"));
-            items.push(keyword_snippet_item("return", "return;"));
-            items.push(keyword_snippet_item(
-                "for",
-                "for (${1:init}; ${2:condition}; ${3:increment}) {\n\t$0\n}",
-            ));
-            items.push(keyword_snippet_item(
-                "while",
-                "while (${1:condition}) {\n\t$0\n}",
-            ));
-            items.push(keyword_snippet_item(
-                "do",
-                "do {\n\t$0\n} while (${1:condition});",
-            ));
-            items.push(keyword_snippet_item(
-                "switch",
-                "switch (${1:expr}) {\n\tcase ${2:val}:\n\t\t$0\n\t\tbreak;\n}",
-            ));
-            if stmt.in_switch {
-                items.push(keyword_snippet_item("case", "case ${1:val}: $0"));
-                items.push(keyword_snippet_item("default", "default: $0"));
-                items.push(keyword_snippet_item("break", "break;"));
-            }
-            if stmt.in_loop {
-                items.push(keyword_snippet_item("break", "break;"));
-                items.push(keyword_snippet_item("continue", "continue;"));
-            }
-            for def in &stmt.locals {
-                let params = db.parameters_of(&def.uri, def.symbol.id);
-                let mut item = completion_item(def, &params);
-                item.sort_text = Some(format!("0_{}", def.symbol.name));
-                items.push(item);
-            }
-            for def in &stmt.members {
-                let params = db.parameters_of(&def.uri, def.symbol.id);
-                let mut item = completion_item(def, &params);
-                item.sort_text = Some(format!("1_{}", def.symbol.name));
-                items.push(item);
-            }
-            for def in &stmt.globals {
-                let params = db.parameters_of(&def.uri, def.symbol.id);
-                let mut item = completion_item(def, &params);
-                item.sort_text = Some(format!("2_{}", def.symbol.name));
-                items.push(item);
-            }
-            return Ok(Some(CompletionResponse::Array(items)));
-        }
-
-        if let Some(expr) = expression_completions(uri.as_str(), document, &db, pos) {
-            let mut items: Vec<CompletionItem> = Vec::new();
-            if expr.has_this {
-                items.push(this_super_item("this"));
-            }
-            if expr.has_super {
-                items.push(this_super_item("super"));
-            }
-            items.push(keyword_snippet_item("true", "true"));
-            items.push(keyword_snippet_item("false", "false"));
-            for def in &expr.locals {
-                let params = db.parameters_of(&def.uri, def.symbol.id);
-                let mut item = completion_item(def, &params);
-                item.sort_text = Some(format!("0_{}", def.symbol.name));
-                items.push(item);
-            }
-            for def in &expr.members {
-                let params = db.parameters_of(&def.uri, def.symbol.id);
-                let mut item = completion_item(def, &params);
-                item.sort_text = Some(format!("0_{}", def.symbol.name));
-                items.push(item);
-            }
-            for def in &expr.globals {
-                let params = db.parameters_of(&def.uri, def.symbol.id);
-                let mut item = completion_item(def, &params);
-                item.sort_text = Some(format!("2_{}", def.symbol.name));
-                items.push(item);
-            }
-            return Ok(Some(CompletionResponse::Array(items)));
-        }
-
-        Ok(None)
     }
 
     async fn _formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {

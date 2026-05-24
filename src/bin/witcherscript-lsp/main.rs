@@ -1,4 +1,5 @@
 mod backend;
+mod completion;
 mod config;
 mod convert;
 mod cst_cache;
