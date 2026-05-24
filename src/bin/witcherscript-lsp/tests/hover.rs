@@ -1,202 +1,114 @@
-use witcherscript_language::document::parse_document;
-use witcherscript_language::line_index::SourcePosition;
-use witcherscript_language::resolve::{resolve_definition, SymbolDb, WorkspaceIndex};
+use expect_test::expect;
+
+use witcherscript_language::resolve::resolve_definition;
+use witcherscript_language::test_support::TestDb;
 
 use crate::convert::hover_markdown;
 
-#[test]
-fn formats_hover_contents_as_markdown() {
-    let source = "function Make() {\n var dataObject : CScriptedFlashObject;\n dataObject = dataObject;\n}\n";
-    let document = parse_document(source).expect("document should parse");
-    let mut workspace = WorkspaceIndex::default();
-    workspace.update_document("file:///example.ws", &document);
-
-    let definition = resolve_definition(
-        "file:///example.ws",
-        &document,
-        &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 2,
-            character: 2,
-        },
-    )
-    .expect("local variable should resolve");
-
-    let markdown = hover_markdown(&definition);
-
-    assert_eq!(
-        markdown,
-        "```witcherscript\nvar dataObject : CScriptedFlashObject\n```\n\nDefined in [example.ws:2](file:///example.ws#L2)"
-    );
-    assert!(!markdown.contains("Defined in file://"));
+fn markdown_at_cursor(fixture: &str) -> String {
+    let t = TestDb::new(fixture);
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
+        .expect("symbol must resolve at cursor");
+    hover_markdown(&def)
 }
 
 #[test]
-fn formats_annotated_function_hover_with_annotation_first() {
-    let source = "@wrapMethod(CR4Player)\nfunction OnSpawned(spawnData : SEntitySpawnData) {\n}\n";
-    let document = parse_document(source).expect("document should parse");
-    let mut workspace = WorkspaceIndex::default();
-    workspace.update_document("file:///fov.ws", &document);
-
-    let definition = resolve_definition(
-        "file:///fov.ws",
-        &document,
-        &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 1,
-            character: 9,
-        },
-    )
-    .expect("function should resolve");
-
-    let markdown = hover_markdown(&definition);
-
-    assert_eq!(
-        markdown,
-        "```witcherscript\n@wrapMethod(CR4Player)\nfunction OnSpawned(spawnData: SEntitySpawnData)\n```\n\nDefined in [fov.ws:2](file:///fov.ws#L2)"
+fn formats_local_variable_as_markdown() {
+    let actual = markdown_at_cursor(
+        "//- /example.ws\n\
+         function Make() {\n var dataObject : CScriptedFlashObject;\n $0dataObject = dataObject;\n}\n",
     );
+    expect![[r#"
+        ```witcherscript
+        var dataObject : CScriptedFlashObject
+        ```
+
+        Defined in [example.ws:2](file:///example.ws#L2)"#]]
+    .assert_eq(&actual);
+    assert!(!actual.contains("Defined in file://"));
 }
 
 #[test]
-fn formats_parameter_hover_with_parenthesised_label() {
-    let source = "function Make(spawnData : SEntitySpawnData) {\n spawnData = spawnData;\n}\n";
-    let document = parse_document(source).expect("document should parse");
-    let mut workspace = WorkspaceIndex::default();
-    workspace.update_document("file:///example.ws", &document);
-
-    let definition = resolve_definition(
-        "file:///example.ws",
-        &document,
-        &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 1,
-            character: 2,
-        },
-    )
-    .expect("parameter should resolve");
-
-    let markdown = hover_markdown(&definition);
-
-    assert_eq!(
-        markdown,
-        "```witcherscript\n(parameter) spawnData : SEntitySpawnData\n```\n\nDefined in [example.ws:1](file:///example.ws#L1)"
+fn formats_annotated_function_with_annotation_first() {
+    let actual = markdown_at_cursor(
+        "//- /fov.ws\n\
+         @wrapMethod(CR4Player)\nfunction $0OnSpawned(spawnData : SEntitySpawnData) {\n}\n",
     );
+    expect![[r#"
+        ```witcherscript
+        @wrapMethod(CR4Player)
+        function OnSpawned(spawnData: SEntitySpawnData)
+        ```
+
+        Defined in [fov.ws:2](file:///fov.ws#L2)"#]]
+    .assert_eq(&actual);
 }
 
 #[test]
-fn formats_method_hover_with_owning_class_prefix() {
-    let source = "class CExample {\n public function DoThing(x : int) : bool {}\n}\n";
-    let document = parse_document(source).expect("document should parse");
-    let mut workspace = WorkspaceIndex::default();
-    workspace.update_document("file:///example.ws", &document);
-
-    let definition = resolve_definition(
-        "file:///example.ws",
-        &document,
-        &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 1,
-            character: 17,
-        },
-    )
-    .expect("method should resolve");
-
-    let markdown = hover_markdown(&definition);
-
-    assert_eq!(
-        markdown,
-        "```witcherscript\n(method) CExample.DoThing(x: int): bool\n```\n\nDefined in [example.ws:2](file:///example.ws#L2)"
+fn formats_parameter_with_parenthesised_label() {
+    let actual = markdown_at_cursor(
+        "//- /example.ws\n\
+         function Make(spawnData : SEntitySpawnData) {\n $0spawnData = spawnData;\n}\n",
     );
+    expect![[r#"
+        ```witcherscript
+        (parameter) spawnData : SEntitySpawnData
+        ```
+
+        Defined in [example.ws:1](file:///example.ws#L1)"#]]
+    .assert_eq(&actual);
 }
 
 #[test]
-fn formats_inherited_method_hover_with_superclass_name() {
-    let source_a = "class A extends B {\n function Test() {\n  Inherited();\n }\n}\n";
-    let source_b = "class B {\n public function Inherited() : int {}\n}\n";
-    let doc_a = parse_document(source_a).expect("document should parse");
-    let doc_b = parse_document(source_b).expect("document should parse");
-    let mut workspace = WorkspaceIndex::default();
-    workspace.update_document("file:///a.ws", &doc_a);
-    workspace.update_document("file:///b.ws", &doc_b);
-
-    let definition = resolve_definition(
-        "file:///a.ws",
-        &doc_a,
-        &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 2,
-            character: 3,
-        },
-    )
-    .expect("inherited method should resolve");
-
-    let text = witcherscript_language::resolve::hover_text(&definition);
-    assert!(
-        text.starts_with("(method) "),
-        "method hover should start with '(method) '"
+fn formats_method_with_owning_class_prefix() {
+    let actual = markdown_at_cursor(
+        "//- /example.ws\n\
+         class CExample {\n public function $0DoThing(x : int) : bool {}\n}\n",
     );
-    assert!(
-        text.contains("B."),
-        "method hover should include defining class"
-    );
-    assert!(
-        text.contains("Inherited"),
-        "method hover should include method name"
-    );
-    assert!(
-        text.contains("int"),
-        "method hover should include return type"
-    );
-}
+    expect![[r#"
+        ```witcherscript
+        (method) CExample.DoThing(x: int): bool
+        ```
 
-#[test]
-fn formats_field_hover_with_full_declaration() {
-    let source = "class CExample {\n protected editable var ignore : bool;\n}\n";
-    let document = parse_document(source).expect("document should parse");
-    let mut workspace = WorkspaceIndex::default();
-    workspace.update_document("file:///example.ws", &document);
-
-    let definition = resolve_definition(
-        "file:///example.ws",
-        &document,
-        &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 1,
-            character: 25,
-        },
-    )
-    .expect("field should resolve");
-
-    let text = witcherscript_language::resolve::hover_text(&definition);
-    assert!(
-        text.starts_with("(field) "),
-        "field hover should start with '(field) '"
-    );
-    assert!(text.contains("ignore"), "field hover should include name");
-    assert!(text.contains("bool"), "field hover should include type");
+        Defined in [example.ws:2](file:///example.ws#L2)"#]]
+    .assert_eq(&actual);
 }
 
 #[test]
 fn formats_class_hover_with_extends_on_single_line() {
-    let source = "class Y {}\nclass X extends Y {}\n";
-    let document = parse_document(source).expect("document should parse");
-    let mut workspace = WorkspaceIndex::default();
-    workspace.update_document("file:///example.ws", &document);
+    let t = TestDb::new("class Y {}\nclass X$0 extends Y {}\n");
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("class must resolve");
+    let text = witcherscript_language::resolve::hover_text(&def);
+    expect!["class X extends Y"].assert_eq(&text);
+}
 
-    let definition = resolve_definition(
-        "file:///example.ws",
-        &document,
-        &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 1,
-            character: 6,
-        },
-    )
-    .expect("class should resolve");
-
-    let text = witcherscript_language::resolve::hover_text(&definition);
-    assert_eq!(
-        text, "class X extends Y",
-        "class hover should render the extends clause on a single line"
+#[test]
+fn inherited_method_hover_includes_defining_class_and_return_type() {
+    let t = TestDb::new(
+        "//- /a.ws\n\
+         class A extends B {\n function Test() {\n  $0Inherited();\n }\n}\n\
+         //- /b.ws\n\
+         class B {\n public function Inherited() : int {}\n}\n",
     );
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
+        .expect("inherited method must resolve");
+    let text = witcherscript_language::resolve::hover_text(&def);
+    assert!(text.starts_with("(method) "), "got {text:?}");
+    assert!(text.contains("B."), "got {text:?}");
+    assert!(text.contains("Inherited"), "got {text:?}");
+    assert!(text.contains("int"), "got {text:?}");
+}
+
+#[test]
+fn field_hover_includes_name_and_type() {
+    let t = TestDb::new("class CExample {\n protected editable var $0ignore : bool;\n}\n");
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("field must resolve");
+    let text = witcherscript_language::resolve::hover_text(&def);
+    assert!(text.starts_with("(field) "), "got {text:?}");
+    assert!(text.contains("ignore"), "got {text:?}");
+    assert!(text.contains("bool"), "got {text:?}");
 }
