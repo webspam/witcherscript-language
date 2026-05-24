@@ -1,214 +1,123 @@
 # Test infrastructure
 
+For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writing-tests.md). This file is the inventory + non-obvious detail.
+
 ## Where tests live
 
 | Location | What it tests |
 |---|---|
 | `src/diagnostics/mod.rs` `#[cfg(test)]` | `collect_diagnostics()` — late vars, incomplete exprs, ternary |
-| `src/symbols.rs` `#[cfg(test)]` | `extract_symbols()` — params, locals, functions |
+| `src/diagnostics/<rule>/tests.rs` | One file per diagnostic rule (see `unknown_symbol/tests.rs` as the cleanest pattern) |
+| `src/symbols.rs` `#[cfg(test)]` | `extract_symbols()` |
 | `src/line_index.rs` `#[cfg(test)]` | `LineIndex` — byte↔position conversions, UTF-16 |
 | `src/script_env.rs` `#[cfg(test)]` | INI parsing, globals section, symbol positions |
-| `src/resolve/tests/` | Everything in the `resolve/` submodules (~3400 lines across 16 files, most comprehensive) |
+| `src/resolve/tests/` | `resolve/` submodules — definition, references, completion, inheritance, signature help, builtins |
 | `src/semantic_tokens/tests.rs` | `collect_semantic_tokens()` — classify, resolve, encode |
-| `src/bin/witcherscript-lsp/tests/` | LSP-specific unit tests split across `completion.rs`, `diagnostics.rs`, `file_io.rs`, `hover.rs`, `indexing.rs`, `refactoring.rs` |
-| `src/bin/witcherscript-lsp/tests/e2e/` | Wire-level E2E tests that drive the real `Backend` over a tokio duplex pair with framed JSON-RPC |
-| `tests/parser_fixtures.rs` | Parametrized parse tests over all fixture files |
-| `tests/language_features.rs` | Integration tests for symbol extraction + resolution |
+| `src/bin/witcherscript-lsp/tests/` | LSP handler unit tests (`completion.rs`, `diagnostics.rs`, `hover.rs`, `indexing/*.rs`, `refactoring.rs`) |
+| `src/bin/witcherscript-lsp/tests/e2e/` | Wire-level E2E — framed JSON-RPC against a real `Backend` over `tokio::io::duplex` |
+| `src/test_support/` | Shared toolkit: `TestDb`, `Fixture` marker parser, name assertion helpers |
+| `tests/parser_fixtures.rs` | Auto-discovers `tests/fixtures/{valid,invalid}/*.ws` and asserts parse-clean / diagnostic-emitted |
+| `tests/language_features.rs` | Cross-cutting integration: symbol extraction + resolution over a known fixture file |
 
-## Fixture-based parse tests
+## resolve/tests/ inventory
 
-`tests/parser_fixtures.rs` discovers and runs tests on all `.ws` files in two directories:
-
-**`tests/fixtures/valid/`** — all must parse with zero diagnostics
-
-| File | Constructs covered |
+| File | Covers |
 |---|---|
-| `basic_function.ws` | top-level function, local vars, if, return |
-| `mod_annotations_and_defaults.ws` | enum, struct, class with inheritance, @addField/@wrapMethod/@addMethod, defaults blocks, timer function, array<T>, for loop, new expr |
-| `state_machine.ws` | statemachine class, state X in Y, entry function, event OnEnterState/OnLeaveState, while, SleepOneFrame, super.X, parent.X |
-
-**`tests/fixtures/invalid/`** — all must produce at least one diagnostic
-
-| File | Error |
-|---|---|
-| `bad_parameter_list.ws` | parameter without `:` type separator → tree-sitter error |
-| `missing_semicolon.ws` | var decl without `;` → tree-sitter "missing" |
-| `unclosed_block.ws` | unclosed class body brace → tree-sitter error |
-
-When adding a new grammar feature or parse rule, add or update a fixture rather than relying solely on unit tests for complex syntax.
-
-## resolve/tests/ — authoritative test patterns
-
-This directory (~3400 lines across 16 files) is the canonical reference for how to write resolution and completion tests. Use it as examples before adding new tests under `src/resolve/tests/`.
-
-| File | What it covers |
-|---|---|
-| `definition.rs` | `resolve_definition` — top-level functions, methods, enum variants, receiver vars |
+| `definition.rs` | `resolve_definition` + `resolve_all_definitions` |
 | `references.rs` | `find_references` — scoping, include_declaration flag, private member scoping |
 | `inheritance.rs` | `this`/`super`/`parent`, access levels, inherited method resolution |
 | `chaining.rs` | Method-on-return-value, multi-level chained calls |
 | `script_globals.rs` | INI globals, redirect to class, local shadows global |
 | `parameters.rs` | `parameters_of`, `wrap_method_snippet` |
 | `completion_members.rs` | `completion_members` — dot-access, tier ordering |
-| `completion_statement.rs` | `statement_completions` — locals, members, globals, `this`/`super`, loop/switch flags, context guards |
-| `completion_type.rs` | `type_completions`, `extends_completions` |
+| `completion_statement.rs` | `statement_completions` — locals, members, globals, has_this/has_super, in_loop/in_switch |
+| `completion_type.rs` | `type_completions`, `extends_completions`, `state_owner_completions`, `class_header_keyword_completions` |
 | `completion_keywords.rs` | `class_body_keyword_completions` — specifier state machine |
 | `completion_script_keywords.rs` | Script-level keyword completions |
 | `completion_annotation.rs` | `annotation_arg_completions`, `after_wrap_method_completions` |
-| `builtin_array.rs` | Built-in array type resolution, `parse_generic_type`, member completions and hover via `load_builtins_index` |
-| `index.rs` | `WorkspaceIndex::all_top_level` — multi-document iteration, member exclusion |
-| `signature_help.rs` | `signature_help` — parameter hints and active parameter tracking |
-| `mod.rs` | Module root: declares all submodules and houses `make_doc`/`make_index` helpers shared across resolve tests |
+| `completion_default_hint.rs` | `default_or_hint_member_completions` |
+| `builtin_array.rs` | Built-in `array<T>` resolution, `parse_generic_type`, members/hover via `load_builtins_index` |
+| `builtin_classes.rs` / `builtin_enums.rs` | Other embedded engine types |
+| `index.rs` | `WorkspaceIndex::all_top_level` — multi-document iteration |
+| `signature_help.rs` | `signature_help` — parameter hints + active param tracking |
+| `mod.rs` | `make_doc`, `make_index`, `make_env`, `index_docs` helpers shared across this module |
 
-**Test categories covered:**
-- Definition resolution for top-level functions, class methods, enum variants, fields, locals, parameters
-- Word-boundary and cursor-position edge cases
-- Protected/private visibility scoping (private = file-only; protected = accessible from subclass)
-- Method resolution through inheritance chains
-- `this.member`, `super.method`, `parent.X` (state→owner class, public only)
-- Variable receiver type inference (`obj.Method()` → resolve obj → get type → find Method)
-- Chained calls: `func().method().chain()`
-- `this`/`super`/`parent` keyword resolution
-- Script globals from INI redirecting to class definitions
-- `completion_members()` with tier ordering (own < inherited)
-- `type_completions()` returning class/struct/enum/builtin types
-- `statement_completions()` with locals, members, globals, has_this, has_super
-- Exec/quest functions excluded from statement completions
-- `find_references()` with include_declaration flag
-- Private member scoping to file
-- Local variable scoping to function
+## Canonical examples
 
-**Test fixture helper pattern (from language_features.rs):**
-```rust
-let source = include_str!("fixtures/valid/mod_annotations_and_defaults.ws");
-let doc = parse_document(source).unwrap();
-let mut index = WorkspaceIndex::default();
-index.update_document("file:///test.ws", &doc);
-let base = WorkspaceIndex::default();
-let db = SymbolDb::new(&index, &base);
+When writing a new test, copy the closest existing pattern instead of re-deriving:
 
-// resolve a symbol at a position
-let result = resolve_definition("file:///test.ws", &doc, &db, SourcePosition { line: 5, character: 10 });
-assert!(result.is_some());
-```
+- **Resolve / completion at a cursor** → `src/resolve/tests/inheritance.rs` (`TestDb::new` + `$0` marker + `#[rstest] #[case]`).
+- **Multi-document fixture** → `src/resolve/tests/definition.rs` cases using `//- /path.ws` headers.
+- **Inline-snapshot golden output** (hover markdown, formatter output) → `src/bin/witcherscript-lsp/tests/hover.rs` (`expect-test`).
+- **Wire-level LSP request** → `src/bin/witcherscript-lsp/tests/e2e/definition.rs` (`Fixture::parse` + `LspClient::spawn`).
+- **Per-diagnostic test module** → `src/diagnostics/unknown_symbol/tests.rs` (`index_and_docs`/`check`/`kinds` triad).
+- **Decoded semantic-token assertions** → `src/semantic_tokens/tests.rs` (`decode_tokens` → `Vec<SemanticTokenView>`).
 
-**Inline source pattern (from resolve/tests.rs):**
-```rust
-fn make_doc(source: &str) -> ParsedDocument { parse_document(source).unwrap() }
-fn make_index(uri: &str, doc: &ParsedDocument) -> WorkspaceIndex {
-    let mut idx = WorkspaceIndex::default();
-    idx.update_document(uri, doc);
-    idx
-}
-```
+## Fixture markers
 
-## tests/e2e/ wire-level LSP tests
+`TestDb::new(fixture_str)` and the e2e `Fixture::parse(fixture_str)` accept the same string format:
 
-`src/bin/witcherscript-lsp/tests/e2e/` exercises the full LSP stack: tests speak framed JSON-RPC to a real `Backend` running inside the same process. The server is wired with the same `Router` + `LifecycleLayer` + `CatchUnwindLayer` + `ConcurrencyLayer` + `TracingLayer` stack as `main.rs`, so a regression in dispatch, encoding, or framing fails a test rather than slipping past the unit suite.
+- `$0` — exactly one cursor (stripped before parsing).
+- `//^^^ label` — annotates a span on the **previous content line**; retrievable via `t.span("label")`.
+- `//- /path.ws` — starts a new virtual file; without any `//-`, content lands under `file:///main.ws`.
+- Annotation lines are stripped before the source reaches the parser, so positions reference the *stripped* line numbering.
 
-| File | What it covers |
-|---|---|
-| `harness.rs` | `LspClient::spawn()` builds the server on a `tokio::io::duplex` pair and returns a client that speaks `Content-Length`-framed JSON. Exposes `request<R>`, `notify<N>`, `open`, `change_full`, `wait_diagnostics`. |
-| `fixture.rs` | Parses inline source with rust-analyzer-style markers: `//- /path.ws` for multi-file, `$0` for the cursor, `//^^^ label` for an expected span on the line above. |
-| `definition.rs` | `textDocument/definition` golden paths |
-| `completion.rs` | `textDocument/completion` golden paths |
-| `hover.rs` | `textDocument/hover` golden paths |
-| `rename.rs` | `textDocument/rename` golden paths |
-| `diagnostics.rs` | `textDocument/publishDiagnostics` after open and after change |
+Positions are UTF-16 code units (LSP-compatible).
 
-**Fixture format:**
+## Parse-fixture directory
 
-```rust
-let f = Fixture::parse(concat!(
-    "function Foo() {}\n",
-    "//       ^^^ name\n",
-    "function Bar() { Fo$0o(); }\n",
-));
-```
-
-- `$0` is the cursor (exactly one per fixture).
-- `//^^^ label` annotates a span on the previous content line; `Fixture::span("label")` returns `(Url, Range)`.
-- `//- /lib.ws` starts a new virtual file in a multi-file fixture; without any `//- ` marker the source lands under `file:///main.ws`.
-- Annotation lines are stripped before the source is sent to the server, so positions reference the *stripped* line numbering.
-
-**Writing an E2E test:**
-
-```rust
-#[tokio::test]
-async fn definition_resolves_function_callsite_to_declaration() {
-    let f = Fixture::parse(concat!(
-        "function Foo() {}\n",
-        "//       ^^^ name\n",
-        "function Bar() { Fo$0o(); }\n",
-    ));
-    let mut client = LspClient::spawn().await;
-    for file in &f.files {
-        client.open(&file.uri, &file.text).await;
-    }
-    let (cursor_uri, pos) = f.cursor();
-    let resp = client.request::<GotoDefinition>(/* params at pos */).await;
-    let (expected_uri, expected_range) = f.span("name");
-    // assert resp points at expected_uri/expected_range
-}
-```
-
-**When to add one:**
-
-- Wiring up a new LSP capability: one golden-path E2E case per request type.
-- A bug that only manifested through the JSON-RPC layer (lsp-types schema mismatch, layer ordering, dispatch arm).
-
-For pure resolve / completion / inference logic, prefer `src/resolve/tests/`; E2E tests should not duplicate that coverage.
+`tests/fixtures/valid/` — all `.ws` files must parse with zero diagnostics. `tests/fixtures/invalid/` — all must produce at least one diagnostic. `tests/parser_fixtures.rs` discovers and runs both. When adding a grammar feature, add a fixture rather than relying solely on unit tests.
 
 ## Running tests
 
 ```
-just test      # cargo fmt + cargo clippy + cargo nextest run
-just ci        # cargo fmt --check + cargo clippy -D warnings + cargo nextest run
+just test      # cargo fmt + cargo clippy + cargo nextest run --features test-support
+just ci        # cargo fmt --check + cargo clippy -D warnings + cargo nextest run --features test-support
 ```
 
-Both recipes run tests via [cargo-nextest](https://nexte.st), which produces a compact per-test status table instead of the verbose `cargo test` output. Install locally with `cargo binstall cargo-nextest` or `winget install nextest.cargo-nextest`. Config lives at `.config/nextest.toml`.
+The `test-support` feature exposes `witcherscript_language::test_support::*` so the LSP binary's test crate can use the same `TestDb` / `Fixture` helpers as the library's own tests.
 
-There are no doctests in this repo, so a separate `cargo test --doc` step is not needed.
+After changing an output formatter (hover markdown, snippet, diagnostic message): `UPDATE_EXPECT=1 cargo test` rewrites stale `expect![[]]` literals in place. For `insta` snapshots: `cargo insta review`.
 
-## When to add what kind of test
+There are no doctests.
 
-| Scenario | Where to add |
+## When to add what
+
+| Scenario | Where |
 |---|---|
 | New grammar construct | Fixture in `tests/fixtures/valid/` + `parser_fixtures.rs` picks it up automatically |
-| New validation rule | Unit test in `src/diagnostics/mod.rs` + fixture in `tests/fixtures/invalid/` if complex |
-| New symbol kind | Test in `symbols.rs` `#[cfg(test)]` + cases in `src/resolve/tests/` |
-| New resolution case | Test in `src/resolve/tests/` (inline source) |
-| New completion case | Test in `src/resolve/tests/` or a new `language_features.rs` test |
-| New LSP handler | Test in `src/bin/witcherscript-lsp/tests/` (handler logic) + a golden-path case in `tests/e2e/<feature>.rs` (wire-level) |
-| Regression that only shows up over JSON-RPC (serialization, dispatch, framing) | Test in `src/bin/witcherscript-lsp/tests/e2e/` |
-| New semantic token | Test in `semantic_tokens/tests.rs` |
+| New validation rule | Unit test in `src/diagnostics/<rule>/tests.rs` (use `unknown_symbol/` as the template) + fixture in `tests/fixtures/invalid/` if complex |
+| New symbol kind | `symbols.rs` `#[cfg(test)]` + cases in `src/resolve/tests/` |
+| New resolution case | `src/resolve/tests/` (use `TestDb::new` with a `$0` marker) |
+| New completion case | `src/resolve/tests/` |
+| New LSP handler | `src/bin/witcherscript-lsp/tests/<feature>.rs` (handler logic) + a golden-path case in `tests/e2e/<feature>.rs` (wire-level) |
+| Regression that only shows up over JSON-RPC | `src/bin/witcherscript-lsp/tests/e2e/` |
+| New semantic token | `semantic_tokens/tests.rs` (use `decode_tokens` + `SemanticTokenView`) |
 
 ## Benchmarks
 
-Performance is tracked in two layers under `benches/`. Layout and intent:
-
-| File | Tool | Where it runs | Purpose |
+| File | Tool | Where | Purpose |
 |---|---|---|---|
 | `benches/lib_*.rs` | criterion | Local | Wall-clock timing of parse / symbols / index / resolve / completion. Use during refactor iteration with `just bench-baseline` and `just bench-compare`. |
-| `benches/iai_lib.rs` | iai-callgrind | CI (Linux) + local on WSL | Instruction counts under cachegrind. Deterministic; immune to CI runner noise. This is the regression-gating layer. |
-| `benches/lsp_smoke.rs` | criterion | Local only | Spawns the release `witcherscript-lsp` binary and measures cold start + warm request latency over stdio. Local sanity check, not gated. |
+| `benches/iai_lib.rs` | iai-callgrind | CI (Linux) + local on WSL | Instruction counts under cachegrind. Deterministic; immune to CI runner noise. Regression-gating layer. |
+| `benches/lsp_smoke.rs` | criterion | Local only | Spawns the release `witcherscript-lsp` binary and measures cold start + warm request latency over stdio. Not gated. |
 | `benches/common/synth.rs` | helper | n/a | Deterministic `synth_file` / `synth_workspace` generators. Each bench includes it via `#[path = "common/synth.rs"]`. |
 
 The wire-level smoke bench shares `src/bin/witcherscript-lsp/tests/jsonrpc_client.rs` with the E2E harness: same framing code, two transports.
 
-### How the iai-callgrind benchmark comparison works in CI
+### iai-callgrind CI comparison
 
-iai-callgrind writes per-bench instruction counts under `target/iai/`. CI uses iai-callgrind's *named baseline* mechanism: master records a baseline called `master`, and PRs compare against it. The comparison is **advisory**: it never blocks merging. It prints the instruction-count diff to the CI job log, so a regression is a deliberate, visible decision rather than an enforced wall. The baseline is persisted across runs via `actions/cache`:
+iai-callgrind writes per-bench instruction counts under `target/iai/`. CI uses iai-callgrind's *named baseline* mechanism: master records a baseline called `master`, PRs compare against it. The comparison is **advisory**: it never blocks merging, just prints the diff to the job log.
 
 - Cache key is `iai-<os>-master-<commit-sha>`. Restore key is the prefix `iai-<os>-master-`, so any run resolves to the most recent master baseline.
 - Only `push` events on `master` save the cache: master runs `cargo bench -- --save-baseline=master` and persists `target/iai/`. PR runs restore but never save, so a PR cannot poison the baseline.
-- PR runs compare with `cargo bench -- --baseline=master`, which diffs against the saved `master` baseline without overwriting it and prints the result to the job log.
-- If a PR finds no cache (e.g. GitHub expired it after a week of no activity), the job checks out `master`, runs `--save-baseline=master` to seed `target/iai/`, then checks back out to the PR HEAD before the comparison run.
-- `IAI_CALLGRIND_REGRESSION=ir=5.0` makes iai-callgrind flag any bench whose instruction reads (`ir`) climb more than 5% vs the `master` baseline. The job tolerates that flag (iai-callgrind exit code 3) and stays green; only a genuine failure to build or run the benches fails the job.
+- PR runs compare with `cargo bench -- --baseline=master`.
+- If a PR finds no cache (e.g. GitHub expired it after a week), the job checks out `master`, runs `--save-baseline=master` to seed `target/iai/`, then checks back out to the PR HEAD before the comparison run.
+- `IAI_CALLGRIND_REGRESSION=ir=5.0` flags any bench whose instruction reads climb >5% vs `master`. The job tolerates that flag (exit code 3) and stays green.
 
-The benchmark binary needs symbols for cachegrind to attach its collection toggle, so `[profile.bench]` in `Cargo.toml` overrides the `release` profile with `strip = false` / `debug = true`. It also sets `lto = false`: under LTO an unrelated edit can shift inlining in a benchmarked path and produce phantom instruction-count drift. Without these overrides every counter reads zero or wanders.
+The benchmark binary needs symbols for cachegrind to attach its collection toggle, so `[profile.bench]` overrides release with `strip = false` / `debug = true` and `lto = false` (under LTO an unrelated edit can shift inlining and produce phantom drift).
 
-Fixture work inside each `#[library_benchmark]` runs in a `#[bench(setup = ...)]` callback so cachegrind only measures the target call, not the surrounding parse / index build. See `benches/iai_lib.rs` for the pattern.
+Fixture work inside each `#[library_benchmark]` runs in a `#[bench(setup = ...)]` callback so cachegrind only measures the target call, not the surrounding parse / index build.
 
 Recipes:
 
@@ -220,23 +129,6 @@ just bench-iai               # iai-callgrind (requires valgrind, Linux/WSL)
 just bench-lsp               # criterion LSP smoke benches against release binary
 ```
 
-When adding a new hot path that needs perf coverage:
-
-1. Add a criterion bench under `benches/lib_<area>.rs` for local iteration.
-2. Add an iai-callgrind bench in `benches/iai_lib.rs` for CI gating.
-3. If the path is reached only through the LSP wire protocol, also add a scenario to `benches/lsp_smoke.rs`.
-
 CI runs only `iai_lib` (on `ubuntu-latest` with valgrind installed). Criterion benches are local; CI wall-clock measurement is too noisy to gate on.
 
-## assert_symbol helper
-
-`tests/language_features.rs` defines a small helper used in integration tests:
-
-```rust
-fn assert_symbol(symbols: &DocumentSymbols, kind: SymbolKind, name: &str) {
-    assert!(symbols.all().iter().any(|s| s.kind == kind && s.name == name),
-        "expected symbol {name:?} of kind {kind:?}");
-}
-```
-
-Use this pattern when verifying symbol extraction in integration tests.
+When adding a new hot path that needs perf coverage: add a criterion bench under `benches/lib_<area>.rs` for local iteration, an iai-callgrind bench in `benches/iai_lib.rs` for CI gating, and a scenario in `benches/lsp_smoke.rs` if the path is only reached through the LSP wire protocol.
