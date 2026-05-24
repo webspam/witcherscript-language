@@ -77,7 +77,7 @@ fn formats_method_with_owning_class_prefix() {
 
 #[test]
 fn formats_class_hover_with_extends_on_single_line() {
-    let t = TestDb::new("class Y {}\nclass X$0 extends Y {}\n");
+    let t = TestDb::new("class Y {}\nclass $0X extends Y {}\n");
     let (uri, pos) = t.cursor();
     let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("class must resolve");
     let text = witcherscript_language::resolve::hover_text(&def);

@@ -13,7 +13,7 @@ use crate::test_support::{def_names, TestDb};
     &[], false,
 )]
 #[case::partial_type_name_in_annotation(
-    "class CPlayer {}\nstruct SData {}\nenum EDir { North = 0 }\nfunction Test() {\n  var x : CP$0\n  var y : int;\n}\n",
+    "class CPlayer {}\nstruct SData {}\nenum EDir { North = 0 }\nfunction Test() {\n  var x : C$0P\n  var y : int;\n}\n",
     &["CPlayer", "SData", "EDir"], false,
 )]
 #[case::colon_inside_string_literal_does_not_fire(
@@ -21,7 +21,7 @@ use crate::test_support::{def_names, TestDb};
     &[], true,
 )]
 #[case::no_type_context_outside_annotation(
-    "function Test() {\n  some$0Var\n}\n",
+    "function Test() {\n  someVar$0\n}\n",
     &[], true,
 )]
 #[case::cursor_right_of_complete_type_name(
@@ -119,7 +119,7 @@ fn type_annotation_in_callable_header_fires_type_completions(
     &["CExample"], &[],
 )]
 #[case::mid_base_class_name(
-    "class CExample {}\nclass Foo extends CEx$0\n",
+    "class CExample {}\nclass Foo extends CE$0x\n",
     &["CExample"], &[],
 )]
 #[case::inside_class_body_blank(
@@ -127,11 +127,11 @@ fn type_annotation_in_callable_header_fires_type_completions(
     &[], &[],
 )]
 #[case::at_class_name_position(
-    "class F$0oo {\n  \n}\n",
+    "class $0Foo {\n  \n}\n",
     &[], &[],
 )]
 #[case::state_extends_offers_states_only(
-    "class CBase {}\nstate BaseState in CBase {}\nstate IdleState in CBase extends $0\n",
+    "class CBase {}\nstate BaseState in CBase {}\nstate IdleState in CBase extends$0 \n",
     &["BaseState"], &["CBase"],
 )]
 #[case::state_extends_excludes_unrelated_owners(
