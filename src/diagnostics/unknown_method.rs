@@ -10,8 +10,8 @@ use crate::resolve::{infer_expr_type_memo, SymbolDb};
 use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::{
-    access_is_inside_declaring_class, run_rules_on_document, CstRule, CstRuleCtx, Severity,
-    WorkspaceDiagnostic,
+    access_is_inside_declaring_class, declaring_class_of, run_rules_on_document, CstRule,
+    CstRuleCtx, Severity, WorkspaceDiagnostic,
 };
 
 pub(crate) struct UnknownMethodRule;
@@ -116,7 +116,7 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         if def.symbol.access == AccessLevel::Private
             && !access_is_inside_declaring_class(method_ident, &def, ctx)
         {
-            let declarer = def.symbol.container_name.as_deref().unwrap_or("");
+            let declarer = declaring_class_of(&def).unwrap_or("");
             let range = ctx.document.line_index.byte_range_to_range(
                 &ctx.document.source,
                 method_ident.start_byte(),

@@ -22,8 +22,8 @@ pub use base_script_conflict::{
     KIND as BASE_SCRIPT_CONFLICT_KIND,
 };
 pub(crate) use cst_walker::{
-    access_is_inside_declaring_class, collect_nodes_with_error_subtree, run_parallel_pass,
-    run_rules_on_document, CstRule, CstRuleCtx, ParallelRuleShard,
+    access_is_inside_declaring_class, collect_nodes_with_error_subtree, declaring_class_of,
+    run_parallel_pass, run_rules_on_document, CstRule, CstRuleCtx, ParallelRuleShard,
 };
 pub use duplicate_local::collect_duplicate_local_diagnostics;
 pub use duplicate_symbols::collect_duplicate_symbol_diagnostics;

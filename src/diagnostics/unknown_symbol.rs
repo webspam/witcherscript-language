@@ -10,8 +10,8 @@ use crate::resolve::{infer_expr_type_memo, resolve_definition_at_ident, SymbolDb
 use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::{
-    access_is_inside_declaring_class, collect_nodes_with_error_subtree, run_parallel_pass,
-    CstRuleCtx, ParallelRuleShard, Severity, WorkspaceDiagnostic,
+    access_is_inside_declaring_class, collect_nodes_with_error_subtree, declaring_class_of,
+    run_parallel_pass, CstRuleCtx, ParallelRuleShard, Severity, WorkspaceDiagnostic,
 };
 
 pub(crate) fn run_unknown_symbol_parallel(
@@ -173,7 +173,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                     if def.symbol.access == AccessLevel::Private
                         && !access_is_inside_declaring_class(ident, &def, ctx)
                     {
-                        let declarer = def.symbol.container_name.as_deref().unwrap_or("");
+                        let declarer = declaring_class_of(&def).unwrap_or("");
                         push(
                             ctx,
                             ident,
@@ -779,6 +779,39 @@ mod tests {
         assert!(
             result.is_empty(),
             "@addMethod(A) body is a member of A, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn add_field_private_accessible_inside_add_method_of_same_class() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "class Foo {} \
+             @addField(Foo) private var injected : int; \
+             @addMethod(Foo) function R() { var f : Foo; f.injected = 1; }\n",
+        )]);
+        let result = check(&idx, &docs);
+        assert!(
+            result.is_empty(),
+            "an @addField on Foo is a private member of Foo; access from @addMethod(Foo) is allowed, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn add_field_private_flagged_with_class_name_from_outside() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "class Foo {} \
+             @addField(Foo) private var injected : int; \
+             function F() { var f : Foo; f.injected = 1; }\n",
+        )]);
+        let result = check(&idx, &docs);
+        let diags = result.get("file:///t.ws").unwrap();
+        assert_eq!(kinds(diags), vec!["private_member_access"]);
+        assert!(
+            diags[0].message.contains("'Foo'"),
+            "message must name the declaring class, got {:?}",
+            diags[0].message
         );
     }
 

@@ -77,12 +77,19 @@ pub(crate) struct CstRuleCtx<'a, 'tree> {
     pub _tree: PhantomData<&'tree ()>,
 }
 
+pub(crate) fn declaring_class_of(def: &Definition) -> Option<&str> {
+    def.symbol
+        .container_name
+        .as_deref()
+        .or_else(|| annotation_target_class(&def.symbol))
+}
+
 pub(crate) fn access_is_inside_declaring_class<'tree>(
     ident: Node<'tree>,
     def: &Definition,
     ctx: &CstRuleCtx<'_, 'tree>,
 ) -> bool {
-    let Some(declarer) = def.symbol.container_name.as_deref() else {
+    let Some(declarer) = declaring_class_of(def) else {
         return false;
     };
     let byte = ident.start_byte();
