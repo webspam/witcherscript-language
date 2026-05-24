@@ -54,6 +54,80 @@ async fn completion_after_dot_returns_class_method() {
 }
 
 #[tokio::test]
+async fn completion_after_new_keyword_offers_classes() {
+    let f = Fixture::parse(concat!(
+        "class CBase {}\n",
+        "class CDerived extends CBase {}\n",
+        "class CUnrelated {}\n",
+        "function Test() {\n",
+        "    var x : CBase = new $0;\n",
+        "}\n",
+    ));
+
+    let mut client = LspClient::spawn().await;
+    for file in &f.files {
+        client.open(&file.uri, &file.text).await;
+    }
+
+    let (cursor_uri, pos) = f.cursor();
+    let resp = client
+        .request::<Completion>(CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: cursor_uri },
+                position: pos,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: None,
+        })
+        .await
+        .expect("completion response");
+
+    let items = items_of(resp);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(labels.contains(&"CBase"), "got {labels:?}");
+    assert!(labels.contains(&"CDerived"), "got {labels:?}");
+    assert!(!labels.contains(&"CUnrelated"), "got {labels:?}");
+}
+
+#[tokio::test]
+async fn completion_after_new_lifetime_in_offers_class_locals() {
+    let f = Fixture::parse(concat!(
+        "class CObject {}\n",
+        "class CHolder {}\n",
+        "function Test() {\n",
+        "    var owner : CHolder;\n",
+        "    var n : int;\n",
+        "    var x : CObject = new CObject in $0;\n",
+        "}\n",
+    ));
+
+    let mut client = LspClient::spawn().await;
+    for file in &f.files {
+        client.open(&file.uri, &file.text).await;
+    }
+
+    let (cursor_uri, pos) = f.cursor();
+    let resp = client
+        .request::<Completion>(CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: cursor_uri },
+                position: pos,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: None,
+        })
+        .await
+        .expect("completion response");
+
+    let items = items_of(resp);
+    let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+    assert!(labels.contains(&"owner"), "got {labels:?}");
+    assert!(!labels.contains(&"n"), "got {labels:?}");
+}
+
+#[tokio::test]
 async fn completion_in_statement_offers_keywords() {
     let f = Fixture::parse(concat!("function Test() {\n", "    $0\n", "}\n",));
 
