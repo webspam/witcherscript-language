@@ -2,7 +2,7 @@ use std::path::Path;
 
 use lsp_types::{DeleteFilesParams, FileDelete, FileRename, RenameFilesParams, Url};
 
-use super::legacy_routing::{make_backend, write_script, LocalTempDir};
+use super::legacy_helpers::{make_backend, write_script, LocalTempDir};
 use crate::backend::{Backend, DocOp};
 use crate::convert::{deleted_files_to_watched, renamed_files_to_watched};
 
