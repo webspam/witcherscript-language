@@ -34,7 +34,6 @@ pub(super) fn make_index(uri: &str, doc: &ParsedDocument) -> WorkspaceIndex {
     idx
 }
 
-#[allow(dead_code)]
 pub(super) fn index_docs(docs: &[(&str, &ParsedDocument)]) -> WorkspaceIndex {
     let mut index = WorkspaceIndex::default();
     for (uri, doc) in docs {
