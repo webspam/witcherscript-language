@@ -1,3 +1,13 @@
+//! Marker-based test fixture parser shared by unit + integration tests.
+//!
+//! Source strings may contain:
+//! - `$0` — exactly one cursor marker (stripped from the file content).
+//! - `//^^^ label` lines — annotate a span on the previous content line.
+//! - `//- /path.ws` headers — split into multiple virtual files.
+//!
+//! Without any `//- ` marker the content lands under `file:///main.ws`.
+//! Positions are UTF-16 code units (LSP-compatible).
+
 use std::collections::HashMap;
 
 use crate::line_index::{SourcePosition, SourceRange};
