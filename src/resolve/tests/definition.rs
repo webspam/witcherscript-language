@@ -24,12 +24,6 @@ use crate::test_support::TestDb;
     Some(SymbolKind::EnumVariant),
     None
 )]
-#[case::enum_variant_in_expression(
-    "enum EColor { ERed = 0, EBlue = 1 }\nfunction F() { var c : EColor = E$0Red; }\n",
-    "ERed",
-    Some(SymbolKind::EnumVariant),
-    None
-)]
 #[case::enum_variant_cross_document(
     "//- /enums.ws\n\
      enum EColor { ERed = 0 }\n\
@@ -165,15 +159,6 @@ fn goto_def_on_var_initializer(
 }
 
 #[rstest]
-#[case::class_body_plus_one_wrap(
-    "//- /base.ws\n\
-     class CPlayer {\n  public function OnSpawned() {}\n}\n\
-     //- /a.ws\n\
-     @wrapMethod(CPlayer)\nfunction OnSpawned() {}\n\
-     //- /caller.ws\n\
-     function Caller() {\n  var p : CPlayer;\n  p.O$0nSpawned();\n}\n",
-    2, &["file:///base.ws", "file:///a.ws"],
-)]
 #[case::wrap_function_name_yields_all(
     "//- /base.ws\n\
      class CPlayer {\n  public function OnSpawned() {}\n}\n\
@@ -257,4 +242,41 @@ fn variable_dot_method_resolves_into_declared_type_not_current_class() {
     let container_id = def.symbol.container.expect("method must have container");
     let container = doc.symbols.by_id(container_id).expect("container exists");
     assert_eq!(container.name, "UnrelatedClass");
+}
+
+#[test]
+fn resolves_enum_variant_reference_in_expression() {
+    let t = TestDb::new(
+        "enum EColor { ERed = 0, EBlue = 1 }\nfunction F() { var c : EColor = E$0Red; }\n",
+    );
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
+        .expect("enum variant reference in expression should resolve");
+    assert_eq!(def.symbol.name, "ERed");
+    assert_eq!(def.symbol.kind, SymbolKind::EnumVariant);
+    assert_eq!(def.symbol.selection_range.start.line, 0);
+}
+
+#[test]
+fn goto_def_from_call_site_returns_class_body_and_wrap() {
+    let t = TestDb::new(
+        "//- /base.ws\n\
+         class CPlayer {\n  public function OnSpawned() {}\n}\n\
+         //- /a.ws\n\
+         @wrapMethod(CPlayer)\nfunction OnSpawned() {}\n\
+         //- /caller.ws\n\
+         function Caller() {\n  var p : CPlayer;\n  p.O$0nSpawned();\n}\n",
+    );
+    let (uri, pos) = t.cursor();
+    let defs = resolve_all_definitions(&uri, t.doc_for(&uri), &t.db(), pos);
+    assert_eq!(
+        defs.len(),
+        2,
+        "class-body declaration plus the wrap declaration"
+    );
+    assert_eq!(
+        defs[0].uri, "file:///base.ws",
+        "class-body declaration first"
+    );
+    assert!(defs.iter().any(|d| d.uri == "file:///a.ws"));
 }
