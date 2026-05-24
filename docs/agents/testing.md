@@ -71,11 +71,11 @@ Positions are UTF-16 code units (LSP-compatible).
 ## Running tests
 
 ```
-just test      # cargo fmt + cargo clippy + cargo nextest run --features test-support
-just ci        # cargo fmt --check + cargo clippy -D warnings + cargo nextest run --features test-support
+just test      # cargo fmt + cargo clippy + cargo nextest run
+just ci        # cargo fmt --check + cargo clippy -D warnings + cargo nextest run
 ```
 
-The `test-support` feature exposes `witcherscript_language::test_support::*` so the LSP binary's test crate can use the same `TestDb` / `Fixture` helpers as the library's own tests.
+The `test-support` Cargo feature (on by default) exposes `witcherscript_language::test_support::*` so the LSP binary's test crate and integration tests can use the same `TestDb` / `Fixture` helpers as the library's own tests. Release builders that want to drop the helpers entirely can pass `--no-default-features`.
 
 After changing an output formatter (hover markdown, snippet, diagnostic message): `UPDATE_EXPECT=1 cargo test` rewrites stale `expect![[]]` literals in place. For `insta` snapshots: `cargo insta review`.
 

@@ -66,7 +66,7 @@ Use separate tests when:
 
 ## Use the shared test toolkit
 
-`src/test_support/` holds the canonical helpers. Inside the library, `use crate::test_support::TestDb`; inside the LSP binary or integration tests, `use witcherscript_language::test_support::TestDb` (the `test-support` Cargo feature is enabled by `just test` / `just ci`).
+`src/test_support/` holds the canonical helpers. Inside the library, `use crate::test_support::TestDb`; inside the LSP binary or integration tests, `use witcherscript_language::test_support::TestDb` (the `test-support` Cargo feature is on by default).
 
 ```rust
 let t = TestDb::new("class CExample {\n  function $0Bar() {}\n}\n");
