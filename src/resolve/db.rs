@@ -178,11 +178,6 @@ impl<'a> SymbolDb<'a> {
         name: &str,
         min_access: AccessLevel,
     ) -> Option<Definition> {
-        let def = self.walk_chain_for_member(container, name)?;
-        (def.symbol.access >= min_access).then_some(def)
-    }
-
-    fn walk_chain_for_member(&self, container: &str, name: &str) -> Option<Definition> {
         let (lookup, element) = generic_lookup_target(container);
         let def = self.try_in_chain(lookup, |container, _depth| {
             self.record_member(container, name);
@@ -196,11 +191,14 @@ impl<'a> SymbolDb<'a> {
                     self.builtins
                         .and_then(|b| b.direct_member_of(container, name, AccessLevel::Private))
                 })
-        });
-        match (def, element) {
-            (Some(d), Some(elem)) => Some(substitute_in_definition(d, container, elem)),
-            (d, _) => d,
+        })?;
+        if def.symbol.access < min_access {
+            return None;
         }
+        Some(match element {
+            Some(elem) => substitute_in_definition(def, container, elem),
+            None => def,
+        })
     }
 
     pub fn direct_members_of(
@@ -241,13 +239,6 @@ impl<'a> SymbolDb<'a> {
         container: &str,
         min_access: AccessLevel,
     ) -> Vec<(u8, Definition)> {
-        self.walk_chain_for_members(container)
-            .into_iter()
-            .filter(|(_, def)| def.symbol.access >= min_access)
-            .collect()
-    }
-
-    fn walk_chain_for_members(&self, container: &str) -> Vec<(u8, Definition)> {
         let (lookup, element) = generic_lookup_target(container);
         let mut seen: HashMap<String, (u8, Definition)> = HashMap::new();
         self.try_in_chain::<(), _>(lookup, |c, depth| {
@@ -267,13 +258,13 @@ impl<'a> SymbolDb<'a> {
             }
             None
         });
-        match element {
-            Some(elem) => seen
-                .into_values()
-                .map(|(t, d)| (t, substitute_in_definition(d, container, elem)))
-                .collect(),
-            None => seen.into_values().collect(),
-        }
+        seen.into_values()
+            .filter(|(_, def)| def.symbol.access >= min_access)
+            .map(|(t, d)| match element {
+                Some(elem) => (t, substitute_in_definition(d, container, elem)),
+                None => (t, d),
+            })
+            .collect()
     }
 
     /// Class-body declaration first, then annotation declarations.
