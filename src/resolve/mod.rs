@@ -4,11 +4,12 @@ use crate::symbols::Symbol;
 
 mod ast;
 mod completion;
-mod db;
 mod definition;
 mod inference;
 mod references;
 mod signature;
+mod symbol_db;
+mod workspace_index;
 
 #[cfg(test)]
 mod tests;
@@ -21,7 +22,6 @@ pub use completion::{
     script_body_completions, state_owner_completions, statement_completions, type_completions,
     AfterWrapMethodCompletions, ExpressionCompletions, StatementCompletions,
 };
-pub use db::{ObservedKey, SymbolDb, WorkspaceIndex};
 pub use definition::{
     classify_definition_at_ident, resolve_all_definitions, resolve_definition,
     resolve_definition_at_byte, resolve_definition_at_ident,
@@ -29,6 +29,8 @@ pub use definition::{
 pub use inference::infer_expr_type_memo;
 pub use references::find_references;
 pub use signature::{hover_text, signature_help, SignatureHelpInfo};
+pub use symbol_db::SymbolDb;
+pub use workspace_index::{ObservedKey, WorkspaceIndex};
 
 #[derive(Debug, Default, Clone)]
 pub struct ObservationSet {
