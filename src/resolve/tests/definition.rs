@@ -1,632 +1,260 @@
+use rstest::rstest;
+
 use super::super::{resolve_all_definitions, resolve_definition};
-use super::{index_docs, make_doc, make_index, SymbolDb, WorkspaceIndex};
-use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
+use crate::test_support::TestDb;
 
-#[test]
-fn resolves_definition_site_of_top_level_function() {
-    let document = make_doc("function Foo() {}\n");
-    let index = WorkspaceIndex::default();
-
-    let definition = resolve_definition(
-        "file:///test.ws",
-        &document,
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 0,
-            character: 9,
-        },
-    )
-    .expect("definition should resolve from its own definition site");
-
-    assert_eq!(definition.symbol.name, "Foo");
-    assert_eq!(definition.symbol.kind, SymbolKind::Function);
+#[rstest]
+#[case::top_level_function_self_site(
+    "function $0Foo() {}\n",
+    "Foo",
+    Some(SymbolKind::Function),
+    None
+)]
+#[case::word_boundary_one_past_last_char("function Foo$0() {}\n", "Foo", None, None)]
+#[case::class_method_self_site(
+    "class CExample {\n function $0Bar() {}\n}\n",
+    "Bar",
+    Some(SymbolKind::Method),
+    None
+)]
+#[case::enum_variant_self_site(
+    "enum EFoo {\n $0VALUE_A = 0\n}\n",
+    "VALUE_A",
+    Some(SymbolKind::EnumVariant),
+    None
+)]
+#[case::enum_variant_in_expression(
+    "enum EColor { ERed = 0, EBlue = 1 }\nfunction F() { var c : EColor = E$0Red; }\n",
+    "ERed",
+    Some(SymbolKind::EnumVariant),
+    None
+)]
+#[case::enum_variant_cross_document(
+    "//- /enums.ws\n\
+     enum EColor { ERed = 0 }\n\
+     //- /user.ws\n\
+     function F() { var c : EColor; c = E$0Red; }\n",
+    "ERed",
+    Some(SymbolKind::EnumVariant),
+    Some("file:///enums.ws")
+)]
+#[case::receiver_variable_resolves_to_declaration(
+    "class Example {\n  function Test() {\n    var unrelated : UnrelatedClass;\n    $0unrelated.Initialize();\n  }\n}\n",
+    "unrelated", Some(SymbolKind::Variable), None,
+)]
+#[case::parameter_shadows_top_level(
+    "function value() {}\nfunction test(value : int) {\n $0value = 1;\n}\n",
+    "value",
+    Some(SymbolKind::Parameter),
+    None
+)]
+#[case::add_method_resolves_from_call_site(
+    "//- /base.ws\n\
+     class CPlayer {\n  public function Heal() {}\n}\n\
+     //- /a.ws\n\
+     @addMethod(CPlayer)\nfunction Boost() {}\n\
+     //- /caller.ws\n\
+     function Caller() {\n  var p : CPlayer;\n  p.$0Boost();\n}\n",
+    "Boost",
+    None,
+    Some("file:///a.ws")
+)]
+#[case::add_field_resolves_from_member_access(
+    "//- /base.ws\n\
+     class CPlayer {}\n\
+     //- /a.ws\n\
+     @addField(CPlayer) public var boost : int;\n\
+     //- /caller.ws\n\
+     function Caller() {\n  var p : CPlayer;\n  var x : int;\n  x = p.$0boost;\n}\n",
+    "boost",
+    Some(SymbolKind::Field),
+    Some("file:///a.ws")
+)]
+#[case::add_field_chained_type(
+    "//- /helper.ws\n\
+     class CHelper {\n  public function Run() {}\n}\n\
+     //- /base.ws\n\
+     class CPlayer {}\n\
+     //- /a.ws\n\
+     @addField(CPlayer) public var helper : CHelper;\n\
+     //- /caller.ws\n\
+     function Caller() {\n  var p : CPlayer;\n  p.helper.$0Run();\n}\n",
+    "Run",
+    None,
+    Some("file:///helper.ws")
+)]
+#[case::member_access_through_top_level_receiver(
+    "//- /helper.ws\n\
+     class CHelper {\n  public function Run() {}\n}\n\
+     //- /main.ws\n\
+     var gHelper : CHelper;\nfunction Test() {\n  gHelper.$0Run();\n}\n",
+    "Run",
+    Some(SymbolKind::Method),
+    Some("file:///helper.ws")
+)]
+#[case::autobind_member_resolves_as_field(
+    "class C {\n  autobind theInput : CInputManager = single;\n  function Use() {\n    $0theInput.Foo();\n  }\n}\n",
+    "theInput", Some(SymbolKind::Field), Some("file:///main.ws"),
+)]
+fn resolves_definition_at_cursor(
+    #[case] fixture: &str,
+    #[case] expected_name: &str,
+    #[case] expected_kind: Option<SymbolKind>,
+    #[case] expected_uri: Option<&str>,
+) {
+    let t = TestDb::new(fixture);
+    let (uri, pos) = t.cursor();
+    let def =
+        resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("definition should resolve");
+    assert_eq!(def.symbol.name, expected_name);
+    if let Some(kind) = expected_kind {
+        assert_eq!(def.symbol.kind, kind);
+    }
+    if let Some(u) = expected_uri {
+        assert_eq!(def.uri, u);
+    }
 }
 
-#[test]
-fn resolves_definition_at_word_boundary() {
-    // "function Foo() {}\n"
-    //           0123
-    // character 12 is just past the final 'o' of "Foo"
-    let document = make_doc("function Foo() {}\n");
-    let index = WorkspaceIndex::default();
-
-    let definition = resolve_definition(
-        "file:///test.ws",
-        &document,
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 0,
-            character: 12,
-        },
-    )
-    .expect("definition should resolve when caret is one past the last letter");
-
-    assert_eq!(definition.symbol.name, "Foo");
+#[rstest]
+#[case::unknown_receiver_does_not_fall_back(
+    "class Example {\n  public function Initialize() {\n    typo.$0Initialize();\n  }\n}\n"
+)]
+fn resolve_yields_none(#[case] fixture: &str) {
+    let t = TestDb::new(fixture);
+    let (uri, pos) = t.cursor();
+    assert!(resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).is_none());
 }
 
-#[test]
-fn resolves_definition_site_of_class_method() {
-    let document = make_doc("class CExample {\n function Bar() {}\n}\n");
-    let index = WorkspaceIndex::default();
-
-    let definition = resolve_definition(
-        "file:///test.ws",
-        &document,
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 1,
-            character: 10,
-        },
-    )
-    .expect("definition should resolve from its own definition site");
-
-    assert_eq!(definition.symbol.name, "Bar");
-    assert_eq!(definition.symbol.kind, SymbolKind::Method);
+#[rstest]
+#[case::initializer_refs_prior_local(
+    "function Test() {\n  var source : int;\n  var x : int = $0source;\n}\n",
+    Some(("source", SymbolKind::Variable, 1)),
+)]
+#[case::initializer_refs_parameter(
+    "function Test(p : int) {\n  var x : int = $0p;\n}\n",
+    Some(("p", SymbolKind::Parameter, 0)),
+)]
+#[case::initializer_undeclared_does_not_self_resolve(
+    "function Test() {\n  var x : int = $0ghost;\n}\n",
+    None
+)]
+fn goto_def_on_var_initializer(
+    #[case] fixture: &str,
+    #[case] expected: Option<(&str, SymbolKind, u32)>,
+) {
+    let t = TestDb::new(fixture);
+    let (uri, pos) = t.cursor();
+    let result = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos);
+    match (result, expected) {
+        (Some(def), Some((name, kind, decl_line))) => {
+            assert_eq!(def.symbol.name, name);
+            assert_eq!(def.symbol.kind, kind);
+            assert_eq!(
+                def.symbol.selection_range.start.line, decl_line,
+                "must point at declaration, not the initializer use"
+            );
+        }
+        (None, None) => {}
+        (Some(def), None) => panic!(
+            "expected None, got `{}` at line {}",
+            def.symbol.name, def.symbol.selection_range.start.line
+        ),
+        (None, Some(_)) => panic!("expected resolution, got None"),
+    }
 }
 
-#[test]
-fn resolves_definition_site_of_enum_variant() {
-    let document = make_doc("enum EFoo {\n VALUE_A = 0\n}\n");
-    let index = WorkspaceIndex::default();
-
-    let definition = resolve_definition(
-        "file:///test.ws",
-        &document,
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 1,
-            character: 1,
-        },
-    )
-    .expect("definition should resolve from enum variant definition site");
-
-    assert_eq!(definition.symbol.name, "VALUE_A");
-    assert_eq!(definition.symbol.kind, SymbolKind::EnumVariant);
-}
-
-#[test]
-fn resolves_enum_variant_reference_in_expression() {
-    let document =
-        make_doc("enum EColor { ERed = 0, EBlue = 1 }\nfunction F() { var c : EColor = ERed; }\n");
-    let index = make_index("file:///test.ws", &document);
-
-    let definition = resolve_definition(
-        "file:///test.ws",
-        &document,
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 1,
-            character: 33,
-        },
-    )
-    .expect("enum variant reference in expression should resolve");
-
-    assert_eq!(definition.symbol.name, "ERed");
-    assert_eq!(definition.symbol.kind, SymbolKind::EnumVariant);
-    assert_eq!(definition.symbol.selection_range.start.line, 0);
-}
-
-#[test]
-fn resolves_enum_variant_defined_in_other_document() {
-    let enum_doc = make_doc("enum EColor { ERed = 0 }\n");
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///enums.ws", &enum_doc);
-
-    let user_doc = make_doc("function F() { var c : EColor; c = ERed; }\n");
-    let definition = resolve_definition(
-        "file:///user.ws",
-        &user_doc,
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 0,
-            character: 36,
-        },
-    )
-    .expect("cross-document enum variant reference should resolve");
-
-    assert_eq!(definition.uri, "file:///enums.ws");
-    assert_eq!(definition.symbol.name, "ERed");
-    assert_eq!(definition.symbol.kind, SymbolKind::EnumVariant);
-}
-
-#[test]
-fn resolves_receiver_variable_itself_in_member_access() {
-    let source = concat!(
-        "class Example {\n",
-        "  function Test() {\n",
-        "    var unrelated : UnrelatedClass;\n",
-        "    unrelated.Initialize();\n",
-        "  }\n",
-        "}\n",
+#[rstest]
+#[case::class_body_plus_one_wrap(
+    "//- /base.ws\n\
+     class CPlayer {\n  public function OnSpawned() {}\n}\n\
+     //- /a.ws\n\
+     @wrapMethod(CPlayer)\nfunction OnSpawned() {}\n\
+     //- /caller.ws\n\
+     function Caller() {\n  var p : CPlayer;\n  p.O$0nSpawned();\n}\n",
+    2, &["file:///base.ws", "file:///a.ws"],
+)]
+#[case::wrap_function_name_yields_all(
+    "//- /base.ws\n\
+     class CPlayer {\n  public function OnSpawned() {}\n}\n\
+     //- /a.ws\n\
+     @wrapMethod(CPlayer)\nfunction $0OnSpawned() {}\n",
+    2, &["file:///base.ws", "file:///a.ws"],
+)]
+#[case::plain_method_has_single_declaration(
+    "class CExample {\n  function $0Bar() {}\n}\n",
+    1, &[],
+)]
+#[case::multiple_wraps_yield_all(
+    "//- /base.ws\n\
+     class CPlayer {\n  public function OnSpawned() {}\n}\n\
+     //- /a.ws\n\
+     @wrapMethod(CPlayer)\nfunction $0OnSpawned() {}\n\
+     //- /b.ws\n\
+     @wrapMethod(CPlayer)\nfunction OnSpawned() {}\n",
+    3, &[],
+)]
+#[case::replace_method_included(
+    "//- /base.ws\n\
+     class CPlayer {\n  public function OnSpawned() {}\n}\n\
+     //- /a.ws\n\
+     @replaceMethod(CPlayer)\nfunction $0OnSpawned() {}\n",
+    2, &["file:///a.ws"],
+)]
+#[case::wrap_unknown_class_returns_just_self(
+    "@wrapMethod(CGhost)\nfunction $0Haunt() {}\n",
+    1, &["file:///main.ws"],
+)]
+#[case::add_method_has_no_class_body_counterpart(
+    "//- /base.ws\n\
+     class CPlayer {\n  public function Heal() {}\n}\n\
+     //- /a.ws\n\
+     @addMethod(CPlayer)\nfunction Boost() {}\n\
+     //- /caller.ws\n\
+     function Caller() {\n  var p : CPlayer;\n  p.$0Boost();\n}\n",
+    1, &["file:///a.ws"],
+)]
+fn resolve_all_definitions_at_cursor(
+    #[case] fixture: &str,
+    #[case] expected_count: usize,
+    #[case] required_uris: &[&str],
+) {
+    let t = TestDb::new(fixture);
+    let (uri, pos) = t.cursor();
+    let defs = resolve_all_definitions(&uri, t.doc_for(&uri), &t.db(), pos);
+    assert_eq!(
+        defs.len(),
+        expected_count,
+        "actual uris: {:?}",
+        defs.iter().map(|d| &d.uri).collect::<Vec<_>>()
     );
-    let doc = make_doc(source);
-    let index = WorkspaceIndex::default();
-
-    // cursor on 'unrelated' in 'unrelated.Initialize()' — line 3, col 4
-    let definition = resolve_definition(
-        "file:///test.ws",
-        &doc,
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 3,
-            character: 4,
-        },
-    )
-    .expect("receiver variable should resolve to its declaration");
-
-    assert_eq!(definition.symbol.name, "unrelated");
-    assert_eq!(definition.symbol.kind, SymbolKind::Variable);
+    for required in required_uris {
+        assert!(
+            defs.iter().any(|d| d.uri == *required),
+            "missing required uri {required:?}"
+        );
+    }
 }
 
 #[test]
-fn unknown_receiver_dot_method_resolves_to_nothing() {
-    let source = concat!(
-        "class Example {\n",
-        "  public function Initialize() {\n",
-        "    typo.Initialize();\n",
-        "  }\n",
-        "}\n",
-    );
-    let doc = make_doc(source);
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc);
-
-    let result = resolve_definition(
-        "file:///test.ws",
-        &doc,
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 2,
-            character: 9,
-        },
-    );
-    assert!(
-        result.is_none(),
-        "unknown receiver must not fall back to current class"
-    );
-}
-
-#[test]
-fn resolves_variable_dot_method_to_declared_type_not_current_class() {
-    // Regression: unrelated.Initialize() inside Example should resolve to
-    // UnrelatedClass.Initialize, not Example.Initialize.
-    let source = concat!(
+fn variable_dot_method_resolves_into_declared_type_not_current_class() {
+    let t = TestDb::new(concat!(
         "class Example {\n",
         "  public function Initialize() {\n",
         "    var unrelated : UnrelatedClass = new UnrelatedClass in this;\n",
-        "    unrelated.Initialize();\n",
+        "    unrelated.$0Initialize();\n",
         "  }\n",
         "}\n",
         "class UnrelatedClass {\n",
         "  public function Initialize() {}\n",
         "}\n",
-    );
-    let doc = make_doc(source);
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc);
-
-    // line 3, col 14 — "Initialize" after "unrelated."
-    let definition = resolve_definition(
-        "file:///test.ws",
-        &doc,
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 3,
-            character: 14,
-        },
-    )
-    .expect("should resolve to UnrelatedClass.Initialize");
-
-    assert_eq!(definition.symbol.name, "Initialize");
-    let container_id = definition
-        .symbol
-        .container
-        .expect("method should have a container");
-    let container = doc
-        .symbols
-        .by_id(container_id)
-        .expect("container should exist");
+    ));
+    let (uri, pos) = t.cursor();
+    let doc = t.doc_for(&uri);
+    let def = resolve_definition(&uri, doc, &t.db(), pos)
+        .expect("should resolve to UnrelatedClass.Initialize");
+    assert_eq!(def.symbol.name, "Initialize");
+    let container_id = def.symbol.container.expect("method must have container");
+    let container = doc.symbols.by_id(container_id).expect("container exists");
     assert_eq!(container.name, "UnrelatedClass");
-}
-
-#[test]
-fn resolves_parameter_before_top_level() {
-    let document = make_doc("function value() {}\nfunction test(value : int) {\n value = 1;\n}\n");
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &document);
-
-    let definition = resolve_definition(
-        "file:///test.ws",
-        &document,
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 2,
-            character: 1,
-        },
-    )
-    .expect("definition should resolve");
-
-    assert_eq!(definition.symbol.kind, SymbolKind::Parameter);
-}
-
-#[test]
-fn goto_def_on_var_initializer_ident_does_not_self_resolve() {
-    type Case = (
-        &'static str,
-        &'static str,
-        SourcePosition,
-        Option<(&'static str, SymbolKind, u32)>,
-    );
-    let cases: &[Case] = &[
-        (
-            "initializer references a prior local — resolves to prior decl",
-            concat!(
-                "function Test() {\n",
-                "  var source : int;\n",
-                "  var x : int = source;\n",
-                "}\n",
-            ),
-            SourcePosition {
-                line: 2,
-                character: 16,
-            },
-            Some(("source", SymbolKind::Variable, 1)),
-        ),
-        (
-            "initializer references a parameter — resolves to parameter",
-            "function Test(p : int) {\n  var x : int = p;\n}\n",
-            SourcePosition {
-                line: 1,
-                character: 16,
-            },
-            Some(("p", SymbolKind::Parameter, 0)),
-        ),
-        (
-            "initializer is undeclared — no fake local self-resolves",
-            "function Test() {\n  var x : int = ghost;\n}\n",
-            SourcePosition {
-                line: 1,
-                character: 16,
-            },
-            None,
-        ),
-    ];
-
-    for (msg, source, position, expected) in cases.iter().copied() {
-        let doc = make_doc(source);
-        let mut index = WorkspaceIndex::default();
-        index.update_document("file:///test.ws", &doc);
-        let empty = WorkspaceIndex::default();
-        let db = SymbolDb::new(&index, &empty);
-
-        match (
-            resolve_definition("file:///test.ws", &doc, &db, position),
-            expected,
-        ) {
-            (Some(def), Some((name, kind, decl_line))) => {
-                assert_eq!(def.symbol.name, name, "{msg}: name");
-                assert_eq!(def.symbol.kind, kind, "{msg}: kind");
-                assert_eq!(
-                    def.symbol.selection_range.start.line, decl_line,
-                    "{msg}: should point at declaration site, not the initializer use"
-                );
-            }
-            (None, None) => {}
-            (Some(def), None) => panic!(
-                "{msg}: expected no resolution, got `{}` at line {}",
-                def.symbol.name, def.symbol.selection_range.start.line
-            ),
-            (None, Some(_)) => panic!("{msg}: expected a resolution, got None"),
-        }
-    }
-}
-
-// --- resolve_all_definitions: multi-declaration go-to-definition ---
-
-#[test]
-fn add_method_resolves_from_call_site() {
-    let base = make_doc("class CPlayer {\n  public function Heal() {}\n}\n");
-    let mod_a = make_doc("@addMethod(CPlayer)\nfunction Boost() {}\n");
-    let caller = make_doc("function Caller() {\n  var p : CPlayer;\n  p.Boost();\n}\n");
-    let index = index_docs(&[
-        ("file:///base.ws", &base),
-        ("file:///a.ws", &mod_a),
-        ("file:///caller.ws", &caller),
-    ]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let definition = resolve_definition(
-        "file:///caller.ws",
-        &caller,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 4,
-        },
-    )
-    .expect("a call to an @addMethod method must resolve");
-    assert_eq!(definition.symbol.name, "Boost");
-    assert_eq!(definition.uri, "file:///a.ws");
-}
-
-#[test]
-fn goto_def_from_call_site_returns_class_body_and_wrap() {
-    let base = make_doc("class CPlayer {\n  public function OnSpawned() {}\n}\n");
-    let mod_a = make_doc("@wrapMethod(CPlayer)\nfunction OnSpawned() {}\n");
-    let caller = make_doc("function Caller() {\n  var p : CPlayer;\n  p.OnSpawned();\n}\n");
-    let index = index_docs(&[
-        ("file:///base.ws", &base),
-        ("file:///a.ws", &mod_a),
-        ("file:///caller.ws", &caller),
-    ]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let defs = resolve_all_definitions(
-        "file:///caller.ws",
-        &caller,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 6,
-        },
-    );
-    assert_eq!(
-        defs.len(),
-        2,
-        "class-body declaration plus the wrap declaration"
-    );
-    assert_eq!(
-        defs[0].uri, "file:///base.ws",
-        "class-body declaration first"
-    );
-    assert!(defs.iter().any(|d| d.uri == "file:///a.ws"));
-}
-
-#[test]
-fn goto_def_from_wrap_function_name_returns_all() {
-    let base = make_doc("class CPlayer {\n  public function OnSpawned() {}\n}\n");
-    let mod_a = make_doc("@wrapMethod(CPlayer)\nfunction OnSpawned() {}\n");
-    let index = index_docs(&[("file:///base.ws", &base), ("file:///a.ws", &mod_a)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let defs = resolve_all_definitions(
-        "file:///a.ws",
-        &mod_a,
-        &db,
-        SourcePosition {
-            line: 1,
-            character: 12,
-        },
-    );
-    assert_eq!(defs.len(), 2);
-    assert!(defs.iter().any(|d| d.uri == "file:///base.ws"));
-    assert!(defs.iter().any(|d| d.uri == "file:///a.ws"));
-}
-
-#[test]
-fn goto_def_single_when_no_wrap() {
-    let doc = make_doc("class CExample {\n  function Bar() {}\n}\n");
-    let index = index_docs(&[("file:///test.ws", &doc)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let defs = resolve_all_definitions(
-        "file:///test.ws",
-        &doc,
-        &db,
-        SourcePosition {
-            line: 1,
-            character: 11,
-        },
-    );
-    assert_eq!(defs.len(), 1, "a plain method has exactly one declaration");
-    assert_eq!(defs[0].symbol.name, "Bar");
-}
-
-#[test]
-fn goto_def_multiple_wraps_same_method() {
-    let base = make_doc("class CPlayer {\n  public function OnSpawned() {}\n}\n");
-    let mod_a = make_doc("@wrapMethod(CPlayer)\nfunction OnSpawned() {}\n");
-    let mod_b = make_doc("@wrapMethod(CPlayer)\nfunction OnSpawned() {}\n");
-    let index = index_docs(&[
-        ("file:///base.ws", &base),
-        ("file:///a.ws", &mod_a),
-        ("file:///b.ws", &mod_b),
-    ]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let defs = resolve_all_definitions(
-        "file:///a.ws",
-        &mod_a,
-        &db,
-        SourcePosition {
-            line: 1,
-            character: 12,
-        },
-    );
-    assert_eq!(defs.len(), 3, "class-body plus two wrap declarations");
-}
-
-#[test]
-fn goto_def_replace_method_included() {
-    let base = make_doc("class CPlayer {\n  public function OnSpawned() {}\n}\n");
-    let mod_a = make_doc("@replaceMethod(CPlayer)\nfunction OnSpawned() {}\n");
-    let index = index_docs(&[("file:///base.ws", &base), ("file:///a.ws", &mod_a)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let defs = resolve_all_definitions(
-        "file:///a.ws",
-        &mod_a,
-        &db,
-        SourcePosition {
-            line: 1,
-            character: 12,
-        },
-    );
-    assert_eq!(defs.len(), 2);
-    assert!(defs.iter().any(|d| d.uri == "file:///a.ws"));
-}
-
-#[test]
-fn goto_def_wrap_unknown_class_returns_just_self() {
-    let mod_a = make_doc("@wrapMethod(CGhost)\nfunction Haunt() {}\n");
-    let index = index_docs(&[("file:///a.ws", &mod_a)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let defs = resolve_all_definitions(
-        "file:///a.ws",
-        &mod_a,
-        &db,
-        SourcePosition {
-            line: 1,
-            character: 11,
-        },
-    );
-    assert_eq!(
-        defs.len(),
-        1,
-        "no real class — only the wrap function itself"
-    );
-    assert_eq!(defs[0].uri, "file:///a.ws");
-}
-
-#[test]
-fn add_field_resolves_from_member_access() {
-    let base = make_doc("class CPlayer {}\n");
-    let mod_a = make_doc("@addField(CPlayer) public var boost : int;\n");
-    let caller =
-        make_doc("function Caller() {\n  var p : CPlayer;\n  var x : int;\n  x = p.boost;\n}\n");
-    let index = index_docs(&[
-        ("file:///base.ws", &base),
-        ("file:///a.ws", &mod_a),
-        ("file:///caller.ws", &caller),
-    ]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let definition = resolve_definition(
-        "file:///caller.ws",
-        &caller,
-        &db,
-        SourcePosition {
-            line: 3,
-            character: 8,
-        },
-    )
-    .expect("a reference to an @addField var must resolve");
-    assert_eq!(definition.symbol.name, "boost");
-    assert_eq!(definition.symbol.kind, SymbolKind::Field);
-    assert_eq!(definition.uri, "file:///a.ws");
-}
-
-#[test]
-fn add_field_chained_type_resolves() {
-    let helper = make_doc("class CHelper {\n  public function Run() {}\n}\n");
-    let base = make_doc("class CPlayer {}\n");
-    let mod_a = make_doc("@addField(CPlayer) public var helper : CHelper;\n");
-    let caller = make_doc("function Caller() {\n  var p : CPlayer;\n  p.helper.Run();\n}\n");
-    let index = index_docs(&[
-        ("file:///helper.ws", &helper),
-        ("file:///base.ws", &base),
-        ("file:///a.ws", &mod_a),
-        ("file:///caller.ws", &caller),
-    ]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let definition = resolve_definition(
-        "file:///caller.ws",
-        &caller,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 11,
-        },
-    )
-    .expect("calling Run() through an @addField var must resolve into CHelper");
-    assert_eq!(definition.symbol.name, "Run");
-    assert_eq!(definition.uri, "file:///helper.ws");
-}
-
-#[test]
-fn goto_def_add_method_no_class_body_returns_annotated() {
-    let base = make_doc("class CPlayer {\n  public function Heal() {}\n}\n");
-    let mod_a = make_doc("@addMethod(CPlayer)\nfunction Boost() {}\n");
-    let caller = make_doc("function Caller() {\n  var p : CPlayer;\n  p.Boost();\n}\n");
-    let index = index_docs(&[
-        ("file:///base.ws", &base),
-        ("file:///a.ws", &mod_a),
-        ("file:///caller.ws", &caller),
-    ]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let defs = resolve_all_definitions(
-        "file:///caller.ws",
-        &caller,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 4,
-        },
-    );
-    assert_eq!(defs.len(), 1, "@addMethod has no class-body counterpart");
-    assert_eq!(defs[0].uri, "file:///a.ws");
-}
-
-#[test]
-fn member_access_resolves_through_a_top_level_receiver() {
-    // Drift guard: resolve_member_access once skipped the top-level lookup that bare-ident resolution has.
-    let helper = make_doc("class CHelper {\n  public function Run() {}\n}\n");
-    let main = make_doc("var gHelper : CHelper;\nfunction Test() {\n  gHelper.Run();\n}\n");
-    let index = index_docs(&[("file:///helper.ws", &helper), ("file:///main.ws", &main)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let definition = resolve_definition(
-        "file:///main.ws",
-        &main,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 10,
-        },
-    )
-    .expect("member access through a top-level receiver should resolve");
-
-    assert_eq!(definition.symbol.name, "Run");
-    assert_eq!(definition.symbol.kind, SymbolKind::Method);
-    assert_eq!(definition.uri, "file:///helper.ws");
-}
-
-#[test]
-fn autobind_member_resolves_like_a_var() {
-    let main = make_doc(
-        "class C {\n  autobind theInput : CInputManager = single;\n  function Use() {\n    theInput.Foo();\n  }\n}\n",
-    );
-    let index = index_docs(&[("file:///main.ws", &main)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let definition = resolve_definition(
-        "file:///main.ws",
-        &main,
-        &db,
-        SourcePosition {
-            line: 3,
-            character: 4,
-        },
-    )
-    .expect("a reference to an autobind member should resolve");
-
-    assert_eq!(definition.symbol.name, "theInput");
-    assert_eq!(definition.symbol.kind, SymbolKind::Field);
-    assert_eq!(definition.uri, "file:///main.ws");
 }
