@@ -51,6 +51,10 @@ impl TestDb {
             .unwrap_or_else(|| panic!("test_support: no document for uri {uri:?}"))
     }
 
+    pub fn search_docs(&self) -> Vec<(&str, &ParsedDocument)> {
+        self.docs.iter().map(|(u, d)| (u.as_str(), d)).collect()
+    }
+
     pub fn cursor(&self) -> (String, SourcePosition) {
         self.fixture.cursor()
     }
