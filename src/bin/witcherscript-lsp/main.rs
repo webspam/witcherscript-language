@@ -13,6 +13,7 @@ mod logging;
 mod references_rename;
 #[cfg(test)]
 mod tests;
+mod text_sync;
 mod watcher;
 
 use std::io::IsTerminal;

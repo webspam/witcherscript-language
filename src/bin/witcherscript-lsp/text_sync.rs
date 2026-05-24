@@ -1,0 +1,153 @@
+use std::collections::HashSet;
+use std::path::PathBuf;
+
+use lsp_types::{
+    DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, Url,
+};
+use tracing::error;
+use witcherscript_language::builtins::builtin_source;
+use witcherscript_language::document::apply_content_change;
+use witcherscript_language::line_index::LineIndex;
+
+use crate::backend::Backend;
+use crate::convert::{source_position, source_range};
+
+fn uri_within_any(uri: &str, dirs: &[PathBuf]) -> bool {
+    let Some(path) = Url::parse(uri).ok().and_then(|u| u.to_file_path().ok()) else {
+        return false;
+    };
+    dirs.iter().any(|dir| path.starts_with(dir))
+}
+
+impl Backend {
+    pub(crate) async fn _did_open(&self, params: DidOpenTextDocumentParams) {
+        let uri = params.text_document.uri;
+        if builtin_source(uri.as_str()).is_some() {
+            return;
+        }
+        // The client drops a file's status on close; force a fresh push.
+        self.sent_legacy_status.lock().await.remove(&uri);
+        self.sent_file_scope_status.lock().await.remove(&uri);
+        self.update_open_document(uri, params.text_document.text)
+            .await;
+        self.publish_legacy_script_status().await;
+        self.publish_file_scope_status().await;
+    }
+
+    #[tracing::instrument(skip_all, fields(uri = %params.text_document.uri), level = "debug")]
+    pub(crate) async fn _did_change(&self, params: DidChangeTextDocumentParams) {
+        let uri = params.text_document.uri;
+        if builtin_source(uri.as_str()).is_some() {
+            return;
+        }
+        let prior = self
+            .documents
+            .lock()
+            .await
+            .get(&uri)
+            .map(|d| (d.source.clone(), d.line_index.clone()));
+
+        let Some((mut source, mut line_index)) = prior else {
+            error!(uri = %uri, "did_change before did_open");
+            return;
+        };
+
+        for change in params.content_changes {
+            let range = change
+                .range
+                .map(|r| source_range(source_position(r.start), source_position(r.end)));
+            match apply_content_change(&source, &line_index, range, &change.text) {
+                Some(next) => {
+                    line_index = LineIndex::new(&next);
+                    source = next;
+                }
+                None => {
+                    error!(uri = %uri, "out-of-range incremental change; dropping batch");
+                    return;
+                }
+            }
+        }
+
+        self.update_open_document(uri, source).await;
+    }
+
+    pub(crate) async fn _did_close(&self, params: DidCloseTextDocumentParams) {
+        let uri = params.text_document.uri;
+        if builtin_source(uri.as_str()).is_some() {
+            return;
+        }
+        let scope = self.file_scope_of(&uri).await;
+        self.documents.lock().await.remove(&uri);
+        if scope.is_loose() {
+            // A loose file is a transient compilation member: closing it drops it from the index entirely.
+            let invalidated = {
+                let mut index = self.loose_index.lock().await;
+                crate::indexing::remove_document_all_spellings(&mut index, &uri)
+            };
+            self.evict_cache_entries(&invalidated).await;
+        } else {
+            self.reindex_closed_file(&uri).await;
+        }
+        self.publish_open_diagnostics().await;
+        self.publish_file_scope_status().await;
+        self.sent_file_scope_status.lock().await.remove(&uri);
+    }
+
+    pub(crate) async fn _did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        self.apply_watched_file_events(params.changes).await;
+    }
+
+    pub(crate) async fn _did_change_workspace_folders(
+        &self,
+        params: DidChangeWorkspaceFoldersParams,
+    ) {
+        let removed: Vec<PathBuf> = params
+            .event
+            .removed
+            .iter()
+            .filter_map(|folder| folder.uri.to_file_path().ok())
+            .collect();
+        let added: Vec<PathBuf> = params
+            .event
+            .added
+            .iter()
+            .filter_map(|folder| folder.uri.to_file_path().ok())
+            .collect();
+
+        {
+            let mut roots = self.workspace_roots.lock().await;
+            roots.retain(|root| !removed.iter().any(|dir| root.starts_with(dir)));
+            for path in &added {
+                if !roots.contains(path) {
+                    roots.push(path.clone());
+                }
+            }
+        }
+
+        // index_workspace only adds files; a removed folder's scripts must be dropped here.
+        if !removed.is_empty() {
+            let invalidated = {
+                let mut index = self.workspace_index.lock().await;
+                let mut docs = self.workspace_documents.lock().await;
+                let stale: Vec<String> = docs
+                    .keys()
+                    .filter(|uri| uri_within_any(uri, &removed))
+                    .cloned()
+                    .collect();
+                let mut invalidated: HashSet<String> = HashSet::new();
+                for uri in stale {
+                    invalidated.extend(index.remove_document(&uri));
+                    docs.remove(&uri);
+                }
+                invalidated
+            };
+            self.evict_cache_entries(&invalidated).await;
+        }
+
+        self.index_workspace().await;
+        self.reindex_open_documents().await;
+        self.publish_open_diagnostics().await;
+        self.publish_file_scope_status().await;
+    }
+}
