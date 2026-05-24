@@ -1,15 +1,21 @@
-use super::{make_doc, make_index};
+use super::make_doc;
 use crate::symbols::{AccessLevel, SymbolKind};
 use crate::test_support::TestDb;
 
 #[test]
 fn all_top_level_yields_top_level_symbols_across_documents() {
-    let doc_a = make_doc("class Foo {\n  function Method() {}\n  var field : int;\n}\n");
-    let doc_b = make_doc("function Bar() {}\n");
-    let mut index = make_index("file:///a.ws", &doc_a);
-    index.update_document("file:///b.ws", &doc_b);
+    let t = TestDb::new(concat!(
+        "//- /a.ws\n",
+        "class Foo {\n",
+        "  function Method() {}\n",
+        "  var field : int;\n",
+        "}\n",
+        "//- /b.ws\n",
+        "function Bar() {}\n",
+    ));
 
-    let mut found: Vec<(String, String)> = index
+    let mut found: Vec<(String, String)> = t
+        .workspace
         .all_top_level()
         .map(|(uri, sym)| (uri.to_string(), sym.name.clone()))
         .collect();
@@ -26,17 +32,16 @@ fn all_top_level_yields_top_level_symbols_across_documents() {
 
 #[test]
 fn all_top_level_excludes_members() {
-    let doc = make_doc("class Foo {\n  function Method() {}\n  var field : int;\n}\n");
-    let index = make_index("file:///a.ws", &doc);
+    let t = TestDb::new("class Foo {\n  function Method() {}\n  var field : int;\n}\n");
 
     assert!(
-        index
+        t.workspace
             .all_top_level()
             .all(|(_, sym)| sym.container.is_none()),
         "all_top_level must not yield members"
     );
     assert!(
-        index
+        t.workspace
             .all_top_level()
             .all(|(_, sym)| sym.kind != SymbolKind::Method && sym.kind != SymbolKind::Field),
         "all_top_level must not yield methods or fields"
@@ -47,7 +52,7 @@ fn all_top_level_excludes_members() {
 fn generation_counter_bumps_on_mutation() {
     let doc_a = make_doc("class Foo {}\n");
     let doc_b = make_doc("class Bar {}\n");
-    let mut index = super::WorkspaceIndex::default();
+    let mut index = crate::resolve::WorkspaceIndex::default();
     let g0 = index.generation();
 
     index.update_document("file:///a.ws", &doc_a);
@@ -69,7 +74,7 @@ fn surface_hash_stable_under_text_only_edits() {
     let with_comment = make_doc("class A { function F() { var x : int; /* hi */ } }\n");
     let with_body_change = make_doc("class A { function F() { var x : int; x = 42; } }\n");
 
-    let mut index = super::WorkspaceIndex::default();
+    let mut index = crate::resolve::WorkspaceIndex::default();
     index.update_document("file:///a.ws", &original);
     let h0 = index.surface_hash();
 
@@ -91,7 +96,7 @@ fn surface_hash_stable_under_text_only_edits() {
 #[test]
 fn surface_hash_ignores_local_variable_and_parameter_churn() {
     let baseline = make_doc("class A { function F() { var x : int; } }\n");
-    let mut index = super::WorkspaceIndex::default();
+    let mut index = crate::resolve::WorkspaceIndex::default();
     index.update_document("file:///a.ws", &baseline);
     let h0 = index.surface_hash();
 
@@ -146,7 +151,7 @@ fn surface_hash_changes_on_structural_edit() {
         },
     ];
     for c in cases {
-        let mut index = super::WorkspaceIndex::default();
+        let mut index = crate::resolve::WorkspaceIndex::default();
         index.update_document("file:///x.ws", &make_doc(c.before));
         let h_before = index.surface_hash();
         index.update_document("file:///x.ws", &make_doc(c.after));
@@ -162,7 +167,7 @@ fn surface_hash_changes_on_structural_edit() {
 #[test]
 fn surface_hash_does_not_self_cancel_for_identical_docs() {
     let doc = make_doc("class A {}\n");
-    let mut index = super::WorkspaceIndex::default();
+    let mut index = crate::resolve::WorkspaceIndex::default();
     index.update_document("file:///a.ws", &doc);
     index.update_document("file:///b.ws", &doc);
     assert_ne!(
@@ -176,7 +181,7 @@ fn surface_hash_does_not_self_cancel_for_identical_docs() {
 fn surface_hash_recovers_after_revert() {
     let original = make_doc("class A {}\n");
     let edited = make_doc("class B {}\n");
-    let mut index = super::WorkspaceIndex::default();
+    let mut index = crate::resolve::WorkspaceIndex::default();
     index.update_document("file:///a.ws", &original);
     let h0 = index.surface_hash();
     index.update_document("file:///a.ws", &edited);
@@ -192,7 +197,7 @@ fn surface_hash_recovers_after_revert() {
 #[test]
 fn surface_hash_returns_to_zero_after_removing_only_doc() {
     let doc = make_doc("class A {}\n");
-    let mut index = super::WorkspaceIndex::default();
+    let mut index = crate::resolve::WorkspaceIndex::default();
     assert_eq!(0, index.surface_hash());
     index.update_document("file:///a.ws", &doc);
     assert_ne!(0, index.surface_hash());

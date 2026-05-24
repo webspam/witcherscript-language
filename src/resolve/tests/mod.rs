@@ -21,7 +21,6 @@ mod references;
 mod script_globals;
 mod signature_help;
 
-use super::{SymbolDb, WorkspaceIndex};
 use crate::document::{parse_document, ParsedDocument};
 use crate::line_index::SourcePosition;
 use crate::script_env::ScriptEnvironment;
@@ -29,21 +28,6 @@ use crate::symbols::AccessLevel;
 
 pub(super) fn make_doc(source: &str) -> ParsedDocument {
     parse_document(source).expect("parse should succeed")
-}
-
-#[allow(dead_code)]
-pub(super) fn make_index(uri: &str, doc: &ParsedDocument) -> WorkspaceIndex {
-    let mut idx = WorkspaceIndex::default();
-    idx.update_document(uri, doc);
-    idx
-}
-
-pub(super) fn index_docs(docs: &[(&str, &ParsedDocument)]) -> WorkspaceIndex {
-    let mut index = WorkspaceIndex::default();
-    for (uri, doc) in docs {
-        index.update_document(*uri, doc);
-    }
-    index
 }
 
 pub(super) fn make_env(name: &str, type_name: &str) -> ScriptEnvironment {

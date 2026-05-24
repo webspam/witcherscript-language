@@ -1,30 +1,23 @@
 use super::super::{completion_members, resolve_definition, statement_completions};
-use super::{index_docs, make_doc, SymbolDb, WorkspaceIndex};
-use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
+use crate::test_support::TestDb;
 
 #[test]
 fn add_method_body_sees_class_members() {
-    let base = make_doc(concat!(
+    let t = TestDb::new(concat!(
+        "//- /base.ws\n",
         "class CPlayer {\n",
         "  private var mHp : int;\n",
         "  public function Heal() {}\n",
         "}\n",
+        "//- /mod.ws\n",
+        "@addMethod(CPlayer)\n",
+        "function Boost() {\n",
+        "  $0\n",
+        "}\n",
     ));
-    let modd = make_doc("@addMethod(CPlayer)\nfunction Boost() {\n  \n}\n");
-    let index = index_docs(&[("file:///base.ws", &base), ("file:///mod.ws", &modd)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let result = statement_completions(
-        "file:///mod.ws",
-        &modd,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 2,
-        },
-    );
+    let (uri, pos) = t.cursor();
+    let result = statement_completions(&uri, t.doc_for(&uri), &t.db(), pos);
     let members: Vec<&str> = result
         .members
         .iter()
@@ -43,28 +36,22 @@ fn add_method_body_sees_class_members() {
 
 #[test]
 fn wrap_method_body_sees_members_and_super() {
-    let base = make_doc(concat!(
+    let t = TestDb::new(concat!(
+        "//- /base.ws\n",
         "class CBase {\n",
         "  public function BaseMethod() {}\n",
         "}\n",
         "class CPlayer extends CBase {\n",
         "  public function OnSpawned() {}\n",
         "}\n",
+        "//- /mod.ws\n",
+        "@wrapMethod(CPlayer)\n",
+        "function OnSpawned() {\n",
+        "  $0\n",
+        "}\n",
     ));
-    let modd = make_doc("@wrapMethod(CPlayer)\nfunction OnSpawned() {\n  \n}\n");
-    let index = index_docs(&[("file:///base.ws", &base), ("file:///mod.ws", &modd)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let result = statement_completions(
-        "file:///mod.ws",
-        &modd,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 2,
-        },
-    );
+    let (uri, pos) = t.cursor();
+    let result = statement_completions(&uri, t.doc_for(&uri), &t.db(), pos);
     let members: Vec<&str> = result
         .members
         .iter()
@@ -86,28 +73,22 @@ fn wrap_method_body_sees_members_and_super() {
 
 #[test]
 fn replace_method_body_behaves_like_wrap() {
-    let base = make_doc(concat!(
+    let t = TestDb::new(concat!(
+        "//- /base.ws\n",
         "class CBase {\n",
         "  public function BaseMethod() {}\n",
         "}\n",
         "class CPlayer extends CBase {\n",
         "  public function OnSpawned() {}\n",
         "}\n",
+        "//- /mod.ws\n",
+        "@replaceMethod(CPlayer)\n",
+        "function OnSpawned() {\n",
+        "  $0\n",
+        "}\n",
     ));
-    let modd = make_doc("@replaceMethod(CPlayer)\nfunction OnSpawned() {\n  \n}\n");
-    let index = index_docs(&[("file:///base.ws", &base), ("file:///mod.ws", &modd)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let result = statement_completions(
-        "file:///mod.ws",
-        &modd,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 2,
-        },
-    );
+    let (uri, pos) = t.cursor();
+    let result = statement_completions(&uri, t.doc_for(&uri), &t.db(), pos);
     let members: Vec<&str> = result
         .members
         .iter()
@@ -125,26 +106,22 @@ fn replace_method_body_behaves_like_wrap() {
 
 #[test]
 fn annotated_body_sees_sibling_add_method() {
-    let base = make_doc("class CPlayer {\n  public function Heal() {}\n}\n");
-    let mod_a = make_doc("@addMethod(CPlayer)\nfunction Boost() {}\n");
-    let mod_b = make_doc("@wrapMethod(CPlayer)\nfunction Heal() {\n  \n}\n");
-    let index = index_docs(&[
-        ("file:///base.ws", &base),
-        ("file:///a.ws", &mod_a),
-        ("file:///b.ws", &mod_b),
-    ]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let result = statement_completions(
-        "file:///b.ws",
-        &mod_b,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 2,
-        },
-    );
+    let t = TestDb::new(concat!(
+        "//- /base.ws\n",
+        "class CPlayer {\n",
+        "  public function Heal() {}\n",
+        "}\n",
+        "//- /a.ws\n",
+        "@addMethod(CPlayer)\n",
+        "function Boost() {}\n",
+        "//- /b.ws\n",
+        "@wrapMethod(CPlayer)\n",
+        "function Heal() {\n",
+        "  $0\n",
+        "}\n",
+    ));
+    let (uri, pos) = t.cursor();
+    let result = statement_completions(&uri, t.doc_for(&uri), &t.db(), pos);
     let members: Vec<&str> = result
         .members
         .iter()
@@ -158,78 +135,64 @@ fn annotated_body_sees_sibling_add_method() {
 
 #[test]
 fn add_method_body_this_resolves() {
-    let base = make_doc("class CPlayer {\n  public function Heal() {}\n}\n");
-    let modd = make_doc("@addMethod(CPlayer)\nfunction Boost() {\n  this.Heal();\n}\n");
-    let index = index_docs(&[("file:///base.ws", &base), ("file:///mod.ws", &modd)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let definition = resolve_definition(
-        "file:///mod.ws",
-        &modd,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 4,
-        },
-    )
-    .expect("`this` inside @addMethod must resolve to the target class");
+    let t = TestDb::new(concat!(
+        "//- /base.ws\n",
+        "class CPlayer {\n",
+        "  public function Heal() {}\n",
+        "}\n",
+        "//- /mod.ws\n",
+        "@addMethod(CPlayer)\n",
+        "function Boost() {\n",
+        "  thi$0s.Heal();\n",
+        "}\n",
+    ));
+    let (uri, pos) = t.cursor();
+    let definition = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
+        .expect("`this` inside @addMethod must resolve to the target class");
     assert_eq!(definition.symbol.name, "CPlayer");
     assert_eq!(definition.symbol.kind, SymbolKind::Class);
 }
 
 #[test]
 fn wrap_method_body_super_member_resolves() {
-    let base = make_doc(concat!(
+    let t = TestDb::new(concat!(
+        "//- /base.ws\n",
         "class CBase {\n",
         "  public function BaseMethod() {}\n",
         "}\n",
         "class CPlayer extends CBase {\n",
         "  public function OnSpawned() {}\n",
         "}\n",
+        "//- /mod.ws\n",
+        "@wrapMethod(CPlayer)\n",
+        "function OnSpawned() {\n",
+        "  super.B$0aseMethod();\n",
+        "}\n",
     ));
-    let modd = make_doc("@wrapMethod(CPlayer)\nfunction OnSpawned() {\n  super.BaseMethod();\n}\n");
-    let index = index_docs(&[("file:///base.ws", &base), ("file:///mod.ws", &modd)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let definition = resolve_definition(
-        "file:///mod.ws",
-        &modd,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 9,
-        },
-    )
-    .expect("super member inside @wrapMethod must resolve to the base class method");
+    let (uri, pos) = t.cursor();
+    let definition = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
+        .expect("super member inside @wrapMethod must resolve to the base class method");
     assert_eq!(definition.symbol.name, "BaseMethod");
     assert_eq!(definition.symbol.kind, SymbolKind::Method);
 }
 
 #[test]
 fn add_method_on_state_offers_parent_members() {
-    let base = make_doc(concat!(
+    let t = TestDb::new(concat!(
+        "//- /base.ws\n",
         "statemachine class CMachine {\n",
         "  public function MachineMethod() {}\n",
         "}\n",
         "state SomeState in CMachine {\n",
         "}\n",
+        "//- /mod.ws\n",
+        "@addMethod(SomeState)\n",
+        "function Extra() {\n",
+        "  parent.$0\n",
+        "}\n",
     ));
-    let modd = make_doc("@addMethod(SomeState)\nfunction Extra() {\n  parent.\n}\n");
-    let index = index_docs(&[("file:///base.ws", &base), ("file:///mod.ws", &modd)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let members = completion_members(
-        "file:///mod.ws",
-        &modd,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 9,
-        },
-    );
+    let (uri, pos) = t.cursor();
+    let members = completion_members(&uri, t.doc_for(&uri), &t.db(), pos);
     let names: Vec<&str> = members
         .iter()
         .map(|(_, d)| d.symbol.name.as_str())
@@ -242,27 +205,20 @@ fn add_method_on_state_offers_parent_members() {
 
 #[test]
 fn annotated_function_own_locals_and_params_still_work() {
-    let base = make_doc("class CPlayer {\n  public function Heal() {}\n}\n");
-    let modd = make_doc(concat!(
+    let t = TestDb::new(concat!(
+        "//- /base.ws\n",
+        "class CPlayer {\n",
+        "  public function Heal() {}\n",
+        "}\n",
+        "//- /mod.ws\n",
         "@addMethod(CPlayer)\n",
         "function Boost(amount : int) {\n",
         "  var scale : int;\n",
-        "  scale;\n",
+        "  $0scale;\n",
         "}\n",
     ));
-    let index = index_docs(&[("file:///base.ws", &base), ("file:///mod.ws", &modd)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let result = statement_completions(
-        "file:///mod.ws",
-        &modd,
-        &db,
-        SourcePosition {
-            line: 3,
-            character: 2,
-        },
-    );
+    let (uri, pos) = t.cursor();
+    let result = statement_completions(&uri, t.doc_for(&uri), &t.db(), pos);
     let locals: Vec<&str> = result
         .locals
         .iter()
@@ -277,27 +233,21 @@ fn annotated_function_own_locals_and_params_still_work() {
 
 #[test]
 fn wrapped_method_locals_not_in_scope() {
-    let base = make_doc(concat!(
+    let t = TestDb::new(concat!(
+        "//- /base.ws\n",
         "class CPlayer {\n",
         "  public function OnSpawned() {\n",
         "    var secret : int;\n",
         "  }\n",
         "}\n",
+        "//- /mod.ws\n",
+        "@wrapMethod(CPlayer)\n",
+        "function OnSpawned() {\n",
+        "  $0\n",
+        "}\n",
     ));
-    let modd = make_doc("@wrapMethod(CPlayer)\nfunction OnSpawned() {\n  \n}\n");
-    let index = index_docs(&[("file:///base.ws", &base), ("file:///mod.ws", &modd)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let result = statement_completions(
-        "file:///mod.ws",
-        &modd,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 2,
-        },
-    );
+    let (uri, pos) = t.cursor();
+    let result = statement_completions(&uri, t.doc_for(&uri), &t.db(), pos);
     let visible: Vec<&str> = result
         .locals
         .iter()
@@ -312,21 +262,14 @@ fn wrapped_method_locals_not_in_scope() {
 
 #[test]
 fn add_method_unknown_class_no_panic() {
-    let modd = make_doc("@addMethod(CDoesNotExist)\nfunction Boost() {\n  \n}\n");
-    let index = index_docs(&[("file:///mod.ws", &modd)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    // Must not panic even though the target class does not exist.
-    let result = statement_completions(
-        "file:///mod.ws",
-        &modd,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 2,
-        },
-    );
+    let t = TestDb::new(concat!(
+        "@addMethod(CDoesNotExist)\n",
+        "function Boost() {\n",
+        "  $0\n",
+        "}\n",
+    ));
+    let (uri, pos) = t.cursor();
+    let result = statement_completions(&uri, t.doc_for(&uri), &t.db(), pos);
     assert!(
         result.has_this,
         "has_this is still true — the context name is set"

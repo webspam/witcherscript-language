@@ -10,6 +10,7 @@ pub struct TestDb {
     pub docs: Vec<(String, ParsedDocument)>,
     pub workspace: WorkspaceIndex,
     pub base: WorkspaceIndex,
+    pub builtins: Option<WorkspaceIndex>,
     pub fixture: Fixture,
 }
 
@@ -27,17 +28,27 @@ impl TestDb {
             docs,
             workspace,
             base: WorkspaceIndex::default(),
+            builtins: None,
             fixture,
         }
     }
 
     pub fn db(&self) -> SymbolDb<'_> {
-        SymbolDb::new(&self.workspace, &self.base)
+        let db = SymbolDb::new(&self.workspace, &self.base);
+        match &self.builtins {
+            Some(b) => db.with_builtins(b),
+            None => db,
+        }
     }
 
     pub fn with_base_doc(mut self, uri: &str, source: &str) -> Self {
         let doc = parse_document(source).expect("test_support: base source must parse");
         self.base.update_document(uri, &doc);
+        self
+    }
+
+    pub fn with_builtins_index(mut self) -> Self {
+        self.builtins = Some(crate::builtins::load_builtins_index());
         self
     }
 
