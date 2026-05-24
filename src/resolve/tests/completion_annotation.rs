@@ -2,7 +2,7 @@ use super::super::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     completion_members, resolve_definition, statement_completions, AfterWrapMethodCompletions,
 };
-use super::{make_doc, SymbolDb, WorkspaceIndex};
+use super::{index_docs, make_doc, SymbolDb, WorkspaceIndex};
 use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
 
@@ -491,14 +491,6 @@ fn annotation_name_completions_fires_on_bare_at_sign() {
 }
 
 // --- completions inside annotated function bodies ---
-
-fn index_docs(docs: &[(&str, &crate::document::ParsedDocument)]) -> WorkspaceIndex {
-    let mut index = WorkspaceIndex::default();
-    for (uri, doc) in docs {
-        index.update_document(*uri, doc);
-    }
-    index
-}
 
 #[test]
 fn add_method_body_sees_class_members() {

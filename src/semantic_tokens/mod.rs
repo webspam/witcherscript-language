@@ -263,5 +263,39 @@ fn encode(tokens: &[RawToken]) -> Vec<u32> {
     encoded
 }
 
+#[cfg(any(test, feature = "test-support"))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SemanticTokenView {
+    pub delta_line: u32,
+    pub delta_start: u32,
+    pub length: u32,
+    pub token_type: u32,
+    pub token_modifiers: u32,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl SemanticTokenView {
+    pub fn token_type_name(&self) -> &'static str {
+        TOKEN_TYPES
+            .get(self.token_type as usize)
+            .copied()
+            .unwrap_or("?")
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub fn decode_tokens(encoded: &[u32]) -> Vec<SemanticTokenView> {
+    encoded
+        .chunks_exact(5)
+        .map(|c| SemanticTokenView {
+            delta_line: c[0],
+            delta_start: c[1],
+            length: c[2],
+            token_type: c[3],
+            token_modifiers: c[4],
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests;

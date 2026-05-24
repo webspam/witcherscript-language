@@ -34,6 +34,14 @@ pub(super) fn make_index(uri: &str, doc: &ParsedDocument) -> WorkspaceIndex {
     idx
 }
 
+pub(super) fn index_docs(docs: &[(&str, &ParsedDocument)]) -> WorkspaceIndex {
+    let mut index = WorkspaceIndex::default();
+    for (uri, doc) in docs {
+        index.update_document(*uri, doc);
+    }
+    index
+}
+
 pub(super) fn make_env(name: &str, type_name: &str) -> ScriptEnvironment {
     use crate::line_index::SourceRange;
     use crate::script_env::ScriptGlobal;

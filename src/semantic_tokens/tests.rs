@@ -1,71 +1,84 @@
-use super::collect_semantic_tokens;
+use rstest::rstest;
+
+use super::{
+    collect_semantic_tokens, decode_tokens, SemanticTokenView, TT_CLASS, TT_ENUM, TT_ENUM_MEMBER,
+    TT_FUNCTION, TT_PARAMETER, TT_PROPERTY, TT_VARIABLE,
+};
 use crate::document::parse_document;
 use crate::resolve::{SymbolDb, WorkspaceIndex};
 
 const TEST_URI: &str = "file:///semtok_test.ws";
 
-fn tokens_for(source: &str) -> Vec<u32> {
+fn tokens_for(source: &str) -> Vec<SemanticTokenView> {
     let empty = WorkspaceIndex::default();
     tokens_for_with_db(source, &SymbolDb::new(&empty, &empty))
 }
 
-fn tokens_for_with_db(source: &str, db: &SymbolDb) -> Vec<u32> {
+fn tokens_for_with_db(source: &str, db: &SymbolDb) -> Vec<SemanticTokenView> {
     let document = parse_document(source).expect("parse");
-    collect_semantic_tokens(TEST_URI, &document, db)
+    decode_tokens(&collect_semantic_tokens(TEST_URI, &document, db))
+}
+
+fn types_of(tokens: &[SemanticTokenView]) -> Vec<u32> {
+    tokens.iter().map(|t| t.token_type).collect()
 }
 
 #[test]
 fn emits_tokens_for_class_declaration() {
-    // "class CExample {}" should produce at least keyword + class tokens
-    let data = tokens_for("class CExample {}\n");
-    // Each token is 5 u32 values; must have at least 2 tokens
+    let tokens = tokens_for("class CExample {}\n");
     assert!(
-        data.len() >= 10,
+        tokens.len() >= 2,
         "expected at least 2 tokens, got {}",
-        data.len() / 5
+        tokens.len()
     );
 }
 
 #[test]
 fn class_declaration_keyword_is_modifier() {
-    // "class" is a declaration keyword → modifier, not control-flow keyword
-    let source = "class CExample {}\n";
-    let data = tokens_for(source);
-    assert!(data.len() >= 5);
-    assert_eq!(data[0], 0, "delta_line");
-    assert_eq!(data[1], 0, "delta_start");
-    assert_eq!(data[2], 5, "length of 'class'");
-    assert_eq!(data[3], super::TT_MODIFIER, "token type should be modifier");
+    let tokens = tokens_for("class CExample {}\n");
+    assert!(!tokens.is_empty());
+    assert_eq!(tokens[0].delta_line, 0, "delta_line");
+    assert_eq!(tokens[0].delta_start, 0, "delta_start");
+    assert_eq!(tokens[0].length, 5, "length of 'class'");
+    assert_eq!(
+        tokens[0].token_type,
+        super::TT_MODIFIER,
+        "token type should be modifier"
+    );
 }
 
 #[test]
 fn class_name_token_type_is_correct() {
-    let source = "class CExample {}\n";
-    let data = tokens_for(source);
-    // Second token: delta_line=0, delta_start=6 (after 'class '), length=8 ("CExample"), type=TT_CLASS(0)
-    assert!(data.len() >= 10);
-    assert_eq!(data[5], 0, "second token delta_line");
-    assert_eq!(data[6], 6, "second token delta_start (after 'class ')");
-    assert_eq!(data[7], 8, "length of 'CExample'");
-    assert_eq!(data[8], super::TT_CLASS, "token type should be class");
+    let tokens = tokens_for("class CExample {}\n");
+    assert!(tokens.len() >= 2);
+    assert_eq!(tokens[1].delta_line, 0, "second token delta_line");
+    assert_eq!(
+        tokens[1].delta_start, 6,
+        "second token delta_start (after 'class ')"
+    );
+    assert_eq!(tokens[1].length, 8, "length of 'CExample'");
+    assert_eq!(
+        tokens[1].token_type,
+        super::TT_CLASS,
+        "token type should be class"
+    );
 }
 
 #[test]
 fn function_tokens_are_emitted() {
-    let source = "function Foo() {}\n";
-    let data = tokens_for(source);
-    assert!(data.len() >= 10, "expected modifier + function name tokens");
-    // 'function' declaration keyword → modifier
-    assert_eq!(data[3], super::TT_MODIFIER);
-    // 'Foo' name next — TT_FUNCTION
-    assert_eq!(data[8], super::TT_FUNCTION);
+    let tokens = tokens_for("function Foo() {}\n");
+    assert!(
+        tokens.len() >= 2,
+        "expected modifier + function name tokens"
+    );
+    assert_eq!(tokens[0].token_type, super::TT_MODIFIER);
+    assert_eq!(tokens[1].token_type, super::TT_FUNCTION);
 }
 
 #[test]
 fn specifier_is_modifier_not_keyword() {
-    let source = "class C {\n private var x : int;\n}\n";
-    let data = tokens_for(source);
-    let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+    let tokens = tokens_for("class C {\n private var x : int;\n}\n");
+    let types = types_of(&tokens);
     assert!(
         types.contains(&super::TT_MODIFIER),
         "expected a modifier token for 'private', got types: {types:?}"
@@ -74,9 +87,8 @@ fn specifier_is_modifier_not_keyword() {
 
 #[test]
 fn var_is_modifier_not_keyword() {
-    let source = "function F() { var x : int; }\n";
-    let data = tokens_for(source);
-    let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+    let tokens = tokens_for("function F() { var x : int; }\n");
+    let types = types_of(&tokens);
     assert!(
         types.contains(&super::TT_MODIFIER),
         "expected a modifier token for 'var', got types: {types:?}"
@@ -85,9 +97,8 @@ fn var_is_modifier_not_keyword() {
 
 #[test]
 fn control_flow_keywords_are_keyword_type() {
-    let source = "function F() { if (true) { return; } }\n";
-    let data = tokens_for(source);
-    let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+    let tokens = tokens_for("function F() { if (true) { return; } }\n");
+    let types = types_of(&tokens);
     assert!(
         !types.is_empty(),
         "expected some tokens for control flow source"
@@ -96,17 +107,15 @@ fn control_flow_keywords_are_keyword_type() {
 
 #[test]
 fn comment_token_type_is_correct() {
-    let source = "// a comment\n";
-    let data = tokens_for(source);
-    assert!(data.len() >= 5);
-    assert_eq!(data[3], super::TT_COMMENT);
+    let tokens = tokens_for("// a comment\n");
+    assert!(!tokens.is_empty());
+    assert_eq!(tokens[0].token_type, super::TT_COMMENT);
 }
 
 #[test]
 fn string_literal_token_type_is_correct() {
-    let source = "function F() { var s : string; s = \"hello\"; }\n";
-    let data = tokens_for(source);
-    let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+    let tokens = tokens_for("function F() { var s : string; s = \"hello\"; }\n");
+    let types = types_of(&tokens);
     assert!(
         types.contains(&super::TT_STRING),
         "expected a string token, got types: {types:?}"
@@ -115,9 +124,8 @@ fn string_literal_token_type_is_correct() {
 
 #[test]
 fn name_literal_is_enum_member_not_string() {
-    let source = "function F() { var n : CName; n = 'SomeName'; }\n";
-    let data = tokens_for(source);
-    let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+    let tokens = tokens_for("function F() { var n : CName; n = 'SomeName'; }\n");
+    let types = types_of(&tokens);
     assert!(
         types.contains(&super::TT_ENUM_MEMBER),
         "expected enumMember token for name literal, got types: {types:?}"
@@ -130,9 +138,8 @@ fn name_literal_is_enum_member_not_string() {
 
 #[test]
 fn variable_use_gets_variable_token() {
-    let source = "function F() { var x : int; x = 1; }\n";
-    let data = tokens_for(source);
-    let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+    let tokens = tokens_for("function F() { var x : int; x = 1; }\n");
+    let types = types_of(&tokens);
     assert!(
         types.iter().filter(|&&t| t == super::TT_VARIABLE).count() >= 2,
         "expected variable token for both declaration and use of 'x', got types: {types:?}"
@@ -141,10 +148,9 @@ fn variable_use_gets_variable_token() {
 
 #[test]
 fn member_access_lhs_gets_variable_token() {
-    // Vector and its field X must be defined for the member access to resolve.
-    let source = "struct Vector { var X : float; }\nfunction F() { var v : Vector; v.X = 0; }\n";
-    let data = tokens_for(source);
-    let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+    let tokens =
+        tokens_for("struct Vector { var X : float; }\nfunction F() { var v : Vector; v.X = 0; }\n");
+    let types = types_of(&tokens);
     assert!(
         types.iter().filter(|&&t| t == super::TT_VARIABLE).count() >= 2,
         "expected variable token for declaration and use of 'v', got types: {types:?}"
@@ -157,21 +163,10 @@ fn member_access_lhs_gets_variable_token() {
 
 #[test]
 fn unresolvable_type_annotation_gets_no_token() {
-    // CObject is not defined — neither TT_CLASS nor any other token should appear for it.
-    let source_with = "class CObject {}\nfunction F(x : CObject) {}\n";
-    let source_without = "function F(x : CObject) {}\n";
-    let types_with: Vec<u32> = tokens_for(source_with)
-        .iter()
-        .skip(3)
-        .step_by(5)
-        .copied()
-        .collect();
-    let types_without: Vec<u32> = tokens_for(source_without)
-        .iter()
-        .skip(3)
-        .step_by(5)
-        .copied()
-        .collect();
+    let types_with = types_of(&tokens_for(
+        "class CObject {}\nfunction F(x : CObject) {}\n",
+    ));
+    let types_without = types_of(&tokens_for("function F(x : CObject) {}\n"));
     assert!(
         types_with.contains(&super::TT_CLASS),
         "defined CObject should produce a class token, got: {types_with:?}"
@@ -184,10 +179,8 @@ fn unresolvable_type_annotation_gets_no_token() {
 
 #[test]
 fn resolved_type_annotation_gets_class_token() {
-    // CObject is defined — its use in a type annotation should resolve to TT_CLASS.
-    let source = "class CObject {}\nfunction F(x : CObject) {}\n";
-    let data = tokens_for(source);
-    let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+    let tokens = tokens_for("class CObject {}\nfunction F(x : CObject) {}\n");
+    let types = types_of(&tokens);
     assert!(
         types.contains(&super::TT_CLASS),
         "defined type in annotation should resolve to class token, got types: {types:?}"
@@ -196,18 +189,14 @@ fn resolved_type_annotation_gets_class_token() {
 
 #[test]
 fn type_annotation_from_base_scripts_gets_class_token() {
-    // CActor is defined only in base_scripts — the field type annotation should
-    // still resolve and produce a class token.
-    let base_doc = parse_document("class CActor {}\n").expect("base parse");
-    let mut base = WorkspaceIndex::default();
-    base.update_document("file:///base/CActor.ws", &base_doc);
-
-    let source = "class SomeClass {\n  var actor : CActor;\n}\n";
-    let document = parse_document(source).expect("parse");
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&empty, &base);
-    let data = collect_semantic_tokens(TEST_URI, &document, &db);
-    let types: Vec<u32> = data.iter().skip(3).step_by(5).copied().collect();
+    let t = crate::test_support::TestDb::new("class SomeClass {\n  var actor : CActor;\n}\n")
+        .with_base_doc("file:///base/CActor.ws", "class CActor {}\n");
+    let tokens = decode_tokens(&collect_semantic_tokens(
+        t.primary_uri(),
+        t.primary_doc(),
+        &t.db(),
+    ));
+    let types = types_of(&tokens);
     assert!(
         types.contains(&super::TT_CLASS),
         "CActor from base scripts must produce a class token, got types: {types:?}"
@@ -216,166 +205,127 @@ fn type_annotation_from_base_scripts_gets_class_token() {
 
 fn classified_tokens(source: &str, db: &SymbolDb) -> Vec<(String, u32)> {
     let document = parse_document(source).expect("parse");
-    let data = collect_semantic_tokens(TEST_URI, &document, db);
+    let tokens = decode_tokens(&collect_semantic_tokens(TEST_URI, &document, db));
     let lines: Vec<&str> = source.lines().collect();
     let mut out = Vec::new();
     let mut line: u32 = 0;
     let mut start: u32 = 0;
-    for chunk in data.chunks_exact(5) {
-        let delta_line = chunk[0];
-        let delta_start = chunk[1];
-        let length = chunk[2];
-        let tt = chunk[3];
-        line += delta_line;
-        start = if delta_line > 0 {
-            delta_start
+    for t in &tokens {
+        line += t.delta_line;
+        start = if t.delta_line > 0 {
+            t.delta_start
         } else {
-            start + delta_start
+            start + t.delta_start
         };
         let line_text = lines.get(line as usize).copied().unwrap_or("");
         let text: String = line_text
             .chars()
             .skip(start as usize)
-            .take(length as usize)
+            .take(t.length as usize)
             .collect();
-        out.push((text, tt));
+        out.push((text, t.token_type));
     }
     out
 }
 
-#[test]
-fn declaration_sites_get_expected_token_types() {
-    struct Case {
-        name: &'static str,
-        source: &'static str,
-        ident: &'static str,
-        expected: u32,
-    }
-    let cases = [
-        Case {
-            name: "class declaration name",
-            source: "class Foo {}\n",
-            ident: "Foo",
-            expected: super::TT_CLASS,
-        },
-        Case {
-            name: "struct declaration name",
-            source: "struct Bar {}\n",
-            ident: "Bar",
-            expected: super::TT_CLASS,
-        },
-        Case {
-            name: "enum declaration name",
-            source: "enum E { A }\n",
-            ident: "E",
-            expected: super::TT_ENUM,
-        },
-        Case {
-            name: "enum variant declaration",
-            source: "enum E { A }\n",
-            ident: "A",
-            expected: super::TT_ENUM_MEMBER,
-        },
-        Case {
-            name: "function declaration name",
-            source: "function Run() {}\n",
-            ident: "Run",
-            expected: super::TT_FUNCTION,
-        },
-        Case {
-            name: "parameter declaration",
-            source: "function F(p : int) {}\n",
-            ident: "p",
-            expected: super::TT_PARAMETER,
-        },
-        Case {
-            name: "field declaration",
-            source: "class C { var x : int; }\n",
-            ident: "x",
-            expected: super::TT_PROPERTY,
-        },
-        Case {
-            name: "local variable declaration",
-            source: "function F() { var z : int; }\n",
-            ident: "z",
-            expected: super::TT_VARIABLE,
-        },
-    ];
+#[rstest]
+#[case::class_declaration_name("class declaration name", "class Foo {}\n", "Foo", TT_CLASS)]
+#[case::struct_declaration_name("struct declaration name", "struct Bar {}\n", "Bar", TT_CLASS)]
+#[case::enum_declaration_name("enum declaration name", "enum E { A }\n", "E", TT_ENUM)]
+#[case::enum_variant_declaration("enum variant declaration", "enum E { A }\n", "A", TT_ENUM_MEMBER)]
+#[case::function_declaration_name(
+    "function declaration name",
+    "function Run() {}\n",
+    "Run",
+    TT_FUNCTION
+)]
+#[case::parameter_declaration(
+    "parameter declaration",
+    "function F(p : int) {}\n",
+    "p",
+    TT_PARAMETER
+)]
+#[case::field_declaration("field declaration", "class C { var x : int; }\n", "x", TT_PROPERTY)]
+#[case::local_variable_declaration(
+    "local variable declaration",
+    "function F() { var z : int; }\n",
+    "z",
+    TT_VARIABLE
+)]
+fn declaration_sites_get_expected_token_types(
+    #[case] name: &str,
+    #[case] source: &str,
+    #[case] ident: &str,
+    #[case] expected: u32,
+) {
     let empty = WorkspaceIndex::default();
     let db = SymbolDb::new(&empty, &empty);
-    for c in cases {
-        let toks = classified_tokens(c.source, &db);
-        let got = toks.iter().find(|(t, _)| t == c.ident).map(|(_, tt)| *tt);
-        assert_eq!(
-            got,
-            Some(c.expected),
-            "case '{}': ident '{}' expected token type {}, all tokens: {:?}",
-            c.name,
-            c.ident,
-            c.expected,
-            toks
-        );
-    }
+    let toks = classified_tokens(source, &db);
+    let got = toks.iter().find(|(t, _)| t == ident).map(|(_, tt)| *tt);
+    assert_eq!(
+        got,
+        Some(expected),
+        "case '{}': ident '{}' expected token type {}, all tokens: {:?}",
+        name,
+        ident,
+        expected,
+        toks
+    );
 }
 
-#[test]
-fn references_classify_like_their_declarations() {
-    struct Case {
-        name: &'static str,
-        source: &'static str,
-        ident: &'static str,
-        expected_kind: u32,
-        min_count: usize,
-    }
-    let cases = [
-        Case {
-            name: "local variable used after declaration",
-            source: "function F() { var x : int; x = 1; }\n",
-            ident: "x",
-            expected_kind: super::TT_VARIABLE,
-            min_count: 2,
-        },
-        Case {
-            name: "parameter used inside body",
-            source: "function F(p : int) { p = 1; }\n",
-            ident: "p",
-            expected_kind: super::TT_PARAMETER,
-            min_count: 2,
-        },
-        Case {
-            name: "top-level function call from another function",
-            source: "function Foo() {}\nfunction Bar() { Foo(); }\n",
-            ident: "Foo",
-            expected_kind: super::TT_FUNCTION,
-            min_count: 2,
-        },
-        Case {
-            name: "repeated local reference within one body",
-            source: "function F() { var x : int; x = 1; x = 2; x = 3; }\n",
-            ident: "x",
-            expected_kind: super::TT_VARIABLE,
-            min_count: 4,
-        },
-    ];
+#[rstest]
+#[case::local_variable_used_after_declaration(
+    "local variable used after declaration",
+    "function F() { var x : int; x = 1; }\n",
+    "x",
+    TT_VARIABLE,
+    2
+)]
+#[case::parameter_used_inside_body(
+    "parameter used inside body",
+    "function F(p : int) { p = 1; }\n",
+    "p",
+    TT_PARAMETER,
+    2
+)]
+#[case::top_level_function_call_from_another_function(
+    "top-level function call from another function",
+    "function Foo() {}\nfunction Bar() { Foo(); }\n",
+    "Foo",
+    TT_FUNCTION,
+    2
+)]
+#[case::repeated_local_reference_within_one_body(
+    "repeated local reference within one body",
+    "function F() { var x : int; x = 1; x = 2; x = 3; }\n",
+    "x",
+    TT_VARIABLE,
+    4
+)]
+fn references_classify_like_their_declarations(
+    #[case] name: &str,
+    #[case] source: &str,
+    #[case] ident: &str,
+    #[case] expected_kind: u32,
+    #[case] min_count: usize,
+) {
     let empty = WorkspaceIndex::default();
     let db = SymbolDb::new(&empty, &empty);
-    for c in cases {
-        let toks = classified_tokens(c.source, &db);
-        let count = toks
-            .iter()
-            .filter(|(t, tt)| t == c.ident && *tt == c.expected_kind)
-            .count();
-        assert!(
-            count >= c.min_count,
-            "case '{}': expected at least {} tokens of type {} for ident '{}', got {} (all: {:?})",
-            c.name,
-            c.min_count,
-            c.expected_kind,
-            c.ident,
-            count,
-            toks
-        );
-    }
+    let toks = classified_tokens(source, &db);
+    let count = toks
+        .iter()
+        .filter(|(t, tt)| t == ident && *tt == expected_kind)
+        .count();
+    assert!(
+        count >= min_count,
+        "case '{}': expected at least {} tokens of type {} for ident '{}', got {} (all: {:?})",
+        name,
+        min_count,
+        expected_kind,
+        ident,
+        count,
+        toks
+    );
 }
 
 #[test]
@@ -396,43 +346,15 @@ fn same_file_class_member_resolves_without_workspace() {
 
 #[test]
 fn inherited_member_reference_resolves_via_workspace() {
-    let parent_src = "class Parent { var f : int; }\n";
-    let parent_doc = parse_document(parent_src).expect("parent parse");
-    let mut workspace = WorkspaceIndex::default();
-    workspace.update_document("file:///parent.ws", &parent_doc);
-
-    let child_src = "class Child extends Parent { function M() { f = 1; } }\n";
-    let child_doc = parse_document(child_src).expect("child parse");
-    workspace.update_document(TEST_URI, &child_doc);
-
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&workspace, &empty);
-    let data = collect_semantic_tokens(TEST_URI, &child_doc, &db);
-
-    let lines: Vec<&str> = child_src.lines().collect();
-    let mut line: u32 = 0;
-    let mut start: u32 = 0;
-    let mut f_kind: Option<u32> = None;
-    for chunk in data.chunks_exact(5) {
-        line += chunk[0];
-        start = if chunk[0] > 0 {
-            chunk[1]
-        } else {
-            start + chunk[1]
-        };
-        let text: String = lines
-            .get(line as usize)
-            .copied()
-            .unwrap_or("")
-            .chars()
-            .skip(start as usize)
-            .take(chunk[2] as usize)
-            .collect();
-        if text == "f" {
-            f_kind = Some(chunk[3]);
-            break;
-        }
-    }
+    let t = crate::test_support::TestDb::new(concat!(
+        "//- /parent.ws\n",
+        "class Parent { var f : int; }\n",
+        "//- /semtok_test.ws\n",
+        "class Child extends Parent { function M() { f = 1; } }\n",
+    ));
+    let child = t.doc_for(TEST_URI);
+    let toks = classified_tokens(&child.source, &t.db());
+    let f_kind = toks.iter().find(|(t, _)| t == "f").map(|(_, k)| *k);
     assert_eq!(
         f_kind,
         Some(super::TT_PROPERTY),

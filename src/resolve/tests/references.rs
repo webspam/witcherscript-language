@@ -1,366 +1,174 @@
+use rstest::rstest;
+
 use super::super::{find_references, resolve_definition};
-use super::{make_doc, SymbolDb, WorkspaceIndex};
-use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
+use crate::test_support::TestDb;
 
-#[test]
-fn finds_references_to_top_level_function() {
-    let source = "function Foo() {}\nfunction Bar() {\n Foo();\n Foo();\n}\n";
-    let document = make_doc(source);
-    let definition = resolve_definition(
-        "file:///test.ws",
-        &document,
-        &SymbolDb::new(&WorkspaceIndex::default(), &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 0,
-            character: 9,
-        },
-    )
-    .expect("definition should resolve");
-
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &document);
-
-    let refs = find_references(
-        &definition,
-        &document,
-        &[("file:///test.ws", &document)],
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        false,
+#[rstest]
+#[case::top_level_function_two_call_sites(
+    "function $0Foo() {}\nfunction Bar() {\n Foo();\n Foo();\n}\n",
+    false,
+    2,
+    &[],
+)]
+#[case::include_decl_true_counts_declaration(
+    "function $0Foo() {}\nfunction Bar() {\n Foo();\n}\n",
+    true,
+    2,
+    &[],
+)]
+#[case::include_decl_false_omits_declaration(
+    "function $0Foo() {}\nfunction Bar() {\n Foo();\n}\n",
+    false,
+    1,
+    &[],
+)]
+#[case::local_variable_scoped_to_function(
+    "function Outer() {\n var x : int;\n $0x = 1;\n}\nfunction Other() {\n var x : int;\n}\n",
+    true,
+    2,
+    &[],
+)]
+#[case::class_body_plus_wrap_plus_call_site(
+    "//- /base.ws\n\
+     class CPlayer {\n  public function On$0Spawned() {}\n}\n\
+     //- /a.ws\n\
+     @wrapMethod(CPlayer)\nfunction OnSpawned() {}\n\
+     //- /caller.ws\n\
+     function Caller() {\n  var p : CPlayer;\n  p.OnSpawned();\n}\n",
+    true,
+    3,
+    &["file:///base.ws", "file:///a.ws", "file:///caller.ws"],
+)]
+#[case::same_set_from_wrap_function_name(
+    "//- /base.ws\n\
+     class CPlayer {\n  public function OnSpawned() {}\n}\n\
+     //- /a.ws\n\
+     @wrapMethod(CPlayer)\nfunction On$0Spawned() {}\n\
+     //- /caller.ws\n\
+     function Caller() {\n  var p : CPlayer;\n  p.OnSpawned();\n}\n",
+    true,
+    3,
+    &["file:///base.ws", "file:///a.ws"],
+)]
+#[case::exclude_declaration_keeps_only_call_site(
+    "//- /base.ws\n\
+     class CPlayer {\n  public function On$0Spawned() {}\n}\n\
+     //- /a.ws\n\
+     @wrapMethod(CPlayer)\nfunction OnSpawned() {}\n\
+     //- /caller.ws\n\
+     function Caller() {\n  var p : CPlayer;\n  p.OnSpawned();\n}\n",
+    false,
+    1,
+    &["file:///caller.ws"],
+)]
+fn references(
+    #[case] fixture: &str,
+    #[case] include_decl: bool,
+    #[case] expected_count: usize,
+    #[case] required_uris: &[&str],
+) {
+    let t = TestDb::new(fixture);
+    let (uri, pos) = t.cursor();
+    let doc = t.doc_for(&uri);
+    let def = resolve_definition(&uri, doc, &t.db(), pos).expect("definition should resolve");
+    let search = t.search_docs();
+    let refs = find_references(&def, doc, &search, &t.db(), include_decl);
+    assert_eq!(
+        refs.len(),
+        expected_count,
+        "actual: {:?}",
+        refs.iter().map(|(u, _)| u).collect::<Vec<_>>()
     );
-    assert_eq!(refs.len(), 2, "two call sites expected");
+    for required in required_uris {
+        assert!(
+            refs.iter().any(|(u, _)| u == required),
+            "missing required uri {required:?}"
+        );
+    }
 }
 
 #[test]
-fn find_references_respects_include_declaration() {
-    let source = "function Foo() {}\nfunction Bar() {\n Foo();\n}\n";
-    let document = make_doc(source);
-    let definition = resolve_definition(
-        "file:///test.ws",
-        &document,
-        &SymbolDb::new(&WorkspaceIndex::default(), &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 0,
-            character: 9,
-        },
-    )
-    .expect("definition should resolve");
-
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &document);
-
-    let with_decl = find_references(
-        &definition,
-        &document,
-        &[("file:///test.ws", &document)],
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        true,
-    );
-    let without_decl = find_references(
-        &definition,
-        &document,
-        &[("file:///test.ws", &document)],
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        false,
-    );
-    assert_eq!(with_decl.len(), 2);
-    assert_eq!(without_decl.len(), 1);
-}
-
-#[test]
-fn finds_references_to_local_variable_within_function_scope() {
-    let source =
-        "function Outer() {\n var x : int;\n x = 1;\n}\nfunction Other() {\n var x : int;\n}\n";
-    let document = make_doc(source);
-    let definition = resolve_definition(
-        "file:///test.ws",
-        &document,
-        &SymbolDb::new(&WorkspaceIndex::default(), &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 2,
-            character: 1,
-        },
-    )
-    .expect("local variable should resolve");
-
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &document);
-
-    let refs = find_references(
-        &definition,
-        &document,
-        &[("file:///test.ws", &document)],
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        true,
-    );
-    // Should find x in Outer() only: the declaration and the assignment
-    assert_eq!(refs.len(), 2, "x in Other() should not be included");
-}
-
-#[test]
-fn find_references_for_private_member_scoped_to_defining_file() {
-    let source_a = concat!(
+fn private_member_scope_blocks_homonym_in_other_files() {
+    let t = TestDb::new(concat!(
+        "//- /a.ws\n",
         "class A {\n",
-        "  private function Secret() {}\n",
+        "  private function $0Secret() {}\n",
         "  function Test() {\n",
         "    this.Secret();\n",
         "  }\n",
         "}\n",
+        "//- /b.ws\n",
+        "function Secret() {}\n",
+    ));
+    let (uri, pos) = t.cursor();
+    let doc = t.doc_for(&uri);
+    let def = resolve_definition(&uri, doc, &t.db(), pos).expect("private method must resolve");
+    assert_eq!(def.symbol.kind, SymbolKind::Method);
+
+    let refs = find_references(&def, doc, &t.search_docs(), &t.db(), false);
+    assert_eq!(
+        refs.len(),
+        1,
+        "the top-level Secret() in b.ws must not match"
     );
-    let source_b = "function Secret() {}\n";
-    let doc_a = make_doc(source_a);
-    let doc_b = make_doc(source_b);
-
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc_a);
-    index.update_document("file:///b.ws", &doc_b);
-    let base = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &base);
-
-    // Resolve definition of 'Secret' at declaration site (line 1, col 20)
-    // "  private function Secret() {}" — 'S' is at col 19
-    let definition = resolve_definition(
-        "file:///a.ws",
-        &doc_a,
-        &db,
-        SourcePosition {
-            line: 1,
-            character: 20,
-        },
-    )
-    .expect("private method should resolve at definition site");
-
-    assert_eq!(definition.symbol.name, "Secret");
-    assert_eq!(definition.symbol.kind, SymbolKind::Method);
-
-    let search_docs = vec![("file:///a.ws", &doc_a), ("file:///b.ws", &doc_b)];
-    let refs = find_references(&definition, &doc_a, &search_docs, &db, false);
-
-    // Only the call site in a.ws should appear; the top-level function in b.ws must not
-    assert_eq!(refs.len(), 1, "reference in b.ws must not be included");
-    assert!(
-        refs[0].0 == "file:///a.ws",
-        "sole reference must be in the defining file"
-    );
+    assert_eq!(refs[0].0, "file:///a.ws");
 }
 
-// --- @addField with same name on different classes are independent symbols ---
+#[test]
+fn private_member_with_wrap_still_searches_other_files() {
+    let t = TestDb::new(concat!(
+        "//- /base.ws\n",
+        "class CPlayer {\n",
+        "  private function $0Secret() {}\n",
+        "}\n",
+        "//- /a.ws\n",
+        "@wrapMethod(CPlayer)\nfunction Secret() {}\n",
+    ));
+    let (uri, pos) = t.cursor();
+    let doc = t.doc_for(&uri);
+    let def = resolve_definition(&uri, doc, &t.db(), pos).expect("must resolve");
+    assert_eq!(def.symbol.kind, SymbolKind::Method);
+
+    let refs = find_references(&def, doc, &t.search_docs(), &t.db(), true);
+    assert!(refs.iter().any(|(u, _)| u == "file:///a.ws"));
+    assert!(refs.iter().any(|(u, _)| u == "file:///base.ws"));
+}
 
 #[test]
-fn addfield_same_name_different_classes_are_independent() {
-    let source = concat!(
+fn addfield_same_name_different_classes_are_independent_symbols() {
+    let t = TestDb::new(concat!(
         "@addField(CR4Game)\n",
-        "private var lightRewriteSettings : CLightRewriteSettings;\n",
+        "private var $0lightRewriteSettings : CLightRewriteSettings;\n",
         "@addField(CR4IngameMenu)\n",
         "private var lightRewriteSettings : CLightRewriteSettings;\n",
         "class CR4Game {}\n",
         "class CR4IngameMenu {}\n",
         "class CLightRewriteSettings {}\n",
-    );
-    let document = make_doc(source);
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &document);
-    let base = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &base);
-
-    let def_game = resolve_definition(
-        "file:///test.ws",
-        &document,
-        &db,
-        SourcePosition {
-            line: 1,
-            character: 12,
-        },
-    )
-    .expect("CR4Game field should resolve");
+    ));
+    let (uri, pos) = t.cursor();
+    let doc = t.doc_for(&uri);
+    let def_game = resolve_definition(&uri, doc, &t.db(), pos).expect("CR4Game field must resolve");
     assert_eq!(def_game.symbol.name, "lightRewriteSettings");
 
     let def_menu = resolve_definition(
-        "file:///test.ws",
-        &document,
-        &db,
-        SourcePosition {
+        &uri,
+        doc,
+        &t.db(),
+        crate::line_index::SourcePosition {
             line: 3,
             character: 12,
         },
     )
-    .expect("CR4IngameMenu field should resolve");
+    .expect("CR4IngameMenu field must resolve");
     assert_eq!(def_menu.symbol.name, "lightRewriteSettings");
-
     assert_ne!(
         def_game.symbol.selection_byte_range, def_menu.symbol.selection_byte_range,
-        "both @addField declarations must not be treated as the same symbol"
+        "both @addField declarations must be distinct symbols"
     );
 
-    let search_docs = vec![("file:///test.ws", &document)];
-
-    let refs_game = find_references(&def_game, &document, &search_docs, &db, true);
-    let refs_menu = find_references(&def_menu, &document, &search_docs, &db, true);
-
-    assert_eq!(
-        refs_game.len(),
-        1,
-        "CR4Game field references must not include CR4IngameMenu's field"
-    );
-    assert_eq!(
-        refs_menu.len(),
-        1,
-        "CR4IngameMenu field references must not include CR4Game's field"
-    );
-}
-
-// --- find_references unifies class-body + @wrapMethod/@replaceMethod declarations ---
-
-fn index_docs(docs: &[(&str, &crate::document::ParsedDocument)]) -> WorkspaceIndex {
-    let mut index = WorkspaceIndex::default();
-    for (uri, doc) in docs {
-        index.update_document(*uri, doc);
-    }
-    index
-}
-
-#[test]
-fn find_references_includes_class_body_and_wrap_declarations() {
-    let base = make_doc("class CPlayer {\n  public function OnSpawned() {}\n}\n");
-    let mod_a = make_doc("@wrapMethod(CPlayer)\nfunction OnSpawned() {}\n");
-    let caller = make_doc("function Caller() {\n  var p : CPlayer;\n  p.OnSpawned();\n}\n");
-    let index = index_docs(&[
-        ("file:///base.ws", &base),
-        ("file:///a.ws", &mod_a),
-        ("file:///caller.ws", &caller),
-    ]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    // Definition resolved from the class-body declaration site.
-    let definition = resolve_definition(
-        "file:///base.ws",
-        &base,
-        &db,
-        SourcePosition {
-            line: 1,
-            character: 21,
-        },
-    )
-    .expect("class-body method should resolve");
-    assert_eq!(definition.symbol.kind, SymbolKind::Method);
-
-    let search_docs = vec![
-        ("file:///base.ws", &base),
-        ("file:///a.ws", &mod_a),
-        ("file:///caller.ws", &caller),
-    ];
-    let refs = find_references(&definition, &base, &search_docs, &db, true);
-
-    assert_eq!(refs.len(), 3, "two declarations plus one call site");
-    assert!(refs.iter().any(|(u, _)| u == "file:///base.ws"));
-    assert!(refs.iter().any(|(u, _)| u == "file:///a.ws"));
-    assert!(refs.iter().any(|(u, _)| u == "file:///caller.ws"));
-}
-
-#[test]
-fn find_references_from_wrap_function_name_unifies() {
-    let base = make_doc("class CPlayer {\n  public function OnSpawned() {}\n}\n");
-    let mod_a = make_doc("@wrapMethod(CPlayer)\nfunction OnSpawned() {}\n");
-    let caller = make_doc("function Caller() {\n  var p : CPlayer;\n  p.OnSpawned();\n}\n");
-    let index = index_docs(&[
-        ("file:///base.ws", &base),
-        ("file:///a.ws", &mod_a),
-        ("file:///caller.ws", &caller),
-    ]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    // Definition resolved from the @wrapMethod function's own name.
-    let definition = resolve_definition(
-        "file:///a.ws",
-        &mod_a,
-        &db,
-        SourcePosition {
-            line: 1,
-            character: 12,
-        },
-    )
-    .expect("wrap function name should resolve");
-
-    let search_docs = vec![
-        ("file:///base.ws", &base),
-        ("file:///a.ws", &mod_a),
-        ("file:///caller.ws", &caller),
-    ];
-    let refs = find_references(&definition, &base, &search_docs, &db, true);
-
-    assert_eq!(
-        refs.len(),
-        3,
-        "querying from the wrap name yields the same set"
-    );
-    assert!(refs.iter().any(|(u, _)| u == "file:///base.ws"));
-    assert!(refs.iter().any(|(u, _)| u == "file:///a.ws"));
-}
-
-#[test]
-fn find_references_exclude_declaration_skips_both_decls() {
-    let base = make_doc("class CPlayer {\n  public function OnSpawned() {}\n}\n");
-    let mod_a = make_doc("@wrapMethod(CPlayer)\nfunction OnSpawned() {}\n");
-    let caller = make_doc("function Caller() {\n  var p : CPlayer;\n  p.OnSpawned();\n}\n");
-    let index = index_docs(&[
-        ("file:///base.ws", &base),
-        ("file:///a.ws", &mod_a),
-        ("file:///caller.ws", &caller),
-    ]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let definition = resolve_definition(
-        "file:///base.ws",
-        &base,
-        &db,
-        SourcePosition {
-            line: 1,
-            character: 21,
-        },
-    )
-    .expect("class-body method should resolve");
-
-    let search_docs = vec![
-        ("file:///base.ws", &base),
-        ("file:///a.ws", &mod_a),
-        ("file:///caller.ws", &caller),
-    ];
-    let refs = find_references(&definition, &base, &search_docs, &db, false);
-
-    assert_eq!(refs.len(), 1, "only the call site, neither declaration");
-    assert_eq!(refs[0].0, "file:///caller.ws");
-}
-
-#[test]
-fn find_references_private_method_with_wrap_searches_all_documents() {
-    let base = make_doc("class CPlayer {\n  private function Secret() {}\n}\n");
-    let mod_a = make_doc("@wrapMethod(CPlayer)\nfunction Secret() {}\n");
-    let index = index_docs(&[("file:///base.ws", &base), ("file:///a.ws", &mod_a)]);
-    let empty = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &empty);
-
-    let definition = resolve_definition(
-        "file:///base.ws",
-        &base,
-        &db,
-        SourcePosition {
-            line: 1,
-            character: 20,
-        },
-    )
-    .expect("private class-body method should resolve");
-    assert_eq!(definition.symbol.kind, SymbolKind::Method);
-
-    let search_docs = vec![("file:///base.ws", &base), ("file:///a.ws", &mod_a)];
-    let refs = find_references(&definition, &base, &search_docs, &db, true);
-
-    // A wrapped private method must search across files, not just the defining one.
-    assert!(
-        refs.iter().any(|(u, _)| u == "file:///a.ws"),
-        "the @wrapMethod declaration in another file must be found"
-    );
-    assert!(refs.iter().any(|(u, _)| u == "file:///base.ws"));
+    let refs_game = find_references(&def_game, doc, &t.search_docs(), &t.db(), true);
+    let refs_menu = find_references(&def_menu, doc, &t.search_docs(), &t.db(), true);
+    assert_eq!(refs_game.len(), 1);
+    assert_eq!(refs_menu.len(), 1);
 }
