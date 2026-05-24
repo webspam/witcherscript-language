@@ -373,3 +373,12 @@ fn statement_completions_blocked_at_name_being_declared(#[case] fixture: &str) {
         "all-empty expected when about to declare a new name"
     );
 }
+
+#[test]
+fn statement_completions_members_empty_in_free_function() {
+    let (_t, r) = run_at_cursor("function Test() {\n  $0\n}\n");
+    assert!(
+        r.members.is_empty(),
+        "members bucket must be empty when cursor is in a free function"
+    );
+}
