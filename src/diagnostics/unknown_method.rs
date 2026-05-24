@@ -6,10 +6,13 @@ use tree_sitter::Node;
 use crate::cst::grammar::{call_callee, member_access_member};
 use crate::cst::nav::first_named_child;
 use crate::document::ParsedDocument;
-use crate::resolve::{infer_expr_type_memo, Definition, SymbolDb};
+use crate::resolve::{infer_expr_type_memo, SymbolDb};
 use crate::symbols::{AccessLevel, SymbolKind};
 
-use super::{run_rules_on_document, CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic};
+use super::{
+    access_is_inside_declaring_class, run_rules_on_document, CstRule, CstRuleCtx, Severity,
+    WorkspaceDiagnostic,
+};
 
 pub(crate) struct UnknownMethodRule;
 
@@ -147,23 +150,6 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         related: vec![],
         data: None,
     });
-}
-
-fn access_is_inside_declaring_class<'tree>(
-    ident: Node<'tree>,
-    def: &Definition,
-    ctx: &CstRuleCtx<'_, 'tree>,
-) -> bool {
-    let Some(declarer) = def.symbol.container_name.as_deref() else {
-        return false;
-    };
-    let Some(enclosing) = ctx.document.symbols.enclosing_symbol_at(
-        ident.start_byte(),
-        &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
-    ) else {
-        return false;
-    };
-    enclosing.name == declarer
 }
 
 #[cfg(test)]

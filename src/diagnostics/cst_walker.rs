@@ -8,7 +8,8 @@ use rayon::prelude::*;
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
-use crate::resolve::{ObservationSet, SymbolDb};
+use crate::resolve::{annotation_target_class, Definition, ObservationSet, SymbolDb};
+use crate::symbols::SymbolKind;
 
 use super::WorkspaceDiagnostic;
 
@@ -74,6 +75,30 @@ pub(crate) struct CstRuleCtx<'a, 'tree> {
     pub diagnostics: &'a mut Vec<WorkspaceDiagnostic>,
     pub in_error_subtree: bool,
     pub _tree: PhantomData<&'tree ()>,
+}
+
+pub(crate) fn access_is_inside_declaring_class<'tree>(
+    ident: Node<'tree>,
+    def: &Definition,
+    ctx: &CstRuleCtx<'_, 'tree>,
+) -> bool {
+    let Some(declarer) = def.symbol.container_name.as_deref() else {
+        return false;
+    };
+    let byte = ident.start_byte();
+    if let Some(enclosing) = ctx.document.symbols.enclosing_symbol_at(
+        byte,
+        &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
+    ) {
+        return enclosing.name == declarer;
+    }
+    let callable = ctx.document.symbols.enclosing_symbol_at(
+        byte,
+        &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
+    );
+    callable
+        .and_then(annotation_target_class)
+        .is_some_and(|target| target == declarer)
 }
 
 pub(crate) trait CstRule {

@@ -6,14 +6,12 @@ use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
-use crate::resolve::{
-    infer_expr_type_memo, resolve_definition_at_ident, Definition, SymbolDb, BUILTIN_TYPES,
-};
+use crate::resolve::{infer_expr_type_memo, resolve_definition_at_ident, SymbolDb, BUILTIN_TYPES};
 use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::{
-    collect_nodes_with_error_subtree, run_parallel_pass, CstRuleCtx, ParallelRuleShard, Severity,
-    WorkspaceDiagnostic,
+    access_is_inside_declaring_class, collect_nodes_with_error_subtree, run_parallel_pass,
+    CstRuleCtx, ParallelRuleShard, Severity, WorkspaceDiagnostic,
 };
 
 pub(crate) fn run_unknown_symbol_parallel(
@@ -366,23 +364,6 @@ fn resolves_as_local<'tree>(ctx: &CstRuleCtx<'_, 'tree>, ident: Node<'tree>, nam
         .symbols
         .local_at_byte(callable.id, name, byte)
         .is_some()
-}
-
-fn access_is_inside_declaring_class<'tree>(
-    ident: Node<'tree>,
-    def: &Definition,
-    ctx: &CstRuleCtx<'_, 'tree>,
-) -> bool {
-    let Some(declarer) = def.symbol.container_name.as_deref() else {
-        return false;
-    };
-    let Some(enclosing) = ctx.document.symbols.enclosing_symbol_at(
-        ident.start_byte(),
-        &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
-    ) else {
-        return false;
-    };
-    enclosing.name == declarer
 }
 
 fn is_inside_wrap_method<'tree>(ident: Node<'tree>, ctx: &CstRuleCtx<'_, 'tree>) -> bool {
@@ -785,6 +766,20 @@ mod tests {
         assert_eq!(kinds(diags), vec!["private_member_access"]);
         assert!(diags[0].message.contains("hidden"));
         assert!(diags[0].message.contains("'Super'"));
+    }
+
+    #[test]
+    fn private_member_not_flagged_inside_add_method_of_declaring_class() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///t.ws",
+            "class A { private var hidden : int; } \
+             @addMethod(A) function R() { var a : A; a.hidden = 1; }\n",
+        )]);
+        let result = check(&idx, &docs);
+        assert!(
+            result.is_empty(),
+            "@addMethod(A) body is a member of A, got {result:?}"
+        );
     }
 
     #[test]
