@@ -34,7 +34,10 @@ For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writ
 | `completion_type.rs` | `type_completions`, `extends_completions`, `state_owner_completions`, `class_header_keyword_completions` |
 | `completion_keywords.rs` | `class_body_keyword_completions` — specifier state machine |
 | `completion_script_keywords.rs` | Script-level keyword completions |
-| `completion_annotation.rs` | `annotation_arg_completions`, `after_wrap_method_completions` |
+| `completion_annotation_name.rs` | `annotation_name_completions` |
+| `completion_annotation_arg.rs` | `annotation_arg_completions` |
+| `completion_annotation_wrap.rs` | `after_wrap_method_completions` (stage-by-stage wrap completion) |
+| `completion_annotation_body.rs` | Inside `@addMethod` / `@wrapMethod` bodies: statement, member, definition resolution |
 | `completion_default_hint.rs` | `default_or_hint_member_completions` |
 | `builtin_array.rs` | Built-in `array<T>` resolution, `parse_generic_type`, members/hover via `load_builtins_index` |
 | `builtin_classes.rs` / `builtin_enums.rs` | Other embedded engine types |
