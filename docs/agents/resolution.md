@@ -100,13 +100,15 @@ resolve_definition(uri, document, db, position)
 
 ## Member chain traversal
 
-`find_member_chain_cross(container, name, depth, min_access)`:
-1. Check direct members of `container` in workspace, then base.
-2. If not found, look up `superclass_of(container)` (workspace first, then base).
-3. Recurse with `depth + 1`. Access is normally bumped to `min_access.max(Protected)` so private members stop being visible after the first hop; callers that pass `allow_private = true` (see `find_member_for_default_or_hint`) skip the bump and keep private visible at every hop.
+`SymbolDb::find_member(container, name, min_access)`:
+1. Walk the inheritance chain starting at `container`. At each level, check direct members in workspace, base, then builtins.
+2. The walk is **first-name-wins**: the first member matching `name` at any depth terminates the walk, regardless of its access level. A `private` declaration in a subclass therefore masks any same-name member further up the chain — you cannot skip past it to reach an accessible ancestor. This matches the WitcherScript compiler.
+3. After the walk, the found member's access is compared to `min_access`: if it is too low, `find_member` returns `None`.
 4. Hard stop at depth 32 (prevents infinite loops from circular inheritance in malformed code).
 
-When inherited: `Private` members are not visible by default. `Protected` members are visible when accessed from within a subclass. `Public` members are always visible. The `default x = ...` / `defaults { x = ...; }` / `hint x = ...` contexts are the one exception: a subclass can override the default value or hint of a private inherited field, so those lookups go through `find_member_for_default_or_hint` (and `members_of_for_default_or_hint` for completions) which keep private visible.
+Callers that want every visible member regardless of access pass `AccessLevel::Private`. `default x = ...;` / `defaults { x = ...; }` / `hint x = ...;` lookups do exactly that, because a subclass may legitimately override the default or hint of a private inherited field; the diagnostic that catches outside-class access to a private member (`private_member_access`) does the same and then performs its own enclosing-class check.
+
+`SymbolDb::members_of` / `members_of_tiered` follow the same first-name-wins rule for enumeration — the closest declaration wins per name — and then filter the resulting set by `min_access`.
 
 ## infer_expr_type
 
