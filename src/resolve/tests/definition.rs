@@ -1,6 +1,5 @@
 use super::super::{resolve_all_definitions, resolve_definition};
-use super::{make_doc, make_index, SymbolDb, WorkspaceIndex};
-use crate::document::ParsedDocument;
+use super::{index_docs, make_doc, make_index, SymbolDb, WorkspaceIndex};
 use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
 
@@ -324,14 +323,6 @@ fn goto_def_on_var_initializer_ident_does_not_self_resolve() {
 }
 
 // --- resolve_all_definitions: multi-declaration go-to-definition ---
-
-fn index_docs(docs: &[(&str, &ParsedDocument)]) -> WorkspaceIndex {
-    let mut index = WorkspaceIndex::default();
-    for (uri, doc) in docs {
-        index.update_document(*uri, doc);
-    }
-    index
-}
 
 #[test]
 fn add_method_resolves_from_call_site() {

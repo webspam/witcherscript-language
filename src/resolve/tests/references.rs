@@ -1,5 +1,5 @@
 use super::super::{find_references, resolve_definition};
-use super::{make_doc, SymbolDb, WorkspaceIndex};
+use super::{index_docs, make_doc, SymbolDb, WorkspaceIndex};
 use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
 
@@ -210,14 +210,6 @@ fn addfield_same_name_different_classes_are_independent() {
 }
 
 // --- find_references unifies class-body + @wrapMethod/@replaceMethod declarations ---
-
-fn index_docs(docs: &[(&str, &crate::document::ParsedDocument)]) -> WorkspaceIndex {
-    let mut index = WorkspaceIndex::default();
-    for (uri, doc) in docs {
-        index.update_document(*uri, doc);
-    }
-    index
-}
 
 #[test]
 fn find_references_includes_class_body_and_wrap_declarations() {
