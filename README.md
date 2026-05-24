@@ -178,7 +178,7 @@ The library extracts a flat symbol table from each document during parsing. Symb
   (`@wrapMethod`, `@addMethod`, …) — plus a `display_detail()` helper that renders
   `extends`/`in` strings for LSP hover
 
-`WorkspaceIndex` in `src/resolve/db.rs` maintains a per-URI symbol list and supports
+`WorkspaceIndex` in `src/resolve/workspace_index.rs` maintains a per-URI symbol list and supports
 cross-file go-to-definition lookups.
 
 ## Tests

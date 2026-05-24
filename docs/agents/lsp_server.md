@@ -1,21 +1,29 @@
 # LSP server
 
-**Module:** `src/bin/witcherscript-lsp/` (~3150 lines across 11 files)
+**Module:** `src/bin/witcherscript-lsp/` — handlers split by LSP concern.
 
 | File | Purpose |
 |---|---|
 | `main.rs` | Tokio entry point — wires the tracing layer + `LspLogSender`, constructs `Backend`, and serves over stdio. |
-| `backend.rs` | `Backend` struct, all `LanguageServer` handler impls (`initialize`, `did_open`, `completion`, `hover`, `rename`, …). |
+| `backend.rs` | `Backend` struct, `DbHandles` helper, `DocOp` enum, `diagnostics_document_set`; the `impl LanguageServer for Backend` block is a thin trait shim — every method body just delegates to a `_handler` sibling in `lifecycle.rs` / `text_sync.rs` / `completion.rs` / `queries.rs` / `references_rename.rs`. |
+| `lifecycle.rs` | `_initialize` (advertises `ServerCapabilities`), `_initialized` (kicks off the startup index), `_did_change_configuration`. |
+| `text_sync.rs` | `_did_open`, `_did_change`, `_did_close`, `_did_change_watched_files`, `_did_change_workspace_folders` — owns the editor-open document lifecycle and the loose-file index. |
+| `completion.rs` | `_completion` — runs member / type / statement / class-body / annotation / wrap-method dispatch in order. |
+| `queries.rs` | Read-only request handlers: `_hover`, `_goto_definition`, `_references` entry, `_document_symbol`, `_signature_help`, `_semantic_tokens_full`, `_formatting`, `_code_action`, `_handle_builtin_source`. |
+| `references_rename.rs` | `_references`, `_prepare_rename`, `_rename` + the `merge_documents` helper that builds the cross-doc search set (open shadows workspace shadows base; loose target sees only loose+base). |
 | `convert.rs` | LSP↔internal type conversion: `lsp_range`, `source_position`, `lsp_symbol_kind`, `completion_item`, `document_symbols`, `hover_markdown`, `read_script_file`, `workspace_roots`. |
 | `cst_cache.rs` | Per-document parse-tree cache with invalidation hooks. |
 | `indexing.rs` | Workspace + base-script discovery and indexing helpers (game-directory scan, `modSharedImports` auto-load, settings refresh). |
 | `config.rs` | `fetch_config`, `DiagnosticsScope`, `ConfigChange` plumbing for `workspace/configuration`. |
 | `diagnostics_publish.rs` | `publish_open_diagnostics` (whole-workspace or open-files scope), `publish_syntactic_only`, `reconcile_published_diagnostics`; `publish_legacy_script_status` — `witcherscript/legacyScriptStatus` push. |
+| `file_scope.rs` | `FileScope` enum + `classify_file_scope` — routes a URI to workspace / loose / base / legacy. |
+| `file_scope_status.rs` | `FileScopeStatusParams` — the `witcherscript/fileScopeStatus` notification payload. |
 | `watcher.rs` | `register_file_watchers`, `apply_watched_file_events`, `classify_watched_event` — file-watcher integration. |
 | `legacy_status.rs` | `LegacyScriptStatusParams` + `LegacyScriptStatusNotification` — the `witcherscript/legacyScriptStatus` protocol type. |
 | `logging.rs` | `LspLogSender` tracing layer, level enum/parsing, `DEFAULT_LOG_LEVEL`. |
 | `tests.rs` | Module root that declares the `tests/` submodules. |
-| `tests/{completion,diagnostics,file_io,hover,indexing,refactoring}.rs` | `#[cfg(test)]` LSP-specific tests split per feature. |
+| `tests/{code_action,completion,diagnostics,file_io,file_scope,hover,indexing,refactoring}.rs` | `#[cfg(test)]` LSP-specific tests split per feature. |
+| `tests/indexing/{concurrent_doc_ops,diagnostics_scope,file_operation_events,legacy_helpers,legacy_predicates,legacy_reindex,legacy_routing,loose_files,watched_files,workspace_folder_changes}.rs` | Indexing tests further split by topic; `legacy_helpers.rs` carries the shared `LocalTempDir` / `make_backend` / `write_script` scaffolding the other `legacy_*` files reuse. |
 | `tests/jsonrpc_client.rs` | Framed JSON-RPC client used by the E2E test harness. |
 | `tests/e2e/` | Wire-level E2E tests that drive the real `Backend` over a `tokio::io::duplex` pair with framed JSON-RPC. See [testing.md](testing.md#testse2e-wire-level-lsp-tests). |
 
