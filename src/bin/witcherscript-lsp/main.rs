@@ -8,6 +8,7 @@ mod file_scope;
 mod file_scope_status;
 mod indexing;
 mod legacy_status;
+mod lifecycle;
 mod logging;
 mod references_rename;
 #[cfg(test)]
