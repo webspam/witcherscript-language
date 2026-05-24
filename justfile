@@ -13,13 +13,13 @@ default:
 test:
     cargo fmt --all
     cargo clippy --all-targets --all-features -- -D warnings
-    cargo nextest run
+    cargo nextest run --features test-support
 
 # Run the standard local verification.
 ci:
     cargo fmt --all -- --check
     cargo clippy --all-targets --all-features -- -D warnings
-    cargo nextest run
+    cargo nextest run --features test-support
 
 # Build dev binary.
 build:

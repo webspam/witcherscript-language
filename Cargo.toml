@@ -6,6 +6,9 @@ description = "LSP & language services for The Witcher 3 script files (WitcherSc
 publish = false
 default-run = "witcherscript-check"
 
+[features]
+test-support = []
+
 [[bin]]
 name = "witcherscript-check"
 path = "src/main.rs"
