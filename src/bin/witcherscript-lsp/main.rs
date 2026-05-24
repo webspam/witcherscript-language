@@ -10,6 +10,7 @@ mod indexing;
 mod legacy_status;
 mod lifecycle;
 mod logging;
+mod queries;
 mod references_rename;
 #[cfg(test)]
 mod tests;
