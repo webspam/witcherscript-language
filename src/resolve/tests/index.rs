@@ -1,5 +1,6 @@
 use super::{make_doc, make_index};
-use crate::symbols::SymbolKind;
+use crate::symbols::{AccessLevel, SymbolKind};
+use crate::test_support::TestDb;
 
 #[test]
 fn all_top_level_yields_top_level_symbols_across_documents() {
@@ -201,4 +202,105 @@ fn surface_hash_returns_to_zero_after_removing_only_doc() {
         index.surface_hash(),
         "removing the only indexed doc should restore empty hash"
     );
+}
+
+#[test]
+fn removing_duplicate_top_level_class_keeps_original_visible() {
+    let mut t = TestDb::new(
+        "\
+//- /a.ws
+class Foo {}
+//- /b.ws
+class Foo {}
+",
+    );
+
+    t.workspace.remove_document("file:///b.ws");
+
+    let def = t
+        .workspace
+        .find_top_level("Foo")
+        .expect("Foo should still resolve to the original after duplicate removed");
+    assert_eq!(def.uri, "file:///a.ws");
+}
+
+#[test]
+fn updating_duplicate_out_of_existence_keeps_original_visible() {
+    let mut t = TestDb::new(
+        "\
+//- /a.ws
+class Foo {}
+//- /b.ws
+class Foo {}
+",
+    );
+    let unrelated = make_doc("class Bar {}\n");
+
+    t.workspace.update_document("file:///b.ws", &unrelated);
+
+    let def = t
+        .workspace
+        .find_top_level("Foo")
+        .expect("Foo should still resolve via the original after duplicate edited away");
+    assert_eq!(def.uri, "file:///a.ws");
+}
+
+#[test]
+fn removing_duplicate_class_restores_superclass_lookup() {
+    let mut t = TestDb::new(
+        "\
+//- /a.ws
+class Foo extends Base {}
+//- /b.ws
+class Foo extends Base {}
+",
+    );
+
+    t.workspace.remove_document("file:///b.ws");
+
+    assert_eq!(
+        t.workspace.superclass_of("Foo").as_deref(),
+        Some("Base"),
+        "superclass lookup should survive removal of duplicate class"
+    );
+}
+
+#[test]
+fn removing_duplicate_class_member_keeps_original_member_visible() {
+    let mut t = TestDb::new(
+        "\
+//- /a.ws
+class Foo { function Bar() {} }
+//- /b.ws
+class Foo { function Bar() {} }
+",
+    );
+
+    t.workspace.remove_document("file:///b.ws");
+
+    let def = t
+        .workspace
+        .direct_member_of("Foo", "Bar", AccessLevel::Public)
+        .expect("Bar member should still resolve to the original after duplicate removed");
+    assert_eq!(def.uri, "file:///a.ws");
+}
+
+#[test]
+fn removing_duplicate_enum_variant_keeps_original_visible() {
+    let mut t = TestDb::new(
+        "\
+//- /a.ws
+enum E { V }
+//- /b.ws
+enum E { V }
+",
+    );
+
+    t.workspace.remove_document("file:///b.ws");
+
+    let def = t
+        .workspace
+        .find_enum_variant("V")
+        .expect("Enum variant V should still resolve after duplicate enum removed");
+    assert_eq!(def.uri, "file:///a.ws");
 }
