@@ -22,6 +22,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 14 | `ternary_cond_expr` | warning | `cond ? a : b` always evaluates to 0 / false / void |
 | 15 | `abstract_instantiation` | error | `new T` on an abstract class |
 | 16 | `super_field_access` | error | `super.x` used outside of a method call |
+| 17 | `private_member_access` | error | Private field or method accessed from outside its declaring class |
 
 ## Details
 
@@ -65,7 +66,7 @@ A local `var` whose name collides with a field declared in the enclosing class, 
 
 A `receiver.Method()` call where `receiver` resolves to a workspace `class`, `struct`, or `state`, but `Method` is not declared on that type or any of its supertypes (inheritance traversed up to depth 32).
 
-Calls on unknown or primitive receivers, on `super` / `parent` / `virtualParent`, on casts, or through indexed or parenthesised expressions are skipped to avoid false positives. Private members count as known.
+Calls on unknown or primitive receivers, on `super` / `parent` / `virtualParent`, on casts, or through indexed or parenthesised expressions are skipped to avoid false positives. Private methods reached from outside their declaring class are reported as `private_member_access` instead of `unknown_method`.
 
 ### 8. Unknown type
 
@@ -79,7 +80,7 @@ Covers `extends Foo`, `state S in Foo`, `: Foo` annotations (including nested ge
 
 Also fires inside `default field = ...;`, `defaults { field = ...; }`, and `hint field = "...";` blocks when the enclosing class, struct, or state has no such field. Inherited private fields count as visible there, since a subclass may set their default or hint. The `hint` case is reported at info level.
 
-Skipped when the receiver type can't be inferred (cascading) or is primitive. Method-call cases are owned by `unknown_method`.
+Skipped when the receiver type can't be inferred (cascading) or is primitive. Method-call cases are owned by `unknown_method`. Private fields reached from outside their declaring class are reported as `private_member_access` instead.
 
 ### 10. Unknown function
 
@@ -114,3 +115,9 @@ The grammar accepts `cond ? a : b`, but the compiler always evaluates it to `0` 
 `super.x` used as a field access (read, assignment target, or anywhere other than the callee of a `(...)` call).
 
 The compiler only resolves the `super.` qualifier for method dispatch. Inherited `protected` and `public` fields (and `private` ones from a `protected`/`public`-typed view of the base) are reachable on `this` without the qualifier; `super.` itself is reserved for explicitly dispatching to a base-class method.
+
+### 17. Private member access
+
+`receiver.member` or `receiver.method()` where `member` / `method` is declared `private` on a type, accessed from code outside that declaring type. Access from inside the declaring class, struct, or state is allowed.
+
+`default` and `hint` blocks intentionally allow private inherited fields and are not affected.

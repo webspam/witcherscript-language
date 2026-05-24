@@ -40,7 +40,7 @@ pub fn default_or_hint_member_completions(
         return Vec::new();
     };
 
-    db.members_of_for_default_or_hint(&enclosing.name)
+    db.members_of(&enclosing.name, AccessLevel::Private)
 }
 
 fn at_default_or_hint_member_pos(root: Node, byte_offset: usize) -> bool {

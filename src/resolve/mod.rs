@@ -55,7 +55,7 @@ pub struct Definition {
 const MEMBER_INJECTING_ANNOTATIONS: &[&str] =
     &["addMethod", "wrapMethod", "replaceMethod", "addField"];
 
-pub(super) fn annotation_target_class(symbol: &Symbol) -> Option<&str> {
+pub(crate) fn annotation_target_class(symbol: &Symbol) -> Option<&str> {
     symbol
         .annotations
         .iter()

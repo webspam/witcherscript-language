@@ -9,7 +9,10 @@ use crate::document::ParsedDocument;
 use crate::resolve::{infer_expr_type_memo, SymbolDb};
 use crate::symbols::{AccessLevel, SymbolKind};
 
-use super::{run_rules_on_document, CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic};
+use super::{
+    access_is_inside_declaring_class, declaring_class_of, run_rules_on_document, CstRule,
+    CstRuleCtx, Severity, WorkspaceDiagnostic,
+};
 
 pub(crate) struct UnknownMethodRule;
 
@@ -106,11 +109,30 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
     }
 
     ctx.telemetry.member_lookups += 1;
-    if ctx
+    if let Some(def) = ctx
         .db
         .find_member(&receiver_type, method_name, AccessLevel::Private)
-        .is_some()
     {
+        if def.symbol.access == AccessLevel::Private
+            && !access_is_inside_declaring_class(method_ident, &def, ctx)
+        {
+            let declarer = declaring_class_of(&def).unwrap_or("");
+            let range = ctx.document.line_index.byte_range_to_range(
+                &ctx.document.source,
+                method_ident.start_byte(),
+                method_ident.end_byte(),
+            );
+            ctx.diagnostics.push(WorkspaceDiagnostic {
+                kind: "private_member_access".to_string(),
+                message: format!(
+                    "Private member '{method_name}' of class '{declarer}' is not accessible here."
+                ),
+                severity: Severity::Error,
+                range,
+                related: vec![],
+                data: None,
+            });
+        }
         return;
     }
 
@@ -299,6 +321,23 @@ mod tests {
             result.is_empty(),
             "private method should not produce unknown_method diagnostic"
         );
+    }
+
+    #[test]
+    fn flags_private_method_call_from_outside_class() {
+        let (idx, docs) = index_and_docs(&[(
+            "file:///test.ws",
+            "class Foo { private function Secret() {} } \
+             function Run() { var f : Foo; f.Secret(); }\n",
+        )]);
+
+        let result = check(&idx, &docs);
+
+        let diags = result.get("file:///test.ws").unwrap();
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].kind, "private_member_access");
+        assert!(diags[0].message.contains("Secret"));
+        assert!(diags[0].message.contains("'Foo'"));
     }
 
     #[test]

@@ -255,7 +255,7 @@ fn resolves_method_on_class_field_receiver() {
 }
 
 #[test]
-fn private_method_not_visible_in_subclass() {
+fn private_method_in_parent_resolves_from_subclass_for_navigation() {
     let source_a = "class A extends B {\n function Test() {\n  this.Secret();\n }\n}\n";
     let source_b = "class B {\n private function Secret() {}\n}\n";
     let doc_a = make_doc(source_a);
@@ -273,12 +273,11 @@ fn private_method_not_visible_in_subclass() {
             line: 2,
             character: 8,
         },
-    );
+    )
+    .expect("private parent method should still resolve so navigation works");
 
-    assert!(
-        definition.is_none(),
-        "private method of parent should not resolve from subclass"
-    );
+    assert_eq!(definition.symbol.name, "Secret");
+    assert_eq!(definition.uri, "file:///b.ws");
 }
 
 #[test]
