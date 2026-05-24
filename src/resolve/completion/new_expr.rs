@@ -171,7 +171,7 @@ fn expected_type_for_new(
                 let lhs = parent.child_by_field_name("left")?;
                 return infer_expr_type(uri, document, db, lhs, byte_offset);
             }
-            "func_block" | "script" => return None,
+            "func_call_expr" | "func_call_args" | "func_block" | "script" => return None,
             _ => cur = parent,
         }
     }

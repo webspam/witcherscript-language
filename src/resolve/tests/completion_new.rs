@@ -32,6 +32,10 @@ use crate::test_support::{def_names, TestDb};
     "class CBase {}\nclass CDerived extends CBase {}\nclass CUnrelated {}\nclass CHolder { var slot : CBase; }\nfunction F() { var h : CHolder; h.slot = new $0; }\n",
     &["CBase", "CDerived"], &["CUnrelated"],
 )]
+#[case::inside_call_arg_does_not_inherit_outer_lhs(
+    "class CBase {}\nclass CDerived extends CBase {}\nclass CUnrelated {}\nfunction Take(p : int) : CBase {}\nfunction F() { var x : CBase = Take(new $0); }\n",
+    &["CBase", "CDerived", "CUnrelated"], &[],
+)]
 #[case::not_in_new_position_returns_empty(
     "class C {}\nfunction F() { var x : C = $0; }\n",
     &[], &[],
