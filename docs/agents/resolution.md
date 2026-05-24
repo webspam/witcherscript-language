@@ -140,6 +140,12 @@ Called in type annotation context. Returns:
 - All `Class`, `Struct`, `Enum`, `State` symbols from workspace + base
 - `BUILTIN_TYPE_COMPLETIONS`: `["bool", "byte", "float", "int", "name", "string", "void"]`
 
+### `new_type_completions(uri, document, db, position)`
+Called when the cursor is in the class slot of a `new` expression (after the `new` keyword, before or inside the class ident). Returns class symbols narrowed to the expected type (LHS of the surrounding `var` decl or assignment) plus its descendants; falls back to every class when no expected type can be inferred or the expected type is unknown.
+
+### `new_lifetime_completions(uri, document, db, position)`
+Called when the cursor is in the lifetime slot of a `new` expression (after `new C in`). Returns class-typed locals, parameters, and class fields of the enclosing type visible at the cursor. Tree-sitter parses `new C in ;` with `in` in an ERROR sibling of `new_expr`; the helper accepts both shapes.
+
 ### `statement_completions(uri, document, db, position)`
 Called in function body context. Returns `StatementCompletions`:
 ```rust

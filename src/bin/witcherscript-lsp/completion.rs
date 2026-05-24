@@ -6,8 +6,9 @@ use witcherscript_language::resolve::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
     default_or_hint_member_completions, expression_completions, extends_completions,
-    script_body_completions, state_owner_completions, statement_completions, type_completions,
-    AfterWrapMethodCompletions, BUILTIN_TYPE_COMPLETIONS,
+    new_lifetime_completions, new_type_completions, script_body_completions,
+    state_owner_completions, statement_completions, type_completions, AfterWrapMethodCompletions,
+    BUILTIN_TYPE_COMPLETIONS,
 };
 
 use crate::backend::Backend;
@@ -127,6 +128,13 @@ impl Backend {
             )));
         }
 
+        let new_types = new_type_completions(uri.as_str(), document, &db, pos);
+        if !new_types.is_empty() {
+            return Ok(Some(CompletionResponse::Array(
+                new_types.iter().map(type_completion_item).collect(),
+            )));
+        }
+
         let user_types = type_completions(document, &db, pos);
         if !user_types.is_empty() {
             let mut items: Vec<CompletionItem> = BUILTIN_TYPE_COMPLETIONS
@@ -155,6 +163,20 @@ impl Backend {
                     .map(|kw| script_body_item(kw))
                     .collect(),
             )));
+        }
+
+        let new_lifetime = new_lifetime_completions(uri.as_str(), document, &db, pos);
+        if !new_lifetime.is_empty() {
+            let items: Vec<CompletionItem> = new_lifetime
+                .iter()
+                .map(|def| {
+                    let params = db.parameters_of(&def.uri, def.symbol.id);
+                    let mut item = completion_item(def, &params);
+                    item.sort_text = Some(format!("0_{}", def.symbol.name));
+                    item
+                })
+                .collect();
+            return Ok(Some(CompletionResponse::Array(items)));
         }
 
         let stmt = statement_completions(uri.as_str(), document, &db, pos);

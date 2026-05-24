@@ -9,6 +9,7 @@ mod completion_annotation_wrap;
 mod completion_default_hint;
 mod completion_keywords;
 mod completion_members;
+mod completion_new;
 mod completion_script_keywords;
 mod completion_statement;
 mod completion_type;
