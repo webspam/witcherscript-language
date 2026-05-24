@@ -2,7 +2,7 @@ use lsp_types::{
     DidChangeWorkspaceFoldersParams, Url, WorkspaceFolder, WorkspaceFoldersChangeEvent,
 };
 
-use super::legacy_routing::{make_backend, write_script, LocalTempDir};
+use super::legacy_helpers::{make_backend, write_script, LocalTempDir};
 use crate::backend::DocOp;
 
 fn folders(uris: &[&Url]) -> Vec<WorkspaceFolder> {

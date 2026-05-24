@@ -4,8 +4,8 @@ use crate::document::ParsedDocument;
 use crate::line_index::SourceRange;
 use crate::symbols::{AccessLevel, SymbolKind};
 
-use super::db::SymbolDb;
 use super::definition::{all_declarations_of, definition_key, resolve_definition};
+use super::symbol_db::SymbolDb;
 use super::Definition;
 
 enum SearchScope {

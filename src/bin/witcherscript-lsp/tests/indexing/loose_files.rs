@@ -4,7 +4,7 @@ use lsp_types::{
 };
 use witcherscript_language::diagnostics::collect_duplicate_symbol_diagnostics;
 
-use super::legacy_routing::{make_backend, write_script, LocalTempDir};
+use super::legacy_helpers::{make_backend, write_script, LocalTempDir};
 use crate::backend::DocOp;
 use crate::file_scope::FileScope;
 

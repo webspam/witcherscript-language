@@ -5,10 +5,10 @@ use crate::line_index::SourcePosition;
 use crate::symbols::{Symbol, SymbolKind};
 
 use super::ast::{find_ancestor_of_kind, first_named_child, identifier_at, nodes_at_offset};
-use super::db::SymbolDb;
 use super::inference::{
     enclosing_type_context, resolve_document_top_level, resolve_member_access, resolve_name,
 };
+use super::symbol_db::SymbolDb;
 use super::{annotation_target_class, dedup_definitions, Definition};
 
 pub fn resolve_definition(

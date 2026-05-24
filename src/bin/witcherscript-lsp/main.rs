@@ -1,4 +1,5 @@
 mod backend;
+mod completion;
 mod config;
 mod convert;
 mod cst_cache;
@@ -7,9 +8,13 @@ mod file_scope;
 mod file_scope_status;
 mod indexing;
 mod legacy_status;
+mod lifecycle;
 mod logging;
+mod queries;
+mod references_rename;
 #[cfg(test)]
 mod tests;
+mod text_sync;
 mod watcher;
 
 use std::io::IsTerminal;

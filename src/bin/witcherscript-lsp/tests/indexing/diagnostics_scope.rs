@@ -7,7 +7,7 @@ use async_lsp::ClientSocket;
 use lsp_types::{DidCloseTextDocumentParams, TextDocumentIdentifier, Url};
 use tokio::sync::mpsc;
 
-use super::legacy_routing::{write_script, LocalTempDir};
+use super::legacy_helpers::{write_script, LocalTempDir};
 use crate::backend::{Backend, DocOp};
 use crate::config::{Config, DiagnosticsScope};
 

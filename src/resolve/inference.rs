@@ -7,7 +7,7 @@ use crate::document::ParsedDocument;
 use crate::symbols::{AccessLevel, Symbol, SymbolKind};
 
 use super::ast::first_named_child;
-use super::db::SymbolDb;
+use super::symbol_db::SymbolDb;
 use super::{annotation_target_class, Definition};
 
 #[derive(Debug, Clone)]

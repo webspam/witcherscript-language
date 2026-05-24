@@ -96,6 +96,15 @@ mod watched_files;
 mod concurrent_doc_ops;
 
 #[cfg(test)]
+mod legacy_helpers;
+
+#[cfg(test)]
+mod legacy_predicates;
+
+#[cfg(test)]
+mod legacy_reindex;
+
+#[cfg(test)]
 mod legacy_routing;
 
 #[cfg(test)]
