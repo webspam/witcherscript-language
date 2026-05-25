@@ -1386,7 +1386,7 @@ checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
 [[package]]
 name = "tree-sitter-witcherscript"
 version = "0.14.1"
-source = "git+https://github.com/webspam/tree-sitter-witcherscript.git?tag=v0.14.1#97bd7ab80796b885bb0b8fd642b72d743076bb46"
+source = "git+https://github.com/webspam/tree-sitter-witcherscript.git?tag=v0.14.2#e794262c6bbb7be750bf7538211263eaf63126ad"
 dependencies = [
  "cc",
  "tree-sitter",
