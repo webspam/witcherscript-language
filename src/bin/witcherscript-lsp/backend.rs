@@ -162,6 +162,19 @@ impl Backend {
         }
     }
 
+    pub(crate) async fn exclude_filter(&self) -> witcherscript_language::files::ExcludeFilter {
+        let roots = self.workspace_roots.lock().await.clone();
+        let globs = self.files_exclude.lock().await.clone();
+        witcherscript_language::files::ExcludeFilter::new(&roots, &globs)
+    }
+
+    pub(crate) async fn is_uri_excluded(&self, uri: &Url) -> bool {
+        let Ok(path) = uri.to_file_path() else {
+            return false;
+        };
+        self.exclude_filter().await.matches(&path)
+    }
+
     pub(crate) async fn file_scope_of(&self, uri: &Url) -> FileScope {
         let roots = self.workspace_roots.lock().await.clone();
         let legacy_dirs = self.effective_legacy_dirs().await;

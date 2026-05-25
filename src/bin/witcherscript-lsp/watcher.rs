@@ -89,8 +89,7 @@ impl Backend {
             let documents = self.documents.lock().await;
             documents.keys().filter_map(canonical_uri).collect()
         };
-        let roots = self.workspace_roots.lock().await.clone();
-        let filter = ExcludeFilter::new(&roots, &self.files_exclude.lock().await.clone());
+        let filter = self.exclude_filter().await;
         let legacy_dirs = self.effective_legacy_dirs().await;
 
         let (legacy_events, normal_events): (Vec<FileEvent>, Vec<FileEvent>) = events
