@@ -10,23 +10,21 @@ function ToEnumMember(i : int) : string {
 function OnConfigUI() {
     var enumName : name = 'EInputKey';
 
-    var i : int = EnumGetMin(enumName);
-    var max : int = EnumGetMax(enumName);
+    var i : Uint64 = EnumGetMin(enumName);
+    var max : Uint64 = EnumGetMax(enumName);
 
     LogChannel('EnuminatorMin', "EnumGetMin(" + enumName + "): " + i);
     LogChannel('EnuminatorMax', "EnumGetMax(" + enumName + "): " + max);
 
-    if (max > 512 && max % 2 == 0) {
+    // Do not refactor to modulo; can't handle large ints: e.g. (0x40000000 % 2) returns `21`
+    // Integer overflow protection - see `EDialogActionIcon`
+    if (Abs(max - i) > 16384 || max - i > 16384) {
         // Veeeery likely to be bit flags
         EnuminateBitFlags(i, max, enumName);
     }
-    else if (max - i < 16384) {
+    else {
         // Explicitly enumerate enum
         EnuminateEnum(i, max, enumName);
-    }
-    else {
-        // No thrash for you
-        LogChannel('Enuminator', "Abort: > 16K entries.");
     }
 
     wrappedMethod();
@@ -39,9 +37,12 @@ function EnuminateBitFlags(i : int, max : int, enumName : name) {
         enumMember = ToEnumMember(i);
         if (enumMember != "") LogChannel('Enuminator', enumMember + " = " + i);
 
-        if (i > 0) i *= 2;
+        // Integer overflow protection - see `EDialogActionIcon`
+        if (i < -1073741824) i = -1073741824;
+        else if (i >= 1073741824) break;
+        else if (i < 0) i /= 2;
         else if (i == 0) i = 1;
-        else i /= 2;
+        else i *= 2;
     }
 }
 
