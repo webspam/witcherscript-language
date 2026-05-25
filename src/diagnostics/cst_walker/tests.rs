@@ -5,8 +5,8 @@ use tree_sitter::Node;
 
 use super::{run_rules_on_document, CstRule, CstRuleCtx};
 use crate::cst::grammar::call_callee;
-use crate::document::parse_document;
-use crate::resolve::{infer_expr_type_memo, SymbolDb, WorkspaceIndex};
+use crate::resolve::infer_expr_type_memo;
+use crate::test_support::TestDb;
 
 struct CountingRule {
     kind: &'static str,
@@ -62,17 +62,9 @@ impl CstRule for InferenceCountingRule {
     }
 }
 
-fn db<'a>(index: &'a WorkspaceIndex, base: &'a WorkspaceIndex) -> SymbolDb<'a> {
-    SymbolDb::new(index, base)
-}
-
 #[test]
 fn multi_rule_single_walk() {
-    let mut idx = WorkspaceIndex::default();
-    let doc = parse_document("class A { function F() { var a : A; a.M(); } }\n").unwrap();
-    idx.update_document("file:///t.ws", &doc);
-    let base = WorkspaceIndex::default();
-    let db = db(&idx, &base);
+    let t = TestDb::new("class A { function F() { var a : A; a.M(); } }\n");
 
     let r1 = CountingRule {
         kind: "func_call_expr",
@@ -84,7 +76,7 @@ fn multi_rule_single_walk() {
     };
     let rules: Vec<&dyn CstRule> = vec![&r1, &r2];
 
-    let _ = run_rules_on_document("file:///t.ws", &doc, &db, &rules);
+    let _ = run_rules_on_document(t.primary_uri(), t.primary_doc(), &t.db(), &rules);
 
     assert!(r1.hits.get() >= 1, "rule 1 should fire for func_call_expr");
     assert!(
@@ -95,23 +87,20 @@ fn multi_rule_single_walk() {
 
 #[test]
 fn memo_avoids_redundant_inference() {
-    let mut idx = WorkspaceIndex::default();
-    let src = "class B { function Build() : C {} } \
-               class C { function Step() : C {} function Chain() : C {} } \
-               function T() { var b : B; b.Build().Step().Chain(); }\n";
-    let doc = parse_document(src).unwrap();
-    idx.update_document("file:///t.ws", &doc);
-    let base = WorkspaceIndex::default();
-    let db = db(&idx, &base);
+    let t = TestDb::new(
+        "class B { function Build() : C {} } \
+         class C { function Step() : C {} function Chain() : C {} } \
+         function T() { var b : B; b.Build().Step().Chain(); }\n",
+    );
 
     let counter = InferenceCountingRule {
         inferences: Cell::new(0),
     };
     let rules: Vec<&dyn CstRule> = vec![&counter];
 
-    let _ = run_rules_on_document("file:///t.ws", &doc, &db, &rules);
+    let _ = run_rules_on_document(t.primary_uri(), t.primary_doc(), &t.db(), &rules);
     let first = counter.inferences.get();
-    let _ = run_rules_on_document("file:///t.ws", &doc, &db, &rules);
+    let _ = run_rules_on_document(t.primary_uri(), t.primary_doc(), &t.db(), &rules);
     let second = counter.inferences.get() - first;
     assert_eq!(first, second, "each run must memoise independently");
 }
