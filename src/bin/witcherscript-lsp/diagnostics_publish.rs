@@ -32,31 +32,31 @@ pub(crate) fn publish_url(diag_key: &str) -> Option<Url> {
 
 impl Backend {
     #[tracing::instrument(skip(self), level = "debug")]
-    pub(crate) async fn publish_open_diagnostics(&self) {
+    pub(crate) fn publish_open_diagnostics(&self) {
         let cfg = self.config.load();
         if matches!(cfg.diagnostics_scope, DiagnosticsScope::None) {
             return;
         }
 
         if !self.initial_index_done.load(Ordering::Acquire) {
-            self.publish_syntactic_only().await;
+            self.publish_syntactic_only();
             return;
         }
 
         let whole_workspace = matches!(cfg.diagnostics_scope, DiagnosticsScope::Workspace);
         let start = Instant::now();
 
-        let documents = self.documents.lock().await;
-        let legacy_dirs = self.effective_legacy_dirs().await;
-        let loose_uris = self.loose_open_uris(&documents).await;
+        let documents = self.documents.lock();
+        let legacy_dirs = self.effective_legacy_dirs();
+        let loose_uris = self.loose_open_uris(&documents);
 
         let (to_publish, cst_stats): (Vec<(Url, Vec<Diagnostic>)>, _) = {
-            let mut workspace = self.workspace_index.lock().await;
-            let mut loose = self.loose_index.lock().await;
-            let base = self.base_scripts_index.lock().await;
-            let env = self.script_env.lock().await;
-            let mut cache = self.cst_diag_cache.lock().await;
-            let workspace_documents = self.workspace_documents.lock().await;
+            let mut workspace = self.workspace_index.lock();
+            let mut loose = self.loose_index.lock();
+            let base = self.base_scripts_index.lock();
+            let env = self.script_env.lock();
+            let mut cache = self.cst_diag_cache.lock();
+            let workspace_documents = self.workspace_documents.lock();
 
             let diag_docs =
                 diagnostics_document_set(&workspace_documents, &documents, whole_workspace);
@@ -107,7 +107,7 @@ impl Backend {
                 }
             }
 
-            let mut published = self.published_diagnostics.lock().await;
+            let mut published = self.published_diagnostics.lock();
             let mut current: HashSet<Url> = HashSet::new();
             let mut list: Vec<(Url, Vec<Diagnostic>)> = Vec::new();
             for (diag_key, document) in diag_docs.iter() {
@@ -178,10 +178,10 @@ impl Backend {
         );
     }
 
-    async fn publish_syntactic_only(&self) {
+    fn publish_syntactic_only(&self) {
         let to_publish: Vec<(Url, Vec<Diagnostic>)> = {
-            let documents = self.documents.lock().await;
-            let mut published = self.published_diagnostics.lock().await;
+            let documents = self.documents.lock();
+            let mut published = self.published_diagnostics.lock();
             let mut list = Vec::new();
             for (uri, document) in documents.iter() {
                 let diagnostics = lsp_diagnostics(document);
@@ -208,11 +208,11 @@ impl Backend {
         }
     }
 
-    pub(crate) async fn publish_legacy_script_status(&self) {
+    pub(crate) fn publish_legacy_script_status(&self) {
         let to_send: Vec<LegacyScriptStatusParams> = {
-            let documents = self.documents.lock().await;
-            let replacements = self.legacy_replacements.lock().await;
-            let mut sent = self.sent_legacy_status.lock().await;
+            let documents = self.documents.lock();
+            let replacements = self.legacy_replacements.lock();
+            let mut sent = self.sent_legacy_status.lock();
             let mut list = Vec::new();
             for uri in documents.keys() {
                 let replaced =
@@ -231,15 +231,15 @@ impl Backend {
         }
     }
 
-    pub(crate) async fn publish_file_scope_status(&self) {
+    pub(crate) fn publish_file_scope_status(&self) {
         let to_send: Vec<FileScopeStatusParams> = {
-            let documents = self.documents.lock().await;
-            let roots = self.workspace_roots.lock().await.clone();
-            let legacy_dirs = self.effective_legacy_dirs().await;
-            let game_dir = self.base_scripts_path.lock().await.clone();
-            let additional = self.additional_script_dirs.lock().await.clone();
-            let replacements = self.legacy_replacements.lock().await;
-            let mut sent = self.sent_file_scope_status.lock().await;
+            let documents = self.documents.lock();
+            let roots = self.workspace_roots.lock().clone();
+            let legacy_dirs = self.effective_legacy_dirs();
+            let game_dir = self.base_scripts_path.lock().clone();
+            let additional = self.additional_script_dirs.lock().clone();
+            let replacements = self.legacy_replacements.lock();
+            let mut sent = self.sent_file_scope_status.lock();
             let mut list = Vec::new();
             for uri in documents.keys() {
                 let scope = classify_file_scope(
@@ -273,13 +273,13 @@ impl Backend {
         }
     }
 
-    pub(crate) async fn reconcile_published_diagnostics(&self) {
+    pub(crate) fn reconcile_published_diagnostics(&self) {
         if !matches!(self.config.load().diagnostics_scope, DiagnosticsScope::None) {
-            self.publish_open_diagnostics().await;
+            self.publish_open_diagnostics();
             return;
         }
         let uris: Vec<Url> = {
-            let mut published = self.published_diagnostics.lock().await;
+            let mut published = self.published_diagnostics.lock();
             let keys: Vec<Url> = published.keys().cloned().collect();
             published.clear();
             keys

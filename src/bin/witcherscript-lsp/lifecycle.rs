@@ -53,7 +53,7 @@ impl Backend {
         if let Some(opts) = &params.initialization_options {
             if let Some(p) = opts.get("gameDirectory").and_then(|v| v.as_str()) {
                 if !p.is_empty() {
-                    *self.base_scripts_path.lock().await = Some(PathBuf::from(p));
+                    *self.base_scripts_path.lock() = Some(PathBuf::from(p));
                 }
             }
             if let Some(arr) = opts
@@ -66,7 +66,7 @@ impl Backend {
                     .filter(|s| !s.is_empty())
                     .map(PathBuf::from)
                     .collect();
-                *self.additional_script_dirs.lock().await = dirs;
+                *self.additional_script_dirs.lock() = dirs;
             }
             if let Some(arr) = opts
                 .get("legacyScriptDirectories")
@@ -78,7 +78,7 @@ impl Backend {
                     .filter(|s| !s.is_empty())
                     .map(PathBuf::from)
                     .collect();
-                *self.legacy_script_dirs.lock().await = dirs;
+                *self.legacy_script_dirs.lock() = dirs;
             }
             let mut cfg = (**self.config.load()).clone();
             if let Some(b) = opts
@@ -110,9 +110,9 @@ impl Backend {
         }
 
         let roots = workspace_roots(params);
-        let game_dir = self.base_scripts_path.lock().await.clone();
+        let game_dir = self.base_scripts_path.lock().clone();
         info!(roots = ?roots, game_dir = ?game_dir, "LSP initialize");
-        *self.workspace_roots.lock().await = roots;
+        *self.workspace_roots.lock() = roots;
 
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -186,7 +186,7 @@ impl Backend {
         self.register_file_watchers().await;
         self.index_base_scripts().await;
         self.initial_index_done.store(true, Ordering::Release);
-        self.publish_open_diagnostics().await;
+        self.publish_open_diagnostics();
     }
 
     pub(crate) async fn _did_change_configuration(&self, _: DidChangeConfigurationParams) {
@@ -200,8 +200,8 @@ impl Backend {
             tracing::trace!("did_change_configuration: index-relevant config changed, re-indexing");
             self.index_workspace().await;
             self.index_base_scripts().await;
-            self.reindex_open_documents().await;
-            self.publish_open_diagnostics().await;
+            self.reindex_open_documents();
+            self.publish_open_diagnostics();
         } else {
             tracing::trace!(
                 "did_change_configuration: no index-relevant config change, skipping re-index"
@@ -209,8 +209,8 @@ impl Backend {
         }
         if change.diagnostics_changed {
             tracing::trace!("did_change_configuration: diagnostics setting changed, applying");
-            self.reconcile_published_diagnostics().await;
+            self.reconcile_published_diagnostics();
         }
-        self.publish_file_scope_status().await;
+        self.publish_file_scope_status();
     }
 }

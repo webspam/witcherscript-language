@@ -145,10 +145,8 @@ makes the history easy to read.
 
 Before committing:
 
-1. Run `cargo fmt --all` to format code.
-2. Run `cargo clippy --all-targets` and fix any warnings.
-3. Run `just test` and confirm all tests pass.
-4. Stage only the files relevant to the change — avoid `git add .` when unrelated files
+1. Run `just test` and confirm all tests pass (runs fmt and clippy automatically).
+2. Stage only the files relevant to the change — avoid `git add .` when unrelated files
    are dirty.
 
 ### Commit messages

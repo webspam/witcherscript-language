@@ -62,10 +62,10 @@ pub(crate) struct ConfigChange {
 
 impl Backend {
     pub(crate) async fn fetch_config(&self) -> ConfigChange {
-        let prev_base_scripts_path = self.base_scripts_path.lock().await.clone();
-        let prev_files_exclude = self.files_exclude.lock().await.clone();
-        let prev_additional = self.additional_script_dirs.lock().await.clone();
-        let prev_legacy = self.legacy_script_dirs.lock().await.clone();
+        let prev_base_scripts_path = self.base_scripts_path.lock().clone();
+        let prev_files_exclude = self.files_exclude.lock().clone();
+        let prev_additional = self.additional_script_dirs.lock().clone();
+        let prev_legacy = self.legacy_script_dirs.lock().clone();
         let prev_cfg = (**self.config.load()).clone();
 
         let items = vec![
@@ -123,7 +123,7 @@ impl Backend {
 
         if let Some(Value::String(path_str)) = iter.next() {
             if !path_str.is_empty() {
-                *self.base_scripts_path.lock().await = Some(std::path::PathBuf::from(path_str));
+                *self.base_scripts_path.lock() = Some(std::path::PathBuf::from(path_str));
             }
         }
         if let Some(Value::String(level_str)) = iter.next() {
@@ -164,7 +164,7 @@ impl Backend {
                 .filter(|(_, enabled)| matches!(enabled, Value::Bool(true)))
                 .map(|(glob, _)| glob)
                 .collect();
-            *self.files_exclude.lock().await = globs;
+            *self.files_exclude.lock() = globs;
         }
         match iter.next() {
             Some(Value::Array(arr)) => {
@@ -175,10 +175,10 @@ impl Backend {
                         _ => None,
                     })
                     .collect();
-                *self.additional_script_dirs.lock().await = dirs;
+                *self.additional_script_dirs.lock() = dirs;
             }
             _ => {
-                self.additional_script_dirs.lock().await.clear();
+                self.additional_script_dirs.lock().clear();
             }
         }
         next_cfg.auto_load_mod_shared_imports = match iter.next() {
@@ -194,10 +194,10 @@ impl Backend {
                         _ => None,
                     })
                     .collect();
-                *self.legacy_script_dirs.lock().await = dirs;
+                *self.legacy_script_dirs.lock() = dirs;
             }
             _ => {
-                self.legacy_script_dirs.lock().await.clear();
+                self.legacy_script_dirs.lock().clear();
             }
         }
         next_cfg.diagnostics_scope = match iter.next() {
@@ -207,12 +207,12 @@ impl Backend {
 
         self.config.store(Arc::new(next_cfg.clone()));
 
-        let base_scripts_changed = *self.base_scripts_path.lock().await != prev_base_scripts_path;
-        let files_exclude_changed = *self.files_exclude.lock().await != prev_files_exclude;
-        let new_additional_len = self.additional_script_dirs.lock().await.len();
+        let base_scripts_changed = *self.base_scripts_path.lock() != prev_base_scripts_path;
+        let files_exclude_changed = *self.files_exclude.lock() != prev_files_exclude;
+        let new_additional_len = self.additional_script_dirs.lock().len();
         let additional_changed = new_additional_len != prev_additional.len()
-            || *self.additional_script_dirs.lock().await != prev_additional;
-        let legacy_changed = *self.legacy_script_dirs.lock().await != prev_legacy;
+            || *self.additional_script_dirs.lock() != prev_additional;
+        let legacy_changed = *self.legacy_script_dirs.lock() != prev_legacy;
         let auto_load_changed =
             next_cfg.auto_load_mod_shared_imports != prev_cfg.auto_load_mod_shared_imports;
         let diagnostics_changed = next_cfg.diagnostics_scope != prev_cfg.diagnostics_scope;

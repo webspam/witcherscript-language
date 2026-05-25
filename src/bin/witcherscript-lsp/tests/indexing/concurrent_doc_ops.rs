@@ -1,28 +1,25 @@
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use arc_swap::ArcSwap;
 use async_lsp::router::Router;
-use async_lsp::{ClientSocket, LanguageServer};
+use async_lsp::ClientSocket;
 use lsp_types::{
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, Position, Range,
     TextDocumentContentChangeEvent, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
 };
-use tokio::sync::mpsc;
+use witcherscript_language::semantic_tokens::collect_semantic_tokens;
 
-use crate::backend::{Backend, DocOp};
+use crate::backend::Backend;
 use crate::config::{Config, DiagnosticsScope};
 
-fn make_backend() -> (Backend, mpsc::UnboundedReceiver<DocOp>) {
+fn make_backend() -> Backend {
     let (_main_loop, client) =
         async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-    let (doc_ops_tx, doc_ops_rx) = mpsc::unbounded_channel();
     let config = Arc::new(ArcSwap::from_pointee(Config {
         diagnostics_scope: DiagnosticsScope::None,
         ..Config::default()
     }));
-    let backend = Backend::new(client, config, doc_ops_tx);
-    (backend, doc_ops_rx)
+    Backend::new(client, config)
 }
 
 fn open_params(uri: &Url, text: &str) -> DidOpenTextDocumentParams {
@@ -65,65 +62,80 @@ fn change_params(
     }
 }
 
-async fn wait_for(backend: &Backend, uri: &Url, expected: &str) {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        {
-            let docs = backend.documents.lock().await;
-            if docs.get(uri).map(|d| d.source.as_str()) == Some(expected) {
-                return;
-            }
-        }
-        if Instant::now() > deadline {
-            let docs = backend.documents.lock().await;
-            panic!(
-                "consumer did not produce expected source within 5s; got {:?}",
-                docs.get(uri).map(|d| d.source.clone()),
-            );
-        }
-        tokio::task::yield_now().await;
-    }
-}
-
-#[tokio::test]
-async fn rapid_did_change_submissions_apply_in_order() {
-    let (mut backend, mut doc_ops_rx) = make_backend();
-    let consumer_backend = backend.clone();
-    tokio::spawn(async move {
-        while let Some(op) = doc_ops_rx.recv().await {
-            consumer_backend.dispatch_doc_op(op).await;
-        }
-    });
+#[test]
+fn did_change_applies_incremental_edits() {
+    let backend = make_backend();
 
     let uri: Url = "file:///rapid_changes.ws".parse().unwrap();
-    let _ = backend.did_open(open_params(&uri, "abc"));
+    backend._did_open(open_params(&uri, "abc"));
+    backend._did_change(change_params(&uri, 2, (0, 3), (0, 3), "def"));
+    backend._did_change(change_params(&uri, 3, (0, 5), (0, 6), ""));
 
-    let _ = backend.did_change(change_params(&uri, 2, (0, 3), (0, 3), "def"));
-    let _ = backend.did_change(change_params(&uri, 3, (0, 5), (0, 6), ""));
-
-    wait_for(&backend, &uri, "abcde").await;
+    let docs = backend.documents.lock();
+    assert_eq!(
+        docs.get(&uri).map(|d| d.source.as_str()),
+        Some("abcde"),
+        "each did_change must compose with prior buffer state and updated line index",
+    );
 }
 
-#[tokio::test]
-async fn interleaved_changes_across_two_documents_apply_in_order() {
-    let (mut backend, mut doc_ops_rx) = make_backend();
-    let consumer_backend = backend.clone();
-    tokio::spawn(async move {
-        while let Some(op) = doc_ops_rx.recv().await {
-            consumer_backend.dispatch_doc_op(op).await;
-        }
-    });
+#[test]
+fn did_change_tracks_each_document_independently() {
+    let backend = make_backend();
 
     let uri_a: Url = "file:///a.ws".parse().unwrap();
     let uri_b: Url = "file:///b.ws".parse().unwrap();
-    let _ = backend.did_open(open_params(&uri_a, "a"));
-    let _ = backend.did_open(open_params(&uri_b, "b"));
+    backend._did_open(open_params(&uri_a, "a"));
+    backend._did_open(open_params(&uri_b, "b"));
 
-    let _ = backend.did_change(change_params(&uri_a, 2, (0, 1), (0, 1), "X"));
-    let _ = backend.did_change(change_params(&uri_b, 2, (0, 1), (0, 1), "Y"));
-    let _ = backend.did_change(change_params(&uri_a, 3, (0, 2), (0, 2), "X"));
-    let _ = backend.did_change(change_params(&uri_b, 3, (0, 2), (0, 2), "Y"));
+    backend._did_change(change_params(&uri_a, 2, (0, 1), (0, 1), "X"));
+    backend._did_change(change_params(&uri_b, 2, (0, 1), (0, 1), "Y"));
+    backend._did_change(change_params(&uri_a, 3, (0, 2), (0, 2), "X"));
+    backend._did_change(change_params(&uri_b, 3, (0, 2), (0, 2), "Y"));
 
-    wait_for(&backend, &uri_a, "aXX").await;
-    wait_for(&backend, &uri_b, "bYY").await;
+    let docs = backend.documents.lock();
+    assert_eq!(
+        docs.get(&uri_a).map(|d| d.source.as_str()),
+        Some("aXX"),
+        "edits to one document must not leak into another's buffer",
+    );
+    assert_eq!(
+        docs.get(&uri_b).map(|d| d.source.as_str()),
+        Some("bYY"),
+        "edits to one document must not leak into another's buffer",
+    );
+}
+
+// Regression test for #94: when did_change runs synchronously in the notification
+// handler, the next handler that locks `documents` must observe the post-change
+// source. The old mpsc dispatcher deferred did_change to a worker task, letting a
+// concurrent semanticTokens handler read stale `documents` before the worker ran.
+#[test]
+fn semantic_tokens_after_did_change_sees_new_source() {
+    let backend = make_backend();
+    let uri: Url = "file:///regression94.ws".parse().unwrap();
+
+    backend._did_open(open_params(&uri, "class C {}\n"));
+    backend._did_change(change_params(
+        &uri,
+        2,
+        (0, 0),
+        (1, 0),
+        "class CRenamed {}\n",
+    ));
+
+    let documents = backend.documents.lock();
+    let document = documents.get(&uri).expect("document present after change");
+    assert_eq!(
+        document.source, "class CRenamed {}\n",
+        "did_change must have applied before any read can observe `documents`",
+    );
+
+    let handles = backend.db_handles_for(&uri);
+    let db = handles.db();
+    let tokens = collect_semantic_tokens(uri.as_str(), document, &db);
+    assert!(
+        !tokens.is_empty(),
+        "semantic tokens must be produced from the post-change source",
+    );
 }

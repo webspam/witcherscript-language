@@ -5,9 +5,8 @@ use arc_swap::ArcSwap;
 use async_lsp::router::Router;
 use async_lsp::ClientSocket;
 use lsp_types::{DidOpenTextDocumentParams, TextDocumentItem, Url};
-use tokio::sync::mpsc;
 
-use crate::backend::{Backend, DocOp};
+use crate::backend::Backend;
 use crate::config::{Config, DiagnosticsScope};
 
 pub(super) struct LocalTempDir {
@@ -36,12 +35,11 @@ impl Drop for LocalTempDir {
 pub(super) fn make_backend() -> Backend {
     let (_main_loop, client) =
         async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-    let (doc_ops_tx, _doc_ops_rx) = mpsc::unbounded_channel();
     let config = Arc::new(ArcSwap::from_pointee(Config {
         diagnostics_scope: DiagnosticsScope::None,
         ..Config::default()
     }));
-    Backend::new(client, config, doc_ops_tx)
+    Backend::new(client, config)
 }
 
 pub(super) fn write_script(dir: &Path, rel: &str, contents: &str) -> PathBuf {
@@ -79,19 +77,19 @@ pub(super) async fn indexed_legacy_override(name: &str) -> (LocalTempDir, Backen
     let new_url = Url::from_file_path(&new_path).expect("new path -> url");
 
     let backend = make_backend();
-    *backend.base_scripts_path.lock().await = Some(game_dir);
-    *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+    *backend.base_scripts_path.lock() = Some(game_dir);
+    *backend.legacy_script_dirs.lock() = vec![legacy_dir];
     backend.index_base_scripts().await;
     (temp, backend, override_url, new_url)
 }
 
-pub(super) fn open_op(uri: &Url, text: &str) -> DocOp {
-    DocOp::Open(DidOpenTextDocumentParams {
+pub(super) fn open_params(uri: &Url, text: &str) -> DidOpenTextDocumentParams {
+    DidOpenTextDocumentParams {
         text_document: TextDocumentItem {
             uri: uri.clone(),
             language_id: "witcherscript".to_string(),
             version: 1,
             text: text.to_string(),
         },
-    })
+    }
 }

@@ -23,19 +23,19 @@ async fn matching_legacy_file_drops_base_and_lands_in_workspace() {
     let legacy_url = Url::from_file_path(&legacy_path).expect("legacy path -> url");
 
     let backend = make_backend();
-    *backend.base_scripts_path.lock().await = Some(game_dir);
-    *backend.legacy_script_dirs.lock().await = vec![legacy_dir.clone()];
+    *backend.base_scripts_path.lock() = Some(game_dir);
+    *backend.legacy_script_dirs.lock() = vec![legacy_dir.clone()];
 
     backend.index_base_scripts().await;
 
-    let base_docs = backend.base_scripts_documents.lock().await;
+    let base_docs = backend.base_scripts_documents.lock();
     assert!(
         !base_docs.contains_key(base_url.as_str()),
         "base script should be replaced; got keys {:?}",
         base_docs.keys().collect::<Vec<_>>()
     );
 
-    let ws_docs = backend.workspace_documents.lock().await;
+    let ws_docs = backend.workspace_documents.lock();
     assert!(
         ws_docs.contains_key(legacy_url.as_str()),
         "legacy file should be in workspace_documents; got keys {:?}",
@@ -59,7 +59,7 @@ async fn mod_shared_imports_override_drops_base_and_lands_in_workspace() {
     let override_url = Url::from_file_path(&override_path).expect("override path -> url");
 
     let backend = make_backend();
-    *backend.base_scripts_path.lock().await = Some(game_dir);
+    *backend.base_scripts_path.lock() = Some(game_dir);
 
     backend.index_base_scripts().await;
 
@@ -67,7 +67,6 @@ async fn mod_shared_imports_override_drops_base_and_lands_in_workspace() {
         !backend
             .base_scripts_documents
             .lock()
-            .await
             .contains_key(base_url.as_str()),
         "a modSharedImports replacement script must drop the base script it overrides"
     );
@@ -75,7 +74,6 @@ async fn mod_shared_imports_override_drops_base_and_lands_in_workspace() {
         backend
             .workspace_documents
             .lock()
-            .await
             .contains_key(override_url.as_str()),
         "a modSharedImports replacement script must land in workspace_documents"
     );
@@ -97,7 +95,7 @@ async fn mod_shared_imports_skipped_when_auto_load_off() {
     let override_url = Url::from_file_path(&override_path).expect("override path -> url");
 
     let backend = make_backend();
-    *backend.base_scripts_path.lock().await = Some(game_dir);
+    *backend.base_scripts_path.lock() = Some(game_dir);
     backend.config.store(Arc::new(Config {
         auto_load_mod_shared_imports: false,
         diagnostics_scope: DiagnosticsScope::None,
@@ -110,7 +108,6 @@ async fn mod_shared_imports_skipped_when_auto_load_off() {
         backend
             .base_scripts_documents
             .lock()
-            .await
             .contains_key(base_url.as_str()),
         "with auto-load off the base script must stay in the base index"
     );
@@ -118,7 +115,6 @@ async fn mod_shared_imports_skipped_when_auto_load_off() {
         !backend
             .workspace_documents
             .lock()
-            .await
             .contains_key(override_url.as_str()),
         "with auto-load off the modSharedImports script must not be indexed"
     );
@@ -138,15 +134,14 @@ async fn deleting_a_legacy_file_removes_it_from_the_workspace() {
     let legacy_url = Url::from_file_path(&legacy_path).expect("legacy path -> url");
 
     let backend = make_backend();
-    *backend.base_scripts_path.lock().await = Some(game_dir);
-    *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+    *backend.base_scripts_path.lock() = Some(game_dir);
+    *backend.legacy_script_dirs.lock() = vec![legacy_dir];
 
     backend.index_base_scripts().await;
     assert!(
         backend
             .workspace_documents
             .lock()
-            .await
             .contains_key(legacy_url.as_str()),
         "legacy file should be indexed into the workspace first"
     );
@@ -158,19 +153,17 @@ async fn deleting_a_legacy_file_removes_it_from_the_workspace() {
         !backend
             .workspace_documents
             .lock()
-            .await
             .contains_key(legacy_url.as_str()),
         "a deleted legacy file must not linger in workspace_documents"
     );
     assert!(
-        backend.legacy_indexed_uris.lock().await.is_empty(),
+        backend.legacy_indexed_uris.lock().is_empty(),
         "tracked legacy URIs must be cleared once the file is gone"
     );
     assert!(
         backend
             .base_scripts_documents
             .lock()
-            .await
             .contains_key(base_url.as_str()),
         "the base script returns to the base index once nothing overrides it"
     );
@@ -190,18 +183,18 @@ async fn unmatched_legacy_file_still_lands_in_workspace() {
     let legacy_url = Url::from_file_path(&legacy_path).expect("legacy path -> url");
 
     let backend = make_backend();
-    *backend.base_scripts_path.lock().await = Some(game_dir);
-    *backend.legacy_script_dirs.lock().await = vec![legacy_dir.clone()];
+    *backend.base_scripts_path.lock() = Some(game_dir);
+    *backend.legacy_script_dirs.lock() = vec![legacy_dir.clone()];
 
     backend.index_base_scripts().await;
 
-    let base_docs = backend.base_scripts_documents.lock().await;
+    let base_docs = backend.base_scripts_documents.lock();
     assert!(
         base_docs.contains_key(base_url.as_str()),
         "unmatched legacy file must not remove the base script"
     );
 
-    let ws_docs = backend.workspace_documents.lock().await;
+    let ws_docs = backend.workspace_documents.lock();
     assert!(
         ws_docs.contains_key(legacy_url.as_str()),
         "annotated legacy file should be in workspace_documents"
@@ -221,14 +214,14 @@ async fn base_script_conflict_silent_on_matched_legacy_file() {
     );
 
     let backend = make_backend();
-    *backend.base_scripts_path.lock().await = Some(game_dir);
-    *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+    *backend.base_scripts_path.lock() = Some(game_dir);
+    *backend.legacy_script_dirs.lock() = vec![legacy_dir];
 
     backend.index_base_scripts().await;
 
-    let ws = backend.workspace_index.lock().await;
-    let base = backend.base_scripts_index.lock().await;
-    let legacy_dirs = backend.legacy_script_dirs.lock().await.clone();
+    let ws = backend.workspace_index.lock();
+    let base = backend.base_scripts_index.lock();
+    let legacy_dirs = backend.legacy_script_dirs.lock().clone();
     let diagnostics = collect_base_script_conflict_diagnostics(&ws, &base, &legacy_dirs);
     assert!(
         diagnostics.is_empty(),
@@ -249,17 +242,15 @@ async fn opening_an_overridden_base_script_keeps_it_out_of_the_workspace() {
     );
 
     let backend = make_backend();
-    *backend.base_scripts_path.lock().await = Some(game_dir);
-    *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+    *backend.base_scripts_path.lock() = Some(game_dir);
+    *backend.legacy_script_dirs.lock() = vec![legacy_dir];
     backend.index_base_scripts().await;
 
-    backend
-        .update_open_document(base_url.clone(), "class CR4Player {}\n".to_string())
-        .await;
+    backend.update_open_document(base_url.clone(), "class CR4Player {}\n".to_string());
 
-    let ws = backend.workspace_index.lock().await;
-    let base = backend.base_scripts_index.lock().await;
-    let legacy_dirs = backend.legacy_script_dirs.lock().await.clone();
+    let ws = backend.workspace_index.lock();
+    let base = backend.base_scripts_index.lock();
+    let legacy_dirs = backend.legacy_script_dirs.lock().clone();
 
     assert!(
         collect_duplicate_symbol_diagnostics(&ws).is_empty(),
@@ -289,13 +280,13 @@ async fn additional_script_dir_overlapping_legacy_logs_and_wins_as_legacy() {
     let legacy_url = Url::from_file_path(&legacy_path).expect("legacy path -> url");
 
     let backend = make_backend();
-    *backend.base_scripts_path.lock().await = Some(game_dir);
-    *backend.additional_script_dirs.lock().await = vec![legacy_dir.clone()];
-    *backend.legacy_script_dirs.lock().await = vec![legacy_dir];
+    *backend.base_scripts_path.lock() = Some(game_dir);
+    *backend.additional_script_dirs.lock() = vec![legacy_dir.clone()];
+    *backend.legacy_script_dirs.lock() = vec![legacy_dir];
 
     backend.index_base_scripts().await;
 
-    let base_docs = backend.base_scripts_documents.lock().await;
+    let base_docs = backend.base_scripts_documents.lock();
     assert!(
         !base_docs.contains_key(base_url.as_str()),
         "legacy semantics must win when the same dir appears in both lists"
@@ -305,7 +296,7 @@ async fn additional_script_dir_overlapping_legacy_logs_and_wins_as_legacy() {
         "legacy file must not be loaded as a base overlay"
     );
 
-    let ws_docs = backend.workspace_documents.lock().await;
+    let ws_docs = backend.workspace_documents.lock();
     assert!(
         ws_docs.contains_key(legacy_url.as_str()),
         "legacy file must land in workspace_documents"

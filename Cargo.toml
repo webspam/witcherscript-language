@@ -38,6 +38,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ignore = "0.4"
 arc-swap = "1.9.1"
+parking_lot = "0.12"
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]

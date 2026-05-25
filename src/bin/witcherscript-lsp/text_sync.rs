@@ -21,36 +21,34 @@ fn uri_within_any(uri: &str, dirs: &[PathBuf]) -> bool {
 }
 
 impl Backend {
-    pub(crate) async fn _did_open(&self, params: DidOpenTextDocumentParams) {
+    pub(crate) fn _did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
         if builtin_source(uri.as_str()).is_some() {
             return;
         }
-        if self.is_uri_excluded(&uri).await {
+        if self.is_uri_excluded(&uri) {
             return;
         }
         // The client drops a file's status on close; force a fresh push.
-        self.sent_legacy_status.lock().await.remove(&uri);
-        self.sent_file_scope_status.lock().await.remove(&uri);
-        self.update_open_document(uri, params.text_document.text)
-            .await;
-        self.publish_legacy_script_status().await;
-        self.publish_file_scope_status().await;
+        self.sent_legacy_status.lock().remove(&uri);
+        self.sent_file_scope_status.lock().remove(&uri);
+        self.update_open_document(uri, params.text_document.text);
+        self.publish_legacy_script_status();
+        self.publish_file_scope_status();
     }
 
     #[tracing::instrument(skip_all, fields(uri = %params.text_document.uri), level = "debug")]
-    pub(crate) async fn _did_change(&self, params: DidChangeTextDocumentParams) {
+    pub(crate) fn _did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
         if builtin_source(uri.as_str()).is_some() {
             return;
         }
-        if self.is_uri_excluded(&uri).await {
+        if self.is_uri_excluded(&uri) {
             return;
         }
         let prior = self
             .documents
             .lock()
-            .await
             .get(&uri)
             .map(|d| (d.source.clone(), d.line_index.clone()));
 
@@ -75,33 +73,33 @@ impl Backend {
             }
         }
 
-        self.update_open_document(uri, source).await;
+        self.update_open_document(uri, source);
     }
 
-    pub(crate) async fn _did_close(&self, params: DidCloseTextDocumentParams) {
+    pub(crate) fn _did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
         if builtin_source(uri.as_str()).is_some() {
             return;
         }
-        let scope = self.file_scope_of(&uri).await;
-        self.documents.lock().await.remove(&uri);
+        let scope = self.file_scope_of(&uri);
+        self.documents.lock().remove(&uri);
         if scope.is_loose() {
             // A loose file is a transient compilation member: closing it drops it from the index entirely.
             let invalidated = {
-                let mut index = self.loose_index.lock().await;
+                let mut index = self.loose_index.lock();
                 crate::indexing::remove_document_all_spellings(&mut index, &uri)
             };
-            self.evict_cache_entries(&invalidated).await;
+            self.evict_cache_entries(&invalidated);
         } else {
-            self.reindex_closed_file(&uri).await;
+            self.reindex_closed_file(&uri);
         }
-        self.publish_open_diagnostics().await;
-        self.publish_file_scope_status().await;
-        self.sent_file_scope_status.lock().await.remove(&uri);
+        self.publish_open_diagnostics();
+        self.publish_file_scope_status();
+        self.sent_file_scope_status.lock().remove(&uri);
     }
 
-    pub(crate) async fn _did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
-        self.apply_watched_file_events(params.changes).await;
+    pub(crate) fn _did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        self.apply_watched_file_events(params.changes);
     }
 
     pub(crate) async fn _did_change_workspace_folders(
@@ -122,7 +120,7 @@ impl Backend {
             .collect();
 
         {
-            let mut roots = self.workspace_roots.lock().await;
+            let mut roots = self.workspace_roots.lock();
             roots.retain(|root| !removed.iter().any(|dir| root.starts_with(dir)));
             for path in &added {
                 if !roots.contains(path) {
@@ -134,8 +132,8 @@ impl Backend {
         // index_workspace only adds files; a removed folder's scripts must be dropped here.
         if !removed.is_empty() {
             let invalidated = {
-                let mut index = self.workspace_index.lock().await;
-                let mut docs = self.workspace_documents.lock().await;
+                let mut index = self.workspace_index.lock();
+                let mut docs = self.workspace_documents.lock();
                 let stale: Vec<String> = docs
                     .keys()
                     .filter(|uri| uri_within_any(uri, &removed))
@@ -148,12 +146,12 @@ impl Backend {
                 }
                 invalidated
             };
-            self.evict_cache_entries(&invalidated).await;
+            self.evict_cache_entries(&invalidated);
         }
 
         self.index_workspace().await;
-        self.reindex_open_documents().await;
-        self.publish_open_diagnostics().await;
-        self.publish_file_scope_status().await;
+        self.reindex_open_documents();
+        self.publish_open_diagnostics();
+        self.publish_file_scope_status();
     }
 }

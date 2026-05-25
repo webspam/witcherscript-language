@@ -10,16 +10,17 @@ use futures::future::BoxFuture;
 use lsp_types::{
     CodeActionParams, CodeActionResponse, CompletionParams, CompletionResponse, Diagnostic,
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-    DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverParams, InitializeParams, InitializeResult,
-    InitializedParams, Location, PrepareRenameResponse, ReferenceParams, RenameParams,
-    SemanticTokensParams, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
-    TextDocumentPositionParams, TextEdit, Url, WorkspaceEdit,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentFormattingParams,
+    DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse,
+    Hover, HoverParams, InitializeParams, InitializeResult, InitializedParams, Location,
+    PrepareRenameResponse, ReferenceParams, RenameParams, SemanticTokensParams,
+    SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextDocumentPositionParams, TextEdit,
+    Url, WorkspaceEdit,
 };
+use parking_lot::{Mutex, MutexGuard};
 use serde_json::{json, Value};
-use tokio::sync::{mpsc, Mutex, MutexGuard};
-use tracing::{error, trace};
+use tokio::sync::Notify;
+use tracing::trace;
 use witcherscript_language::builtins::{builtin_source, load_builtins_index};
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
@@ -32,14 +33,6 @@ use crate::file_scope_status::FileScopeStatusParams;
 use crate::legacy_status::LegacyScriptStatusParams;
 
 type Result<T> = std::result::Result<T, ResponseError>;
-
-pub(crate) enum DocOp {
-    Open(DidOpenTextDocumentParams),
-    Change(DidChangeTextDocumentParams),
-    Close(DidCloseTextDocumentParams),
-    WatchedFiles(DidChangeWatchedFilesParams),
-    WorkspaceFolders(DidChangeWorkspaceFoldersParams),
-}
 
 // The diagnosed set excludes read-only base scripts, so it cannot reuse merge_documents.
 pub(crate) fn diagnostics_document_set<'a>(
@@ -88,24 +81,21 @@ pub(crate) struct Backend {
     pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
-    // URIs last indexed into the workspace from legacy dirs, so a vanished one can be dropped.
     pub(crate) legacy_indexed_uris: Arc<Mutex<HashSet<String>>>,
-    // Keyed by canonical URI so it matches open documents under any URI spelling.
     pub(crate) legacy_replacements: Arc<Mutex<HashMap<String, String>>>,
-    // Dedups sends so an unchanged status is not resent on every keystroke.
     pub(crate) sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,
     pub(crate) sent_file_scope_status: Arc<Mutex<HashMap<Url, FileScopeStatusParams>>>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     // Canonical URIs the workspace walker yielded; "under a root but missing" means gitignored.
     pub(crate) workspace_known_files: Arc<Mutex<HashSet<String>>>,
-    // Transient index for editor-open files belonging to no project root.
     pub(crate) loose_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) builtins_index: Arc<WorkspaceIndex>,
     pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
     pub(crate) cst_diag_cache: Arc<Mutex<HashMap<String, crate::cst_cache::CstCacheEntry>>>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
-    pub(crate) doc_ops_tx: mpsc::UnboundedSender<DocOp>,
+    // Coalesces legacy-reindex bursts so an older scan cannot finish after a newer one and overwrite it.
+    pub(crate) reindex_notify: Arc<Notify>,
 }
 
 pub(crate) struct DbHandles<'a> {
@@ -132,11 +122,7 @@ impl<'a> DbHandles<'a> {
 }
 
 impl Backend {
-    pub(crate) fn new(
-        client: ClientSocket,
-        config: Arc<ArcSwap<Config>>,
-        doc_ops_tx: mpsc::UnboundedSender<DocOp>,
-    ) -> Backend {
+    pub(crate) fn new(client: ClientSocket, config: Arc<ArcSwap<Config>>) -> Backend {
         Backend {
             client,
             config,
@@ -161,21 +147,21 @@ impl Backend {
             script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
             cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
             initial_index_done: Arc::new(AtomicBool::new(false)),
-            doc_ops_tx,
+            reindex_notify: Arc::new(Notify::new()),
         }
     }
 
-    pub(crate) async fn exclude_filter(&self) -> witcherscript_language::files::ExcludeFilter {
-        let roots = self.workspace_roots.lock().await.clone();
-        let globs = self.files_exclude.lock().await.clone();
+    pub(crate) fn exclude_filter(&self) -> witcherscript_language::files::ExcludeFilter {
+        let roots = self.workspace_roots.lock().clone();
+        let globs = self.files_exclude.lock().clone();
         witcherscript_language::files::ExcludeFilter::new(&roots, &globs)
     }
 
-    pub(crate) async fn is_uri_excluded(&self, uri: &Url) -> bool {
+    pub(crate) fn is_uri_excluded(&self, uri: &Url) -> bool {
         let Ok(path) = uri.to_file_path() else {
             return false;
         };
-        let roots = self.workspace_roots.lock().await;
+        let roots = self.workspace_roots.lock();
         if !roots.iter().any(|r| path.starts_with(r)) {
             return false;
         }
@@ -187,15 +173,15 @@ impl Backend {
         let Some(canonical) = canonical_uri(uri) else {
             return false;
         };
-        !self.workspace_known_files.lock().await.contains(&canonical)
+        !self.workspace_known_files.lock().contains(&canonical)
     }
 
-    pub(crate) async fn file_scope_of(&self, uri: &Url) -> FileScope {
-        let roots = self.workspace_roots.lock().await.clone();
-        let legacy_dirs = self.effective_legacy_dirs().await;
-        let game_dir = self.base_scripts_path.lock().await.clone();
-        let additional = self.additional_script_dirs.lock().await.clone();
-        let replacements = self.legacy_replacements.lock().await;
+    pub(crate) fn file_scope_of(&self, uri: &Url) -> FileScope {
+        let roots = self.workspace_roots.lock().clone();
+        let legacy_dirs = self.effective_legacy_dirs();
+        let game_dir = self.base_scripts_path.lock().clone();
+        let additional = self.additional_script_dirs.lock().clone();
+        let replacements = self.legacy_replacements.lock();
         classify_file_scope(
             uri,
             &roots,
@@ -206,15 +192,12 @@ impl Backend {
         )
     }
 
-    pub(crate) async fn loose_open_uris(
-        &self,
-        documents: &HashMap<Url, ParsedDocument>,
-    ) -> HashSet<Url> {
-        let roots = self.workspace_roots.lock().await.clone();
-        let legacy_dirs = self.effective_legacy_dirs().await;
-        let game_dir = self.base_scripts_path.lock().await.clone();
-        let additional = self.additional_script_dirs.lock().await.clone();
-        let replacements = self.legacy_replacements.lock().await;
+    pub(crate) fn loose_open_uris(&self, documents: &HashMap<Url, ParsedDocument>) -> HashSet<Url> {
+        let roots = self.workspace_roots.lock().clone();
+        let legacy_dirs = self.effective_legacy_dirs();
+        let game_dir = self.base_scripts_path.lock().clone();
+        let additional = self.additional_script_dirs.lock().clone();
+        let replacements = self.legacy_replacements.lock();
         documents
             .keys()
             .filter(|uri| {
@@ -234,16 +217,16 @@ impl Backend {
 
     // A loose file resolves against loose_index in the workspace slot, isolating
     // it from the real project's symbols.
-    pub(crate) async fn db_handles_for(&self, uri: &Url) -> DbHandles<'_> {
-        let workspace = if self.file_scope_of(uri).await.is_loose() {
-            self.loose_index.lock().await
+    pub(crate) fn db_handles_for(&self, uri: &Url) -> DbHandles<'_> {
+        let workspace = if self.file_scope_of(uri).is_loose() {
+            self.loose_index.lock()
         } else {
-            self.workspace_index.lock().await
+            self.workspace_index.lock()
         };
         DbHandles {
             workspace,
-            base: self.base_scripts_index.lock().await,
-            script_env: self.script_env.lock().await,
+            base: self.base_scripts_index.lock(),
+            script_env: self.script_env.lock(),
             builtins: self.builtins_index.as_ref(),
         }
     }
@@ -252,25 +235,6 @@ impl Backend {
         let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("");
         trace!(uri = uri, "witcherscript/builtinSource request");
         builtin_source_response(uri)
-    }
-
-    pub(crate) async fn dispatch_doc_op(&self, op: DocOp) {
-        match op {
-            DocOp::Open(p) => self._did_open(p).await,
-            DocOp::Change(p) => self._did_change(p).await,
-            DocOp::Close(p) => self._did_close(p).await,
-            DocOp::WatchedFiles(p) => self._did_change_watched_files(p).await,
-            DocOp::WorkspaceFolders(p) => self._did_change_workspace_folders(p).await,
-        }
-    }
-
-    pub(crate) fn submit_doc_op(&self, op: DocOp) {
-        if let Err(send_err) = self.doc_ops_tx.send(op) {
-            error!(
-                error = %send_err,
-                "doc op consumer is gone; edit will not be applied (LSP state may be stale)"
-            );
-        }
     }
 }
 
@@ -299,17 +263,17 @@ impl LanguageServer for Backend {
     }
 
     fn did_open(&mut self, params: DidOpenTextDocumentParams) -> Self::NotifyResult {
-        self.submit_doc_op(DocOp::Open(params));
+        self._did_open(params);
         ControlFlow::Continue(())
     }
 
     fn did_change(&mut self, params: DidChangeTextDocumentParams) -> Self::NotifyResult {
-        self.submit_doc_op(DocOp::Change(params));
+        self._did_change(params);
         ControlFlow::Continue(())
     }
 
     fn did_close(&mut self, params: DidCloseTextDocumentParams) -> Self::NotifyResult {
-        self.submit_doc_op(DocOp::Close(params));
+        self._did_close(params);
         ControlFlow::Continue(())
     }
 
@@ -317,7 +281,7 @@ impl LanguageServer for Backend {
         &mut self,
         params: DidChangeWatchedFilesParams,
     ) -> Self::NotifyResult {
-        self.submit_doc_op(DocOp::WatchedFiles(params));
+        self._did_change_watched_files(params);
         ControlFlow::Continue(())
     }
 

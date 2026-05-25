@@ -74,11 +74,11 @@ impl Backend {
         let position = params.text_document_position.position;
         let include_declaration = params.context.include_declaration;
 
-        let documents = self.documents.lock().await;
+        let documents = self.documents.lock();
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let handles = self.db_handles_for(&uri).await;
+        let handles = self.db_handles_for(&uri);
         let db = handles.db();
 
         let ws_kb = handles.workspace().doc_idents_bytes() / 1024;
@@ -96,9 +96,9 @@ impl Backend {
             return Ok(Some(Vec::new()));
         };
 
-        let workspace_docs = self.workspace_documents.lock().await;
-        let base_docs = self.base_scripts_documents.lock().await;
-        let loose_uris = self.loose_open_uris(&documents).await;
+        let workspace_docs = self.workspace_documents.lock();
+        let base_docs = self.base_scripts_documents.lock();
+        let loose_uris = self.loose_open_uris(&documents);
         let target_is_loose = loose_uris.contains(&uri);
 
         let merged = merge_documents(
@@ -141,14 +141,11 @@ impl Backend {
         &self,
         params: TextDocumentPositionParams,
     ) -> Result<Option<PrepareRenameResponse>> {
-        let Some(definition) = self
-            .resolve_at(&params.text_document.uri, params.position)
-            .await
-        else {
+        let Some(definition) = self.resolve_at(&params.text_document.uri, params.position) else {
             return Ok(None);
         };
 
-        let base_docs = self.base_scripts_documents.lock().await;
+        let base_docs = self.base_scripts_documents.lock();
         if base_docs.contains_key(&definition.uri) {
             return Err(ResponseError::new(
                 ErrorCode::INVALID_REQUEST,
@@ -171,17 +168,14 @@ impl Backend {
         let uri = params.text_document_position.text_document.uri;
         let new_name = params.new_name;
 
-        let Some(definition) = self
-            .resolve_at(&uri, params.text_document_position.position)
-            .await
-        else {
+        let Some(definition) = self.resolve_at(&uri, params.text_document_position.position) else {
             return Ok(None);
         };
 
-        let documents = self.documents.lock().await;
-        let handles = self.db_handles_for(&uri).await;
-        let workspace_docs = self.workspace_documents.lock().await;
-        let base_docs = self.base_scripts_documents.lock().await;
+        let documents = self.documents.lock();
+        let handles = self.db_handles_for(&uri);
+        let workspace_docs = self.workspace_documents.lock();
+        let base_docs = self.base_scripts_documents.lock();
 
         if base_docs.contains_key(&definition.uri) {
             return Err(ResponseError::new(
@@ -198,7 +192,7 @@ impl Backend {
 
         let db = handles.db();
 
-        let loose_uris = self.loose_open_uris(&documents).await;
+        let loose_uris = self.loose_open_uris(&documents);
         let merged = merge_documents(
             &base_docs,
             &workspace_docs,

@@ -27,11 +27,11 @@ impl Backend {
     ) -> Result<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
-        let documents = self.documents.lock().await;
+        let documents = self.documents.lock();
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let handles = self.db_handles_for(&uri).await;
+        let handles = self.db_handles_for(&uri);
         let db = handles.db();
 
         let pos = source_position(position);
