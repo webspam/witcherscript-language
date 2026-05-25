@@ -1,32 +1,14 @@
 use super::super::{signature_help, SignatureHelpInfo};
-use super::{make_doc, SymbolDb, WorkspaceIndex};
-use crate::line_index::SourcePosition;
+use crate::test_support::TestDb;
 
-/// Runs `signature_help` with the cursor at the `|` marker in `source`.
-fn help(source: &str) -> Option<SignatureHelpInfo> {
-    help_with_colon(source, false)
+fn help(fixture: &str) -> Option<SignatureHelpInfo> {
+    help_with_colon(fixture, false)
 }
 
-fn help_with_colon(source: &str, compact_colon: bool) -> Option<SignatureHelpInfo> {
-    let offset = source
-        .find('|')
-        .expect("source must contain a | cursor marker");
-    let source = source.replacen('|', "", 1);
-    let doc = make_doc(&source);
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc);
-
-    let before = &source[..offset];
-    let line = before.matches('\n').count() as u32;
-    let character = before.rsplit('\n').next().unwrap_or("").chars().count() as u32;
-
-    signature_help(
-        "file:///test.ws",
-        &doc,
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        SourcePosition { line, character },
-        compact_colon,
-    )
+fn help_with_colon(fixture: &str, compact_colon: bool) -> Option<SignatureHelpInfo> {
+    let t = TestDb::new(fixture);
+    let (uri, pos) = t.cursor();
+    signature_help(&uri, t.doc_for(&uri), &t.db(), pos, compact_colon)
 }
 
 #[test]
@@ -34,7 +16,7 @@ fn reports_label_and_parameter_offsets() {
     let info = help(concat!(
         "function Find(name : string, range : float) : int {}\n",
         "function Test() {\n",
-        "  Find(|);\n",
+        "  Find($0);\n",
         "}\n",
     ))
     .expect("signature help in call");
@@ -54,7 +36,7 @@ fn active_parameter_advances_with_commas() {
     let source = concat!(
         "function Find(a : int, b : int, c : int) {}\n",
         "function Test() {\n",
-        "  Find(1, |2, 3);\n",
+        "  Find(1, $02, 3);\n",
         "}\n",
     );
     assert_eq!(help(source).unwrap().active_parameter, Some(1));
@@ -62,7 +44,7 @@ fn active_parameter_advances_with_commas() {
     let source = concat!(
         "function Find(a : int, b : int, c : int) {}\n",
         "function Test() {\n",
-        "  Find(1, 2, |3);\n",
+        "  Find(1, 2, $03);\n",
         "}\n",
     );
     assert_eq!(help(source).unwrap().active_parameter, Some(2));
@@ -76,7 +58,7 @@ fn resolves_method_call() {
         "}\n",
         "function Test() {\n",
         "  var p : CPlayer;\n",
-        "  p.GetHealth(|);\n",
+        "  p.GetHealth($0);\n",
         "}\n",
     ))
     .expect("signature help for method call");
@@ -90,7 +72,7 @@ fn resolves_this_method_call() {
         "class CPlayer {\n",
         "  function Helper(x : int) {}\n",
         "  function Run() {\n",
-        "    this.Helper(|);\n",
+        "    this.Helper($0);\n",
         "  }\n",
         "}\n",
     ))
@@ -104,7 +86,7 @@ fn zero_param_callee_has_no_active_parameter() {
     let info = help(concat!(
         "function NoArgs() {}\n",
         "function Test() {\n",
-        "  NoArgs(|);\n",
+        "  NoArgs($0);\n",
         "}\n",
     ))
     .expect("signature help for zero-param call");
@@ -119,7 +101,7 @@ fn optional_and_out_params_appear_in_label() {
     let info = help(concat!(
         "function F(optional a : int, out b : float) {}\n",
         "function Test() {\n",
-        "  F(1, |2);\n",
+        "  F(1, $02);\n",
         "}\n",
     ))
     .expect("signature help with optional/out params");
@@ -134,7 +116,7 @@ fn multi_name_param_group_produces_separate_parameters() {
     let info = help(concat!(
         "function M(a, b : int) {}\n",
         "function Test() {\n",
-        "  M(1, |2);\n",
+        "  M(1, $02);\n",
         "}\n",
     ))
     .expect("signature help with multi-name param group");
@@ -149,7 +131,7 @@ fn nested_call_resolves_inner_callee() {
         "function Inner(x : int) : int {}\n",
         "function Outer(y : int) : int {}\n",
         "function Test() {\n",
-        "  Outer(Inner(|));\n",
+        "  Outer(Inner($0));\n",
         "}\n",
     ))
     .expect("signature help for nested call");
@@ -162,7 +144,7 @@ fn cursor_past_last_parameter_clamps_active() {
     let info = help(concat!(
         "function P(a : int) {}\n",
         "function Test() {\n",
-        "  P(1, 2, |3);\n",
+        "  P(1, 2, $03);\n",
         "}\n",
     ))
     .expect("signature help past last param");
@@ -176,7 +158,7 @@ fn unclosed_call_still_produces_signature_help() {
     let info = help(concat!(
         "function Find(name : string, range : float) {}\n",
         "function Test() {\n",
-        "  Find(a, |\n",
+        "  Find(a, $0\n",
         "}\n",
     ))
     .expect("signature help for unclosed call");
@@ -191,7 +173,7 @@ fn compact_colon_setting_drops_spaces_around_colon() {
         concat!(
             "function Find(name : string) : int {}\n",
             "function Test() {\n",
-            "  Find(|);\n",
+            "  Find($0);\n",
             "}\n",
         ),
         true,
@@ -205,7 +187,7 @@ fn compact_colon_setting_drops_spaces_around_colon() {
 
 #[test]
 fn non_call_position_returns_none() {
-    let result = help(concat!("function Test() {\n", "  var x : int|;\n", "}\n",));
+    let result = help(concat!("function Test() {\n", "  var x : int$0;\n", "}\n",));
 
     assert!(result.is_none());
 }

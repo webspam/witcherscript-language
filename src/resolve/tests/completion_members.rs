@@ -1,33 +1,20 @@
 use super::super::completion_members;
-use super::{make_doc, SymbolDb, WorkspaceIndex};
-use crate::line_index::SourcePosition;
+use crate::test_support::TestDb;
 
 #[test]
 fn completion_after_dot_returns_public_members() {
-    let source = concat!(
+    let t = TestDb::new(concat!(
         "class CPlayer {\n",
         "  public function GetHealth() : int {}\n",
         "  private var mHp : int;\n",
         "}\n",
         "function Test() {\n",
         "  var p : CPlayer;\n",
-        "  p.\n",
+        "  p.$0\n",
         "}\n",
-    );
-    let doc = make_doc(source);
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc);
-
-    // position is at the character after '.' on line 6
-    let members = completion_members(
-        "file:///test.ws",
-        &doc,
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 6,
-            character: 4,
-        },
-    );
+    ));
+    let (uri, pos) = t.cursor();
+    let members = completion_members(&uri, t.doc_for(&uri), &t.db(), pos);
 
     let names: Vec<&str> = members
         .iter()
@@ -45,31 +32,22 @@ fn completion_after_dot_returns_public_members() {
 
 #[test]
 fn completion_includes_inherited_members() {
-    let source_a = concat!(
+    let t = TestDb::new(concat!(
+        "//- /a.ws\n",
         "class A extends B {\n",
         "  public function Own() {}\n",
         "}\n",
         "function Test() {\n",
         "  var a : A;\n",
-        "  a.\n",
+        "  a.$0\n",
         "}\n",
-    );
-    let source_b = "class B {\n  public function Inherited() {}\n}\n";
-    let doc_a = make_doc(source_a);
-    let doc_b = make_doc(source_b);
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///a.ws", &doc_a);
-    index.update_document("file:///b.ws", &doc_b);
-
-    let members = completion_members(
-        "file:///a.ws",
-        &doc_a,
-        &SymbolDb::new(&index, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 5,
-            character: 4,
-        },
-    );
+        "//- /b.ws\n",
+        "class B {\n",
+        "  public function Inherited() {}\n",
+        "}\n",
+    ));
+    let (uri, pos) = t.cursor();
+    let members = completion_members(&uri, t.doc_for(&uri), &t.db(), pos);
 
     let names: Vec<&str> = members
         .iter()

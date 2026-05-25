@@ -1,19 +1,7 @@
-use super::super::{
-    completion_members, hover_text, parse_generic_type, resolve_definition, SymbolDb,
-    WorkspaceIndex,
-};
-use super::{make_doc, make_index};
-use crate::builtins::{load_builtins_index, BUILTIN_ARRAY_URI};
-use crate::line_index::SourcePosition;
+use super::super::{completion_members, hover_text, parse_generic_type, resolve_definition};
+use crate::builtins::BUILTIN_ARRAY_URI;
 use crate::symbols::AccessLevel;
-
-fn builtins_db<'a>(
-    workspace: &'a WorkspaceIndex,
-    base: &'a WorkspaceIndex,
-    builtins: &'a WorkspaceIndex,
-) -> SymbolDb<'a> {
-    SymbolDb::new(workspace, base).with_builtins(builtins)
-}
+use crate::test_support::TestDb;
 
 #[test]
 fn parse_generic_type_handles_basic_and_nested() {
@@ -32,9 +20,8 @@ fn parse_generic_type_handles_basic_and_nested() {
 
 #[test]
 fn array_int_member_is_resolved_with_substituted_param_type() {
-    let builtins = load_builtins_index();
-    let empty = WorkspaceIndex::default();
-    let db = builtins_db(&empty, &empty, &builtins);
+    let t = TestDb::new("").with_builtins_index();
+    let db = t.db();
 
     let def = db
         .find_member("array<int>", "PushBack", AccessLevel::Public)
@@ -51,11 +38,9 @@ fn array_int_member_is_resolved_with_substituted_param_type() {
 
 #[test]
 fn array_method_returning_placeholder_substitutes_return_type() {
-    let builtins = load_builtins_index();
-    let empty = WorkspaceIndex::default();
-    let db = builtins_db(&empty, &empty, &builtins);
-
-    let def = db
+    let t = TestDb::new("").with_builtins_index();
+    let def = t
+        .db()
         .find_member("array<CEntity>", "Last", AccessLevel::Public)
         .expect("Last should resolve on array<CEntity>");
 
@@ -64,11 +49,9 @@ fn array_method_returning_placeholder_substitutes_return_type() {
 
 #[test]
 fn array_method_with_concrete_param_type_is_unchanged() {
-    let builtins = load_builtins_index();
-    let empty = WorkspaceIndex::default();
-    let db = builtins_db(&empty, &empty, &builtins);
-
-    let def = db
+    let t = TestDb::new("").with_builtins_index();
+    let def = t
+        .db()
         .find_member("array<CEntity>", "Resize", AccessLevel::Public)
         .expect("Resize resolves");
 
@@ -79,11 +62,9 @@ fn array_method_with_concrete_param_type_is_unchanged() {
 
 #[test]
 fn array_method_container_name_becomes_generic_instance() {
-    let builtins = load_builtins_index();
-    let empty = WorkspaceIndex::default();
-    let db = builtins_db(&empty, &empty, &builtins);
-
-    let def = db
+    let t = TestDb::new("").with_builtins_index();
+    let def = t
+        .db()
         .find_member("array<int>", "PushBack", AccessLevel::Public)
         .expect("PushBack resolves");
 
@@ -98,11 +79,8 @@ fn array_method_container_name_becomes_generic_instance() {
 
 #[test]
 fn members_of_array_int_lists_all_methods_substituted() {
-    let builtins = load_builtins_index();
-    let empty = WorkspaceIndex::default();
-    let db = builtins_db(&empty, &empty, &builtins);
-
-    let members = db.members_of_tiered("array<int>", AccessLevel::Public);
+    let t = TestDb::new("").with_builtins_index();
+    let members = t.db().members_of_tiered("array<int>", AccessLevel::Public);
     let names: Vec<&str> = members
         .iter()
         .map(|(_, d)| d.symbol.name.as_str())
@@ -135,27 +113,15 @@ fn members_of_array_int_lists_all_methods_substituted() {
 
 #[test]
 fn completion_after_dot_on_array_var_returns_methods() {
-    let source = concat!(
+    let t = TestDb::new(concat!(
         "function Test() {\n",
         "  var xs : array<int>;\n",
-        "  xs.\n",
+        "  xs.$0\n",
         "}\n",
-    );
-    let doc = make_doc(source);
-    let workspace = make_index("file:///test.ws", &doc);
-    let base = WorkspaceIndex::default();
-    let builtins = load_builtins_index();
-    let db = builtins_db(&workspace, &base, &builtins);
-
-    let members = completion_members(
-        "file:///test.ws",
-        &doc,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 5,
-        },
-    );
+    ))
+    .with_builtins_index();
+    let (uri, pos) = t.cursor();
+    let members = completion_members(&uri, t.doc_for(&uri), &t.db(), pos);
 
     let names: Vec<&str> = members
         .iter()
@@ -174,11 +140,8 @@ fn completion_after_dot_on_array_var_returns_methods() {
 
 #[test]
 fn array_class_is_not_in_user_type_completions() {
-    let builtins = load_builtins_index();
-    let empty = WorkspaceIndex::default();
-    let db = builtins_db(&empty, &empty, &builtins);
-
-    let types = db.all_types();
+    let t = TestDb::new("").with_builtins_index();
+    let types = t.db().all_types();
     assert!(
         !types.iter().any(|d| d.symbol.name == "array"),
         "builtin array class should NOT appear in all_types(); got {:?}",
@@ -188,28 +151,16 @@ fn array_class_is_not_in_user_type_completions() {
 
 #[test]
 fn goto_definition_on_array_method_resolves_into_builtin_file() {
-    let source = concat!(
+    let t = TestDb::new(concat!(
         "function Test() {\n",
         "  var xs : array<int>;\n",
-        "  xs.PushBack(1);\n",
+        "  xs.Pus$0hBack(1);\n",
         "}\n",
-    );
-    let doc = make_doc(source);
-    let workspace = make_index("file:///test.ws", &doc);
-    let empty = WorkspaceIndex::default();
-    let builtins = load_builtins_index();
-    let db = builtins_db(&workspace, &empty, &builtins);
-
-    let def = resolve_definition(
-        "file:///test.ws",
-        &doc,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 8,
-        },
-    )
-    .expect("PushBack should resolve");
+    ))
+    .with_builtins_index();
+    let (uri, pos) = t.cursor();
+    let def =
+        resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("PushBack should resolve");
 
     assert_eq!(def.uri, BUILTIN_ARRAY_URI);
     assert_eq!(def.symbol.name, "PushBack");
@@ -217,9 +168,8 @@ fn goto_definition_on_array_method_resolves_into_builtin_file() {
 
 #[test]
 fn nested_array_substitutes_one_level() {
-    let builtins = load_builtins_index();
-    let empty = WorkspaceIndex::default();
-    let db = builtins_db(&empty, &empty, &builtins);
+    let t = TestDb::new("").with_builtins_index();
+    let db = t.db();
 
     let def = db
         .find_member("array<array<int>>", "Last", AccessLevel::Public)

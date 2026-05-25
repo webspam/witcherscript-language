@@ -1,77 +1,39 @@
-use super::super::{
-    resolve_definition, statement_completions, type_completions, SymbolDb, WorkspaceIndex,
-};
-use super::{make_doc, make_index};
-use crate::builtins::{load_builtins_index, BUILTIN_ENUMS_URI};
-use crate::line_index::SourcePosition;
-use crate::symbols::SymbolKind;
+use rstest::rstest;
 
-fn builtins_db<'a>(
-    workspace: &'a WorkspaceIndex,
-    base: &'a WorkspaceIndex,
-    builtins: &'a WorkspaceIndex,
-) -> SymbolDb<'a> {
-    SymbolDb::new(workspace, base).with_builtins(builtins)
-}
+use super::super::{resolve_definition, statement_completions, type_completions};
+use crate::builtins::BUILTIN_ENUMS_URI;
+use crate::symbols::SymbolKind;
+use crate::test_support::TestDb;
 
 #[test]
 fn enum_type_is_indexed_as_global_type() {
-    let builtins = load_builtins_index();
-    let empty = WorkspaceIndex::default();
-    let db = builtins_db(&empty, &empty, &builtins);
-
-    let def = db
+    let t = TestDb::new("").with_builtins_index();
+    let def = t
+        .db()
         .find_top_level("EAttackDirection")
         .expect("EAttackDirection should be indexed");
     assert_eq!(def.symbol.kind, SymbolKind::Enum);
     assert_eq!(def.uri, BUILTIN_ENUMS_URI);
 }
 
-#[test]
-fn enum_variant_is_a_global_symbol() {
-    let builtins = load_builtins_index();
-    let empty = WorkspaceIndex::default();
-    let db = builtins_db(&empty, &empty, &builtins);
-
-    struct Case {
-        name: &'static str,
-        variant: &'static str,
-    }
-    let cases = [
-        Case {
-            name: "first enum, sole variant",
-            variant: "EAIASM_GuardArea",
-        },
-        Case {
-            name: "mid-list variant",
-            variant: "AD_Back",
-        },
-        Case {
-            name: "lowercase enum's variant",
-            variant: "TreasureHunt",
-        },
-    ];
-    for c in cases {
-        let def = db
-            .find_enum_variant(c.variant)
-            .unwrap_or_else(|| panic!("case {}: {} should resolve", c.name, c.variant));
-        assert_eq!(
-            def.symbol.kind,
-            SymbolKind::EnumVariant,
-            "case {}: wrong kind",
-            c.name
-        );
-        assert_eq!(def.uri, BUILTIN_ENUMS_URI, "case {}: wrong uri", c.name);
-    }
+#[rstest]
+#[case::first_enum_sole_variant("EAIASM_GuardArea")]
+#[case::mid_list_variant("AD_Back")]
+#[case::lowercase_enums_variant("TreasureHunt")]
+fn enum_variant_is_a_global_symbol(#[case] variant: &str) {
+    let t = TestDb::new("").with_builtins_index();
+    let def = t
+        .db()
+        .find_enum_variant(variant)
+        .unwrap_or_else(|| panic!("{variant} should resolve"));
+    assert_eq!(def.symbol.kind, SymbolKind::EnumVariant);
+    assert_eq!(def.uri, BUILTIN_ENUMS_URI);
 }
 
 #[test]
 fn enum_types_appear_in_type_completions() {
-    let builtins = load_builtins_index();
-    let empty = WorkspaceIndex::default();
-    let db = builtins_db(&empty, &empty, &builtins);
-
-    let types = db.all_types();
+    let t = TestDb::new("").with_builtins_index();
+    let types = t.db().all_types();
     assert!(
         types
             .iter()
@@ -87,12 +49,10 @@ fn enum_types_appear_in_type_completions() {
 
 #[test]
 fn enum_variants_appear_in_enum_variant_globals() {
-    let builtins = load_builtins_index();
-    let empty = WorkspaceIndex::default();
-    let db = builtins_db(&empty, &empty, &builtins);
-
+    let t = TestDb::new("").with_builtins_index();
     assert!(
-        db.all_enum_variants()
+        t.db()
+            .all_enum_variants()
             .iter()
             .any(|d| d.symbol.name == "VMT_TeleportAndMount"),
         "builtin enum variant should appear in all_enum_variants()"
@@ -101,10 +61,8 @@ fn enum_variants_appear_in_enum_variant_globals() {
 
 #[test]
 fn orphan_variant_bucket_is_excluded_from_type_completions() {
-    let builtins = load_builtins_index();
-    let empty = WorkspaceIndex::default();
-    let db = builtins_db(&empty, &empty, &builtins);
-
+    let t = TestDb::new("").with_builtins_index();
+    let db = t.db();
     assert!(
         !db.all_types()
             .iter()
@@ -121,28 +79,16 @@ fn orphan_variant_bucket_is_excluded_from_type_completions() {
 
 #[test]
 fn goto_definition_on_enum_variant_resolves_into_builtin_file() {
-    let source = concat!(
+    let t = TestDb::new(concat!(
         "function Test() {\n",
         "  var d : EAttackDirection;\n",
-        "  d = AD_Back;\n",
+        "  d = AD$0_Back;\n",
         "}\n",
-    );
-    let doc = make_doc(source);
-    let workspace = make_index("file:///test.ws", &doc);
-    let empty = WorkspaceIndex::default();
-    let builtins = load_builtins_index();
-    let db = builtins_db(&workspace, &empty, &builtins);
-
-    let def = resolve_definition(
-        "file:///test.ws",
-        &doc,
-        &db,
-        SourcePosition {
-            line: 2,
-            character: 8,
-        },
-    )
-    .expect("AD_Back should resolve");
+    ))
+    .with_builtins_index();
+    let (uri, pos) = t.cursor();
+    let def =
+        resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("AD_Back should resolve");
 
     assert_eq!(def.uri, BUILTIN_ENUMS_URI);
     assert_eq!(def.symbol.name, "AD_Back");
@@ -151,26 +97,15 @@ fn goto_definition_on_enum_variant_resolves_into_builtin_file() {
 
 #[test]
 fn type_completions_offer_builtin_enum() {
-    let source = concat!(
+    let t = TestDb::new(concat!(
         "function Test() {\n",
-        "  var x : EAtt\n",
+        "  var x : EAtt$0\n",
         "  var y : int;\n",
         "}\n",
-    );
-    let doc = make_doc(source);
-    let workspace = make_index("file:///test.ws", &doc);
-    let empty = WorkspaceIndex::default();
-    let builtins = load_builtins_index();
-    let db = builtins_db(&workspace, &empty, &builtins);
-
-    let types = type_completions(
-        &doc,
-        &db,
-        SourcePosition {
-            line: 1,
-            character: 14,
-        },
-    );
+    ))
+    .with_builtins_index();
+    let (_uri, pos) = t.cursor();
+    let types = type_completions(t.primary_doc(), &t.db(), pos);
     assert!(
         types.iter().any(|d| d.symbol.name == "EAttackDirection"),
         "type completions should offer the builtin enum; got {:?}",
@@ -180,22 +115,9 @@ fn type_completions_offer_builtin_enum() {
 
 #[test]
 fn statement_completions_offer_builtin_enum_variant() {
-    let source = "function Test() {\n  AD_\n}\n";
-    let doc = make_doc(source);
-    let workspace = make_index("file:///test.ws", &doc);
-    let empty = WorkspaceIndex::default();
-    let builtins = load_builtins_index();
-    let db = builtins_db(&workspace, &empty, &builtins);
-
-    let result = statement_completions(
-        "file:///test.ws",
-        &doc,
-        &db,
-        SourcePosition {
-            line: 1,
-            character: 5,
-        },
-    );
+    let t = TestDb::new("function Test() {\n  AD_$0\n}\n").with_builtins_index();
+    let (uri, pos) = t.cursor();
+    let result = statement_completions(&uri, t.doc_for(&uri), &t.db(), pos);
     assert!(
         result
             .globals

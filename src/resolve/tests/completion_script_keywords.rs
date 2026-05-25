@@ -1,400 +1,167 @@
+use rstest::rstest;
+
 use super::super::script_body_completions;
-use super::make_doc;
-use crate::document::ParsedDocument;
-use crate::line_index::SourcePosition;
+use crate::test_support::TestDb;
 
-fn kw(doc: &ParsedDocument, line: u32, character: u32) -> Vec<&'static str> {
-    script_body_completions(doc, SourcePosition { line, character })
+fn kw_at_cursor(fixture: &str) -> Vec<&'static str> {
+    let t = TestDb::new(fixture);
+    let (_uri, pos) = t.cursor();
+    script_body_completions(t.primary_doc(), pos)
 }
 
-#[test]
-fn script_kw_blank_offers_all_starters() {
-    let doc = make_doc("\n");
-    let result = kw(&doc, 0, 0);
-    for expected in &[
-        "class",
-        "state",
-        "struct",
-        "enum",
-        "function",
-        "var",
-        "import",
-        "abstract",
-        "statemachine",
-        "final",
-        "latent",
-        "cleanup",
-        "entry",
-        "exec",
-        "quest",
-        "reward",
-        "storyscene",
-        "timer",
-    ] {
+#[rstest]
+#[case::blank_offers_all_starters(
+    "$0\n",
+    &["class", "state", "struct", "enum", "function", "var", "import", "abstract", "statemachine", "final", "latent", "cleanup", "entry", "exec", "quest", "reward", "storyscene", "timer"],
+    &["private", "protected", "public"],
+)]
+#[case::blank_between_decls_offers_all(
+    "class A {}\n$0\nclass B {}\n",
+    &["class", "function", "import", "final"],
+    &["private"],
+)]
+#[case::blank_offers_modding_annotations(
+    "$0\n",
+    &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"],
+    &[],
+)]
+#[case::annotations_not_offered_after_specifier_import(
+    "import $0\n",
+    &[],
+    &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"],
+)]
+#[case::annotations_not_offered_after_specifier_final(
+    "final $0\n",
+    &[],
+    &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"],
+)]
+#[case::annotations_not_offered_after_specifier_abstract(
+    "abstract $0\n",
+    &[],
+    &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"],
+)]
+#[case::annotations_not_offered_after_specifier_statemachine(
+    "statemachine $0\n",
+    &[],
+    &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"],
+)]
+#[case::after_add_field_offers_access_modifiers(
+    "@addField(CName)\n$0\n",
+    &["private", "protected", "public"],
+    &[],
+)]
+#[case::after_add_method_offers_access_modifiers(
+    "@addMethod(CName)\n$0\n",
+    &["private", "protected", "public"],
+    &[],
+)]
+#[case::after_add_field_offers_var_starters_only(
+    "@addField(CName)\n$0\n",
+    &["editable", "saved", "const", "inlined", "var"],
+    &["function"],
+)]
+#[case::after_add_field_excludes_top_level_keywords(
+    "@addField(CName)\n$0\n",
+    &[],
+    &["class", "state", "struct", "enum", "import", "statemachine", "abstract", "addField", "addMethod", "wrapMethod", "replaceMethod"],
+)]
+#[case::after_add_method_excludes_top_level_keywords(
+    "@addMethod(CName)\n$0\n",
+    &[],
+    &["class", "state", "struct", "enum", "import", "statemachine", "abstract", "addField", "addMethod", "wrapMethod", "replaceMethod"],
+)]
+#[case::after_wrap_method_no_access_modifiers(
+    "@wrapMethod(CName)\n$0\n",
+    &[],
+    &["private", "protected", "public"],
+)]
+#[case::after_replace_method_no_access_modifiers(
+    "@replaceMethod(CName)\n$0\n",
+    &[],
+    &["private", "protected", "public"],
+)]
+#[case::access_modifiers_gated_off_after_a_specifier(
+    "@addMethod(CName)\nfinal $0\n",
+    &[],
+    &["private", "protected", "public"],
+)]
+#[case::after_import_filters_to_compatible_decls(
+    "import $0\n",
+    &["class", "state", "struct", "function", "abstract", "statemachine", "final", "latent"],
+    &["import", "enum", "var", "private", "protected", "public"],
+)]
+#[case::after_statemachine_only_class_path(
+    "statemachine $0\n",
+    &["class", "abstract", "import"],
+    &["state", "struct", "enum", "function", "var", "private"],
+)]
+#[case::after_abstract_offers_class_or_state(
+    "abstract $0\n",
+    &["class", "state", "import"],
+    &["statemachine", "struct", "function", "abstract", "private"],
+)]
+#[case::after_final_drops_latent_ordering(
+    "final $0\n",
+    &["function", "latent", "timer"],
+    &["final", "private", "class"],
+)]
+#[case::after_latent_offers_flavours_and_function(
+    "latent $0\n",
+    &["function", "quest", "storyscene"],
+    &["latent", "final", "private", "class"],
+)]
+#[case::after_flavour_only_function(
+    "timer $0\n",
+    &["function"],
+    &["timer", "quest", "final", "latent", "private"],
+)]
+#[case::partial_word_still_offers_keywords(
+    "cl$0\n",
+    &["class", "function", "import", "final"],
+    &["private"],
+)]
+#[case::offered_after_annotation_on_next_line(
+    "@addMethod(CPlayer)\n$0\n",
+    &["function", "final", "latent"],
+    &[],
+)]
+#[case::chain_statemachine_import_abstract_only_class(
+    "statemachine import abstract $0\n",
+    &["class"],
+    &["state", "struct", "function", "statemachine", "abstract", "import"],
+)]
+#[case::chain_import_final_only_function(
+    "import final $0\n",
+    &["function", "latent", "timer"],
+    &["class", "final", "import", "private"],
+)]
+fn script_kw(
+    #[case] fixture: &str,
+    #[case] expected_present: &[&str],
+    #[case] expected_absent: &[&str],
+) {
+    let result = kw_at_cursor(fixture);
+    for kw in expected_present {
         assert!(
-            result.contains(expected),
-            "blank script scope should offer '{expected}', got {result:?}"
+            result.contains(kw),
+            "expected {kw:?} to be offered, got {result:?}"
         );
     }
-    for forbidden in &["private", "protected", "public"] {
+    for kw in expected_absent {
         assert!(
-            !result.contains(forbidden),
-            "access modifiers are class-body only, must not appear at script scope"
-        );
-    }
-}
-
-#[test]
-fn script_kw_blank_between_decls_offers_all() {
-    let doc = make_doc("class A {}\n\nclass B {}\n");
-    let result = kw(&doc, 1, 0);
-    for expected in &["class", "function", "import", "final"] {
-        assert!(
-            result.contains(expected),
-            "blank line between decls should offer '{expected}', got {result:?}"
-        );
-    }
-    assert!(
-        !result.contains(&"private"),
-        "access modifiers are class-body only"
-    );
-}
-
-#[test]
-fn script_kw_not_offered_inside_class_body() {
-    let doc = make_doc("class C {\n  \n}\n");
-    let result = kw(&doc, 1, 2);
-    assert!(
-        result.is_empty(),
-        "must not offer script-scope keywords inside a class body, got {result:?}"
-    );
-}
-
-#[test]
-fn script_kw_not_offered_inside_func_block() {
-    let doc = make_doc("function F() {\n  \n}\n");
-    let result = kw(&doc, 1, 2);
-    assert!(
-        result.is_empty(),
-        "must not offer script-scope keywords inside a function body, got {result:?}"
-    );
-}
-
-#[test]
-fn script_kw_blank_offers_modding_annotations() {
-    let doc = make_doc("\n");
-    let result = kw(&doc, 0, 0);
-    for expected in &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"] {
-        assert!(
-            result.contains(expected),
-            "blank script scope should offer annotation '{expected}', got {result:?}"
-        );
-    }
-}
-
-#[test]
-fn script_kw_annotations_not_offered_after_specifier() {
-    for source in &["import \n", "final \n", "abstract \n", "statemachine \n"] {
-        let doc = make_doc(source);
-        let result = kw(&doc, 0, source.len() as u32 - 1);
-        for forbidden in &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"] {
-            assert!(
-                !result.contains(forbidden),
-                "annotations must not follow a specifier in `{source:?}`, got {result:?}"
-            );
-        }
-    }
-}
-
-#[test]
-fn script_kw_after_add_field_offers_access_modifiers() {
-    let doc = make_doc("@addField(CName)\n\n");
-    let result = kw(&doc, 1, 0);
-    for expected in &["private", "protected", "public"] {
-        assert!(
-            result.contains(expected),
-            "after @addField, access modifier '{expected}' must be offered, got {result:?}"
-        );
-    }
-}
-
-#[test]
-fn script_kw_after_add_method_offers_access_modifiers() {
-    let doc = make_doc("@addMethod(CName)\n\n");
-    let result = kw(&doc, 1, 0);
-    for expected in &["private", "protected", "public"] {
-        assert!(
-            result.contains(expected),
-            "after @addMethod, access modifier '{expected}' must be offered, got {result:?}"
-        );
-    }
-}
-
-#[test]
-fn script_kw_after_add_field_offers_var_starters_only() {
-    let doc = make_doc("@addField(CName)\n\n");
-    let result = kw(&doc, 1, 0);
-    for expected in &["editable", "saved", "const", "inlined", "var"] {
-        assert!(
-            result.contains(expected),
-            "after @addField, field starter '{expected}' must be offered, got {result:?}"
-        );
-    }
-    assert!(
-        !result.contains(&"function"),
-        "after @addField, 'function' is not valid — it injects a field, got {result:?}"
-    );
-}
-
-#[test]
-fn script_kw_after_member_annotation_excludes_top_level_keywords() {
-    for source in &["@addField(CName)\n\n", "@addMethod(CName)\n\n"] {
-        let doc = make_doc(source);
-        let result = kw(&doc, 1, 0);
-        for forbidden in &[
-            "class",
-            "state",
-            "struct",
-            "enum",
-            "import",
-            "statemachine",
-            "abstract",
-            "addField",
-            "addMethod",
-            "wrapMethod",
-            "replaceMethod",
-        ] {
-            assert!(
-                !result.contains(forbidden),
-                "{source:?}: '{forbidden}' is not valid after a member-injecting annotation, got {result:?}"
-            );
-        }
-    }
-}
-
-#[test]
-fn script_kw_after_wrap_method_no_access_modifiers() {
-    for source in &["@wrapMethod(CName)\n\n", "@replaceMethod(CName)\n\n"] {
-        let doc = make_doc(source);
-        let result = kw(&doc, 1, 0);
-        for forbidden in &["private", "protected", "public"] {
-            assert!(
-                !result.contains(forbidden),
-                "{source:?} does not inject a member declaration; access modifiers must not appear, got {result:?}"
-            );
-        }
-    }
-}
-
-#[test]
-fn script_kw_access_modifiers_gated_off_after_a_specifier() {
-    let doc = make_doc("@addMethod(CName)\nfinal \n");
-    let result = kw(&doc, 1, 6);
-    for forbidden in &["private", "protected", "public"] {
-        assert!(
-            !result.contains(forbidden),
-            "access modifiers must precede other specifiers, got {result:?}"
+            !result.contains(kw),
+            "expected {kw:?} to NOT be offered, got {result:?}"
         );
     }
 }
 
-#[test]
-fn script_kw_annotations_not_offered_inside_class_body() {
-    let doc = make_doc("class C {\n  \n}\n");
-    let result = kw(&doc, 1, 2);
-    assert!(
-        result.is_empty(),
-        "annotations are script-scope only, must not appear in a class body, got {result:?}"
-    );
-}
-
-#[test]
-fn script_kw_after_import_filters_to_compatible_decls() {
-    let doc = make_doc("import \n");
-    let result = kw(&doc, 0, 7);
-    for expected in &[
-        "class",
-        "state",
-        "struct",
-        "function",
-        "abstract",
-        "statemachine",
-        "final",
-        "latent",
-    ] {
-        assert!(
-            result.contains(expected),
-            "after import should offer '{expected}', got {result:?}"
-        );
-    }
-    assert!(!result.contains(&"import"), "should not re-offer import");
-    assert!(
-        !result.contains(&"enum"),
-        "enum takes no specifiers at script scope"
-    );
-    assert!(!result.contains(&"var"), "var takes no specifiers");
-    for forbidden in &["private", "protected", "public"] {
-        assert!(
-            !result.contains(forbidden),
-            "access modifiers are class-body only"
-        );
-    }
-}
-
-#[test]
-fn script_kw_after_statemachine_only_class_path() {
-    let doc = make_doc("statemachine \n");
-    let result = kw(&doc, 0, 13);
-    assert!(result.contains(&"class"), "statemachine → class");
-    assert!(result.contains(&"abstract"), "statemachine abstract class");
-    assert!(result.contains(&"import"), "statemachine import class");
-    assert!(!result.contains(&"state"), "statemachine excludes state");
-    assert!(!result.contains(&"struct"), "statemachine excludes struct");
-    assert!(!result.contains(&"enum"), "statemachine excludes enum");
-    assert!(
-        !result.contains(&"function"),
-        "statemachine excludes function"
-    );
-    assert!(!result.contains(&"var"), "statemachine excludes var");
-    assert!(
-        !result.contains(&"private"),
-        "statemachine is not on the function path"
-    );
-}
-
-#[test]
-fn script_kw_after_abstract_offers_class_or_state() {
-    let doc = make_doc("abstract \n");
-    let result = kw(&doc, 0, 9);
-    assert!(result.contains(&"class"));
-    assert!(result.contains(&"state"));
-    assert!(result.contains(&"import"));
-    assert!(
-        !result.contains(&"statemachine"),
-        "corpus only has 'statemachine abstract', never 'abstract statemachine'"
-    );
-    assert!(!result.contains(&"struct"));
-    assert!(!result.contains(&"function"));
-    assert!(!result.contains(&"abstract"));
-    assert!(!result.contains(&"private"));
-}
-
-#[test]
-fn script_kw_after_final_drops_latent_ordering() {
-    let doc = make_doc("final \n");
-    let result = kw(&doc, 0, 6);
-    assert!(result.contains(&"function"));
-    assert!(result.contains(&"latent"));
-    assert!(result.contains(&"timer"));
-    assert!(!result.contains(&"final"), "should not re-offer final");
-    assert!(
-        !result.contains(&"private"),
-        "access cannot follow final on this path"
-    );
-    assert!(!result.contains(&"class"));
-}
-
-#[test]
-fn script_kw_after_latent_offers_flavours_and_function() {
-    let doc = make_doc("latent \n");
-    let result = kw(&doc, 0, 7);
-    assert!(result.contains(&"function"));
-    assert!(result.contains(&"quest"));
-    assert!(result.contains(&"storyscene"));
-    assert!(!result.contains(&"latent"), "should not re-offer latent");
-    assert!(
-        !result.contains(&"final"),
-        "final must precede latent, not follow"
-    );
-    assert!(!result.contains(&"private"));
-    assert!(!result.contains(&"class"));
-}
-
-#[test]
-fn script_kw_after_flavour_only_function() {
-    let doc = make_doc("timer \n");
-    let result = kw(&doc, 0, 6);
-    assert!(result.contains(&"function"));
-    assert!(!result.contains(&"timer"), "no second flavour");
-    assert!(!result.contains(&"quest"), "no second flavour");
-    assert!(!result.contains(&"final"));
-    assert!(!result.contains(&"latent"));
-    assert!(!result.contains(&"private"));
-}
-
-#[test]
-fn script_kw_after_decl_keyword_returns_empty() {
-    let doc = make_doc("class \n");
-    let result = kw(&doc, 0, 6);
-    assert!(
-        result.is_empty(),
-        "no keyword completions after a decl keyword, got {result:?}"
-    );
-}
-
-#[test]
-fn script_kw_after_function_decl_keyword_returns_empty() {
-    let doc = make_doc("function \n");
-    let result = kw(&doc, 0, 9);
-    assert!(
-        result.is_empty(),
-        "no keyword completions after `function`, got {result:?}"
-    );
-}
-
-#[test]
-fn script_kw_partial_word_still_offers_keywords() {
-    let doc = make_doc("cl\n");
-    let result = kw(&doc, 0, 2);
-    for expected in &["class", "function", "import", "final"] {
-        assert!(
-            result.contains(expected),
-            "partial identifier should not suppress script-scope keywords: missing '{expected}'"
-        );
-    }
-    assert!(
-        !result.contains(&"private"),
-        "access modifiers are class-body only"
-    );
-}
-
-#[test]
-fn script_kw_offered_after_annotation_on_next_line() {
-    let doc = make_doc("@addMethod(CPlayer)\n\n");
-    let result = kw(&doc, 1, 0);
-    for expected in &["function", "final", "latent"] {
-        assert!(
-            result.contains(expected),
-            "should offer '{expected}' on the line following an annotation"
-        );
-    }
-}
-
-#[test]
-fn script_kw_chain_statemachine_import_abstract_only_class() {
-    let doc = make_doc("statemachine import abstract \n");
-    let result = kw(&doc, 0, 29);
-    assert!(result.contains(&"class"));
-    assert!(!result.contains(&"state"));
-    assert!(!result.contains(&"struct"));
-    assert!(!result.contains(&"function"));
-    assert!(!result.contains(&"statemachine"));
-    assert!(!result.contains(&"abstract"));
-    assert!(!result.contains(&"import"));
-}
-
-#[test]
-fn script_kw_chain_import_final_only_function() {
-    let doc = make_doc("import final \n");
-    let result = kw(&doc, 0, 13);
-    assert!(result.contains(&"function"));
-    assert!(result.contains(&"latent"));
-    assert!(result.contains(&"timer"));
-    assert!(!result.contains(&"class"));
-    assert!(!result.contains(&"final"));
-    assert!(!result.contains(&"import"));
-    assert!(
-        !result.contains(&"private"),
-        "access modifiers are class-body only"
-    );
+#[rstest]
+#[case::not_offered_inside_class_body("class C {\n  $0\n}\n")]
+#[case::not_offered_inside_func_block("function F() {\n  $0\n}\n")]
+#[case::annotations_not_offered_inside_class_body("class C {\n  $0\n}\n")]
+#[case::after_decl_keyword_returns_empty("class $0\n")]
+#[case::after_function_decl_keyword_returns_empty("function $0\n")]
+fn script_kw_empty(#[case] fixture: &str) {
+    let result = kw_at_cursor(fixture);
+    assert!(result.is_empty(), "expected empty result, got {result:?}");
 }

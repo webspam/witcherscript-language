@@ -1,94 +1,65 @@
-use super::{make_doc, SymbolDb, WorkspaceIndex};
+use rstest::rstest;
+
 use crate::symbols::AccessLevel;
+use crate::test_support::TestDb;
 
-#[test]
-fn parameters_of_returns_names_in_source_order() {
-    let doc = make_doc(
-        "function Find(findName : string, range : float, shouldScanAllObjects : bool) : int {}",
-    );
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc);
-    let base = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &base);
-
-    let def = db.find_top_level("Find").expect("Find should be indexed");
-    let params = db.parameters_of(&def.uri, def.symbol.id);
-
-    assert_eq!(params, vec!["findName", "range", "shouldScanAllObjects"]);
-}
-
-#[test]
-fn parameters_of_returns_empty_for_zero_param_function() {
-    let doc = make_doc("function NoArgs() {}");
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc);
-    let base = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &base);
-
+#[rstest]
+#[case::three_named_in_order(
+    "function Find(findName : string, range : float, shouldScanAllObjects : bool) : int {}",
+    "Find",
+    &["findName", "range", "shouldScanAllObjects"],
+)]
+#[case::zero_params("function NoArgs() {}", "NoArgs", &[])]
+#[case::skips_optional(
+    "function Find(name : string, optional range : float) : int {}",
+    "Find",
+    &["name"],
+)]
+#[case::multi_name_group(
+    "function Multi(a, b : int, c : string) {}",
+    "Multi",
+    &["a", "b", "c"],
+)]
+fn parameters_of_top_level(
+    #[case] source: &str,
+    #[case] callable: &str,
+    #[case] expected: &[&str],
+) {
+    let t = TestDb::new(source);
+    let db = t.db();
     let def = db
-        .find_top_level("NoArgs")
-        .expect("NoArgs should be indexed");
+        .find_top_level(callable)
+        .unwrap_or_else(|| panic!("{callable} should be indexed"));
     let params = db.parameters_of(&def.uri, def.symbol.id);
-
-    assert!(params.is_empty());
+    let expected: Vec<String> = expected.iter().map(|s| s.to_string()).collect();
+    assert_eq!(params, expected);
 }
 
-#[test]
-fn parameters_of_works_for_class_method() {
-    let doc = make_doc("class CPlayer { function GetHealth(modifier : float) : int {} }");
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc);
-    let base = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &base);
-
+#[rstest]
+#[case::method(
+    "class CPlayer { function GetHealth(modifier : float) : int {} }",
+    "CPlayer",
+    "GetHealth",
+    &["modifier"],
+)]
+#[case::event(
+    "class C { event OnSpawn(spawnData : int) {} }",
+    "C",
+    "OnSpawn",
+    &["spawnData"],
+)]
+fn parameters_of_class_member(
+    #[case] source: &str,
+    #[case] class: &str,
+    #[case] member: &str,
+    #[case] expected: &[&str],
+) {
+    let t = TestDb::new(source);
+    let db = t.db();
     let def = db
-        .find_member("CPlayer", "GetHealth", AccessLevel::Public)
-        .expect("GetHealth should be indexed");
+        .find_member(class, member, AccessLevel::Public)
+        .unwrap_or_else(|| panic!("{class}.{member} should be indexed"));
     let params = db.parameters_of(&def.uri, def.symbol.id);
-
-    assert_eq!(params, vec!["modifier"]);
-}
-
-#[test]
-fn parameters_of_works_for_event() {
-    let doc = make_doc("class C { event OnSpawn(spawnData : int) {} }");
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc);
-    let base = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &base);
-
-    let def = db
-        .find_member("C", "OnSpawn", AccessLevel::Public)
-        .expect("OnSpawn should be indexed");
-    let params = db.parameters_of(&def.uri, def.symbol.id);
-
-    assert_eq!(params, vec!["spawnData"]);
-}
-
-#[test]
-fn parameters_of_skips_optional_params() {
-    let doc = make_doc("function Find(name : string, optional range : float) : int {}");
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc);
-    let base = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &base);
-
-    let def = db.find_top_level("Find").expect("Find should be indexed");
-    let params = db.parameters_of(&def.uri, def.symbol.id);
-
-    assert_eq!(params, vec!["name"]);
-}
-
-#[test]
-fn parameters_of_multi_name_group() {
-    let doc = make_doc("function Multi(a, b : int, c : string) {}");
-    let mut index = WorkspaceIndex::default();
-    index.update_document("file:///test.ws", &doc);
-    let base = WorkspaceIndex::default();
-    let db = SymbolDb::new(&index, &base);
-
-    let def = db.find_top_level("Multi").expect("Multi should be indexed");
-    let params = db.parameters_of(&def.uri, def.symbol.id);
-
-    assert_eq!(params, vec!["a", "b", "c"]);
+    let expected: Vec<String> = expected.iter().map(|s| s.to_string()).collect();
+    assert_eq!(params, expected);
 }
