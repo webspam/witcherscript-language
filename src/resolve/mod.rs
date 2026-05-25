@@ -4,6 +4,7 @@ use crate::symbols::Symbol;
 
 mod ast;
 mod completion;
+mod completion_catalog;
 mod definition;
 mod inference;
 mod references;
@@ -19,9 +20,12 @@ pub use completion::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
     default_or_hint_member_completions, expression_completions, extends_completions,
-    new_lifetime_completions, new_type_completions, script_body_completions,
-    state_owner_completions, statement_completions, type_completions, AfterWrapMethodCompletions,
-    ExpressionCompletions, StatementCompletions,
+    global_body_completions, new_lifetime_completions, new_type_completions,
+    script_body_completions, state_owner_completions, statement_completions, type_completions,
+    type_completions_arc, AfterWrapMethodCompletions, ExpressionCompletions, StatementCompletions,
+};
+pub use completion_catalog::{
+    global_catalog_changed, merge_ws_base, merge_ws_base_three, CompletionCatalog,
 };
 pub use definition::{
     classify_definition_at_ident, resolve_all_definitions, resolve_definition,

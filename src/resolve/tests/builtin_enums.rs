@@ -1,6 +1,8 @@
 use rstest::rstest;
 
-use super::super::{resolve_definition, statement_completions, type_completions};
+use super::super::{
+    global_body_completions, resolve_definition, statement_completions, type_completions,
+};
 use crate::builtins::BUILTIN_ENUMS_URI;
 use crate::symbols::SymbolKind;
 use crate::test_support::TestDb;
@@ -118,14 +120,14 @@ fn statement_completions_offer_builtin_enum_variant() {
     let t = TestDb::new("function Test() {\n  AD_$0\n}\n").with_builtins_index();
     let (uri, pos) = t.cursor();
     let result = statement_completions(&uri, t.doc_for(&uri), &t.db(), pos);
+    assert!(result.needs_globals);
+    let globals = global_body_completions(&t.db());
     assert!(
-        result
-            .globals
+        globals
             .iter()
             .any(|d| d.symbol.name == "AD_Front" && d.symbol.kind == SymbolKind::EnumVariant),
         "statement globals should include builtin enum variants; got {:?}",
-        result
-            .globals
+        globals
             .iter()
             .map(|d| d.symbol.name.as_str())
             .collect::<Vec<_>>()

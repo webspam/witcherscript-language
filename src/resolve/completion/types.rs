@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tree_sitter::Node;
 
 use crate::cst::ancestors::{find_ancestor_of_kind, has_ancestor_of_kind};
@@ -17,14 +19,24 @@ pub fn type_completions(
     db: &SymbolDb,
     position: SourcePosition,
 ) -> Vec<Definition> {
-    type_completions_inner(document, db, position).unwrap_or_default()
+    type_completions_arc(document, db, position)
+        .map(|types| types.iter().cloned().collect())
+        .unwrap_or_default()
+}
+
+pub fn type_completions_arc(
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    position: SourcePosition,
+) -> Option<Arc<[Definition]>> {
+    type_completions_inner(document, db, position)
 }
 
 fn type_completions_inner(
     document: &ParsedDocument,
     db: &SymbolDb,
     position: SourcePosition,
-) -> Option<Vec<Definition>> {
+) -> Option<Arc<[Definition]>> {
     let byte_offset = document
         .line_index
         .position_to_byte(&document.source, position)?;
@@ -49,7 +61,7 @@ fn type_completions_inner(
         return None;
     }
 
-    Some(db.all_types())
+    Some(db.merged_types_catalog())
 }
 
 pub fn annotation_name_completions(
@@ -101,9 +113,10 @@ fn annotation_arg_completions_inner(
     }
 
     Some(
-        db.all_types()
-            .into_iter()
+        db.merged_types_catalog()
+            .iter()
             .filter(|def| def.symbol.kind == SymbolKind::Class)
+            .cloned()
             .collect(),
     )
 }

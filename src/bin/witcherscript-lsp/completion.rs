@@ -7,8 +7,8 @@ use witcherscript_language::resolve::{
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
     default_or_hint_member_completions, expression_completions, extends_completions,
     new_lifetime_completions, new_type_completions, script_body_completions,
-    state_owner_completions, statement_completions, type_completions, AfterWrapMethodCompletions,
-    BUILTIN_TYPE_COMPLETIONS,
+    state_owner_completions, statement_completions, type_completions_arc,
+    AfterWrapMethodCompletions, BUILTIN_TYPE_COMPLETIONS,
 };
 
 use crate::backend::Backend;
@@ -33,6 +33,7 @@ impl Backend {
         };
         let handles = self.db_handles_for(&uri);
         let db = handles.db();
+        let merged_cache = self.merged_completion_cache(&handles);
 
         let pos = source_position(position);
 
@@ -135,13 +136,12 @@ impl Backend {
             )));
         }
 
-        let user_types = type_completions(document, &db, pos);
-        if !user_types.is_empty() {
+        if type_completions_arc(document, &db, pos).is_some() {
             let mut items: Vec<CompletionItem> = BUILTIN_TYPE_COMPLETIONS
                 .iter()
                 .map(|name| builtin_type_item(name))
                 .collect();
-            items.extend(user_types.iter().map(type_completion_item));
+            items.extend(merged_cache.types.iter().map(type_completion_item));
             return Ok(Some(CompletionResponse::Array(items)));
         }
 
@@ -180,12 +180,12 @@ impl Backend {
         }
 
         let stmt = statement_completions(uri.as_str(), document, &db, pos);
-        if stmt.has_this
-            || stmt.has_super
-            || !stmt.locals.is_empty()
-            || !stmt.members.is_empty()
-            || !stmt.globals.is_empty()
-        {
+        let stmt_globals = if stmt.needs_globals {
+            merged_cache.globals()
+        } else {
+            Vec::new()
+        };
+        if stmt.active {
             let mut items: Vec<CompletionItem> = Vec::new();
             if stmt.has_this {
                 items.push(this_super_item("this"));
@@ -234,7 +234,7 @@ impl Backend {
                 item.sort_text = Some(format!("1_{}", def.symbol.name));
                 items.push(item);
             }
-            for def in &stmt.globals {
+            for def in &stmt_globals {
                 let params = db.parameters_of(&def.uri, def.symbol.id);
                 let mut item = completion_item(def, &params);
                 item.sort_text = Some(format!("2_{}", def.symbol.name));
@@ -244,6 +244,11 @@ impl Backend {
         }
 
         if let Some(expr) = expression_completions(uri.as_str(), document, &db, pos) {
+            let expr_globals = if expr.needs_globals {
+                merged_cache.globals()
+            } else {
+                Vec::new()
+            };
             let mut items: Vec<CompletionItem> = Vec::new();
             if expr.has_this {
                 items.push(this_super_item("this"));
@@ -265,7 +270,7 @@ impl Backend {
                 item.sort_text = Some(format!("0_{}", def.symbol.name));
                 items.push(item);
             }
-            for def in &expr.globals {
+            for def in &expr_globals {
                 let params = db.parameters_of(&def.uri, def.symbol.id);
                 let mut item = completion_item(def, &params);
                 item.sort_text = Some(format!("2_{}", def.symbol.name));

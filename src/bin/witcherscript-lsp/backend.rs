@@ -27,6 +27,7 @@ use witcherscript_language::files::canonical_uri;
 use witcherscript_language::resolve::{SymbolDb, WorkspaceIndex};
 use witcherscript_language::script_env::ScriptEnvironment;
 
+use crate::completion_cache::MergedCompletionCache;
 use crate::config::Config;
 use crate::file_scope::{classify_file_scope, FileScope};
 use crate::file_scope_status::FileScopeStatusParams;
@@ -93,6 +94,7 @@ pub(crate) struct Backend {
     pub(crate) builtins_index: Arc<WorkspaceIndex>,
     pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
     pub(crate) cst_diag_cache: Arc<Mutex<HashMap<String, crate::cst_cache::CstCacheEntry>>>,
+    pub(crate) merged_completion_cache: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
     // Coalesces legacy-reindex bursts so an older scan cannot finish after a newer one and overwrite it.
     pub(crate) reindex_notify: Arc<Notify>,
@@ -146,6 +148,7 @@ impl Backend {
             builtins_index: Arc::new(load_builtins_index()),
             script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
             cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
+            merged_completion_cache: Arc::new(Mutex::new(None)),
             initial_index_done: Arc::new(AtomicBool::new(false)),
             reindex_notify: Arc::new(Notify::new()),
         }
@@ -229,6 +232,30 @@ impl Backend {
             script_env: self.script_env.lock(),
             builtins: self.builtins_index.as_ref(),
         }
+    }
+
+    pub(crate) fn merged_completion_cache(&self, handles: &DbHandles<'_>) -> MergedCompletionCache {
+        let workspace_surface = handles.workspace().surface_hash();
+        let base_surface = handles.base().surface_hash();
+        let script_env_version = handles.script_env.version();
+        let mut slot = self.merged_completion_cache.lock();
+        if let Some(cached) = slot.as_ref() {
+            if cached.workspace_surface == workspace_surface
+                && cached.base_surface == base_surface
+                && cached.script_env_version == script_env_version
+            {
+                return cached.clone();
+            }
+        }
+        let db = handles.db();
+        let fresh = MergedCompletionCache::build(
+            handles.workspace(),
+            handles.base(),
+            &db,
+            &handles.script_env,
+        );
+        *slot = Some(fresh.clone());
+        fresh
     }
 
     pub(crate) async fn handle_builtin_source(&self, params: Value) -> Result<Value> {
