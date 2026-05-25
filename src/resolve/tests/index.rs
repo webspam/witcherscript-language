@@ -331,6 +331,19 @@ fn completion_catalog_rebuilds_on_top_level_change() {
 }
 
 #[test]
+fn merged_global_completions_matches_lsp_cache_globals_shape() {
+    let t =
+        crate::test_support::TestDb::new("function Caller() {\n  $0\n}\n").with_builtins_index();
+    let env = super::make_env("theGame", "CR4Game");
+    let db = t.db().with_script_env(&env);
+    let globals = crate::resolve::merged_global_completions(&db);
+    let names: std::collections::HashSet<&str> =
+        globals.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(names.contains("theGame"));
+    assert!(names.contains("AD_Front"));
+}
+
+#[test]
 fn merged_enum_variants_catalog_includes_builtins() {
     let workspace = crate::resolve::WorkspaceIndex::default();
     let base = crate::resolve::WorkspaceIndex::default();

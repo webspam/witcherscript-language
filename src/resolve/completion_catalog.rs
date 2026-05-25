@@ -76,5 +76,16 @@ pub fn merge_ws_base_three(
     base: Arc<[Definition]>,
     builtins: Arc<[Definition]>,
 ) -> Arc<[Definition]> {
-    merge_ws_base(merge_ws_base(ws, base), builtins)
+    let mut shadowed = HashSet::with_capacity(ws.len());
+    let mut out = Vec::with_capacity(ws.len() + base.len() + builtins.len());
+    for def in ws.iter() {
+        shadowed.insert(def.symbol.name.as_str());
+        out.push(def.clone());
+    }
+    for def in base.iter().chain(builtins.iter()) {
+        if shadowed.insert(def.symbol.name.as_str()) {
+            out.push(def.clone());
+        }
+    }
+    Arc::from(out)
 }

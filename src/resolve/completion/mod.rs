@@ -13,7 +13,7 @@ pub use body_function::{
     ExpressionCompletions, StatementCompletions,
 };
 pub use body_script::script_body_completions;
-pub use globals::global_body_completions;
+pub use globals::merged_global_completions;
 pub use headers::class_header_keyword_completions;
 pub use members::completion_members;
 pub use new_expr::{new_lifetime_completions, new_type_completions};

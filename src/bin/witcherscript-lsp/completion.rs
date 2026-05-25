@@ -33,7 +33,6 @@ impl Backend {
         };
         let handles = self.db_handles_for(&uri);
         let db = handles.db();
-        let merged_cache = self.merged_completion_cache(&handles);
 
         let pos = source_position(position);
 
@@ -137,6 +136,7 @@ impl Backend {
         }
 
         if type_completions_arc(document, &db, pos).is_some() {
+            let merged_cache = self.merged_completion_cache(&uri, &handles);
             let mut items: Vec<CompletionItem> = BUILTIN_TYPE_COMPLETIONS
                 .iter()
                 .map(|name| builtin_type_item(name))
@@ -180,12 +180,11 @@ impl Backend {
         }
 
         let stmt = statement_completions(uri.as_str(), document, &db, pos);
-        let stmt_globals = if stmt.needs_globals {
-            merged_cache.globals()
-        } else {
-            Vec::new()
-        };
         if stmt.active {
+            let merged_cache = stmt
+                .needs_globals
+                .then(|| self.merged_completion_cache(&uri, &handles));
+            let stmt_globals = merged_cache.as_ref().map(|c| c.globals()).unwrap_or(&[]);
             let mut items: Vec<CompletionItem> = Vec::new();
             if stmt.has_this {
                 items.push(this_super_item("this"));
@@ -234,7 +233,7 @@ impl Backend {
                 item.sort_text = Some(format!("1_{}", def.symbol.name));
                 items.push(item);
             }
-            for def in &stmt_globals {
+            for def in stmt_globals {
                 let params = db.parameters_of(&def.uri, def.symbol.id);
                 let mut item = completion_item(def, &params);
                 item.sort_text = Some(format!("2_{}", def.symbol.name));
@@ -244,11 +243,10 @@ impl Backend {
         }
 
         if let Some(expr) = expression_completions(uri.as_str(), document, &db, pos) {
-            let expr_globals = if expr.needs_globals {
-                merged_cache.globals()
-            } else {
-                Vec::new()
-            };
+            let merged_cache = expr
+                .needs_globals
+                .then(|| self.merged_completion_cache(&uri, &handles));
+            let expr_globals = merged_cache.as_ref().map(|c| c.globals()).unwrap_or(&[]);
             let mut items: Vec<CompletionItem> = Vec::new();
             if expr.has_this {
                 items.push(this_super_item("this"));
@@ -270,7 +268,7 @@ impl Backend {
                 item.sort_text = Some(format!("0_{}", def.symbol.name));
                 items.push(item);
             }
-            for def in &expr_globals {
+            for def in expr_globals {
                 let params = db.parameters_of(&def.uri, def.symbol.id);
                 let mut item = completion_item(def, &params);
                 item.sort_text = Some(format!("2_{}", def.symbol.name));

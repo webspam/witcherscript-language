@@ -94,7 +94,8 @@ pub(crate) struct Backend {
     pub(crate) builtins_index: Arc<WorkspaceIndex>,
     pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
     pub(crate) cst_diag_cache: Arc<Mutex<HashMap<String, crate::cst_cache::CstCacheEntry>>>,
-    pub(crate) merged_completion_cache: Arc<Mutex<Option<MergedCompletionCache>>>,
+    pub(crate) merged_completion_cache_workspace: Arc<Mutex<Option<MergedCompletionCache>>>,
+    pub(crate) merged_completion_cache_loose: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
     // Coalesces legacy-reindex bursts so an older scan cannot finish after a newer one and overwrite it.
     pub(crate) reindex_notify: Arc<Notify>,
@@ -148,7 +149,8 @@ impl Backend {
             builtins_index: Arc::new(load_builtins_index()),
             script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
             cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
-            merged_completion_cache: Arc::new(Mutex::new(None)),
+            merged_completion_cache_workspace: Arc::new(Mutex::new(None)),
+            merged_completion_cache_loose: Arc::new(Mutex::new(None)),
             initial_index_done: Arc::new(AtomicBool::new(false)),
             reindex_notify: Arc::new(Notify::new()),
         }
@@ -234,11 +236,20 @@ impl Backend {
         }
     }
 
-    pub(crate) fn merged_completion_cache(&self, handles: &DbHandles<'_>) -> MergedCompletionCache {
+    pub(crate) fn merged_completion_cache(
+        &self,
+        uri: &Url,
+        handles: &DbHandles<'_>,
+    ) -> MergedCompletionCache {
         let workspace_surface = handles.workspace().surface_hash();
         let base_surface = handles.base().surface_hash();
         let script_env_version = handles.script_env.version();
-        let mut slot = self.merged_completion_cache.lock();
+        let slot = if self.file_scope_of(uri).is_loose() {
+            &self.merged_completion_cache_loose
+        } else {
+            &self.merged_completion_cache_workspace
+        };
+        let mut slot = slot.lock();
         if let Some(cached) = slot.as_ref() {
             if cached.workspace_surface == workspace_surface
                 && cached.base_surface == base_surface

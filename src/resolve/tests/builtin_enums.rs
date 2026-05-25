@@ -1,7 +1,7 @@
 use rstest::rstest;
 
 use super::super::{
-    global_body_completions, resolve_definition, statement_completions, type_completions,
+    merged_global_completions, resolve_definition, statement_completions, type_completions,
 };
 use crate::builtins::BUILTIN_ENUMS_URI;
 use crate::symbols::SymbolKind;
@@ -121,7 +121,7 @@ fn statement_completions_offer_builtin_enum_variant() {
     let (uri, pos) = t.cursor();
     let result = statement_completions(&uri, t.doc_for(&uri), &t.db(), pos);
     assert!(result.needs_globals);
-    let globals = global_body_completions(&t.db());
+    let globals = merged_global_completions(&t.db());
     assert!(
         globals
             .iter()

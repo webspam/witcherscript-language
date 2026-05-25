@@ -1,7 +1,7 @@
 use rstest::rstest;
 
 use super::super::{
-    completion_members, expression_completions, global_body_completions, statement_completions,
+    completion_members, expression_completions, merged_global_completions, statement_completions,
     type_completions, StatementCompletions,
 };
 use super::make_env;
@@ -37,7 +37,7 @@ fn run_at_cursor(fixture: &str) -> (TestDb, StatementCompletions) {
 
 fn globals_for_stmt(t: &TestDb, r: &StatementCompletions) -> Vec<super::super::Definition> {
     if r.needs_globals {
-        global_body_completions(&t.db())
+        merged_global_completions(&t.db())
     } else {
         Vec::new()
     }
@@ -185,7 +185,7 @@ fn script_env_globals_appear_in_statement_completions() {
     let (uri, pos) = t.cursor();
     let r = statement_completions(&uri, t.doc_for(&uri), &db, pos);
     let globals = if r.needs_globals {
-        global_body_completions(&db)
+        merged_global_completions(&db)
     } else {
         Vec::new()
     };
@@ -206,7 +206,7 @@ fn script_env_globals_appear_in_expression_completions() {
     let r = expression_completions(&uri, t.doc_for(&uri), &db, pos)
         .expect("expression completions should fire after `return `");
     assert!(r.needs_globals);
-    let globals = global_body_completions(&db);
+    let globals = merged_global_completions(&db);
     assert!(globals.iter().any(|d| d.symbol.name == "theGame"));
 }
 

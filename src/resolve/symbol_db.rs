@@ -126,17 +126,10 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn all_enum_variants(&self) -> Vec<Definition> {
-        dedup_by_name(
-            self.workspace
-                .all_enum_variants()
-                .into_iter()
-                .chain(self.base.all_enum_variants())
-                .chain(
-                    self.builtins
-                        .map(|b| b.all_enum_variants())
-                        .unwrap_or_default(),
-                ),
-        )
+        self.merged_enum_variants_catalog()
+            .iter()
+            .cloned()
+            .collect()
     }
 
     pub fn superclass_of(&self, class_name: &str) -> Option<String> {
@@ -305,32 +298,11 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn all_types(&self) -> Vec<Definition> {
-        let ws = self.workspace.types_catalog();
-        let base = self.base.types_catalog();
-        let merged = match self.builtins {
-            Some(b) => {
-                let builtins: std::sync::Arc<[Definition]> = std::sync::Arc::from(
-                    b.types_catalog()
-                        .iter()
-                        .filter(|d| !crate::builtins::is_non_type_builtin(&d.uri))
-                        .cloned()
-                        .collect::<Vec<_>>(),
-                );
-                merge_ws_base_three(ws, base, builtins)
-            }
-            None => merge_ws_base(ws, base),
-        };
-        merged.iter().cloned().collect()
+        self.merged_types_catalog().iter().cloned().collect()
     }
 
     pub fn all_top_level_callables(&self) -> Vec<Definition> {
-        merge_ws_base(
-            self.workspace.callables_catalog(),
-            self.base.callables_catalog(),
-        )
-        .iter()
-        .cloned()
-        .collect()
+        self.merged_callables_catalog().iter().cloned().collect()
     }
 
     pub fn merged_callables_catalog(&self) -> std::sync::Arc<[Definition]> {
@@ -344,16 +316,7 @@ impl<'a> SymbolDb<'a> {
         let ws = self.workspace.types_catalog();
         let base = self.base.types_catalog();
         match self.builtins {
-            Some(b) => {
-                let builtins: std::sync::Arc<[Definition]> = std::sync::Arc::from(
-                    b.types_catalog()
-                        .iter()
-                        .filter(|d| !crate::builtins::is_non_type_builtin(&d.uri))
-                        .cloned()
-                        .collect::<Vec<_>>(),
-                );
-                merge_ws_base_three(ws, base, builtins)
-            }
+            Some(_) => merge_ws_base_three(ws, base, crate::builtins::types_completion_catalog()),
             None => merge_ws_base(ws, base),
         }
     }
