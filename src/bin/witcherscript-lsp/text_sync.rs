@@ -26,6 +26,9 @@ impl Backend {
         if builtin_source(uri.as_str()).is_some() {
             return;
         }
+        if self.is_uri_excluded(&uri).await {
+            return;
+        }
         // The client drops a file's status on close; force a fresh push.
         self.sent_legacy_status.lock().await.remove(&uri);
         self.sent_file_scope_status.lock().await.remove(&uri);
@@ -39,6 +42,9 @@ impl Backend {
     pub(crate) async fn _did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
         if builtin_source(uri.as_str()).is_some() {
+            return;
+        }
+        if self.is_uri_excluded(&uri).await {
             return;
         }
         let prior = self

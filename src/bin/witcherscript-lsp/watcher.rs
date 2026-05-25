@@ -89,8 +89,7 @@ impl Backend {
             let documents = self.documents.lock().await;
             documents.keys().filter_map(canonical_uri).collect()
         };
-        let roots = self.workspace_roots.lock().await.clone();
-        let filter = ExcludeFilter::new(&roots, &self.files_exclude.lock().await.clone());
+        let filter = self.exclude_filter().await;
         let legacy_dirs = self.effective_legacy_dirs().await;
 
         let (legacy_events, normal_events): (Vec<FileEvent>, Vec<FileEvent>) = events
@@ -135,13 +134,16 @@ impl Backend {
             let invalidated = {
                 let mut index = self.workspace_index.lock().await;
                 let mut docs = self.workspace_documents.lock().await;
+                let mut known = self.workspace_known_files.lock().await;
                 let mut invalidated: HashSet<String> = HashSet::new();
                 for (canonical, document) in updates {
                     invalidated.extend(index.update_document(canonical.as_str(), &document));
+                    known.insert(canonical.clone());
                     docs.insert(canonical, document);
                 }
                 for canonical in removals {
                     invalidated.extend(index.remove_document(&canonical));
+                    known.remove(&canonical);
                     docs.remove(&canonical);
                 }
                 invalidated
