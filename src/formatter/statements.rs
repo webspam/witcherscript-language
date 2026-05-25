@@ -102,7 +102,7 @@ impl<'a> Formatter<'a> {
     // ---- Statements ----
 
     fn format_stmt(&mut self, node: Node) {
-        if node.is_error() {
+        if node.is_error() || node.has_error() {
             let t = self.text(node).trim().to_string();
             self.emit_indent();
             self.emit(&t);
