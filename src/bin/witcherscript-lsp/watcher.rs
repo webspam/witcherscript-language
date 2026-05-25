@@ -84,13 +84,13 @@ impl Backend {
         }
     }
 
-    pub(crate) async fn apply_watched_file_events(&self, events: Vec<FileEvent>) {
+    pub(crate) fn apply_watched_file_events(&self, events: Vec<FileEvent>) {
         let open_canonical: HashSet<String> = {
-            let documents = self.documents.lock().await;
+            let documents = self.documents.lock();
             documents.keys().filter_map(canonical_uri).collect()
         };
-        let filter = self.exclude_filter().await;
-        let legacy_dirs = self.effective_legacy_dirs().await;
+        let filter = self.exclude_filter();
+        let legacy_dirs = self.effective_legacy_dirs();
 
         let (legacy_events, normal_events): (Vec<FileEvent>, Vec<FileEvent>) = events
             .into_iter()
@@ -132,9 +132,9 @@ impl Backend {
         let has_normal_work = !updates.is_empty() || !removals.is_empty();
         if has_normal_work {
             let invalidated = {
-                let mut index = self.workspace_index.lock().await;
-                let mut docs = self.workspace_documents.lock().await;
-                let mut known = self.workspace_known_files.lock().await;
+                let mut index = self.workspace_index.lock();
+                let mut docs = self.workspace_documents.lock();
+                let mut known = self.workspace_known_files.lock();
                 let mut invalidated: HashSet<String> = HashSet::new();
                 for (canonical, document) in updates {
                     invalidated.extend(index.update_document(canonical.as_str(), &document));
@@ -148,7 +148,7 @@ impl Backend {
                 }
                 invalidated
             };
-            self.evict_cache_entries(&invalidated).await;
+            self.evict_cache_entries(&invalidated);
         }
 
         if !legacy_events.is_empty() {
@@ -156,13 +156,17 @@ impl Backend {
                 count = legacy_events.len(),
                 "watched file events touched a legacy script directory; triggering full re-index"
             );
-            self.index_workspace().await;
-            self.index_base_scripts().await;
+            // index_workspace / index_base_scripts hit the disk; spawn so the input loop is not blocked.
+            let backend = self.clone();
+            crate::spawn_logged("legacy watched-file reindex", async move {
+                backend.index_workspace().await;
+                backend.index_base_scripts().await;
+            });
             return;
         }
 
         if has_normal_work {
-            self.publish_open_diagnostics().await;
+            self.publish_open_diagnostics();
         }
     }
 }

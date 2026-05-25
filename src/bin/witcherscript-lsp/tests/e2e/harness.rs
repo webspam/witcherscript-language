@@ -7,7 +7,6 @@ use async_lsp::router::Router;
 use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
 use async_lsp::{ClientSocket, MainLoop};
-use futures::FutureExt;
 use lsp_types::notification::{DidSaveTextDocument, Initialized};
 use lsp_types::request::{Initialize, Request};
 use lsp_types::{
@@ -16,13 +15,12 @@ use lsp_types::{
 };
 use serde_json::Value;
 use tokio::io::{split, DuplexStream, ReadHalf, WriteHalf};
-use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use tower::ServiceBuilder;
 
 use super::super::jsonrpc_client::JsonRpcClient;
-use crate::backend::{Backend, DocOp};
+use crate::backend::Backend;
 use crate::config::Config;
 
 enum PanicRequest {}
@@ -55,21 +53,8 @@ impl LspClient {
         let (server_read, server_write) = split(server_io);
 
         let (server, _client_socket) = MainLoop::new_server(move |client: ClientSocket| {
-            let (doc_ops_tx, mut doc_ops_rx) = mpsc::unbounded_channel::<DocOp>();
             let config = Arc::new(ArcSwap::from_pointee(Config::default()));
-            let backend = Backend::new(client, config, doc_ops_tx);
-
-            let consumer_backend = backend.clone();
-            tokio::spawn(async move {
-                while let Some(op) = doc_ops_rx.recv().await {
-                    let backend = consumer_backend.clone();
-                    let _ = std::panic::AssertUnwindSafe(async move {
-                        backend.dispatch_doc_op(op).await;
-                    })
-                    .catch_unwind()
-                    .await;
-                }
-            });
+            let backend = Backend::new(client, config);
 
             let mut router: Router<Backend> = Router::from_language_server(backend);
             crate::register_notification_handlers(&mut router);

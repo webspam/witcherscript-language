@@ -149,16 +149,16 @@ fn reindex_into(
 impl Backend {
     // A workspace-folder or config change reroutes open docs now, not on next keystroke.
     #[tracing::instrument(skip(self), level = "debug")]
-    pub(crate) async fn reindex_open_documents(&self) {
-        let documents = self.documents.lock().await;
+    pub(crate) fn reindex_open_documents(&self) {
+        let documents = self.documents.lock();
         if documents.is_empty() {
             return;
         }
-        let roots = self.workspace_roots.lock().await.clone();
-        let legacy_dirs = self.effective_legacy_dirs().await;
-        let game_dir = self.base_scripts_path.lock().await.clone();
-        let additional = self.additional_script_dirs.lock().await.clone();
-        let replacements = self.legacy_replacements.lock().await.clone();
+        let roots = self.workspace_roots.lock().clone();
+        let legacy_dirs = self.effective_legacy_dirs();
+        let game_dir = self.base_scripts_path.lock().clone();
+        let additional = self.additional_script_dirs.lock().clone();
+        let replacements = self.legacy_replacements.lock().clone();
         let scopes: Vec<(Url, FileScope)> = documents
             .keys()
             .map(|uri| {
@@ -178,9 +178,9 @@ impl Backend {
 
         let mut invalidated: HashSet<String> = HashSet::new();
         {
-            let mut workspace = self.workspace_index.lock().await;
-            let mut loose = self.loose_index.lock().await;
-            let mut base = self.base_scripts_index.lock().await;
+            let mut workspace = self.workspace_index.lock();
+            let mut loose = self.loose_index.lock();
+            let mut base = self.base_scripts_index.lock();
             for (uri, scope) in &scopes {
                 let Some(document) = documents.get(uri) else {
                     continue;
@@ -198,13 +198,13 @@ impl Backend {
             }
         }
         drop(documents);
-        self.evict_cache_entries(&invalidated).await;
+        self.evict_cache_entries(&invalidated);
     }
 
     // Closing a non-loose file reverts it from buffer to on-disk content in the workspace/base index.
-    pub(crate) async fn reindex_closed_file(&self, uri: &Url) {
+    pub(crate) fn reindex_closed_file(&self, uri: &Url) {
         let canonical = canonical_uri(uri).unwrap_or_else(|| uri.to_string());
-        let is_base = self.is_base_script_uri(uri).await;
+        let is_base = self.is_base_script_uri(uri);
         let parsed = uri
             .to_file_path()
             .ok()
@@ -212,19 +212,19 @@ impl Backend {
             .and_then(|text| parse_document(text).ok());
 
         let invalidated = if is_base {
-            let mut index = self.base_scripts_index.lock().await;
-            let mut docs = self.base_scripts_documents.lock().await;
+            let mut index = self.base_scripts_index.lock();
+            let mut docs = self.base_scripts_documents.lock();
             reindex_into(&mut index, &mut docs, uri.as_str(), &canonical, parsed)
         } else {
-            let mut index = self.workspace_index.lock().await;
-            let mut docs = self.workspace_documents.lock().await;
+            let mut index = self.workspace_index.lock();
+            let mut docs = self.workspace_documents.lock();
             reindex_into(&mut index, &mut docs, uri.as_str(), &canonical, parsed)
         };
-        self.evict_cache_entries(&invalidated).await;
+        self.evict_cache_entries(&invalidated);
     }
 
     #[tracing::instrument(skip(self, text), fields(uri = %uri, bytes = text.len()), level = "debug")]
-    pub(crate) async fn update_open_document(&self, uri: Url, text: String) {
+    pub(crate) fn update_open_document(&self, uri: Url, text: String) {
         let parsed = tracing::debug_span!("parse_document").in_scope(|| parse_document(text));
         let document = match parsed {
             Ok(document) => document,
@@ -234,7 +234,7 @@ impl Backend {
             }
         };
 
-        let scope = self.file_scope_of(&uri).await;
+        let scope = self.file_scope_of(&uri);
         let mut invalidated = HashSet::new();
         // A config change can move a file between scopes; drop every stale copy first.
         for index in [
@@ -242,7 +242,7 @@ impl Backend {
             &self.base_scripts_index,
             &self.loose_index,
         ] {
-            let mut index = index.lock().await;
+            let mut index = index.lock();
             invalidated.extend(remove_document_all_spellings(&mut index, &uri));
         }
 
@@ -252,20 +252,20 @@ impl Backend {
             _ => &self.workspace_index,
         };
         {
-            let mut index = target.lock().await;
+            let mut index = target.lock();
             invalidated.extend(index.update_document(uri.as_str(), &document));
         }
 
-        self.evict_cache_entries(&invalidated).await;
-        self.documents.lock().await.insert(uri.clone(), document);
-        self.publish_open_diagnostics().await;
+        self.evict_cache_entries(&invalidated);
+        self.documents.lock().insert(uri.clone(), document);
+        self.publish_open_diagnostics();
     }
 
     // Auto-detected modSharedImports counts as legacy without being in the setting.
-    pub(crate) async fn effective_legacy_dirs(&self) -> Vec<PathBuf> {
-        let mut dirs = self.legacy_script_dirs.lock().await.clone();
+    pub(crate) fn effective_legacy_dirs(&self) -> Vec<PathBuf> {
+        let mut dirs = self.legacy_script_dirs.lock().clone();
         if self.config.load().auto_load_mod_shared_imports {
-            if let Some(gd) = self.base_scripts_path.lock().await.as_ref() {
+            if let Some(gd) = self.base_scripts_path.lock().as_ref() {
                 if let Some(msi) = mod_shared_imports_dir(gd) {
                     if !dirs.contains(&msi) {
                         dirs.push(msi);
@@ -276,24 +276,24 @@ impl Backend {
         dirs
     }
 
-    async fn is_base_script_uri(&self, uri: &Url) -> bool {
-        matches!(self.file_scope_of(uri).await, FileScope::AdditionalBase)
+    fn is_base_script_uri(&self, uri: &Url) -> bool {
+        matches!(self.file_scope_of(uri), FileScope::AdditionalBase)
     }
 
     // index_base_scripts rebuilds the base index from disk, dropping any open base script.
-    async fn merge_open_base_documents(&self) {
-        let open_uris: Vec<Url> = self.documents.lock().await.keys().cloned().collect();
+    fn merge_open_base_documents(&self) {
+        let open_uris: Vec<Url> = self.documents.lock().keys().cloned().collect();
         let mut base_uris: Vec<Url> = Vec::new();
         for uri in open_uris {
-            if self.is_base_script_uri(&uri).await {
+            if self.is_base_script_uri(&uri) {
                 base_uris.push(uri);
             }
         }
         if base_uris.is_empty() {
             return;
         }
-        let documents = self.documents.lock().await;
-        let mut idx = self.base_scripts_index.lock().await;
+        let documents = self.documents.lock();
+        let mut idx = self.base_scripts_index.lock();
         for uri in base_uris {
             if let Some(doc) = documents.get(&uri) {
                 index_open_document(&mut idx, &uri, doc);
@@ -301,21 +301,21 @@ impl Backend {
         }
     }
 
-    pub(super) async fn evict_cache_entries(&self, uris: &HashSet<String>) {
+    pub(super) fn evict_cache_entries(&self, uris: &HashSet<String>) {
         if uris.is_empty() {
             return;
         }
-        let mut cache = self.cst_diag_cache.lock().await;
+        let mut cache = self.cst_diag_cache.lock();
         cache.retain(|url, _| !uris.contains(url.as_str()));
     }
 
     pub(crate) async fn index_workspace(&self) {
-        let roots = self.workspace_roots.lock().await.clone();
+        let roots = self.workspace_roots.lock().clone();
         if roots.is_empty() {
-            self.workspace_known_files.lock().await.clear();
+            self.workspace_known_files.lock().clear();
             return;
         }
-        let exclude_globs = self.files_exclude.lock().await.clone();
+        let exclude_globs = self.files_exclude.lock().clone();
 
         info!(roots = ?roots, "indexing workspace");
         let start = Instant::now();
@@ -365,18 +365,18 @@ impl Backend {
             }
         };
 
-        *self.workspace_known_files.lock().await = known_uris;
+        *self.workspace_known_files.lock() = known_uris;
 
         // Skip files the editor has open; update_open_document keeps them indexed under the client spelling.
         let open_canonical: HashSet<String> = {
-            let documents = self.documents.lock().await;
+            let documents = self.documents.lock();
             documents.keys().filter_map(canonical_uri).collect()
         };
 
         let mut indexed = 0;
         {
-            let mut index = self.workspace_index.lock().await;
-            let mut docs = self.workspace_documents.lock().await;
+            let mut index = self.workspace_index.lock();
+            let mut docs = self.workspace_documents.lock();
             for (uri, document) in parsed {
                 if open_canonical.contains(&uri) {
                     continue;
@@ -394,26 +394,26 @@ impl Backend {
             "workspace indexed"
         );
 
-        self.publish_open_diagnostics().await;
+        self.publish_open_diagnostics();
     }
 
-    pub(crate) async fn resolve_at(&self, uri: &Url, position: Position) -> Option<Definition> {
-        let documents = self.documents.lock().await;
+    pub(crate) fn resolve_at(&self, uri: &Url, position: Position) -> Option<Definition> {
+        let documents = self.documents.lock();
         let document = documents.get(uri)?;
-        let handles = self.db_handles_for(uri).await;
+        let handles = self.db_handles_for(uri);
         let db = handles.db();
         resolve_definition(uri.as_str(), document, &db, source_position(position))
     }
 
     // A deleted legacy file has no other removal path, so each run drops the previous set.
-    async fn reconcile_legacy_workspace_files(&self, parsed: Vec<(String, ParsedDocument)>) {
+    fn reconcile_legacy_workspace_files(&self, parsed: Vec<(String, ParsedDocument)>) {
         let open_canonical: HashSet<String> = {
-            let documents = self.documents.lock().await;
+            let documents = self.documents.lock();
             documents.keys().filter_map(canonical_uri).collect()
         };
-        let mut ws_idx = self.workspace_index.lock().await;
-        let mut ws_docs = self.workspace_documents.lock().await;
-        let mut tracked = self.legacy_indexed_uris.lock().await;
+        let mut ws_idx = self.workspace_index.lock();
+        let mut ws_docs = self.workspace_documents.lock();
+        let mut tracked = self.legacy_indexed_uris.lock();
         for uri in tracked.drain() {
             // An open legacy file is owned by update_open_document; leave it alone.
             if open_canonical.contains(&uri) {
@@ -433,28 +433,28 @@ impl Backend {
     }
 
     pub(crate) async fn index_base_scripts(&self) {
-        let game_dir_opt = self.base_scripts_path.lock().await.clone();
-        let extras = self.additional_script_dirs.lock().await.clone();
-        let legacy_dirs = self.effective_legacy_dirs().await;
+        let game_dir_opt = self.base_scripts_path.lock().clone();
+        let extras = self.additional_script_dirs.lock().clone();
+        let legacy_dirs = self.effective_legacy_dirs();
 
         if game_dir_opt.is_none() && extras.is_empty() && legacy_dirs.is_empty() {
             {
-                let mut idx = self.base_scripts_index.lock().await;
-                let mut docs = self.base_scripts_documents.lock().await;
+                let mut idx = self.base_scripts_index.lock();
+                let mut docs = self.base_scripts_documents.lock();
                 *idx = WorkspaceIndex::default();
                 docs.clear();
             }
-            self.legacy_replacements.lock().await.clear();
-            self.reconcile_legacy_workspace_files(Vec::new()).await;
-            self.publish_open_diagnostics().await;
-            self.publish_legacy_script_status().await;
-            self.publish_file_scope_status().await;
+            self.legacy_replacements.lock().clear();
+            self.reconcile_legacy_workspace_files(Vec::new());
+            self.publish_open_diagnostics();
+            self.publish_legacy_script_status();
+            self.publish_file_scope_status();
             return;
         }
 
         if let Some(gd) = &game_dir_opt {
             if let Some(env) = parse_script_environment(&gd.join(r"bin\redscripts.ini")) {
-                *self.script_env.lock().await = env;
+                *self.script_env.lock() = env;
             }
         }
 
@@ -610,15 +610,15 @@ impl Backend {
         };
 
         {
-            let mut idx = self.base_scripts_index.lock().await;
-            let mut docs = self.base_scripts_documents.lock().await;
+            let mut idx = self.base_scripts_index.lock();
+            let mut docs = self.base_scripts_documents.lock();
             *idx = base_new_index;
             *docs = base_new_docs;
         }
-        *self.legacy_replacements.lock().await = legacy_replacements;
-        self.merge_open_base_documents().await;
+        *self.legacy_replacements.lock() = legacy_replacements;
+        self.merge_open_base_documents();
 
-        self.reconcile_legacy_workspace_files(legacy_parsed).await;
+        self.reconcile_legacy_workspace_files(legacy_parsed);
 
         let elapsed_ms = total_start.elapsed().as_millis();
         info!(
@@ -631,8 +631,8 @@ impl Backend {
             "base scripts indexed"
         );
 
-        self.publish_open_diagnostics().await;
-        self.publish_legacy_script_status().await;
-        self.publish_file_scope_status().await;
+        self.publish_open_diagnostics();
+        self.publish_legacy_script_status();
+        self.publish_file_scope_status();
     }
 }

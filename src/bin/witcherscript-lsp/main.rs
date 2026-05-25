@@ -44,7 +44,7 @@ use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
-use backend::{Backend, DocOp};
+use backend::Backend;
 use config::Config;
 use convert::{created_files_to_watched, deleted_files_to_watched, renamed_files_to_watched};
 use logging::LspLogSender;
@@ -73,24 +73,7 @@ async fn main() {
     let (server, _client_socket) = async_lsp::MainLoop::new_server(move |client: ClientSocket| {
         spawn_log_forwarder(client.clone(), Arc::clone(&log_rx_holder));
 
-        let (doc_ops_tx, mut doc_ops_rx) = mpsc::unbounded_channel::<DocOp>();
-
-        let backend = Backend::new(client, Arc::clone(&config_for_backend), doc_ops_tx);
-
-        let consumer_backend = backend.clone();
-        tokio::spawn(async move {
-            while let Some(op) = doc_ops_rx.recv().await {
-                let backend = consumer_backend.clone();
-                let result = std::panic::AssertUnwindSafe(async move {
-                    backend.dispatch_doc_op(op).await;
-                })
-                .catch_unwind()
-                .await;
-                if let Err(panic) = result {
-                    log_panic(panic, "doc op handler");
-                }
-            }
-        });
+        let backend = Backend::new(client, Arc::clone(&config_for_backend));
 
         let mut router: Router<Backend> = Router::from_language_server(backend);
         router.request::<BuiltinSourceRequest, _>(|backend, params| {
@@ -122,17 +105,17 @@ pub(crate) fn register_notification_handlers(router: &mut Router<Backend>) {
         .notification::<WorkDoneProgressCancel>(|_, _| ControlFlow::Continue(()))
         .notification::<DidCreateFiles>(|backend, params| {
             tracing::debug!(count = params.files.len(), "workspace/didCreateFiles");
-            backend.submit_doc_op(DocOp::WatchedFiles(created_files_to_watched(params)));
+            backend._did_change_watched_files(created_files_to_watched(params));
             ControlFlow::Continue(())
         })
         .notification::<DidRenameFiles>(|backend, params| {
             tracing::debug!(count = params.files.len(), "workspace/didRenameFiles");
-            backend.submit_doc_op(DocOp::WatchedFiles(renamed_files_to_watched(params)));
+            backend._did_change_watched_files(renamed_files_to_watched(params));
             ControlFlow::Continue(())
         })
         .notification::<DidDeleteFiles>(|backend, params| {
             tracing::debug!(count = params.files.len(), "workspace/didDeleteFiles");
-            backend.submit_doc_op(DocOp::WatchedFiles(deleted_files_to_watched(params)));
+            backend._did_change_watched_files(deleted_files_to_watched(params));
             ControlFlow::Continue(())
         })
         .notification::<DidChangeWorkspaceFolders>(|backend, params| {
@@ -141,7 +124,10 @@ pub(crate) fn register_notification_handlers(router: &mut Router<Backend>) {
                 removed = params.event.removed.len(),
                 "workspace/didChangeWorkspaceFolders"
             );
-            backend.submit_doc_op(DocOp::WorkspaceFolders(params));
+            let backend = backend.clone();
+            spawn_logged("did_change_workspace_folders handler", async move {
+                backend._did_change_workspace_folders(params).await
+            });
             ControlFlow::Continue(())
         })
         .unhandled_notification(|_, notif| {

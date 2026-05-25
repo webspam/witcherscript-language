@@ -3,7 +3,6 @@ use lsp_types::{
 };
 
 use super::legacy_helpers::{make_backend, write_script, LocalTempDir};
-use crate::backend::DocOp;
 
 fn folders(uris: &[&Url]) -> Vec<WorkspaceFolder> {
     uris.iter()
@@ -14,13 +13,13 @@ fn folders(uris: &[&Url]) -> Vec<WorkspaceFolder> {
         .collect()
 }
 
-fn folder_change(added: &[&Url], removed: &[&Url]) -> DocOp {
-    DocOp::WorkspaceFolders(DidChangeWorkspaceFoldersParams {
+fn folder_change_params(added: &[&Url], removed: &[&Url]) -> DidChangeWorkspaceFoldersParams {
+    DidChangeWorkspaceFoldersParams {
         event: WorkspaceFoldersChangeEvent {
             added: folders(added),
             removed: folders(removed),
         },
-    })
+    }
 }
 
 #[tokio::test]
@@ -32,14 +31,13 @@ async fn adding_a_folder_indexes_its_scripts() {
 
     let backend = make_backend();
     backend
-        .dispatch_doc_op(folder_change(&[&folder_url], &[]))
+        ._did_change_workspace_folders(folder_change_params(&[&folder_url], &[]))
         .await;
 
     assert!(
         backend
             .workspace_documents
             .lock()
-            .await
             .contains_key(script_url.as_str()),
         "a script in a newly added workspace folder must be indexed",
     );
@@ -54,25 +52,23 @@ async fn removing_a_folder_drops_its_scripts() {
 
     let backend = make_backend();
     backend
-        .dispatch_doc_op(folder_change(&[&folder_url], &[]))
+        ._did_change_workspace_folders(folder_change_params(&[&folder_url], &[]))
         .await;
     assert!(
         backend
             .workspace_documents
             .lock()
-            .await
             .contains_key(script_url.as_str()),
         "folder must be indexed before removal can be exercised",
     );
 
     backend
-        .dispatch_doc_op(folder_change(&[], &[&folder_url]))
+        ._did_change_workspace_folders(folder_change_params(&[], &[&folder_url]))
         .await;
     assert!(
         !backend
             .workspace_documents
             .lock()
-            .await
             .contains_key(script_url.as_str()),
         "a script in a removed workspace folder must be dropped from the index",
     );

@@ -5,34 +5,32 @@ use arc_swap::ArcSwap;
 use async_lsp::router::Router;
 use async_lsp::ClientSocket;
 use lsp_types::{DidCloseTextDocumentParams, TextDocumentIdentifier, Url};
-use tokio::sync::mpsc;
 
 use super::legacy_helpers::{write_script, LocalTempDir};
-use crate::backend::{Backend, DocOp};
+use crate::backend::Backend;
 use crate::config::{Config, DiagnosticsScope};
 
 fn make_backend_with(scope: DiagnosticsScope) -> Backend {
     let (_main_loop, client) =
         async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-    let (doc_ops_tx, _doc_ops_rx) = mpsc::unbounded_channel();
     let config = Arc::new(ArcSwap::from_pointee(Config {
         diagnostics_scope: scope,
         ..Config::default()
     }));
-    let backend = Backend::new(client, config, doc_ops_tx);
+    let backend = Backend::new(client, config);
     backend.initial_index_done.store(true, Ordering::Release);
     backend
 }
 
 async fn index_dir(backend: &Backend, dir: &std::path::Path) {
-    *backend.workspace_roots.lock().await = vec![dir.to_path_buf()];
+    *backend.workspace_roots.lock() = vec![dir.to_path_buf()];
     backend.index_workspace().await;
 }
 
-fn close_op(uri: &Url) -> DocOp {
-    DocOp::Close(DidCloseTextDocumentParams {
+fn close_params(uri: &Url) -> DidCloseTextDocumentParams {
+    DidCloseTextDocumentParams {
         text_document: TextDocumentIdentifier { uri: uri.clone() },
-    })
+    }
 }
 
 #[tokio::test]
@@ -44,7 +42,7 @@ async fn workspace_mode_diagnoses_every_file_without_opening_it() {
     let backend = make_backend_with(DiagnosticsScope::Workspace);
     index_dir(&backend, temp.path()).await;
 
-    let published = backend.published_diagnostics.lock().await;
+    let published = backend.published_diagnostics.lock();
     assert!(
         published.get(&url).is_some_and(|d| !d.is_empty()),
         "workspace scope must diagnose an unopened broken file; got keys {:?}",
@@ -62,18 +60,13 @@ async fn open_files_mode_skips_unopened_files_but_still_indexes_symbols() {
     index_dir(&backend, temp.path()).await;
 
     assert!(
-        !backend
-            .published_diagnostics
-            .lock()
-            .await
-            .contains_key(&url),
+        !backend.published_diagnostics.lock().contains_key(&url),
         "open-files scope must not diagnose an unopened file",
     );
     assert!(
         backend
             .workspace_index
             .lock()
-            .await
             .documents()
             .any(|(uri, _)| uri == url.as_str()),
         "open-files scope must still index the file's symbols project-wide",
@@ -88,21 +81,19 @@ async fn closing_a_file_drops_the_buffer_and_reverts_to_disk() {
 
     let backend = make_backend_with(DiagnosticsScope::Workspace);
     index_dir(&backend, temp.path()).await;
-    backend
-        .update_open_document(url.clone(), "class CGood {\n".to_string())
-        .await;
+    backend.update_open_document(url.clone(), "class CGood {\n".to_string());
     assert!(
-        backend.documents.lock().await.contains_key(&url),
+        backend.documents.lock().contains_key(&url),
         "file must be open before the close can be exercised",
     );
 
-    backend.dispatch_doc_op(close_op(&url)).await;
+    backend._did_close(close_params(&url));
 
     assert!(
-        !backend.documents.lock().await.contains_key(&url),
+        !backend.documents.lock().contains_key(&url),
         "closing a file must drop its editor buffer",
     );
-    let ws_docs = backend.workspace_documents.lock().await;
+    let ws_docs = backend.workspace_documents.lock();
     assert_eq!(
         ws_docs.get(url.as_str()).map(|d| d.source.as_str()),
         Some("class CGood {}\n"),
@@ -118,27 +109,20 @@ async fn open_files_mode_close_clears_the_files_diagnostics() {
 
     let backend = make_backend_with(DiagnosticsScope::OpenFiles);
     index_dir(&backend, temp.path()).await;
-    backend
-        .update_open_document(url.clone(), "class CGood {\n".to_string())
-        .await;
+    backend.update_open_document(url.clone(), "class CGood {\n".to_string());
     assert!(
         backend
             .published_diagnostics
             .lock()
-            .await
             .get(&url)
             .is_some_and(|d| !d.is_empty()),
         "an open broken file must have diagnostics",
     );
 
-    backend.dispatch_doc_op(close_op(&url)).await;
+    backend._did_close(close_params(&url));
 
     assert!(
-        !backend
-            .published_diagnostics
-            .lock()
-            .await
-            .contains_key(&url),
+        !backend.published_diagnostics.lock().contains_key(&url),
         "open-files scope must retract a closed file's diagnostics",
     );
 }
@@ -151,17 +135,14 @@ async fn workspace_mode_close_keeps_the_files_diagnostics() {
 
     let backend = make_backend_with(DiagnosticsScope::Workspace);
     index_dir(&backend, temp.path()).await;
-    backend
-        .update_open_document(url.clone(), "class CBad {\n".to_string())
-        .await;
+    backend.update_open_document(url.clone(), "class CBad {\n".to_string());
 
-    backend.dispatch_doc_op(close_op(&url)).await;
+    backend._did_close(close_params(&url));
 
     assert!(
         backend
             .published_diagnostics
             .lock()
-            .await
             .get(&url)
             .is_some_and(|d| !d.is_empty()),
         "workspace scope must keep a closed file's diagnostics",
@@ -177,11 +158,7 @@ async fn switching_scope_retracts_then_restores_unopened_diagnostics() {
     let backend = make_backend_with(DiagnosticsScope::Workspace);
     index_dir(&backend, temp.path()).await;
     assert!(
-        backend
-            .published_diagnostics
-            .lock()
-            .await
-            .contains_key(&url),
+        backend.published_diagnostics.lock().contains_key(&url),
         "workspace scope must diagnose the unopened file first",
     );
 
@@ -192,24 +169,16 @@ async fn switching_scope_retracts_then_restores_unopened_diagnostics() {
     };
 
     switch(DiagnosticsScope::OpenFiles);
-    backend.reconcile_published_diagnostics().await;
+    backend.reconcile_published_diagnostics();
     assert!(
-        !backend
-            .published_diagnostics
-            .lock()
-            .await
-            .contains_key(&url),
+        !backend.published_diagnostics.lock().contains_key(&url),
         "switching to open-files scope must retract the unopened file's diagnostics",
     );
 
     switch(DiagnosticsScope::Workspace);
-    backend.reconcile_published_diagnostics().await;
+    backend.reconcile_published_diagnostics();
     assert!(
-        backend
-            .published_diagnostics
-            .lock()
-            .await
-            .contains_key(&url),
+        backend.published_diagnostics.lock().contains_key(&url),
         "switching back to workspace scope must restore the diagnostics",
     );
 }

@@ -25,7 +25,7 @@ impl Backend {
         &self,
         params: CodeActionParams,
     ) -> Result<Option<CodeActionResponse>> {
-        let roots = self.workspace_roots.lock().await.clone();
+        let roots = self.workspace_roots.lock().clone();
         let actions = base_script_conflict_code_actions(&params.context.diagnostics, &roots);
         Ok((!actions.is_empty()).then_some(actions))
     }
@@ -36,11 +36,11 @@ impl Backend {
     ) -> Result<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let documents = self.documents.lock().await;
+        let documents = self.documents.lock();
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let handles = self.db_handles_for(&uri).await;
+        let handles = self.db_handles_for(&uri);
         let db = handles.db();
         let definitions =
             resolve_all_definitions(uri.as_str(), document, &db, source_position(position));
@@ -65,11 +65,11 @@ impl Backend {
     pub(crate) async fn _hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let documents = self.documents.lock().await;
+        let documents = self.documents.lock();
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let handles = self.db_handles_for(&uri).await;
+        let handles = self.db_handles_for(&uri);
         let db = handles.db();
         let Some(definition) =
             resolve_definition(uri.as_str(), document, &db, source_position(position))
@@ -92,11 +92,11 @@ impl Backend {
     ) -> Result<Option<SignatureHelp>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let documents = self.documents.lock().await;
+        let documents = self.documents.lock();
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let handles = self.db_handles_for(&uri).await;
+        let handles = self.db_handles_for(&uri);
         let db = handles.db();
         let compact_colon = self.config.load().formatter_compact_colon;
 
@@ -114,7 +114,7 @@ impl Backend {
         &self,
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
-        let documents = self.documents.lock().await;
+        let documents = self.documents.lock();
         let Some(document) = documents.get(&params.text_document.uri) else {
             return Ok(None);
         };
@@ -131,11 +131,11 @@ impl Backend {
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
-        let documents = self.documents.lock().await;
+        let documents = self.documents.lock();
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
-        let handles = self.db_handles_for(&uri).await;
+        let handles = self.db_handles_for(&uri);
         let db = handles.db();
         let data = collect_semantic_tokens(uri.as_str(), document, &db);
         let tokens: Vec<SemanticToken> = data
@@ -165,7 +165,7 @@ impl Backend {
         let tab_size = params.options.tab_size;
         let use_tabs = !params.options.insert_spaces;
 
-        let documents = self.documents.lock().await;
+        let documents = self.documents.lock();
         let Some(document) = documents.get(&uri) else {
             return Ok(None);
         };
