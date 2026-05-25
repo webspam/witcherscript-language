@@ -63,7 +63,7 @@ fn change_params(
 }
 
 #[test]
-fn rapid_did_change_submissions_apply_in_order() {
+fn did_change_applies_incremental_edits() {
     let backend = make_backend();
 
     let uri: Url = "file:///rapid_changes.ws".parse().unwrap();
@@ -75,12 +75,12 @@ fn rapid_did_change_submissions_apply_in_order() {
     assert_eq!(
         docs.get(&uri).map(|d| d.source.as_str()),
         Some("abcde"),
-        "consecutive did_change notifications must apply in submission order",
+        "each did_change must compose with prior buffer state and updated line index",
     );
 }
 
 #[test]
-fn interleaved_changes_across_two_documents_apply_in_order() {
+fn did_change_tracks_each_document_independently() {
     let backend = make_backend();
 
     let uri_a: Url = "file:///a.ws".parse().unwrap();
@@ -97,12 +97,12 @@ fn interleaved_changes_across_two_documents_apply_in_order() {
     assert_eq!(
         docs.get(&uri_a).map(|d| d.source.as_str()),
         Some("aXX"),
-        "cross-document changes must preserve per-document order",
+        "edits to one document must not leak into another's buffer",
     );
     assert_eq!(
         docs.get(&uri_b).map(|d| d.source.as_str()),
         Some("bYY"),
-        "cross-document changes must preserve per-document order",
+        "edits to one document must not leak into another's buffer",
     );
 }
 
