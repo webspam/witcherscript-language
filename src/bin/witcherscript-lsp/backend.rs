@@ -19,6 +19,7 @@ use lsp_types::{
 };
 use parking_lot::{Mutex, MutexGuard};
 use serde_json::{json, Value};
+use tokio::sync::Notify;
 use tracing::trace;
 use witcherscript_language::builtins::{builtin_source, load_builtins_index};
 use witcherscript_language::document::ParsedDocument;
@@ -93,6 +94,8 @@ pub(crate) struct Backend {
     pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
     pub(crate) cst_diag_cache: Arc<Mutex<HashMap<String, crate::cst_cache::CstCacheEntry>>>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
+    // Coalesces legacy-reindex bursts so an older scan cannot finish after a newer one and overwrite it.
+    pub(crate) reindex_notify: Arc<Notify>,
 }
 
 pub(crate) struct DbHandles<'a> {
@@ -144,6 +147,7 @@ impl Backend {
             script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
             cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
             initial_index_done: Arc::new(AtomicBool::new(false)),
+            reindex_notify: Arc::new(Notify::new()),
         }
     }
 

@@ -156,12 +156,7 @@ impl Backend {
                 count = legacy_events.len(),
                 "watched file events touched a legacy script directory; triggering full re-index"
             );
-            // index_workspace / index_base_scripts hit the disk; spawn so the input loop is not blocked.
-            let backend = self.clone();
-            crate::spawn_logged("legacy watched-file reindex", async move {
-                backend.index_workspace().await;
-                backend.index_base_scripts().await;
-            });
+            self.reindex_notify.notify_one();
             return;
         }
 
