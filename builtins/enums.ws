@@ -206,6 +206,7 @@ enum EComboAttackType {
 }
 
 enum EDialogActionIcon {
+    // This appears to be an overflow (C++ bit flags cast to Int32); it **very** likely should be `2147483648`
     DialogAction_LEVELUP3 = -2147483648,
     DialogAction_NONE = 1,
     DialogAction_AXII = 2,
