@@ -235,16 +235,26 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
         }
         IdentRole::FuncBareCall => {
             ctx.telemetry.definition_resolutions += 1;
-            let r = if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
-                None
-            } else {
-                push(
-                    ctx,
-                    ident,
-                    "unknown_function",
-                    format!("Unknown function '{name}'"),
-                );
-                Some(())
+            let r = match resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident) {
+                Some(def) if is_type_kind(def.symbol.kind) => {
+                    push(
+                        ctx,
+                        ident,
+                        "type_used_as_value",
+                        format!("Type '{name}' cannot be called as a function"),
+                    );
+                    Some(())
+                }
+                Some(_) => None,
+                None => {
+                    push(
+                        ctx,
+                        ident,
+                        "unknown_function",
+                        format!("Unknown function '{name}'"),
+                    );
+                    Some(())
+                }
             };
             ctx.telemetry.branch_func_bare_call_us += branch_start.elapsed().as_micros() as u64;
             ctx.telemetry.branch_func_bare_call_visits += 1;
@@ -255,16 +265,26 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 None
             } else {
                 ctx.telemetry.definition_resolutions += 1;
-                if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
-                    None
-                } else {
-                    push(
-                        ctx,
-                        ident,
-                        "unknown_identifier",
-                        format!("Unknown identifier '{name}'"),
-                    );
-                    Some(())
+                match resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident) {
+                    Some(def) if is_type_kind(def.symbol.kind) => {
+                        push(
+                            ctx,
+                            ident,
+                            "type_used_as_value",
+                            format!("Type '{name}' is used as a value here. Did you mean a value or instance of '{name}'?"),
+                        );
+                        Some(())
+                    }
+                    Some(_) => None,
+                    None => {
+                        push(
+                            ctx,
+                            ident,
+                            "unknown_identifier",
+                            format!("Unknown identifier '{name}'"),
+                        );
+                        Some(())
+                    }
                 }
             };
             ctx.telemetry.branch_bare_us += branch_start.elapsed().as_micros() as u64;
@@ -350,6 +370,13 @@ fn is_type_reference(ident: Node, parent: Node) -> bool {
         }
         _ => false,
     }
+}
+
+fn is_type_kind(kind: SymbolKind) -> bool {
+    matches!(
+        kind,
+        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State | SymbolKind::Enum
+    )
 }
 
 fn resolves_as_local<'tree>(ctx: &CstRuleCtx<'_, 'tree>, ident: Node<'tree>, name: &str) -> bool {

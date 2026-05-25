@@ -23,6 +23,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 15 | `abstract_instantiation` | error | `new T` on an abstract class |
 | 16 | `super_field_access` | error | `super.x` used outside of a method call |
 | 17 | `private_member_access` | error | Private field or method accessed from outside its declaring class |
+| 18 | `type_used_as_value` | error | Type name (class, struct, state, enum) used in a value position |
 
 ## Details
 
@@ -121,3 +122,9 @@ The compiler only resolves the `super.` qualifier for method dispatch. Inherited
 `receiver.member` or `receiver.method()` where `member` / `method` is declared `private` on a type, accessed from code outside that declaring type. Access from inside the declaring class, struct, or state is allowed.
 
 `default` and `hint` blocks intentionally allow private inherited fields and are not affected.
+
+### 18. Type used as value
+
+A bare identifier that resolves to a `class`, `struct`, `state`, or `enum` declaration but appears where a value is expected, e.g. `EnumGetMin(ESomeEnum)` or `var x : int; x = MyClass;`. Also fires when a type name is called like a function, e.g. `ESomeEnum()`.
+
+Type-position uses (`extends T`, `: T` annotations, `new T in owner`, `(T) value` casts, `@addMethod(T)` annotations) are unaffected. Enum *variants* used as values are also unaffected; only the enum's own name triggers the rule.
