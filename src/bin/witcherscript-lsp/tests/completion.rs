@@ -1,35 +1,23 @@
-use witcherscript_language::document::parse_document;
-use witcherscript_language::line_index::SourcePosition;
+use witcherscript_language::test_support::TestDb;
 
 use crate::convert::completion_item;
 
 #[test]
 fn completion_item_method_has_method_kind() {
     use lsp_types::CompletionItemKind;
-    use witcherscript_language::resolve::{completion_members, SymbolDb, WorkspaceIndex};
+    use witcherscript_language::resolve::completion_members;
 
-    let source = concat!(
+    let t = TestDb::new(concat!(
         "class CExample {\n",
         "  public function DoThing() {}\n",
         "}\n",
         "function Test() {\n",
         "  var e : CExample;\n",
-        "  e.\n",
+        "  e.$0\n",
         "}\n",
-    );
-    let document = parse_document(source).expect("document should parse");
-    let mut workspace = WorkspaceIndex::default();
-    workspace.update_document("file:///example.ws", &document);
-
-    let members = completion_members(
-        "file:///example.ws",
-        &document,
-        &SymbolDb::new(&workspace, &WorkspaceIndex::default()),
-        SourcePosition {
-            line: 5,
-            character: 4,
-        },
-    );
+    ));
+    let (uri, pos) = t.cursor();
+    let members = completion_members(&uri, t.doc_for(&uri), &t.db(), pos);
 
     assert!(!members.is_empty(), "should have completion members");
     let (_, def) = &members[0];
@@ -46,32 +34,20 @@ fn completion_item_method_has_method_kind() {
 #[test]
 fn completion_item_snippet_includes_param_placeholders() {
     use lsp_types::{CompletionItemKind, InsertTextFormat};
-    use witcherscript_language::resolve::{completion_members, SymbolDb, WorkspaceIndex};
+    use witcherscript_language::resolve::completion_members;
 
-    let source = concat!(
+    let t = TestDb::new(concat!(
         "class CExample {\n",
         "  public function Find(findName : string, range : float) : int {}\n",
         "}\n",
         "function Test() {\n",
         "  var e : CExample;\n",
-        "  e.\n",
+        "  e.$0\n",
         "}\n",
-    );
-    let document = parse_document(source).expect("document should parse");
-    let mut workspace = WorkspaceIndex::default();
-    workspace.update_document("file:///example.ws", &document);
-
-    let base = WorkspaceIndex::default();
-    let db = SymbolDb::new(&workspace, &base);
-    let members = completion_members(
-        "file:///example.ws",
-        &document,
-        &db,
-        SourcePosition {
-            line: 5,
-            character: 4,
-        },
-    );
+    ));
+    let (uri, pos) = t.cursor();
+    let db = t.db();
+    let members = completion_members(&uri, t.doc_for(&uri), &db, pos);
 
     let (_, find_def) = members
         .iter()

@@ -1,7 +1,7 @@
 use lsp_types::{ParameterLabel, SymbolKind as LspSymbolKind};
-use witcherscript_language::document::parse_document;
 use witcherscript_language::line_index::SourcePosition;
 use witcherscript_language::resolve::SignatureHelpInfo;
+use witcherscript_language::test_support::TestDb;
 
 use crate::convert::{
     document_symbols, lsp_diagnostics, lsp_workspace_diagnostic, signature_help_response,
@@ -9,10 +9,8 @@ use crate::convert::{
 
 #[test]
 fn maps_core_diagnostics_to_lsp_diagnostics() {
-    let document = parse_document("function Bad() {\n a = 1;\n var b : int;\n}\n")
-        .expect("document should parse");
-
-    let diagnostics = lsp_diagnostics(&document);
+    let t = TestDb::new("function Bad() {\n a = 1;\n var b : int;\n}\n");
+    let diagnostics = lsp_diagnostics(t.primary_doc());
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].source.as_deref(), Some("witcherscript"));
@@ -24,10 +22,8 @@ fn maps_core_diagnostics_to_lsp_diagnostics() {
 
 #[test]
 fn ternary_diagnostic_maps_to_warning() {
-    let document = parse_document("function Pick() {\n var x : int;\n x = true ? 1 : 2;\n}\n")
-        .expect("document should parse");
-
-    let diagnostics = lsp_diagnostics(&document);
+    let t = TestDb::new("function Pick() {\n var x : int;\n x = true ? 1 : 2;\n}\n");
+    let diagnostics = lsp_diagnostics(t.primary_doc());
 
     let ternary = diagnostics
         .iter()
@@ -74,10 +70,8 @@ fn signature_help_response_maps_label_offsets_and_active_parameter() {
 
 #[test]
 fn maps_symbols_to_lsp_document_symbols() {
-    let document =
-        parse_document("class CExample {\n var value : int;\n}\n").expect("document should parse");
-
-    let symbols = document_symbols(&document.symbols, None, "file:///test.ws");
+    let t = TestDb::new("class CExample {\n var value : int;\n}\n");
+    let symbols = document_symbols(&t.primary_doc().symbols, None, t.primary_uri());
 
     assert_eq!(symbols.len(), 1);
     assert_eq!(symbols[0].name, "CExample");

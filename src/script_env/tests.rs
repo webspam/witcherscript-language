@@ -1,3 +1,5 @@
+use rstest::rstest;
+
 use super::*;
 
 fn write_temp(name: &str, content: &str) -> std::path::PathBuf {
@@ -52,40 +54,19 @@ fn camera_injected_when_absent_from_ini() {
     );
 }
 
-#[test]
-fn camera_override_respects_ini_state() {
-    struct Case {
-        name: &'static str,
-        ini_type: &'static str,
-        expected: &'static str,
-    }
-    let cases = [
-        Case {
-            name: "stock CCamera entry is overridden",
-            ini_type: "CCamera",
-            expected: "CCameraDirector",
-        },
-        Case {
-            name: "mod retyped is left untouched",
-            ini_type: "MyCustomCamera",
-            expected: "MyCustomCamera",
-        },
-    ];
-    for (idx, c) in cases.iter().enumerate() {
-        let path = write_temp(
-            &format!("se_camera_state{idx}.ini"),
-            &format!("[globals]\ntheCamera={}\n", c.ini_type),
-        );
-        let env = parse_script_environment(&path).unwrap();
-        let camera = env.find("theCamera").unwrap();
-        assert_eq!(camera.type_name, c.expected, "case: {}", c.name);
-        assert_eq!(
-            camera.symbol.type_annotation.as_deref(),
-            Some(c.expected),
-            "case: {}",
-            c.name,
-        );
-    }
+#[rstest]
+#[case::stock_ccamera_entry_is_overridden("se_camera_stock.ini", "CCamera", "CCameraDirector")]
+#[case::mod_retyped_is_left_untouched("se_camera_modded.ini", "MyCustomCamera", "MyCustomCamera")]
+fn camera_override_respects_ini_state(
+    #[case] file: &str,
+    #[case] ini_type: &str,
+    #[case] expected: &str,
+) {
+    let path = write_temp(file, &format!("[globals]\ntheCamera={ini_type}\n"));
+    let env = parse_script_environment(&path).unwrap();
+    let camera = env.find("theCamera").unwrap();
+    assert_eq!(camera.type_name, expected);
+    assert_eq!(camera.symbol.type_annotation.as_deref(), Some(expected));
 }
 
 #[test]
