@@ -134,13 +134,16 @@ impl Backend {
             let invalidated = {
                 let mut index = self.workspace_index.lock().await;
                 let mut docs = self.workspace_documents.lock().await;
+                let mut known = self.workspace_known_files.lock().await;
                 let mut invalidated: HashSet<String> = HashSet::new();
                 for (canonical, document) in updates {
                     invalidated.extend(index.update_document(canonical.as_str(), &document));
+                    known.insert(canonical.clone());
                     docs.insert(canonical, document);
                 }
                 for canonical in removals {
                     invalidated.extend(index.remove_document(&canonical));
+                    known.remove(&canonical);
                     docs.remove(&canonical);
                 }
                 invalidated

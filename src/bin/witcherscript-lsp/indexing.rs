@@ -312,6 +312,7 @@ impl Backend {
     pub(crate) async fn index_workspace(&self) {
         let roots = self.workspace_roots.lock().await.clone();
         if roots.is_empty() {
+            self.workspace_known_files.lock().await.clear();
             return;
         }
         let exclude_globs = self.files_exclude.lock().await.clone();
@@ -328,6 +329,11 @@ impl Backend {
                 }
             };
             let file_count = files.len();
+            let known_uris: HashSet<String> = files
+                .iter()
+                .filter_map(|p| Url::from_file_path(p).ok())
+                .map(|u| u.to_string())
+                .collect();
             let parsed: Vec<(String, ParsedDocument)> = files
                 .iter()
                 .filter_map(|path| {
@@ -346,11 +352,11 @@ impl Backend {
                     Some((uri.to_string(), document))
                 })
                 .collect();
-            Some((file_count, parsed))
+            Some((file_count, known_uris, parsed))
         })
         .await;
 
-        let (file_count, parsed) = match join_result {
+        let (file_count, known_uris, parsed) = match join_result {
             Ok(Some(v)) => v,
             Ok(None) => return,
             Err(err) => {
@@ -358,6 +364,8 @@ impl Backend {
                 return;
             }
         };
+
+        *self.workspace_known_files.lock().await = known_uris;
 
         // Skip files the editor has open; update_open_document keeps them indexed under the client spelling.
         let open_canonical: HashSet<String> = {

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::ControlFlow;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -97,6 +97,8 @@ pub(crate) struct Backend {
     pub(crate) sent_file_scope_status: Arc<Mutex<HashMap<Url, FileScopeStatusParams>>>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
+    // Canonical URIs the workspace walker yielded; "under a root but missing" means gitignored.
+    pub(crate) workspace_known_files: Arc<Mutex<HashSet<String>>>,
     // Transient index for editor-open files belonging to no project root.
     pub(crate) loose_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) builtins_index: Arc<WorkspaceIndex>,
@@ -153,6 +155,7 @@ impl Backend {
             sent_file_scope_status: Arc::new(Mutex::new(HashMap::new())),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
+            workspace_known_files: Arc::new(Mutex::new(HashSet::new())),
             loose_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             builtins_index: Arc::new(load_builtins_index()),
             script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
@@ -172,7 +175,19 @@ impl Backend {
         let Ok(path) = uri.to_file_path() else {
             return false;
         };
-        self.exclude_filter().await.matches(&path)
+        let roots = self.workspace_roots.lock().await;
+        if !roots.iter().any(|r| path.starts_with(r)) {
+            return false;
+        }
+        drop(roots);
+        // The set isn't authoritative until the startup walk has populated it.
+        if !self.initial_index_done.load(Ordering::Acquire) {
+            return false;
+        }
+        let Some(canonical) = canonical_uri(uri) else {
+            return false;
+        };
+        !self.workspace_known_files.lock().await.contains(&canonical)
     }
 
     pub(crate) async fn file_scope_of(&self, uri: &Url) -> FileScope {
