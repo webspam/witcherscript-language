@@ -377,6 +377,7 @@ impl Backend {
         {
             let mut index = self.workspace_index.lock();
             let mut docs = self.workspace_documents.lock();
+            index.begin_bulk_catalog_update();
             for (uri, document) in parsed {
                 if open_canonical.contains(&uri) {
                     continue;
@@ -385,6 +386,7 @@ impl Backend {
                 docs.insert(uri, document);
                 indexed += 1;
             }
+            index.end_bulk_catalog_update();
         }
 
         info!(
@@ -422,6 +424,7 @@ impl Backend {
             ws_idx.remove_document(&uri);
             ws_docs.remove(&uri);
         }
+        ws_idx.begin_bulk_catalog_update();
         for (uri, doc) in parsed {
             if open_canonical.contains(&uri) {
                 continue;
@@ -430,6 +433,7 @@ impl Backend {
             ws_docs.insert(uri.clone(), doc);
             tracked.insert(uri);
         }
+        ws_idx.end_bulk_catalog_update();
     }
 
     pub(crate) async fn index_base_scripts(&self) {
@@ -496,6 +500,7 @@ impl Backend {
             let mut base_index = WorkspaceIndex::default();
             let mut base_docs: HashMap<String, ParsedDocument> = HashMap::new();
             let mut base_total: usize = 0;
+            base_index.begin_bulk_catalog_update();
 
             for (label, root) in &base_segments {
                 let seg_start = Instant::now();
@@ -578,6 +583,7 @@ impl Backend {
                 base_index.remove_document(skip_uri);
                 base_docs.remove(skip_uri);
             }
+            base_index.end_bulk_catalog_update();
             let matched_count = skip_base.len();
             let legacy_total = legacy_parsed.len();
 

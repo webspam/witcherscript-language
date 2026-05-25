@@ -291,6 +291,104 @@ class Foo { function Bar() {} }
 }
 
 #[test]
+fn completion_catalog_stable_on_local_var_edit() {
+    let baseline = make_doc("class A { function F() { var x : int; } }\n");
+    let mut index = crate::resolve::WorkspaceIndex::default();
+    index.update_document("file:///a.ws", &baseline);
+    let callables = index.callables_catalog();
+    let types = index.types_catalog();
+    let variants = index.enum_variants_catalog();
+
+    index.update_document(
+        "file:///a.ws",
+        &make_doc("class A { function F() { var x : int; var y : float; } }\n"),
+    );
+
+    assert!(std::sync::Arc::ptr_eq(
+        &callables,
+        &index.callables_catalog()
+    ));
+    assert!(std::sync::Arc::ptr_eq(&types, &index.types_catalog()));
+    assert!(std::sync::Arc::ptr_eq(
+        &variants,
+        &index.enum_variants_catalog()
+    ));
+}
+
+#[test]
+fn completion_catalog_rebuilds_on_top_level_change() {
+    let mut index = crate::resolve::WorkspaceIndex::default();
+    index.update_document("file:///a.ws", &make_doc("function F() {}\n"));
+    let before = index.callables_catalog();
+
+    index.update_document("file:///a.ws", &make_doc("function G() {}\n"));
+    let after = index.callables_catalog();
+
+    assert!(!std::sync::Arc::ptr_eq(&before, &after));
+    let names: Vec<_> = after.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(names.contains(&"G"));
+    assert!(!names.contains(&"F"));
+}
+
+#[test]
+fn merged_global_completions_matches_lsp_cache_globals_shape() {
+    let t =
+        crate::test_support::TestDb::new("function Caller() {\n  $0\n}\n").with_builtins_index();
+    let env = super::make_env("theGame", "CR4Game");
+    let db = t.db().with_script_env(&env);
+    let globals = crate::resolve::merged_global_completions(&db);
+    let names: std::collections::HashSet<&str> =
+        globals.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(names.contains("theGame"));
+    assert!(names.contains("AD_Front"));
+}
+
+#[test]
+fn merged_enum_variants_catalog_includes_builtins() {
+    let workspace = crate::resolve::WorkspaceIndex::default();
+    let base = crate::resolve::WorkspaceIndex::default();
+    let builtins = crate::builtins::load_builtins_index();
+    let db = crate::resolve::SymbolDb::new(&workspace, &base).with_builtins(&builtins);
+    let merged = db.merged_enum_variants_catalog();
+    assert!(
+        merged.iter().any(|d| d.symbol.name == "AD_Front"),
+        "merged enum variants must include builtins; sample missing"
+    );
+}
+
+#[test]
+fn merged_callables_workspace_shadows_base_and_excludes_exec_quest() {
+    let mut workspace = crate::resolve::WorkspaceIndex::default();
+    workspace.update_document("file:///mod/ws", &make_doc("function WorkspaceFn() {}\n"));
+
+    let mut base = crate::resolve::WorkspaceIndex::default();
+    base.update_document(
+        "file:///base/a.ws",
+        &make_doc(
+            "exec function DebugCmd() {}\n\
+             quest function QuestFn() {}\n\
+             function BaseFn() {}\n\
+             function WorkspaceFn() {}\n",
+        ),
+    );
+
+    let db = crate::resolve::SymbolDb::new(&workspace, &base);
+    let merged = db.merged_callables_catalog();
+    let names: Vec<_> = merged.iter().map(|d| d.symbol.name.as_str()).collect();
+
+    assert!(names.contains(&"WorkspaceFn"));
+    assert!(names.contains(&"BaseFn"));
+    assert!(!names.contains(&"DebugCmd"));
+    assert!(!names.contains(&"QuestFn"));
+
+    let ws_fn = merged
+        .iter()
+        .find(|d| d.symbol.name == "WorkspaceFn")
+        .expect("workspace function present");
+    assert_eq!(ws_fn.uri, "file:///mod/ws");
+}
+
+#[test]
 fn removing_duplicate_enum_variant_keeps_original_visible() {
     let mut t = TestDb::new(
         "\

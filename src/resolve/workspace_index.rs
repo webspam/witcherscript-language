@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use tree_sitter::Node;
 
@@ -6,6 +7,9 @@ use crate::document::ParsedDocument;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
 use super::ast::is_type_like;
+use super::completion_catalog::{
+    build_callables, build_enum_variants, build_types, global_catalog_changed, CompletionCatalog,
+};
 use super::{annotation_target_class, Definition, ObservationSet};
 
 #[derive(Debug, Clone, Default)]
@@ -25,6 +29,9 @@ pub struct WorkspaceIndex {
     member_subscribers: HashMap<(String, String), HashSet<String>>,
     enum_variant_subscribers: HashMap<String, HashSet<String>>,
     subscriber_keys: HashMap<String, ObservationSet>,
+    completion_catalog: CompletionCatalog,
+    completion_catalog_dirty: bool,
+    catalog_rebuild_suppressed: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -69,6 +76,10 @@ impl WorkspaceIndex {
 
         self.documents.insert(uri, all_symbols);
         self.generation = self.generation.wrapping_add(1);
+        if global_catalog_changed(&changed_keys) {
+            self.completion_catalog_dirty = true;
+            self.maybe_rebuild_completion_catalog();
+        }
         invalidated
     }
 
@@ -86,7 +97,47 @@ impl WorkspaceIndex {
             .unwrap_or_default();
         let invalidated = self.subscribers_of(&changed_keys);
         self.generation = self.generation.wrapping_add(1);
+        if global_catalog_changed(&changed_keys) {
+            self.completion_catalog_dirty = true;
+            self.maybe_rebuild_completion_catalog();
+        }
         invalidated
+    }
+
+    pub fn begin_bulk_catalog_update(&mut self) {
+        self.catalog_rebuild_suppressed = self.catalog_rebuild_suppressed.saturating_add(1);
+    }
+
+    pub fn end_bulk_catalog_update(&mut self) {
+        self.catalog_rebuild_suppressed = self.catalog_rebuild_suppressed.saturating_sub(1);
+        self.maybe_rebuild_completion_catalog();
+    }
+
+    pub fn rebuild_completion_catalog(&mut self) {
+        self.completion_catalog = CompletionCatalog {
+            callables: Arc::from(build_callables(&self.top_level_by_name)),
+            types: Arc::from(build_types(&self.top_level_by_name)),
+            enum_variants: Arc::from(build_enum_variants(&self.enum_variant_by_name)),
+        };
+        self.completion_catalog_dirty = false;
+    }
+
+    fn maybe_rebuild_completion_catalog(&mut self) {
+        if self.completion_catalog_dirty && self.catalog_rebuild_suppressed == 0 {
+            self.rebuild_completion_catalog();
+        }
+    }
+
+    pub fn callables_catalog(&self) -> Arc<[Definition]> {
+        self.completion_catalog.callables.clone()
+    }
+
+    pub fn types_catalog(&self) -> Arc<[Definition]> {
+        self.completion_catalog.types.clone()
+    }
+
+    pub fn enum_variants_catalog(&self) -> Arc<[Definition]> {
+        self.completion_catalog.enum_variants.clone()
     }
 
     pub fn register_subscription(&mut self, subscriber_uri: &str, observations: ObservationSet) {
@@ -345,26 +396,15 @@ impl WorkspaceIndex {
     }
 
     pub fn all_enum_variants(&self) -> Vec<Definition> {
-        self.enum_variant_by_name.values().cloned().collect()
+        self.enum_variants_catalog().iter().cloned().collect()
     }
 
     pub fn all_types(&self) -> Vec<Definition> {
-        self.top_level_by_name
-            .values()
-            .filter(|d| is_type_like(d.symbol.kind) || d.symbol.kind == SymbolKind::Enum)
-            .cloned()
-            .collect()
+        self.types_catalog().iter().cloned().collect()
     }
 
     pub fn all_top_level_callables(&self) -> Vec<Definition> {
-        self.top_level_by_name
-            .values()
-            .filter(|d| {
-                matches!(d.symbol.kind, SymbolKind::Function | SymbolKind::Event)
-                    && !matches!(d.symbol.flavour.as_deref(), Some("exec") | Some("quest"))
-            })
-            .cloned()
-            .collect()
+        self.callables_catalog().iter().cloned().collect()
     }
 
     /// Unlike `top_level_by_name`, does not dedup by name — name collisions stay visible.

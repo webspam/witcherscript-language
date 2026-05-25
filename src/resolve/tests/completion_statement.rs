@@ -1,8 +1,8 @@
 use rstest::rstest;
 
 use super::super::{
-    completion_members, expression_completions, statement_completions, type_completions,
-    StatementCompletions,
+    completion_members, expression_completions, merged_global_completions, statement_completions,
+    type_completions, StatementCompletions,
 };
 use super::make_env;
 use crate::line_index::SourcePosition;
@@ -16,11 +16,15 @@ enum Bucket {
     Globals,
 }
 
-fn names(r: &StatementCompletions, bucket: Bucket) -> Vec<&str> {
+fn names<'a>(
+    r: &'a StatementCompletions,
+    bucket: Bucket,
+    globals: &'a [super::super::Definition],
+) -> Vec<&'a str> {
     match bucket {
         Bucket::Locals => def_names(&r.locals),
         Bucket::Members => def_names(&r.members),
-        Bucket::Globals => def_names(&r.globals),
+        Bucket::Globals => def_names(globals),
     }
 }
 
@@ -29,6 +33,14 @@ fn run_at_cursor(fixture: &str) -> (TestDb, StatementCompletions) {
     let (uri, pos) = t.cursor();
     let r = statement_completions(&uri, t.doc_for(&uri), &t.db(), pos);
     (t, r)
+}
+
+fn globals_for_stmt(t: &TestDb, r: &StatementCompletions) -> Vec<super::super::Definition> {
+    if r.needs_globals {
+        merged_global_completions(&t.db())
+    } else {
+        Vec::new()
+    }
 }
 
 #[rstest]
@@ -82,8 +94,9 @@ fn statement_completions_membership(
     #[case] expected: &[&str],
     #[case] excluded: &[&str],
 ) {
-    let (_t, r) = run_at_cursor(fixture);
-    let names = names(&r, bucket);
+    let (t, r) = run_at_cursor(fixture);
+    let globals = globals_for_stmt(&t, &r);
+    let names = names(&r, bucket, &globals);
     for n in expected {
         assert!(names.contains(n), "expected {n:?} in {names:?}");
     }
@@ -124,17 +137,18 @@ fn statement_completions_this_super_flags(
 )]
 #[case::leading_dot_with_no_lhs("class C {\n  function A() {\n    .$0\n  }\n}\n")]
 fn statement_completions_all_empty(#[case] fixture: &str) {
-    let (_t, r) = run_at_cursor(fixture);
+    let (t, r) = run_at_cursor(fixture);
+    let globals = globals_for_stmt(&t, &r);
     assert!(
         r.locals.is_empty()
             && r.members.is_empty()
-            && r.globals.is_empty()
+            && globals.is_empty()
             && !r.has_this
             && !r.has_super,
         "expected all-empty, got locals={:?} members={:?} globals={:?} has_this={} has_super={}",
         def_names(&r.locals),
         def_names(&r.members),
-        def_names(&r.globals),
+        def_names(&globals),
         r.has_this,
         r.has_super,
     );
@@ -151,15 +165,15 @@ fn parameter_appears_with_kind_parameter() {
 
 #[test]
 fn enum_variants_appear_in_globals_with_correct_kind() {
-    let (_t, r) = run_at_cursor("enum EColor { ERed = 0, EBlue = 1 }\nfunction F() {\n  $0\n}\n");
-    let has_variant = r
-        .globals
+    let (t, r) = run_at_cursor("enum EColor { ERed = 0, EBlue = 1 }\nfunction F() {\n  $0\n}\n");
+    let globals = globals_for_stmt(&t, &r);
+    let has_variant = globals
         .iter()
         .any(|d| d.symbol.name == "ERed" && d.symbol.kind == SymbolKind::EnumVariant);
     assert!(
         has_variant,
         "enum variants must appear in statement-context globals; got {:?}",
-        def_names(&r.globals)
+        def_names(&globals)
     );
 }
 
@@ -170,8 +184,12 @@ fn script_env_globals_appear_in_statement_completions() {
     let db = t.db().with_script_env(&env);
     let (uri, pos) = t.cursor();
     let r = statement_completions(&uri, t.doc_for(&uri), &db, pos);
-    let global = r
-        .globals
+    let globals = if r.needs_globals {
+        merged_global_completions(&db)
+    } else {
+        Vec::new()
+    };
+    let global = globals
         .iter()
         .find(|d| d.symbol.name == "theGame")
         .expect("script env global must appear");
@@ -187,7 +205,9 @@ fn script_env_globals_appear_in_expression_completions() {
     let (uri, pos) = t.cursor();
     let r = expression_completions(&uri, t.doc_for(&uri), &db, pos)
         .expect("expression completions should fire after `return `");
-    assert!(r.globals.iter().any(|d| d.symbol.name == "theGame"));
+    assert!(r.needs_globals);
+    let globals = merged_global_completions(&db);
+    assert!(globals.iter().any(|d| d.symbol.name == "theGame"));
 }
 
 fn stmt_at(t: &TestDb, line: u32, character: u32) -> StatementCompletions {
@@ -278,7 +298,7 @@ fn blank_in_class_body_yields_no_completions_anywhere() {
     assert!(
         stmt.locals.is_empty()
             && stmt.members.is_empty()
-            && stmt.globals.is_empty()
+            && !stmt.needs_globals
             && !stmt.has_this
             && !stmt.has_super
     );
@@ -308,10 +328,7 @@ fn function_name_in_class_body_yields_no_statement_completions() {
     ));
     let stmt = stmt_at(&t, 4, 19);
     assert!(
-        stmt.locals.is_empty()
-            && stmt.members.is_empty()
-            && stmt.globals.is_empty()
-            && !stmt.has_this
+        stmt.locals.is_empty() && stmt.members.is_empty() && !stmt.needs_globals && !stmt.has_this
     );
 }
 
@@ -325,7 +342,7 @@ fn parameter_name_position_yields_no_statement_completions() {
         assert!(
             stmt.locals.is_empty()
                 && stmt.members.is_empty()
-                && stmt.globals.is_empty()
+                && !stmt.needs_globals
                 && !stmt.has_this,
             "all-empty expected at {label}"
         );
@@ -345,10 +362,7 @@ fn local_var_name_position_yields_no_completions_anywhere() {
     assert!(type_completions(t.primary_doc(), &t.db(), pos).is_empty());
     let stmt = stmt_at(&t, 11, 8);
     assert!(
-        stmt.locals.is_empty()
-            && stmt.members.is_empty()
-            && stmt.globals.is_empty()
-            && !stmt.has_this
+        stmt.locals.is_empty() && stmt.members.is_empty() && !stmt.needs_globals && !stmt.has_this
     );
 }
 
@@ -369,8 +383,18 @@ fn statement_completions_fire_in_error_state(#[case] fixture: &str) {
 fn statement_completions_blocked_at_name_being_declared(#[case] fixture: &str) {
     let (_t, r) = run_at_cursor(fixture);
     assert!(
-        !r.has_this && r.locals.is_empty() && r.members.is_empty() && r.globals.is_empty(),
+        !r.has_this && r.locals.is_empty() && r.members.is_empty() && !r.needs_globals,
         "all-empty expected when about to declare a new name"
+    );
+}
+
+#[test]
+fn typing_statement_keyword_skips_globals() {
+    let (_t, r) = run_at_cursor("function Test() {\n  if$0\n}\n");
+    assert!(r.active);
+    assert!(
+        !r.needs_globals,
+        "keyword token should not load global catalogue"
     );
 }
 

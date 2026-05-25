@@ -147,7 +147,8 @@ fn bench_statement_completions(fixture: WorkspaceFixture) {
     };
     let result = statement_completions(TARGET_URI, &target_doc, &db, pos);
     assert!(
-        !result.locals.is_empty() || !result.members.is_empty() || !result.globals.is_empty(),
+        result.active
+            && (!result.locals.is_empty() || !result.members.is_empty() || result.needs_globals),
         "synth layout drifted: cursor no longer lands inside a method body with visible symbols"
     );
     black_box(result);
@@ -168,9 +169,37 @@ library_benchmark_group!(
     benchmarks = bench_resolve_definition, bench_find_references
 );
 
+fn build_large_base_fixture() -> WorkspaceFixture {
+    let mut base = WorkspaceIndex::default();
+    base.begin_bulk_catalog_update();
+    for (uri, source) in synth::synth_workspace(500) {
+        let doc = parse_document(source).expect("synth source must parse");
+        base.update_document(uri.to_string(), &doc);
+    }
+    base.end_bulk_catalog_update();
+
+    let target_doc = parse_document(synth::synth_file(6, 6)).expect("synth target must parse");
+    let mut workspace = WorkspaceIndex::default();
+    workspace.update_document(TARGET_URI.to_string(), &target_doc);
+    (workspace, base, target_doc)
+}
+
+#[library_benchmark]
+#[bench::main(setup = build_large_base_fixture)]
+fn bench_statement_completions_large_base(fixture: WorkspaceFixture) {
+    let (workspace, base, target_doc) = fixture;
+    let db = SymbolDb::new(&workspace, &base);
+    let pos = SourcePosition {
+        line: 7,
+        character: 4,
+    };
+    black_box(statement_completions(TARGET_URI, &target_doc, &db, pos));
+}
+
 library_benchmark_group!(
     name = completion_group;
-    benchmarks = bench_completion_members, bench_statement_completions
+    benchmarks = bench_completion_members, bench_statement_completions,
+        bench_statement_completions_large_base
 );
 
 main!(

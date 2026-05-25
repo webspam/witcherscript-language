@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use crate::script_env::ScriptEnvironment;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
+use super::completion_catalog::{merge_ws_base, merge_ws_base_three};
 use super::workspace_index::WorkspaceIndex;
 use super::{dedup_by_name, dedup_definitions, Definition, ObservationSet, MAX_INHERITANCE_DEPTH};
 
@@ -125,17 +126,10 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn all_enum_variants(&self) -> Vec<Definition> {
-        dedup_by_name(
-            self.workspace
-                .all_enum_variants()
-                .into_iter()
-                .chain(self.base.all_enum_variants())
-                .chain(
-                    self.builtins
-                        .map(|b| b.all_enum_variants())
-                        .unwrap_or_default(),
-                ),
-        )
+        self.merged_enum_variants_catalog()
+            .iter()
+            .cloned()
+            .collect()
     }
 
     pub fn superclass_of(&self, class_name: &str) -> Option<String> {
@@ -304,28 +298,36 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn all_types(&self) -> Vec<Definition> {
-        dedup_by_name(
-            self.workspace
-                .all_types()
-                .into_iter()
-                .chain(self.base.all_types())
-                .chain(
-                    self.builtins
-                        .map(|b| b.all_types())
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter(|d| !crate::builtins::is_non_type_builtin(&d.uri)),
-                ),
-        )
+        self.merged_types_catalog().iter().cloned().collect()
     }
 
     pub fn all_top_level_callables(&self) -> Vec<Definition> {
-        dedup_by_name(
-            self.workspace
-                .all_top_level_callables()
-                .into_iter()
-                .chain(self.base.all_top_level_callables()),
+        self.merged_callables_catalog().iter().cloned().collect()
+    }
+
+    pub fn merged_callables_catalog(&self) -> std::sync::Arc<[Definition]> {
+        merge_ws_base(
+            self.workspace.callables_catalog(),
+            self.base.callables_catalog(),
         )
+    }
+
+    pub fn merged_types_catalog(&self) -> std::sync::Arc<[Definition]> {
+        let ws = self.workspace.types_catalog();
+        let base = self.base.types_catalog();
+        match self.builtins {
+            Some(_) => merge_ws_base_three(ws, base, crate::builtins::types_completion_catalog()),
+            None => merge_ws_base(ws, base),
+        }
+    }
+
+    pub fn merged_enum_variants_catalog(&self) -> std::sync::Arc<[Definition]> {
+        let ws = self.workspace.enum_variants_catalog();
+        let base = self.base.enum_variants_catalog();
+        match self.builtins {
+            Some(b) => merge_ws_base_three(ws, base, b.enum_variants_catalog()),
+            None => merge_ws_base(ws, base),
+        }
     }
 
     pub fn all_script_globals(&self) -> Vec<Definition> {

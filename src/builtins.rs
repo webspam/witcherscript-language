@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use crate::document::{parse_document, ParsedDocument};
-use crate::resolve::WorkspaceIndex;
+use crate::resolve::{Definition, WorkspaceIndex};
 
 pub const BUILTIN_ARRAY_URI: &str = "witcherscript-builtin:/array.ws";
 pub const BUILTIN_ENUMS_URI: &str = "witcherscript-builtin:/enums.ws";
@@ -62,7 +62,28 @@ pub fn is_non_type_builtin(uri: &str) -> bool {
     uri == BUILTIN_ARRAY_URI || uri == BUILTIN_ORPHAN_ENUMS_URI
 }
 
+static BUILTINS: LazyLock<(WorkspaceIndex, Arc<[Definition]>)> = LazyLock::new(|| {
+    let index = build_builtins_index();
+    let types = Arc::from(
+        index
+            .types_catalog()
+            .iter()
+            .filter(|d| !is_non_type_builtin(&d.uri))
+            .cloned()
+            .collect::<Vec<_>>(),
+    );
+    (index, types)
+});
+
+pub fn types_completion_catalog() -> Arc<[Definition]> {
+    BUILTINS.1.clone()
+}
+
 pub fn load_builtins_index() -> WorkspaceIndex {
+    BUILTINS.0.clone()
+}
+
+fn build_builtins_index() -> WorkspaceIndex {
     let mut index = WorkspaceIndex::default();
     for (&uri, &source) in BUILTIN_SOURCES.iter() {
         insert_builtin(&mut index, uri, source);

@@ -65,9 +65,10 @@ fn cursor_before_eq(assign: Node, byte_offset: usize) -> bool {
 }
 
 pub struct StatementCompletions {
+    pub active: bool,
     pub locals: Vec<Definition>,
     pub members: Vec<Definition>,
-    pub globals: Vec<Definition>,
+    pub needs_globals: bool,
     pub has_this: bool,
     pub has_super: bool,
     pub in_switch: bool,
@@ -81,9 +82,10 @@ pub fn statement_completions(
     position: SourcePosition,
 ) -> StatementCompletions {
     statement_completions_inner(uri, document, db, position).unwrap_or(StatementCompletions {
+        active: false,
         locals: vec![],
         members: vec![],
-        globals: vec![],
+        needs_globals: false,
         has_this: false,
         has_super: false,
         in_switch: false,
@@ -119,9 +121,10 @@ fn statement_completions_inner(
         .any(|n| find_ancestor_of_kind(*n, &["for_stmt", "while_stmt", "do_while_stmt"]).is_some());
 
     Some(StatementCompletions {
+        active: true,
         locals: base.locals,
         members: base.members,
-        globals: base.globals,
+        needs_globals: base.needs_globals,
         has_this: base.has_this,
         has_super: base.has_super,
         in_switch,
@@ -132,7 +135,7 @@ fn statement_completions_inner(
 pub struct ExpressionCompletions {
     pub locals: Vec<Definition>,
     pub members: Vec<Definition>,
-    pub globals: Vec<Definition>,
+    pub needs_globals: bool,
     pub has_this: bool,
     pub has_super: bool,
 }
@@ -200,7 +203,7 @@ fn expression_completions_inner(
     Some(ExpressionCompletions {
         locals: base.locals,
         members: base.members,
-        globals: base.globals,
+        needs_globals: base.needs_globals,
         has_this: base.has_this,
         has_super: base.has_super,
     })
@@ -209,7 +212,7 @@ fn expression_completions_inner(
 struct FunctionBodyContext {
     locals: Vec<Definition>,
     members: Vec<Definition>,
-    globals: Vec<Definition>,
+    needs_globals: bool,
     has_this: bool,
     has_super: bool,
 }
@@ -279,16 +282,21 @@ fn function_body_completions<'a>(
         .and_then(|t| t.base_class.as_deref())
         .is_some();
 
-    let mut globals = db.all_top_level_callables();
-    globals.extend(db.all_script_globals());
-    globals.extend(db.all_enum_variants());
+    const STMT_KEYWORD_KINDS: &[&str] = &[
+        "if", "else", "var", "return", "do", "while", "for", "switch", "case", "default", "break",
+        "continue",
+    ];
+    let writing_keyword = nodes
+        .last()
+        .is_some_and(|n| is_kind_or_error_wrapped_kind(*n, STMT_KEYWORD_KINDS));
+    let needs_globals = (at_start || writing_first) && !writing_keyword;
 
     Some((
         nodes,
         FunctionBodyContext {
             locals,
             members,
-            globals,
+            needs_globals,
             has_this,
             has_super,
         },
