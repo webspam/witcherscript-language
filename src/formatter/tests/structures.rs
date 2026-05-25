@@ -63,6 +63,28 @@ fn spaces_around_binary_operators_in_for_header() {
 }
 
 #[test]
+fn formatter_never_drops_non_whitespace_content() {
+    let input = "function SomeFunc() {\n    var i, count: int;\n    for (i = 0, count = 512; i < count; i += 1) {\n        break;\n    }\n}\n";
+    let output = fmt(input);
+    let strip_ws = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    assert_eq!(
+        strip_ws(input),
+        strip_ws(&output),
+        "formatter dropped non-whitespace content;\ninput:\n{input}\noutput:\n{output}"
+    );
+}
+
+#[test]
+fn formats_for_loop_with_comma_separated_init() {
+    let input = "function F() { for(i=0,count=512;i<count;i+=1){} }";
+    let output = fmt(input);
+    assert!(
+        output.contains("for (i = 0, count = 512; i < count; i += 1) {"),
+        "got:\n{output}"
+    );
+}
+
+#[test]
 fn normalizes_expr_whitespace() {
     let input = "function F() { var x : int = SomeObj  .Method   (  ); }";
     let output = fmt(input);
