@@ -17,6 +17,10 @@ static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock
             "witcherscript-builtin:/EInputKey.ws",
             include_str!("../builtins/EInputKey.ws"),
         ),
+        (
+            "witcherscript-builtin:/EShowFlags.ws",
+            include_str!("../builtins/EShowFlags.ws"),
+        ),
         (BUILTIN_ENUMS_URI, include_str!("../builtins/enums.ws")),
         (
             BUILTIN_ORPHAN_ENUMS_URI,
