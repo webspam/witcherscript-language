@@ -119,6 +119,14 @@ fn kinds(diags: &[super::WorkspaceDiagnostic]) -> Vec<&str> {
     "class Foo {} \
      @wrapMethod(Foo) function W() { wrappedMethod(); }\n"
 )]
+#[case::enum_variant_used_as_value("enum E { V } function F() { var x : E; x = V; }\n")]
+#[case::type_name_in_annotation("class C {} function F() { var x : C; }\n")]
+#[case::type_name_in_new_expr(
+    "class C {} function F(host : C) { var c : C; c = new C in host; }\n"
+)]
+#[case::type_name_in_cast(
+    "class C {} class D {} function F() { var c : C; var d : D; d = (D) c; }\n"
+)]
 fn produces_no_diagnostics(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     let result = collect_unknown_symbol_diagnostics(&t.search_docs(), &t.db());
@@ -196,6 +204,27 @@ fn produces_no_diagnostics(#[case] fixture: &str) {
      @addMethod(Foo) function A() { wrappedMethod(); }\n",
     &["unknown_function"],
     &["wrappedMethod"],
+)]
+#[case::type_used_as_value_enum_arg(
+    "enum E { V } function EnumGetMin(e : int) : int { return 0; } \
+     function F() { var i : int; i = EnumGetMin(E); }\n",
+    &["type_used_as_value"],
+    &["'E'"],
+)]
+#[case::type_used_as_value_class_arg(
+    "class C {} function F(p : int) {} function G() { F(C); }\n",
+    &["type_used_as_value"],
+    &["'C'"],
+)]
+#[case::type_used_as_value_assignment(
+    "class C {} function F() { var x : int; x = C; }\n",
+    &["type_used_as_value"],
+    &["'C'"],
+)]
+#[case::type_used_as_function_call(
+    "enum E { V } function F() { E(); }\n",
+    &["type_used_as_value"],
+    &["cannot be called", "'E'"],
 )]
 fn produces_kinds_and_message_substrings(
     #[case] fixture: &str,
