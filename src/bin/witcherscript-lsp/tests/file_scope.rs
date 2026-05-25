@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use lsp_types::Url;
+use rstest::rstest;
 use witcherscript_language::files::canonical_uri;
 
 use crate::file_scope::{classify_file_scope, FileScope};
@@ -19,130 +20,115 @@ fn url(rel: &str) -> Url {
     Url::from_file_path(dir(rel)).expect("file url")
 }
 
-#[test]
-fn classifies_file_scope() {
-    struct Case {
-        name: &'static str,
-        uri: Url,
-        roots: Vec<PathBuf>,
-        legacy: Vec<PathBuf>,
-        replacements: HashMap<String, String>,
-        game: Option<PathBuf>,
-        additional: Vec<PathBuf>,
-        expected: FileScope,
-    }
-
-    let override_uri = url("legacy/game/r4Player.ws");
-    let mut override_map = HashMap::new();
-    override_map.insert(
-        canonical_uri(&override_uri).expect("canonical override uri"),
+fn override_map() -> HashMap<String, String> {
+    let mut m = HashMap::new();
+    m.insert(
+        canonical_uri(&url("legacy/game/r4Player.ws")).expect("canonical override uri"),
         "game/r4Player.ws".to_string(),
     );
+    m
+}
 
-    let cases = [
-        Case {
-            name: "under a workspace root",
-            uri: url("proj/Foo.ws"),
-            roots: vec![dir("proj")],
-            legacy: vec![],
-            replacements: HashMap::new(),
-            game: None,
-            additional: vec![],
-            expected: FileScope::InProject,
-        },
-        Case {
-            name: "no workspace folders open",
-            uri: url("anywhere/Foo.ws"),
-            roots: vec![],
-            legacy: vec![],
-            replacements: HashMap::new(),
-            game: None,
-            additional: vec![],
-            expected: FileScope::SingleFile,
-        },
-        Case {
-            name: "workspace open but file outside every root",
-            uri: url("outside/Foo.ws"),
-            roots: vec![dir("proj")],
-            legacy: vec![],
-            replacements: HashMap::new(),
-            game: None,
-            additional: vec![],
-            expected: FileScope::OutOfScope,
-        },
-        Case {
-            name: "legacy dir, recorded as a base override",
-            uri: override_uri.clone(),
-            roots: vec![dir("proj")],
-            legacy: vec![dir("legacy")],
-            replacements: override_map.clone(),
-            game: None,
-            additional: vec![],
-            expected: FileScope::LegacyOverride,
-        },
-        Case {
-            name: "legacy dir, not an override",
-            uri: url("legacy/game/New.ws"),
-            roots: vec![dir("proj")],
-            legacy: vec![dir("legacy")],
-            replacements: HashMap::new(),
-            game: None,
-            additional: vec![],
-            expected: FileScope::LegacyNew,
-        },
-        Case {
-            name: "under the game directory",
-            uri: url("game/content/content0/scripts/game/r4Player.ws"),
-            roots: vec![dir("proj")],
-            legacy: vec![],
-            replacements: HashMap::new(),
-            game: Some(dir("game")),
-            additional: vec![],
-            expected: FileScope::AdditionalBase,
-        },
-        Case {
-            name: "under an additional script directory",
-            uri: url("extra/Lib.ws"),
-            roots: vec![dir("proj")],
-            legacy: vec![],
-            replacements: HashMap::new(),
-            game: None,
-            additional: vec![dir("extra")],
-            expected: FileScope::AdditionalBase,
-        },
-        Case {
-            name: "legacy precedence beats additional for the same dir",
-            uri: url("shared/game/r4Player.ws"),
-            roots: vec![dir("proj")],
-            legacy: vec![dir("shared")],
-            replacements: HashMap::new(),
-            game: None,
-            additional: vec![dir("shared")],
-            expected: FileScope::LegacyNew,
-        },
-        Case {
-            name: "workspace root nested over a legacy dir wins",
-            uri: url("proj/legacy/game/r4Player.ws"),
-            roots: vec![dir("proj")],
-            legacy: vec![dir("proj/legacy")],
-            replacements: HashMap::new(),
-            game: None,
-            additional: vec![],
-            expected: FileScope::InProject,
-        },
-    ];
-
-    for c in cases {
-        let got = classify_file_scope(
-            &c.uri,
-            &c.roots,
-            &c.legacy,
-            &c.replacements,
-            c.game.as_deref(),
-            &c.additional,
-        );
-        assert_eq!(got, c.expected, "case '{}': scope mismatch", c.name);
-    }
+#[rstest]
+#[case::under_a_workspace_root(
+    url("proj/Foo.ws"),
+    vec![dir("proj")],
+    vec![],
+    HashMap::new(),
+    None,
+    vec![],
+    FileScope::InProject,
+)]
+#[case::no_workspace_folders_open(
+    url("anywhere/Foo.ws"),
+    vec![],
+    vec![],
+    HashMap::new(),
+    None,
+    vec![],
+    FileScope::SingleFile,
+)]
+#[case::workspace_open_but_file_outside_every_root(
+    url("outside/Foo.ws"),
+    vec![dir("proj")],
+    vec![],
+    HashMap::new(),
+    None,
+    vec![],
+    FileScope::OutOfScope,
+)]
+#[case::legacy_dir_recorded_as_a_base_override(
+    url("legacy/game/r4Player.ws"),
+    vec![dir("proj")],
+    vec![dir("legacy")],
+    override_map(),
+    None,
+    vec![],
+    FileScope::LegacyOverride,
+)]
+#[case::legacy_dir_not_an_override(
+    url("legacy/game/New.ws"),
+    vec![dir("proj")],
+    vec![dir("legacy")],
+    HashMap::new(),
+    None,
+    vec![],
+    FileScope::LegacyNew,
+)]
+#[case::under_the_game_directory(
+    url("game/content/content0/scripts/game/r4Player.ws"),
+    vec![dir("proj")],
+    vec![],
+    HashMap::new(),
+    Some(dir("game")),
+    vec![],
+    FileScope::AdditionalBase,
+)]
+#[case::under_an_additional_script_directory(
+    url("extra/Lib.ws"),
+    vec![dir("proj")],
+    vec![],
+    HashMap::new(),
+    None,
+    vec![dir("extra")],
+    FileScope::AdditionalBase,
+)]
+#[case::legacy_precedence_beats_additional_for_the_same_dir(
+    url("shared/game/r4Player.ws"),
+    vec![dir("proj")],
+    vec![dir("shared")],
+    HashMap::new(),
+    None,
+    vec![dir("shared")],
+    FileScope::LegacyNew,
+)]
+#[case::workspace_root_nested_over_a_legacy_dir_wins(
+    url("proj/legacy/game/r4Player.ws"),
+    vec![dir("proj")],
+    vec![dir("proj/legacy")],
+    HashMap::new(),
+    None,
+    vec![],
+    FileScope::InProject,
+)]
+fn classifies_file_scope(
+    #[case] uri: Url,
+    #[case] roots: Vec<PathBuf>,
+    #[case] legacy: Vec<PathBuf>,
+    #[case] replacements: HashMap<String, String>,
+    #[case] game: Option<PathBuf>,
+    #[case] additional: Vec<PathBuf>,
+    #[case] expected: FileScope,
+) {
+    let got = classify_file_scope(
+        &uri,
+        &roots,
+        &legacy,
+        &replacements,
+        game.as_deref(),
+        &additional,
+    );
+    assert_eq!(got, expected, "scope mismatch");
 }
 
 #[test]

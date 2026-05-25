@@ -1,4 +1,5 @@
 use lsp_types::{CodeActionKind, CodeActionOrCommand, Diagnostic, NumberOrString, Range};
+use rstest::rstest;
 use serde_json::json;
 
 use crate::convert::base_script_conflict_code_actions;
@@ -75,39 +76,24 @@ fn many_conflicts_in_one_directory_yield_a_single_quickfix() {
     );
 }
 
-#[test]
-fn no_quickfix_when_not_applicable() {
-    struct Case {
-        name: &'static str,
-        diagnostic: Diagnostic,
-    }
-    let cases = [
-        Case {
-            name: "unrelated diagnostic code",
-            diagnostic: diag(
-                Some("duplicate_symbol"),
-                Some(json!({ "directory": "D:\\x" })),
-            ),
-        },
-        Case {
-            name: "base_script_conflict without data",
-            diagnostic: diag(Some("base_script_conflict"), None),
-        },
-        Case {
-            name: "data missing the directory key",
-            diagnostic: diag(Some("base_script_conflict"), Some(json!({ "other": "x" }))),
-        },
-        Case {
-            name: "no diagnostic code",
-            diagnostic: diag(None, Some(json!({ "directory": "D:\\x" }))),
-        },
-    ];
-    for c in cases {
-        let actions = base_script_conflict_code_actions(&[c.diagnostic], &[]);
-        assert!(
-            actions.is_empty(),
-            "case '{}': expected no code actions, got {actions:?}",
-            c.name,
-        );
-    }
+#[rstest]
+#[case::unrelated_diagnostic_code(
+    Some("duplicate_symbol"),
+    Some(json!({ "directory": "D:\\x" })),
+)]
+#[case::base_script_conflict_without_data(Some("base_script_conflict"), None)]
+#[case::data_missing_directory_key(
+    Some("base_script_conflict"),
+    Some(json!({ "other": "x" })),
+)]
+#[case::no_diagnostic_code(None, Some(json!({ "directory": "D:\\x" })))]
+fn no_quickfix_when_not_applicable(
+    #[case] code: Option<&str>,
+    #[case] data: Option<serde_json::Value>,
+) {
+    let actions = base_script_conflict_code_actions(&[diag(code, data)], &[]);
+    assert!(
+        actions.is_empty(),
+        "expected no code actions, got {actions:?}"
+    );
 }
