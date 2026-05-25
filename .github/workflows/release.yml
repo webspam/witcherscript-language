@@ -3,10 +3,6 @@ name: Create Release
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Tag (e.g., v0.3.2)"
-        required: true
-        type: string
       title:
         description: "Title (defaults to tag)"
         required: false
@@ -35,6 +31,15 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
 
+      - name: Read version from Cargo.toml
+        id: version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $json = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $tag = "v$($json.packages[0].version)"
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
       - name: Build release binaries
         run: cargo build --release --bins
 
@@ -42,7 +47,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $zipPath = "witcherscript-language-${{ inputs.tag }}-windows-x64.zip"
+          $zipPath = "witcherscript-language-${{ steps.version.outputs.tag }}-windows-x64.zip"
           $stage = "stage"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item target/release/witcherscript-check.exe $stage/
@@ -56,7 +61,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $releaseTitle = "${{ inputs.title }}"
-          if ([string]::IsNullOrWhiteSpace($releaseTitle)) { $releaseTitle = "${{ inputs.tag }}" }
+          if ([string]::IsNullOrWhiteSpace($releaseTitle)) { $releaseTitle = "${{ steps.version.outputs.tag }}" }
 
           $releaseArgs = @()
           if ("${{ inputs.prerelease }}" -eq "true") { $releaseArgs += "--prerelease" }
@@ -66,11 +71,11 @@ jobs:
             $releaseArgs += "--notes-file", "summary.md"
           }
 
-          gh release create "${{ inputs.tag }}" `
+          gh release create "${{ steps.version.outputs.tag }}" `
             --title $releaseTitle `
             --draft `
             @releaseArgs `
             --generate-notes `
-            "witcherscript-language-${{ inputs.tag }}-windows-x64.zip"
+            "witcherscript-language-${{ steps.version.outputs.tag }}-windows-x64.zip"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
