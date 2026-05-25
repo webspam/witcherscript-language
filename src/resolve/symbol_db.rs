@@ -359,10 +359,12 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn merged_enum_variants_catalog(&self) -> std::sync::Arc<[Definition]> {
-        merge_ws_base(
-            self.workspace.enum_variants_catalog(),
-            self.base.enum_variants_catalog(),
-        )
+        let ws = self.workspace.enum_variants_catalog();
+        let base = self.base.enum_variants_catalog();
+        match self.builtins {
+            Some(b) => merge_ws_base_three(ws, base, b.enum_variants_catalog()),
+            None => merge_ws_base(ws, base),
+        }
     }
 
     pub fn all_script_globals(&self) -> Vec<Definition> {

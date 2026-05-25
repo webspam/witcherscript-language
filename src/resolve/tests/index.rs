@@ -331,6 +331,19 @@ fn completion_catalog_rebuilds_on_top_level_change() {
 }
 
 #[test]
+fn merged_enum_variants_catalog_includes_builtins() {
+    let workspace = crate::resolve::WorkspaceIndex::default();
+    let base = crate::resolve::WorkspaceIndex::default();
+    let builtins = crate::builtins::load_builtins_index();
+    let db = crate::resolve::SymbolDb::new(&workspace, &base).with_builtins(&builtins);
+    let merged = db.merged_enum_variants_catalog();
+    assert!(
+        merged.iter().any(|d| d.symbol.name == "AD_Front"),
+        "merged enum variants must include builtins; sample missing"
+    );
+}
+
+#[test]
 fn merged_callables_workspace_shadows_base_and_excludes_exec_quest() {
     let mut workspace = crate::resolve::WorkspaceIndex::default();
     workspace.update_document("file:///mod/ws", &make_doc("function WorkspaceFn() {}\n"));
