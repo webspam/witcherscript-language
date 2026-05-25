@@ -236,7 +236,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
         IdentRole::FuncBareCall => {
             ctx.telemetry.definition_resolutions += 1;
             let r = match resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident) {
-                Some(def) if is_type_kind(def.symbol.kind) => {
+                Some(def) if is_type_kind(def.symbol.kind) && def.symbol.name == name => {
                     push(
                         ctx,
                         ident,
@@ -266,7 +266,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             } else {
                 ctx.telemetry.definition_resolutions += 1;
                 match resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident) {
-                    Some(def) if is_type_kind(def.symbol.kind) => {
+                    Some(def) if is_type_kind(def.symbol.kind) && def.symbol.name == name => {
                         push(
                             ctx,
                             ident,

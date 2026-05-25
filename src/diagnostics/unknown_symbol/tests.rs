@@ -368,3 +368,72 @@ fn no_noise_inside_error_subtree() {
     let t = TestDb::new("function F() { x +=== bogus = ; }\n");
     let _ = collect_unknown_symbol_diagnostics(&t.search_docs(), &t.db());
 }
+
+fn script_env(name: &str, type_name: &str) -> crate::script_env::ScriptEnvironment {
+    use crate::line_index::{SourcePosition, SourceRange};
+    use crate::script_env::ScriptGlobal;
+    use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+    let pos = SourcePosition {
+        line: 0,
+        character: 0,
+    };
+    let range = SourceRange {
+        start: pos,
+        end: pos,
+    };
+    crate::script_env::ScriptEnvironment::new(vec![ScriptGlobal {
+        name: name.to_string(),
+        type_name: type_name.to_string(),
+        ini_uri: "file:///redscripts.ini".to_string(),
+        symbol: Symbol {
+            id: SymbolId(0),
+            name: name.to_string(),
+            kind: SymbolKind::Variable,
+            range,
+            selection_range: range,
+            byte_range: 0..0,
+            selection_byte_range: 0..0,
+            container: None,
+            container_name: None,
+            type_annotation: Some(type_name.to_string()),
+            signature: None,
+            base_class: None,
+            owner_class: None,
+            flavour: None,
+            annotations: Vec::new(),
+            access: AccessLevel::Public,
+            is_optional: false,
+            is_out: false,
+            is_state_machine: false,
+            is_abstract: false,
+        },
+    }])
+}
+
+#[test]
+fn script_global_member_access_no_type_used_as_value() {
+    let t = TestDb::new("function F() { theGame.GetPlayer(); }\n").with_base_doc(
+        "file:///r4game.ws",
+        "class CR4Game { public function GetPlayer() : CR4Player {} }\n",
+    );
+    let env = script_env("theGame", "CR4Game");
+    let db = t.db().with_script_env(&env);
+    let result = collect_unknown_symbol_diagnostics(&t.search_docs(), &db);
+    assert!(
+        result.is_empty(),
+        "script global receiver should not trigger type_used_as_value, got {result:?}"
+    );
+}
+
+#[test]
+fn script_global_bare_use_no_type_used_as_value() {
+    let t = TestDb::new("function F(p : CR4Game) { F(theGame); }\n")
+        .with_base_doc("file:///r4game.ws", "class CR4Game {}\n");
+    let env = script_env("theGame", "CR4Game");
+    let db = t.db().with_script_env(&env);
+    let result = collect_unknown_symbol_diagnostics(&t.search_docs(), &db);
+    assert!(
+        result.is_empty(),
+        "script global passed as value should not trigger type_used_as_value, got {result:?}"
+    );
+}
