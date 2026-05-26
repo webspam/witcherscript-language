@@ -87,10 +87,7 @@ impl Backend {
             {
                 cfg.auto_load_mod_shared_imports = b;
             }
-            if let Some(b) = opts
-                .get("autoDetectProjectManifests")
-                .and_then(|v| v.as_bool())
-            {
+            if let Some(b) = opts.get("detectProjectManifests").and_then(|v| v.as_bool()) {
                 cfg.auto_detect_project_manifests = b;
             }
             if let Some(diag) = opts.get("diagnostics") {

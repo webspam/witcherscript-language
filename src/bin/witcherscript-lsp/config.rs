@@ -109,7 +109,7 @@ impl Backend {
             },
             ConfigurationItem {
                 scope_uri: None,
-                section: Some("witcherscript.autoDetectProjectManifests".to_string()),
+                section: Some("witcherscript.detectProjectManifests".to_string()),
             },
             ConfigurationItem {
                 scope_uri: None,
@@ -252,7 +252,7 @@ impl Backend {
         }
         if auto_detect_manifests_changed {
             trace!(
-                setting = "autoDetectProjectManifests",
+                setting = "detectProjectManifests",
                 prev = prev_cfg.auto_detect_project_manifests,
                 new = next_cfg.auto_detect_project_manifests,
                 "setting changed"
