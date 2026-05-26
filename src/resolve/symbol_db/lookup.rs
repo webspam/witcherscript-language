@@ -115,17 +115,8 @@ impl<'a> SymbolDb<'a> {
     }
 
     fn type_or_state_kind_of(&self, name: &str) -> Option<SymbolKind> {
-        let pick_kind = |defs: &[Definition]| {
-            defs.iter()
-                .find(|d| matches!(d.symbol.kind, SymbolKind::Class | SymbolKind::State))
-                .map(|d| d.symbol.kind)
-        };
-        pick_kind(self.workspace.all_top_level_with_name(name))
-            .or_else(|| pick_kind(&self.shadowed_base().all_top_level_with_name(name)))
-            .or_else(|| {
-                self.builtins
-                    .and_then(|b| pick_kind(b.all_top_level_with_name(name)))
-            })
+        let kind = self.find_top_level(name)?.symbol.kind;
+        matches!(kind, SymbolKind::Class | SymbolKind::State).then_some(kind)
     }
 
     pub fn find_member(

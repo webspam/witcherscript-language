@@ -51,15 +51,6 @@ impl<'a> ShadowedBase<'a> {
             .filter(|d| self.def_visible(d))
     }
 
-    pub(super) fn all_top_level_with_name(&self, name: &str) -> Vec<Definition> {
-        self.index
-            .all_top_level_with_name(name)
-            .iter()
-            .filter(|d| self.def_visible(d))
-            .cloned()
-            .collect()
-    }
-
     pub(super) fn find_enum_member(&self, name: &str) -> Option<Definition> {
         self.index
             .find_enum_member(name)
