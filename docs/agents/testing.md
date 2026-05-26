@@ -8,7 +8,7 @@ For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writ
 |---|---|
 | `src/diagnostics/mod.rs` `#[cfg(test)]` | `collect_diagnostics()` — late vars, incomplete exprs, ternary |
 | `src/diagnostics/<rule>/tests.rs` | One file per diagnostic rule (see `unknown_symbol/tests.rs` as the cleanest pattern) |
-| `src/symbols.rs` `#[cfg(test)]` | `extract_symbols()` |
+| `src/symbols/tests.rs` | `extract_symbols()` |
 | `src/line_index.rs` `#[cfg(test)]` | `LineIndex` — byte↔position conversions, UTF-16 |
 | `src/script_env.rs` `#[cfg(test)]` | INI parsing, globals section, symbol positions |
 | `src/resolve/tests/` | `resolve/` submodules — definition, references, completion, inheritance, signature help, builtins |
@@ -90,7 +90,7 @@ There are no doctests.
 |---|---|
 | New grammar construct | Fixture in `tests/fixtures/valid/` + `parser_fixtures.rs` picks it up automatically |
 | New validation rule | Unit test in `src/diagnostics/<rule>/tests.rs` (use `unknown_symbol/` as the template) + fixture in `tests/fixtures/invalid/` if complex |
-| New symbol kind | `symbols.rs` `#[cfg(test)]` + cases in `src/resolve/tests/` |
+| New symbol kind | `symbols/tests.rs` + cases in `src/resolve/tests/` |
 | New resolution case | `src/resolve/tests/` (use `TestDb::new` with a `$0` marker) |
 | New completion case | `src/resolve/tests/` |
 | New LSP handler | `src/bin/witcherscript-lsp/tests/<feature>.rs` (handler logic) + a golden-path case in `tests/e2e/<feature>.rs` (wire-level) |

@@ -179,7 +179,7 @@ The library extracts a flat symbol table from each document during parsing. Symb
   (`@wrapMethod`, `@addMethod`, …) — plus a `display_detail()` helper that renders
   `extends`/`in` strings for LSP hover
 
-`WorkspaceIndex` in `src/resolve/workspace_index.rs` maintains a per-URI symbol list and supports
+`WorkspaceIndex` in `src/resolve/workspace_index/` maintains a per-URI symbol list and supports
 cross-file go-to-definition lookups.
 
 ## Tests
@@ -196,7 +196,7 @@ Parser fixtures live under `tests/fixtures/valid` and `tests/fixtures/invalid`. 
 files there when covering larger WitcherScript examples; the fixture tests discover those
 files automatically.
 
-Unit tests are embedded in `src/diagnostics/`, `src/symbols.rs`, `src/line_index.rs`,
+Unit tests are embedded in `src/diagnostics/`, `src/symbols/`, `src/line_index.rs`,
 `src/script_env.rs`, `src/resolve/tests/`, `src/semantic_tokens/tests.rs`, and
 `src/bin/witcherscript-lsp/tests.rs`. Integration tests for symbol extraction and
 definition resolution live in `tests/language_features.rs`; fixture-driven parse tests

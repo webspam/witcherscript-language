@@ -1,164 +1,19 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 
-use crate::script_env::ScriptEnvironment;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
-use super::completion_catalog::{merge_ws_base, merge_ws_base_three};
-use super::shadowed_base::{filter_catalog, ShadowedBase};
-use super::workspace_index::WorkspaceIndex;
-use super::{dedup_by_name, dedup_definitions, Definition, ObservationSet, MAX_INHERITANCE_DEPTH};
+use super::super::completion_catalog::{merge_ws_base, merge_ws_base_three};
+use super::super::{dedup_by_name, dedup_definitions, MAX_INHERITANCE_DEPTH};
+use super::generics::{generic_lookup_target, substitute_in_definition};
+use super::SymbolDb;
+use crate::resolve::Definition;
 
 const OBJECT_BASE_CLASS: &str = "CObject";
 const STATE_BASE_CLASS: &str = "CScriptableState";
-
-// These sit at/above CObject; a virtual CObject base would form a cycle.
 const OBJECT_ROOT_CHAIN: [&str; 3] = ["CObject", "IScriptable", "ISerializable"];
 
-pub struct SymbolDb<'a> {
-    pub(super) workspace: &'a WorkspaceIndex,
-    /// Full base index, including suppressed URIs (e.g. find-references in shadowed vanilla files).
-    pub(super) base: &'a WorkspaceIndex,
-    builtins: Option<&'a WorkspaceIndex>,
-    script_env: Option<&'a ScriptEnvironment>,
-    observer: Option<&'a Mutex<ObservationSet>>,
-    suppressed_base_uris: Option<&'a HashSet<String>>,
-    prefiltered_base: Option<&'a FilteredBaseCatalogs>,
-}
-
-#[derive(Debug)]
-pub struct FilteredBaseCatalogs {
-    pub callables: Arc<[Definition]>,
-    pub types: Arc<[Definition]>,
-    pub enum_members: Arc<[Definition]>,
-}
-
-impl FilteredBaseCatalogs {
-    pub fn build(base: &WorkspaceIndex, suppressed: &HashSet<String>) -> Self {
-        Self {
-            callables: filter_catalog(base.callables_catalog(), Some(suppressed)),
-            types: filter_catalog(base.types_catalog(), Some(suppressed)),
-            enum_members: filter_catalog(base.enum_members_catalog(), Some(suppressed)),
-        }
-    }
-}
-
 impl<'a> SymbolDb<'a> {
-    pub fn new(workspace: &'a WorkspaceIndex, base: &'a WorkspaceIndex) -> Self {
-        Self {
-            workspace,
-            base,
-            builtins: None,
-            script_env: None,
-            observer: None,
-            suppressed_base_uris: None,
-            prefiltered_base: None,
-        }
-    }
-
-    pub fn with_suppressed_base_uris(mut self, uris: &'a HashSet<String>) -> Self {
-        self.suppressed_base_uris = Some(uris);
-        self
-    }
-
-    pub fn with_prefiltered_base(mut self, catalogs: &'a FilteredBaseCatalogs) -> Self {
-        self.prefiltered_base = Some(catalogs);
-        self
-    }
-
-    pub fn with_script_env(mut self, env: &'a ScriptEnvironment) -> Self {
-        self.script_env = Some(env);
-        self
-    }
-
-    pub fn with_builtins(mut self, builtins: &'a WorkspaceIndex) -> Self {
-        self.builtins = Some(builtins);
-        self
-    }
-
-    pub fn with_observer<'b>(&self, observer: &'b Mutex<ObservationSet>) -> SymbolDb<'b>
-    where
-        'a: 'b,
-    {
-        SymbolDb {
-            workspace: self.workspace,
-            base: self.base,
-            builtins: self.builtins,
-            script_env: self.script_env,
-            observer: Some(observer),
-            suppressed_base_uris: self.suppressed_base_uris,
-            prefiltered_base: self.prefiltered_base,
-        }
-    }
-
-    pub(super) fn suppressed_base_uris(&self) -> Option<&HashSet<String>> {
-        self.suppressed_base_uris
-    }
-
-    fn shadowed_base(&self) -> ShadowedBase<'a> {
-        ShadowedBase::new(self.base, self.suppressed_base_uris)
-    }
-
-    fn base_callables_for_merge(&self) -> std::sync::Arc<[Definition]> {
-        if let Some(prefiltered) = self.prefiltered_base {
-            return prefiltered.callables.clone();
-        }
-        self.shadowed_base().callables_catalog()
-    }
-
-    fn base_types_for_merge(&self) -> std::sync::Arc<[Definition]> {
-        if let Some(prefiltered) = self.prefiltered_base {
-            return prefiltered.types.clone();
-        }
-        self.shadowed_base().types_catalog()
-    }
-
-    fn base_enum_members_for_merge(&self) -> std::sync::Arc<[Definition]> {
-        if let Some(prefiltered) = self.prefiltered_base {
-            return prefiltered.enum_members.clone();
-        }
-        self.shadowed_base().enum_members_catalog()
-    }
-
-    pub fn merge_observations(&self, other: ObservationSet) {
-        let Some(outer) = self.observer else {
-            return;
-        };
-        let mut outer = outer.lock().expect("observer mutex poisoned");
-        outer.top_level.extend(other.top_level);
-        outer.members.extend(other.members);
-        outer.enum_members.extend(other.enum_members);
-    }
-
-    fn record_top_level(&self, name: &str) {
-        if let Some(obs) = self.observer {
-            let mut o = obs.lock().expect("observer mutex poisoned");
-            if !o.top_level.contains(name) {
-                o.top_level.insert(name.to_string());
-            }
-        }
-    }
-
-    fn record_member(&self, container: &str, name: &str) {
-        if let Some(obs) = self.observer {
-            let mut o = obs.lock().expect("observer mutex poisoned");
-            let key = (container.to_string(), name.to_string());
-            if !o.members.contains(&key) {
-                o.members.insert(key);
-            }
-        }
-    }
-
-    fn record_enum_member(&self, name: &str) {
-        if let Some(obs) = self.observer {
-            let mut o = obs.lock().expect("observer mutex poisoned");
-            if !o.enum_members.contains(name) {
-                o.enum_members.insert(name.to_string());
-            }
-        }
-    }
-
-    pub(super) fn find_script_global(&self, name: &str) -> Option<Definition> {
+    pub(crate) fn find_script_global(&self, name: &str) -> Option<Definition> {
         let g = self.script_env?.find(name)?;
         if let Some(class_def) = self.find_top_level(&g.type_name) {
             return Some(class_def);
@@ -169,7 +24,7 @@ impl<'a> SymbolDb<'a> {
         })
     }
 
-    pub(super) fn script_global_type(&self, name: &str) -> Option<String> {
+    pub(crate) fn script_global_type(&self, name: &str) -> Option<String> {
         self.script_env?.find(name).map(|g| g.type_name.clone())
     }
 
@@ -320,7 +175,7 @@ impl<'a> SymbolDb<'a> {
     }
 
     /// Class-body declaration first, then annotation declarations.
-    pub(super) fn all_member_declarations(&self, container: &str, name: &str) -> Vec<Definition> {
+    pub(crate) fn all_member_declarations(&self, container: &str, name: &str) -> Vec<Definition> {
         let mut decls: Vec<Definition> = Vec::new();
         if let Some(class_body) = self.find_member(container, name, AccessLevel::Private) {
             decls.push(class_body);
@@ -435,55 +290,4 @@ impl<'a> SymbolDb<'a> {
             .map(|b| b.full_parameters_of(uri, callable_id))
             .unwrap_or_default()
     }
-}
-
-fn generic_lookup_target(container: &str) -> (&str, Option<&str>) {
-    match super::parse_generic_type(container) {
-        Some((ctor, elem)) => (ctor, Some(elem)),
-        None => (container, None),
-    }
-}
-
-fn substitute_placeholder(s: &str, placeholder: &str, replacement: &str) -> String {
-    let bytes = s.as_bytes();
-    let plen = placeholder.len();
-    let mut out = String::with_capacity(s.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i..].starts_with(placeholder.as_bytes()) {
-            let before_ok = i == 0 || !is_ident_byte(bytes[i - 1]);
-            let after_idx = i + plen;
-            let after_ok = after_idx >= bytes.len() || !is_ident_byte(bytes[after_idx]);
-            if before_ok && after_ok {
-                out.push_str(replacement);
-                i += plen;
-                continue;
-            }
-        }
-        out.push(bytes[i] as char);
-        i += 1;
-    }
-    out
-}
-
-fn is_ident_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
-}
-
-fn substitute_in_definition(
-    mut def: Definition,
-    container_instance: &str,
-    element: &str,
-) -> Definition {
-    let p = crate::builtins::GENERIC_ELEMENT_PLACEHOLDER;
-    if let Some(t) = def.symbol.type_annotation.take() {
-        def.symbol.type_annotation = Some(substitute_placeholder(&t, p, element));
-    }
-    if let Some(s) = def.symbol.signature.take() {
-        def.symbol.signature = Some(substitute_placeholder(&s, p, element));
-    }
-    if def.symbol.container_name.is_some() {
-        def.symbol.container_name = Some(container_instance.to_string());
-    }
-    def
 }

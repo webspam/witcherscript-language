@@ -1,0 +1,96 @@
+use lsp_types::{DocumentSymbol, Url};
+use tracing::warn;
+use witcherscript_language::resolve::{hover_text, Definition};
+use witcherscript_language::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
+
+use super::positions::lsp_range;
+
+#[allow(deprecated)]
+pub(crate) fn document_symbols(
+    symbols: &DocumentSymbols,
+    container: Option<SymbolId>,
+    uri: &str,
+) -> Vec<DocumentSymbol> {
+    symbols
+        .children_of(container)
+        .filter(|symbol| is_outline_symbol(symbol))
+        .filter(|symbol| {
+            if symbol.name.is_empty() {
+                warn!(
+                    "skipping {:?} symbol with empty name at line {} in {uri} (parse error in source)",
+                    symbol.kind,
+                    symbol.range.start.line + 1,
+                );
+                false
+            } else {
+                true
+            }
+        })
+        .map(|symbol| DocumentSymbol {
+            name: symbol.name.clone(),
+            detail: symbol
+                .display_detail()
+                .or_else(|| symbol.type_annotation.clone()),
+            kind: lsp_symbol_kind(symbol.kind),
+            tags: None,
+            deprecated: None,
+            range: lsp_range(symbol.range),
+            selection_range: lsp_range(symbol.selection_range),
+            children: Some(document_symbols(symbols, Some(symbol.id), uri)),
+        })
+        .collect()
+}
+
+fn is_outline_symbol(symbol: &Symbol) -> bool {
+    !matches!(symbol.kind, SymbolKind::Variable | SymbolKind::Parameter)
+}
+
+fn lsp_symbol_kind(kind: SymbolKind) -> lsp_types::SymbolKind {
+    match kind {
+        SymbolKind::Class => lsp_types::SymbolKind::CLASS,
+        SymbolKind::Struct => lsp_types::SymbolKind::STRUCT,
+        SymbolKind::Enum => lsp_types::SymbolKind::ENUM,
+        SymbolKind::EnumMember => lsp_types::SymbolKind::ENUM_MEMBER,
+        SymbolKind::Function => lsp_types::SymbolKind::FUNCTION,
+        SymbolKind::Method | SymbolKind::Event => lsp_types::SymbolKind::METHOD,
+        SymbolKind::Field => lsp_types::SymbolKind::FIELD,
+        SymbolKind::Variable => lsp_types::SymbolKind::VARIABLE,
+        SymbolKind::Parameter => lsp_types::SymbolKind::VARIABLE,
+        SymbolKind::State => lsp_types::SymbolKind::OBJECT,
+    }
+}
+
+pub(crate) fn hover_markdown(definition: &Definition) -> String {
+    let mut markdown = format!("```witcherscript\n{}\n```", hover_text(definition));
+    markdown.push_str(&format!(
+        "\n\nDefined in {}",
+        hover_location_markdown(definition)
+    ));
+    markdown
+}
+
+fn hover_location_markdown(definition: &Definition) -> String {
+    let line = definition.symbol.selection_range.start.line + 1;
+    let Ok(mut uri) = Url::parse(&definition.uri) else {
+        return format!("`{}:{line}`", definition.uri);
+    };
+
+    let label = uri
+        .to_file_path()
+        .ok()
+        .and_then(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .or_else(|| {
+            uri.path_segments()
+                .and_then(|mut segments| segments.next_back())
+                .filter(|segment| !segment.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| definition.uri.clone());
+
+    uri.set_fragment(Some(&format!("L{line}")));
+
+    format!("[{label}:{line}]({uri})")
+}
