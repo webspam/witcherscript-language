@@ -1,6 +1,6 @@
 # Resolution and workspace indexing
 
-**Module:** `src/resolve/` — split across `mod.rs` (helpers, `Definition`, `ObservationSet`), `workspace_index.rs` (`WorkspaceIndex`), `symbol_db.rs` (`SymbolDb`, generic substitution), `definition.rs` (`resolve_definition` and self/super/this resolution), `references.rs` (`find_references`), `inference.rs` (`infer_expr_type` and type-context helpers), `signature.rs` (`signature_help`, `hover_text`), `ast.rs` (re-exports the shared `cst/` navigation helpers; defines `BUILTIN_TYPES`), and `completion/{members,types,body_function,body_class,body_script,headers}.rs`. Tests live under `src/resolve/tests/`.
+**Module:** `src/resolve/` — split across `mod.rs` (helpers, `Definition`, `ObservationSet`), `workspace_index/` (`WorkspaceIndex`: `mod`, `indices`, `subscribers`, `lookup`), `symbol_db/` (`SymbolDb`: `mod`, `lookup`, `generics`), `definition.rs` (`resolve_definition` and self/super/this resolution), `references.rs` (`find_references`), `inference.rs` (`infer_expr_type` and type-context helpers), `signature.rs` (`signature_help`, `hover_text`), `ast.rs` (re-exports the shared `cst/` navigation helpers; defines `BUILTIN_TYPES`), and `completion/{members,types,body_function,body_class,body_script,headers}.rs`. Tests live under `src/resolve/tests/`.
 
 ## WorkspaceIndex
 

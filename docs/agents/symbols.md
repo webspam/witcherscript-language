@@ -1,6 +1,13 @@
 # Symbol system
 
-**File:** `src/symbols/`
+**Module:** `src/symbols/`
+
+| File | Purpose |
+|------|---------|
+| `types.rs` | `SymbolId`, `SymbolKind`, `Symbol`, `DocumentSymbols` and index queries |
+| `extract.rs` | `extract_symbols`, `SymbolExtractor` CST walk |
+| `util.rs` | `node_text`, signature/base-type helpers |
+| `tests.rs` | Unit tests |
 
 ## SymbolKind
 
@@ -134,9 +141,9 @@ The vec is the only storage; `SymbolId(n)` directly indexes `symbols[n]`. IDs ar
 
 ## Adding a new symbol kind
 
-1. Add variant to `SymbolKind` in `symbols.rs`.
-2. Handle the new grammar node in `visit()` in `SymbolExtractor`.
+1. Add variant to `SymbolKind` in `symbols/types.rs`.
+2. Handle the new grammar node in `visit()` in `SymbolExtractor` (`symbols/extract.rs`).
 3. Add mapping in `symbol_kind_to_token_type()` in `semantic_tokens/mod.rs`.
-4. Add mapping in `lsp_symbol_kind()` in `src/bin/witcherscript-lsp/convert.rs`.
+4. Add mapping in `lsp_symbol_kind()` in `src/bin/witcherscript-lsp/convert/symbols.rs`.
 5. Add mapping in `hover_text()` in `resolve/signature.rs` if the label text is different.
 6. Add tests.

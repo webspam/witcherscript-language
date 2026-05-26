@@ -11,9 +11,9 @@
 | `completion.rs` | `_completion` — runs member / type / statement / class-body / annotation / wrap-method dispatch in order. |
 | `queries.rs` | Read-only request handlers: `_hover`, `_goto_definition`, `_references` entry, `_document_symbol`, `_signature_help`, `_semantic_tokens_full`, `_formatting`, `_code_action`, `_handle_builtin_source`. |
 | `references_rename.rs` | `_references`, `_prepare_rename`, `_rename` + the `merge_documents` helper that builds the cross-doc search set (open shadows workspace shadows base; loose target sees only loose+base). |
-| `convert.rs` | LSP↔internal type conversion: `lsp_range`, `source_position`, `lsp_symbol_kind`, `completion_item`, `document_symbols`, `hover_markdown`, `read_script_file`, `workspace_roots`. |
+| `convert/` | LSP↔internal conversion — `positions.rs` (ranges), `diagnostics.rs`, `completions.rs`, `symbols.rs` (document outline, hover), `file_ops.rs` (`workspace_roots`, watched-file bridging). |
 | `cst_cache.rs` | Per-document parse-tree cache with invalidation hooks. |
-| `indexing.rs` | Workspace + base-script discovery and indexing helpers (game-directory scan, `modSharedImports` auto-load, settings refresh). |
+| `indexing/` | Workspace + base-script indexing — `helpers.rs` (segments, legacy pairing), `open_documents.rs`, `legacy.rs` (manifest dirs, overrides), `scan.rs` (bulk workspace/base index). |
 | `config.rs` | `fetch_config`, `DiagnosticsScope`, `ConfigChange` plumbing for `workspace/configuration`. |
 | `diagnostics_publish.rs` | `publish_open_diagnostics` (whole-workspace or open-files scope), `publish_syntactic_only`, `reconcile_published_diagnostics`; `publish_legacy_script_status` — `witcherscript/legacyScriptStatus` push. |
 | `file_scope.rs` | `FileScope` enum + `classify_file_scope` — routes a URI to workspace / loose / base / legacy. |
@@ -90,7 +90,7 @@ Because of this, `Backend`'s document maps fall into two groups:
 
 `documents` is the deliberate exception. The client sends the same raw `Url` back for every follow-up request (hover, completion, …), so `documents.get(&uri)` has to match that spelling. Every other map is keyed canonically so that the background-indexed copy of a file and the editor-open copy resolve to the same entry.
 
-When you add a map keyed by a document URI, or compare two URIs to decide whether they point at the same file, run them through `canonical_uri` first — comparing `Url`s or raw `to_string()` output directly will be wrong on Windows. `index_open_document` (`indexing.rs`) and `base_script_conflict::is_same_file` are the existing worked examples to follow.
+When you add a map keyed by a document URI, or compare two URIs to decide whether they point at the same file, run them through `canonical_uri` first — comparing `Url`s or raw `to_string()` output directly will be wrong on Windows. `index_open_document` (`indexing/helpers.rs`) and `base_script_conflict::is_same_file` are the existing worked examples to follow.
 
 ## Implemented LSP capabilities
 

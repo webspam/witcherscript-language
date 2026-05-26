@@ -17,12 +17,12 @@ src/
 │       ├── queries.rs             hover, definition, document symbols, signature help, semantic tokens, formatting, code action
 │       ├── references_rename.rs   _references, _prepare_rename, _rename + cross-doc merge_documents helper
 │       ├── config.rs              Config struct, settings parsing
-│       ├── convert.rs             LSP↔internal conversion (ranges, completion items, hover, file reader)
+│       ├── convert/               LSP↔internal conversion (positions, diagnostics, completions, symbols, file_ops)
 │       ├── cst_cache.rs           per-file CST diagnostic cache
 │       ├── diagnostics_publish.rs publish_diagnostics helper
 │       ├── file_scope.rs          FileScope classifier (workspace / loose / base / legacy)
 │       ├── file_scope_status.rs   witcherscript/fileScopeStatus notification type
-│       ├── indexing.rs            workspace + base-script indexing (game dir, modSharedImports, settings refresh)
+│       ├── indexing/              workspace + base-script indexing (helpers, open_documents, legacy, scan)
 │       ├── legacy_status.rs       witcherscript/legacyScriptStatus notification type
 │       ├── logging.rs             LspLogSender tracing layer + level parsing
 │       ├── watcher.rs             file-system watcher integration
@@ -53,12 +53,15 @@ src/
 │   └── statements.rs               statement + expression formatting
 ├── line_index.rs                   byte ↔ UTF-16 position mapping (LSP-compatible)
 ├── script_env.rs                   INI script globals parser
-├── symbols.rs                      SymbolKind, Symbol, DocumentSymbols, extract_symbols
+├── symbols/                        SymbolKind, Symbol, DocumentSymbols, extract_symbols
+│   ├── types.rs                    Symbol, DocumentSymbols, indexes
+│   ├── extract.rs                  SymbolExtractor, extract_symbols
+│   └── util.rs                     node_text, CST helper text extraction
 ├── resolve/
 │   ├── mod.rs                      public API: WorkspaceIndex, SymbolDb, resolve_definition
 │   ├── ast.rs                      re-exports cst/ navigation helpers; BUILTIN_TYPES
-│   ├── workspace_index.rs          WorkspaceIndex internals (per-doc symbol store, top-level / member / superclass maps)
-│   ├── symbol_db.rs                SymbolDb construction; cross-index member chain; generic substitution (array<T>)
+│   ├── workspace_index/            WorkspaceIndex (mod, indices, subscribers, lookup)
+│   ├── symbol_db/                  SymbolDb (mod, lookup, generics)
 │   ├── definition.rs               goto-definition logic
 │   ├── inference.rs                type inference
 │   ├── references.rs               find-references logic
@@ -126,7 +129,7 @@ parse_document(source)          [document.rs]
     ▼
 ParsedDocument { source, tree, line_index, diagnostics, symbols }
     │
-    ├─► WorkspaceIndex::update_document(uri, doc)    [resolve/workspace_index.rs]
+    ├─► WorkspaceIndex::update_document(uri, doc)    [resolve/workspace_index/]
     │       inserts into top_level_by_name, member_by_type,
     │       superclass_by_name, doc_idents
     │
@@ -174,7 +177,7 @@ When constructing a `SymbolDb` for a request:
 - Exit code: 0 (ok), 1 (diagnostics found), 2 (runtime error)
 - Flags: `--dump-tree`, `--max-diagnostics N`
 
-**`src/bin/witcherscript-lsp/`** — LSP server (module split across `main.rs`, `backend.rs` + the per-concern handler files `lifecycle.rs` / `text_sync.rs` / `completion.rs` / `queries.rs` / `references_rename.rs`, plus `convert.rs`, `cst_cache.rs`, `indexing.rs`, `config.rs`, `diagnostics_publish.rs`, `file_scope.rs`, `file_scope_status.rs`, `legacy_status.rs`, `watcher.rs`, `logging.rs`, and `tests.rs` + per-feature files under `tests/`)
+**`src/bin/witcherscript-lsp/`** — LSP server (module split across `main.rs`, `backend.rs` + the per-concern handler files `lifecycle.rs` / `text_sync.rs` / `completion.rs` / `queries.rs` / `references_rename.rs`, plus `convert/`, `cst_cache.rs`, `indexing/`, `config.rs`, `diagnostics_publish.rs`, `file_scope.rs`, `file_scope_status.rs`, `legacy_status.rs`, `watcher.rs`, `logging.rs`, and `tests.rs` + per-feature files under `tests/`)
 - Async Tokio runtime; async-lsp framework over stdin/stdout
 - `Backend` struct holds all shared state behind `Arc<Mutex<>>`
 - All parse/resolve logic lives in the library; the binary only orchestrates
