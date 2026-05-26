@@ -4,7 +4,9 @@ use crate::document::ParsedDocument;
 use crate::line_index::SourceRange;
 use crate::symbols::{AccessLevel, SymbolKind};
 
+use super::ast::identifier_at;
 use super::definition::{all_declarations_of, definition_key, resolve_definition};
+use super::inference::{resolve_local_or_parameter, resolve_name};
 use super::symbol_db::SymbolDb;
 use super::Definition;
 
@@ -57,6 +59,50 @@ fn paired_suppressed_base_uri(definition: &Definition, db: &SymbolDb) -> Option<
     (ws_def.uri == definition.uri).then_some(base_def.uri)
 }
 
+fn ident_is_binding_declaration(ident: Node<'_>, document: &ParsedDocument) -> bool {
+    let Some(name) = ident.utf8_text(document.source.as_bytes()).ok() else {
+        return false;
+    };
+    document.symbols.all().iter().any(|symbol| {
+        symbol.kind == SymbolKind::Variable
+            && symbol.name == name
+            && symbol.selection_byte_range.start == ident.start_byte()
+            && symbol.selection_byte_range.end == ident.end_byte()
+    })
+}
+
+fn paired_base_occurrence_matches(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_offset: usize,
+    name: &str,
+    equiv_keys: &[(String, std::ops::Range<usize>)],
+    paired_base_top_key: Option<&(String, std::ops::Range<usize>)>,
+) -> bool {
+    if resolve_local_or_parameter(uri, document, byte_offset, name).is_some() {
+        return false;
+    }
+    let Some(ident) = identifier_at(document.tree.root_node(), byte_offset) else {
+        return false;
+    };
+    if ident_is_binding_declaration(ident, document) {
+        return false;
+    }
+    let Some(resolved) = resolve_name(uri, document, db, byte_offset, name) else {
+        return false;
+    };
+    let key = definition_key(&resolved);
+    if equiv_keys.contains(&key) {
+        return true;
+    }
+    if paired_base_top_key == Some(&key) {
+        return ident.start_byte() == resolved.symbol.selection_byte_range.start
+            && ident.end_byte() == resolved.symbol.selection_byte_range.end;
+    }
+    false
+}
+
 pub fn find_references(
     definition: &Definition,
     definition_document: &ParsedDocument,
@@ -78,6 +124,10 @@ pub fn find_references(
     };
 
     let paired_base = paired_suppressed_base_uri(definition, db);
+    let paired_base_top_key = paired_base
+        .as_ref()
+        .and_then(|_| db.base.find_top_level(name))
+        .map(|d| definition_key(&d));
 
     let mut results = Vec::new();
     let mut decl_found = vec![false; equiv.len()];
@@ -93,6 +143,17 @@ pub fn find_references(
                 &mut byte_ranges,
             );
             for byte_range in byte_ranges {
+                if !paired_base_occurrence_matches(
+                    uri,
+                    document,
+                    db,
+                    byte_range.start,
+                    name,
+                    &equiv_keys,
+                    paired_base_top_key.as_ref(),
+                ) {
+                    continue;
+                }
                 let range = document.line_index.byte_range_to_range(
                     &document.source,
                     byte_range.start,
