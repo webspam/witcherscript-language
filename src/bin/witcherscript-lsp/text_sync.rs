@@ -157,7 +157,7 @@ impl Backend {
 
         self.index_workspace().await;
         if self.refresh_manifest_legacy_dirs() {
-            self.refresh_legacy_override_maps();
+            self.index_base_scripts().await;
         }
         self.reindex_open_documents();
         self.publish_open_diagnostics();
