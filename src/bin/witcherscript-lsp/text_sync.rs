@@ -32,7 +32,8 @@ impl Backend {
         // The client drops a file's status on close; force a fresh push.
         self.sent_legacy_status.lock().remove(&uri);
         self.sent_file_scope_status.lock().remove(&uri);
-        self.update_open_document(uri, params.text_document.text);
+        self.update_open_document(uri.clone(), params.text_document.text);
+        self.refresh_legacy_override_maps_if_legacy_uri(&uri);
         self.publish_legacy_script_status();
         self.publish_file_scope_status();
     }
@@ -92,6 +93,7 @@ impl Backend {
             self.evict_cache_entries(&invalidated);
         } else {
             self.reindex_closed_file(&uri);
+            self.refresh_legacy_override_maps_if_legacy_uri(&uri);
         }
         self.publish_open_diagnostics();
         self.publish_file_scope_status();

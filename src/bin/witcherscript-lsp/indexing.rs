@@ -305,6 +305,13 @@ impl Backend {
         *self.legacy_replacements.lock() = replacements;
     }
 
+    pub(crate) fn refresh_legacy_override_maps_if_legacy_uri(&self, uri: &Url) {
+        let legacy_dirs = self.effective_legacy_dirs();
+        if Self::uri_under_legacy_dirs(uri.as_str(), &legacy_dirs) {
+            self.refresh_legacy_override_maps();
+        }
+    }
+
     fn remove_legacy_workspace_document(&self, canonical: &str) -> HashSet<String> {
         let mut index = self.workspace_index.lock();
         let mut docs = self.workspace_documents.lock();
