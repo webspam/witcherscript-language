@@ -1,5 +1,9 @@
-use super::*;
-use lsp_types::{FileCreate, FileDelete, FileRename};
+use lsp_types::{
+    CreateFilesParams, DeleteFilesParams, FileChangeType, FileCreate, FileDelete, FileRename,
+    RenameFilesParams,
+};
+
+use super::{created_files_to_watched, deleted_files_to_watched, renamed_files_to_watched};
 
 #[test]
 fn created_files_become_created_events() {
