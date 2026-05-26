@@ -258,6 +258,7 @@ impl Backend {
 
         self.evict_cache_entries(&invalidated);
         self.documents.lock().insert(uri.clone(), document);
+        self.refresh_legacy_override_maps_if_legacy_uri(&uri);
         self.publish_open_diagnostics();
     }
 

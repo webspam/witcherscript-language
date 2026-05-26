@@ -33,7 +33,6 @@ impl Backend {
         self.sent_legacy_status.lock().remove(&uri);
         self.sent_file_scope_status.lock().remove(&uri);
         self.update_open_document(uri.clone(), params.text_document.text);
-        self.refresh_legacy_override_maps_if_legacy_uri(&uri);
         self.publish_legacy_script_status();
         self.publish_file_scope_status();
     }
