@@ -125,6 +125,6 @@ The compiler only resolves the `super.` qualifier for method dispatch. Inherited
 
 ### 18. Type used as value
 
-A bare identifier that resolves to a `class`, `struct`, `state`, or `enum` declaration but appears where a value is expected, e.g. `EnumGetMin(ESomeEnum)` or `var x : int; x = MyClass;`. Also fires when a type name is called like a function, e.g. `ESomeEnum()`.
+A bare identifier that resolves to a `class`, `struct`, `state`, or `enum` declaration but appears where a value is expected, e.g. `EnumGetMin(ESomeEnum)` or `var x : int; x = MyClass;`. Also fires when a type name is called like a function, e.g. `ESomeEnum()`, except struct constructor calls (`StructName(a, b, ...)`).
 
 Type-position uses (`extends T`, `: T` annotations, `new T in owner`, `(T) value` casts, `@addMethod(T)` annotations) are unaffected. Enum *variants* used as values are also unaffected; only the enum's own name triggers the rule.

@@ -236,7 +236,10 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
         IdentRole::FuncBareCall => {
             ctx.telemetry.definition_resolutions += 1;
             let r = match resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident) {
-                Some(def) if is_type_kind(def.symbol.kind) && def.symbol.name == name => {
+                Some(def)
+                    if is_invalid_type_function_call(def.symbol.kind)
+                        && def.symbol.name == name =>
+                {
                     push(
                         ctx,
                         ident,
@@ -376,6 +379,13 @@ fn is_type_kind(kind: SymbolKind) -> bool {
     matches!(
         kind,
         SymbolKind::Class | SymbolKind::Struct | SymbolKind::State | SymbolKind::Enum
+    )
+}
+
+fn is_invalid_type_function_call(kind: SymbolKind) -> bool {
+    matches!(
+        kind,
+        SymbolKind::Class | SymbolKind::State | SymbolKind::Enum
     )
 }
 
