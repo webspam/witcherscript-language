@@ -131,6 +131,19 @@ fn kinds(diags: &[super::WorkspaceDiagnostic]) -> Vec<&str> {
     "struct Vector { var X, Y, Z : float; } \
      function F() { var v : Vector = Vector(0, 0, 0); }\n"
 )]
+#[case::function_called_when_same_name_state_exists(
+    "statemachine class C {} \
+     state Sleep in C {} \
+     function Sleep() {} \
+     function F() { Sleep(); }\n"
+)]
+#[case::function_called_when_same_name_state_extends_another(
+    "statemachine class Owner {} \
+     state BaseState in Owner {} \
+     state Child in Owner extends BaseState {} \
+     function BaseState() {} \
+     function F() { BaseState(); }\n"
+)]
 fn produces_no_diagnostics(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     let result = collect_unknown_symbol_diagnostics(&t.search_docs(), &t.db());
@@ -234,6 +247,26 @@ fn produces_no_diagnostics(#[case] fixture: &str) {
     "enum E { V } function F() { E(); }\n",
     &["type_used_as_value"],
     &["cannot be called", "'E'"],
+)]
+#[case::call_to_state_only_is_unknown_function(
+    "statemachine class C {} \
+     state Sleep in C {} \
+     function F() { Sleep(); }\n",
+    &["unknown_function"],
+    &["Sleep"],
+)]
+#[case::state_only_used_in_type_position_is_unknown_type(
+    "statemachine class C {} \
+     state SomeState in C {} \
+     function F() { var x : SomeState; }\n",
+    &["unknown_type"],
+    &["SomeState"],
+)]
+#[case::state_extends_unknown_base(
+    "statemachine class Owner {} \
+     state Child in Owner extends Missing {}\n",
+    &["unknown_type"],
+    &["Missing"],
 )]
 fn produces_kinds_and_message_substrings(
     #[case] fixture: &str,

@@ -7,7 +7,9 @@ use crate::symbols::{Symbol, SymbolKind};
 use super::ast::{find_ancestor_of_kind, first_named_child, identifier_at, nodes_at_offset};
 use super::inference::{
     enclosing_type_context, resolve_document_top_level, resolve_member_access, resolve_name,
+    resolve_name_in_context,
 };
+use super::name_context::classify_ident_context;
 use super::symbol_db::SymbolDb;
 use super::{annotation_target_class, dedup_definitions, Definition};
 
@@ -83,6 +85,10 @@ fn resolve_for_ident_no_site_fallback(
         if !is_receiver {
             return resolve_member_access(uri, document, db, ident, name);
         }
+    }
+
+    if let Some(ctx) = classify_ident_context(ident, document.source.as_bytes()) {
+        return resolve_name_in_context(uri, document, db, byte_offset, name, &ctx);
     }
 
     resolve_name(uri, document, db, byte_offset, name)

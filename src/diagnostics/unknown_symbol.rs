@@ -236,26 +236,28 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
         IdentRole::FuncBareCall => {
             ctx.telemetry.definition_resolutions += 1;
             let r = match resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident) {
-                Some(def)
-                    if is_invalid_type_function_call(def.symbol.kind)
-                        && def.symbol.name == name =>
-                {
-                    push(
-                        ctx,
-                        ident,
-                        "type_used_as_value",
-                        format!("Type '{name}' cannot be called as a function"),
-                    );
-                    Some(())
-                }
                 Some(_) => None,
                 None => {
-                    push(
-                        ctx,
-                        ident,
-                        "unknown_function",
-                        format!("Unknown function '{name}'"),
-                    );
+                    let collides_with_type = ctx
+                        .db
+                        .find_top_level(name)
+                        .map(|d| matches!(d.symbol.kind, SymbolKind::Class | SymbolKind::Enum))
+                        .unwrap_or(false);
+                    if collides_with_type {
+                        push(
+                            ctx,
+                            ident,
+                            "type_used_as_value",
+                            format!("Type '{name}' cannot be called as a function"),
+                        );
+                    } else {
+                        push(
+                            ctx,
+                            ident,
+                            "unknown_function",
+                            format!("Unknown function '{name}'"),
+                        );
+                    }
                     Some(())
                 }
             };
@@ -378,14 +380,7 @@ fn is_type_reference(ident: Node, parent: Node) -> bool {
 fn is_type_kind(kind: SymbolKind) -> bool {
     matches!(
         kind,
-        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State | SymbolKind::Enum
-    )
-}
-
-fn is_invalid_type_function_call(kind: SymbolKind) -> bool {
-    matches!(
-        kind,
-        SymbolKind::Class | SymbolKind::State | SymbolKind::Enum
+        SymbolKind::Class | SymbolKind::Struct | SymbolKind::Enum
     )
 }
 
