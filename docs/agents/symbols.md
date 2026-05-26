@@ -1,6 +1,6 @@
 # Symbol system
 
-**File:** `src/symbols.rs`
+**File:** `src/symbols/`
 
 ## SymbolKind
 
