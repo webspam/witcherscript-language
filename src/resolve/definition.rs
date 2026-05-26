@@ -7,7 +7,9 @@ use crate::symbols::{Symbol, SymbolKind};
 use super::ast::{find_ancestor_of_kind, first_named_child, identifier_at, nodes_at_offset};
 use super::inference::{
     enclosing_type_context, resolve_document_top_level, resolve_member_access, resolve_name,
+    resolve_name_in_context,
 };
+use super::name_context::classify_ident_context;
 use super::symbol_db::SymbolDb;
 use super::{annotation_target_class, dedup_definitions, Definition};
 
@@ -85,6 +87,10 @@ fn resolve_for_ident_no_site_fallback(
         }
     }
 
+    if let Some(ctx) = classify_ident_context(ident, document.source.as_bytes()) {
+        return resolve_name_in_context(uri, document, db, byte_offset, name, &ctx);
+    }
+
     resolve_name(uri, document, db, byte_offset, name)
 }
 
@@ -151,11 +157,30 @@ pub(super) fn resolve_self_keyword(
         .find_map(|n| find_ancestor_of_kind(n, &["this_expr", "super_expr", "parent_expr"]))?;
 
     let current_type = enclosing_type_context(document, db, byte_offset)?;
+    let in_state = current_type.owner_class.is_some();
+    let owner = current_type.owner_class.clone();
     match node.kind() {
-        "this_expr" => resolve_document_top_level(uri, document, &current_type.name)
-            .or_else(|| db.find_top_level(&current_type.name)),
+        "this_expr" => {
+            if in_state {
+                if let Some(owner_class) = owner.as_deref() {
+                    if let Some(def) = db.find_state_in_owner_chain(owner_class, &current_type.name)
+                    {
+                        return Some(def);
+                    }
+                }
+            }
+            resolve_document_top_level(uri, document, &current_type.name)
+                .or_else(|| db.find_top_level(&current_type.name))
+        }
         "super_expr" => {
             let base_name = current_type.base_class.as_deref()?;
+            if in_state {
+                if let Some(owner_class) = owner.as_deref() {
+                    if let Some(def) = db.find_state_in_owner_chain(owner_class, base_name) {
+                        return Some(def);
+                    }
+                }
+            }
             resolve_document_top_level(uri, document, base_name)
                 .or_else(|| db.find_top_level(base_name))
         }

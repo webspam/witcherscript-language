@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::symbols::{AccessLevel, Symbol, SymbolId};
 
 use super::workspace_index::WorkspaceIndex;
-use super::Definition;
+use super::{Definition, NameContext};
 
 pub(super) struct ShadowedBase<'a> {
     index: &'a WorkspaceIndex,
@@ -30,6 +30,24 @@ impl<'a> ShadowedBase<'a> {
     pub(super) fn find_top_level(&self, name: &str) -> Option<Definition> {
         self.index
             .find_top_level(name)
+            .filter(|d| self.def_visible(d))
+    }
+
+    pub(super) fn find_top_level_filtered(
+        &self,
+        name: &str,
+        ctx: &NameContext,
+    ) -> Option<Definition> {
+        self.index
+            .all_top_level_with_name(name)
+            .iter()
+            .find(|d| ctx.accepts(d.symbol.kind) && self.def_visible(d))
+            .cloned()
+    }
+
+    pub(super) fn find_state_in_owner(&self, owner: &str, name: &str) -> Option<Definition> {
+        self.index
+            .find_state_in_owner(owner, name)
             .filter(|d| self.def_visible(d))
     }
 

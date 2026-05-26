@@ -7,6 +7,7 @@ use crate::document::ParsedDocument;
 use crate::symbols::{AccessLevel, Symbol, SymbolKind};
 
 use super::ast::first_named_child;
+use super::name_context::NameContext;
 use super::symbol_db::SymbolDb;
 use super::{annotation_target_class, Definition};
 
@@ -148,6 +149,50 @@ pub(super) fn resolve_name(
         .or_else(|| db.find_script_global(name))
 }
 
+pub(super) fn resolve_name_in_context(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_offset: usize,
+    name: &str,
+    ctx: &NameContext,
+) -> Option<Definition> {
+    match ctx {
+        NameContext::Type => resolve_document_top_level_filtered(uri, document, name, ctx)
+            .or_else(|| db.find_top_level_filtered(name, ctx)),
+        NameContext::StateExtends { owner_class } => {
+            db.find_state_in_owner_chain(owner_class, name)
+        }
+        NameContext::Callable => resolve_local_or_parameter(uri, document, byte_offset, name)
+            .or_else(|| resolve_current_type_member(uri, document, db, byte_offset, name))
+            .or_else(|| resolve_document_top_level_filtered(uri, document, name, ctx))
+            .or_else(|| db.find_top_level_filtered(name, ctx))
+            .or_else(|| db.find_script_global(name)),
+        NameContext::Value => resolve_local_or_parameter(uri, document, byte_offset, name)
+            .or_else(|| resolve_current_type_member(uri, document, db, byte_offset, name))
+            .or_else(|| resolve_document_top_level_filtered(uri, document, name, ctx))
+            .or_else(|| db.find_top_level_filtered(name, ctx))
+            .or_else(|| db.find_enum_member(name))
+            .or_else(|| db.find_script_global(name)),
+    }
+}
+
+fn resolve_document_top_level_filtered(
+    uri: &str,
+    document: &ParsedDocument,
+    name: &str,
+    ctx: &NameContext,
+) -> Option<Definition> {
+    let symbol = document
+        .symbols
+        .top_level_by_name_filtered(name, |k| ctx.accepts(k))?
+        .clone();
+    Some(Definition {
+        uri: uri.to_string(),
+        symbol,
+    })
+}
+
 pub(super) fn definition_type_name(definition: &Definition) -> Option<String> {
     definition.symbol.type_annotation.clone().or_else(|| {
         if definition.symbol.kind == SymbolKind::EnumMember {
@@ -165,7 +210,7 @@ pub(super) fn infer_name_type(
     byte_offset: usize,
     name: &str,
 ) -> Option<String> {
-    resolve_name_local_to_workspace(uri, document, db, byte_offset, name)
+    resolve_name_in_context(uri, document, db, byte_offset, name, &NameContext::Value)
         .and_then(|def| definition_type_name(&def))
         .or_else(|| db.script_global_type(name))
 }

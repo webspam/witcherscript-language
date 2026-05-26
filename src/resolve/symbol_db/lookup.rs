@@ -6,7 +6,7 @@ use super::super::completion_catalog::{merge_ws_base, merge_ws_base_three};
 use super::super::{dedup_by_name, dedup_definitions, MAX_INHERITANCE_DEPTH};
 use super::generics::{generic_lookup_target, substitute_in_definition};
 use super::SymbolDb;
-use crate::resolve::Definition;
+use crate::resolve::{Definition, NameContext};
 
 const OBJECT_BASE_CLASS: &str = "CObject";
 const STATE_BASE_CLASS: &str = "CScriptableState";
@@ -34,6 +34,44 @@ impl<'a> SymbolDb<'a> {
             .find_top_level(name)
             .or_else(|| self.shadowed_base().find_top_level(name))
             .or_else(|| self.builtins.and_then(|b| b.find_top_level(name)))
+    }
+
+    pub fn find_top_level_filtered(&self, name: &str, ctx: &NameContext) -> Option<Definition> {
+        self.record_top_level(name);
+        self.workspace
+            .find_top_level_filtered(name, ctx)
+            .or_else(|| self.shadowed_base().find_top_level_filtered(name, ctx))
+            .or_else(|| {
+                self.builtins
+                    .and_then(|b| b.find_top_level_filtered(name, ctx))
+            })
+    }
+
+    /// Find a state named `name` declared in `start_owner` or any statemachine
+    /// class it inherits from.
+    pub fn find_state_in_owner_chain(&self, start_owner: &str, name: &str) -> Option<Definition> {
+        let mut current: String = start_owner.to_string();
+        let mut depth: usize = 0;
+        loop {
+            if depth > MAX_INHERITANCE_DEPTH {
+                return None;
+            }
+            self.record_top_level(&current);
+            if let Some(def) = self
+                .workspace
+                .find_state_in_owner(&current, name)
+                .or_else(|| self.shadowed_base().find_state_in_owner(&current, name))
+                .or_else(|| {
+                    self.builtins
+                        .and_then(|b| b.find_state_in_owner(&current, name))
+                })
+            {
+                return Some(def);
+            }
+            let parent = self.superclass_of(&current)?;
+            depth += 1;
+            current = parent;
+        }
     }
 
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
@@ -66,14 +104,19 @@ impl<'a> SymbolDb<'a> {
         if OBJECT_ROOT_CHAIN.contains(&class_name) {
             return None;
         }
-        let def = self.find_top_level(class_name)?;
-        match def.symbol.kind {
+        let kind = self.type_or_state_kind_of(class_name)?;
+        match kind {
             SymbolKind::Class => Some(OBJECT_BASE_CLASS.to_string()),
             SymbolKind::State if class_name != STATE_BASE_CLASS => {
                 Some(STATE_BASE_CLASS.to_string())
             }
             _ => None,
         }
+    }
+
+    fn type_or_state_kind_of(&self, name: &str) -> Option<SymbolKind> {
+        let kind = self.find_top_level(name)?.symbol.kind;
+        matches!(kind, SymbolKind::Class | SymbolKind::State).then_some(kind)
     }
 
     pub fn find_member(

@@ -6,7 +6,10 @@ use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
-use crate::resolve::{infer_expr_type_memo, resolve_definition_at_ident, SymbolDb, BUILTIN_TYPES};
+use crate::resolve::{
+    classify_ident_context, infer_expr_type_memo, resolve_definition_at_ident, NameContext,
+    SymbolDb, BUILTIN_TYPES,
+};
 use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::{
@@ -115,7 +118,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
         return None;
     }
 
-    let role = classify(ident)?;
+    let role = classify(ident, ctx.document.source.as_bytes())?;
 
     let name = ident.utf8_text(ctx.document.source.as_bytes()).ok()?;
 
@@ -236,26 +239,28 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
         IdentRole::FuncBareCall => {
             ctx.telemetry.definition_resolutions += 1;
             let r = match resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident) {
-                Some(def)
-                    if is_invalid_type_function_call(def.symbol.kind)
-                        && def.symbol.name == name =>
-                {
-                    push(
-                        ctx,
-                        ident,
-                        "type_used_as_value",
-                        format!("Type '{name}' cannot be called as a function"),
-                    );
-                    Some(())
-                }
                 Some(_) => None,
                 None => {
-                    push(
-                        ctx,
-                        ident,
-                        "unknown_function",
-                        format!("Unknown function '{name}'"),
-                    );
+                    let collides_with_type = ctx
+                        .db
+                        .find_top_level(name)
+                        .map(|d| matches!(d.symbol.kind, SymbolKind::Class | SymbolKind::Enum))
+                        .unwrap_or(false);
+                    if collides_with_type {
+                        push(
+                            ctx,
+                            ident,
+                            "type_used_as_value",
+                            format!("Type '{name}' cannot be called as a function"),
+                        );
+                    } else {
+                        push(
+                            ctx,
+                            ident,
+                            "unknown_function",
+                            format!("Unknown function '{name}'"),
+                        );
+                    }
                     Some(())
                 }
             };
@@ -298,21 +303,8 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
     result
 }
 
-fn classify(ident: Node<'_>) -> Option<IdentRole<'_>> {
+fn classify<'tree>(ident: Node<'tree>, source: &[u8]) -> Option<IdentRole<'tree>> {
     let parent = ident.parent()?;
-
-    if is_declaration(ident, parent) {
-        return Some(IdentRole::Declaration);
-    }
-
-    if is_type_reference(ident, parent) {
-        return Some(IdentRole::TypeRef);
-    }
-
-    if let Some(kind) = crate::cst::grammar::ident_default_or_hint_kind(ident) {
-        let is_hint = matches!(kind, crate::cst::grammar::DefaultOrHintKind::Hint);
-        return Some(IdentRole::MemberOfDefaultOrHint { is_hint });
-    }
 
     if parent.kind() == "member_access_expr" {
         let is_member = parent.child_by_field_name("member").map(|n| n.id()) == Some(ident.id());
@@ -329,63 +321,23 @@ fn classify(ident: Node<'_>) -> Option<IdentRole<'_>> {
         }
     }
 
-    if parent.kind() == "func_call_expr"
-        && parent.child_by_field_name("func").map(|n| n.id()) == Some(ident.id())
-    {
-        return Some(IdentRole::FuncBareCall);
+    if let Some(kind) = crate::cst::grammar::ident_default_or_hint_kind(ident) {
+        let is_hint = matches!(kind, crate::cst::grammar::DefaultOrHintKind::Hint);
+        return Some(IdentRole::MemberOfDefaultOrHint { is_hint });
     }
 
-    Some(IdentRole::Bare)
-}
-
-fn is_declaration(ident: Node, parent: Node) -> bool {
-    match parent.kind() {
-        "class_decl" | "struct_decl" | "enum_decl" | "state_decl" | "func_decl" | "event_decl"
-        | "autobind_decl" | "enum_decl_variant" => {
-            parent.child_by_field_name("name").map(|n| n.id()) == Some(ident.id())
-        }
-        "func_param_group" | "local_var_decl_stmt" | "member_var_decl" => {
-            let mut cursor = parent.walk();
-            let found = parent
-                .children_by_field_name("names", &mut cursor)
-                .any(|n| n.id() == ident.id());
-            found
-        }
-        _ => false,
-    }
-}
-
-fn is_type_reference(ident: Node, parent: Node) -> bool {
-    match parent.kind() {
-        "class_decl" | "state_decl" => {
-            parent.child_by_field_name("base").map(|n| n.id()) == Some(ident.id())
-                || parent.child_by_field_name("parent").map(|n| n.id()) == Some(ident.id())
-        }
-        "type_annot" => parent.child_by_field_name("type_name").map(|n| n.id()) == Some(ident.id()),
-        "new_expr" => parent.child_by_field_name("class").map(|n| n.id()) == Some(ident.id()),
-        "annotation" => parent.child_by_field_name("arg").map(|n| n.id()) == Some(ident.id()),
-        "cast_expr" => {
-            let mut cursor = parent.walk();
-            let found = parent
-                .children_by_field_name("type", &mut cursor)
-                .any(|n| n.id() == ident.id());
-            found
-        }
-        _ => false,
+    match classify_ident_context(ident, source) {
+        Some(NameContext::Type | NameContext::StateExtends { .. }) => Some(IdentRole::TypeRef),
+        Some(NameContext::Callable) => Some(IdentRole::FuncBareCall),
+        Some(NameContext::Value) => Some(IdentRole::Bare),
+        None => Some(IdentRole::Declaration),
     }
 }
 
 fn is_type_kind(kind: SymbolKind) -> bool {
     matches!(
         kind,
-        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State | SymbolKind::Enum
-    )
-}
-
-fn is_invalid_type_function_call(kind: SymbolKind) -> bool {
-    matches!(
-        kind,
-        SymbolKind::Class | SymbolKind::State | SymbolKind::Enum
+        SymbolKind::Class | SymbolKind::Struct | SymbolKind::Enum
     )
 }
 

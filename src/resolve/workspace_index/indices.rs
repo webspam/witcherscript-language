@@ -11,17 +11,10 @@ impl WorkspaceIndex {
         };
         for sym in old_symbols.clone() {
             if sym.container.is_none() {
-                if self
-                    .top_level_by_name
-                    .get(&sym.name)
-                    .map(|d| d.uri == uri)
-                    .unwrap_or(false)
-                {
-                    self.top_level_by_name.remove(&sym.name);
-                    if let Some(def) = self
-                        .find_replacement_def(uri, |s| s.container.is_none() && s.name == sym.name)
-                    {
-                        self.top_level_by_name.insert(sym.name.clone(), def);
+                if let Some(defs) = self.top_level_by_name.get_mut(&sym.name) {
+                    defs.retain(|d| d.uri != uri);
+                    if defs.is_empty() {
+                        self.top_level_by_name.remove(&sym.name);
                     }
                 }
                 if is_type_like(sym.kind) {
@@ -33,6 +26,37 @@ impl WorkspaceIndex {
                         .and_then(|def| def.symbol.base_class);
                     if let Some(base) = base {
                         self.superclass_by_name.insert(sym.name.clone(), base);
+                    }
+                }
+                if sym.kind == SymbolKind::State {
+                    if let Some(owner) = &sym.owner_class {
+                        if let Some(by_name) = self.states_by_owner.get_mut(owner) {
+                            let owns = by_name
+                                .get(&sym.name)
+                                .map(|d| d.uri == uri)
+                                .unwrap_or(false);
+                            if owns {
+                                by_name.remove(&sym.name);
+                                let replacement = self.find_replacement_def(uri, |s| {
+                                    s.kind == SymbolKind::State
+                                        && s.name == sym.name
+                                        && s.owner_class.as_deref() == Some(owner.as_str())
+                                });
+                                if let Some(def) = replacement {
+                                    self.states_by_owner
+                                        .entry(owner.clone())
+                                        .or_default()
+                                        .insert(sym.name.clone(), def);
+                                } else if self
+                                    .states_by_owner
+                                    .get(owner)
+                                    .map(|m| m.is_empty())
+                                    .unwrap_or(false)
+                                {
+                                    self.states_by_owner.remove(owner);
+                                }
+                            }
+                        }
                     }
                 }
                 if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field) {
@@ -106,17 +130,31 @@ impl WorkspaceIndex {
     pub(super) fn insert_into_indices(&mut self, uri: &str, symbols: &[Symbol]) {
         for sym in symbols {
             if sym.container.is_none() {
-                self.top_level_by_name.insert(
-                    sym.name.clone(),
-                    Definition {
+                self.top_level_by_name
+                    .entry(sym.name.clone())
+                    .or_default()
+                    .push(Definition {
                         uri: uri.to_string(),
                         symbol: sym.clone(),
-                    },
-                );
+                    });
                 if is_type_like(sym.kind) {
                     if let Some(superclass) = &sym.base_class {
                         self.superclass_by_name
                             .insert(sym.name.clone(), superclass.clone());
+                    }
+                }
+                if sym.kind == SymbolKind::State {
+                    if let Some(owner) = &sym.owner_class {
+                        self.states_by_owner
+                            .entry(owner.clone())
+                            .or_default()
+                            .insert(
+                                sym.name.clone(),
+                                Definition {
+                                    uri: uri.to_string(),
+                                    symbol: sym.clone(),
+                                },
+                            );
                     }
                 }
                 if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field) {
