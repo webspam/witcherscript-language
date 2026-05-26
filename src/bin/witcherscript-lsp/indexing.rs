@@ -300,8 +300,14 @@ impl Backend {
             }
         };
         let next_set: HashSet<PathBuf> = next.values().cloned().collect();
+        let changed = prev != next_set;
+        tracing::trace!(
+            count = next.len(),
+            changed,
+            "refreshed manifest_legacy_dirs"
+        );
         *self.manifest_legacy_dirs.lock() = next;
-        prev != next_set
+        changed
     }
 
     pub(crate) fn apply_manifest_event(
@@ -330,7 +336,14 @@ impl Backend {
             }
         }
         let next: HashSet<PathBuf> = self.manifest_legacy_dirs.lock().values().cloned().collect();
-        prev != next
+        let changed = prev != next;
+        tracing::trace!(
+            manifest = %toml_path.display(),
+            ?typ,
+            changed,
+            "applied manifest watcher event"
+        );
+        changed
     }
 
     fn uri_under_legacy_dirs(uri: &str, legacy_dirs: &[PathBuf]) -> bool {

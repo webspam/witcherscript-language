@@ -6,7 +6,7 @@ use lsp_types::{
     DidChangeWatchedFilesRegistrationOptions, FileChangeType, FileEvent, FileSystemWatcher,
     GlobPattern, Registration, RegistrationParams,
 };
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::files::{
     canonical_uri, is_witcherscript_file, read_script_file, ExcludeFilter,
@@ -175,6 +175,12 @@ impl Backend {
         }
 
         let mut manifest_set_changed = false;
+        if !manifest_events.is_empty() {
+            trace!(
+                count = manifest_events.len(),
+                "processing witcherscript.toml watcher events"
+            );
+        }
         for event in manifest_events {
             let Ok(path) = event.uri.to_file_path() else {
                 continue;
@@ -194,6 +200,7 @@ impl Backend {
         }
 
         if manifest_set_changed {
+            trace!("manifest dir set changed; spawning index_base_scripts");
             let backend = self.clone();
             crate::spawn_logged("manifest-set-changed reindex", async move {
                 backend.index_base_scripts().await;

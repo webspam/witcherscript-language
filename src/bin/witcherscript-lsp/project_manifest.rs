@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use ignore::WalkBuilder;
 use serde::Deserialize;
-use tracing::warn;
+use tracing::{trace, warn};
 use witcherscript_language::files::build_overrides;
 
 pub(crate) const MANIFEST_FILENAME: &str = "witcherscript.toml";
@@ -56,12 +56,19 @@ pub(crate) fn parse_manifest(toml_path: &Path) -> Option<PathBuf> {
         );
         return None;
     }
-    Some(resolved.canonicalize().unwrap_or(resolved))
+    let canonical = resolved.canonicalize().unwrap_or(resolved);
+    trace!(
+        manifest = %toml_path.display(),
+        scripts_root = %canonical.display(),
+        "loaded witcherscript.toml manifest"
+    );
+    Some(canonical)
 }
 
 /// Collect `witcherscript.toml` files. Honors `files.exclude`; ignores `.gitignore`. Not for hot paths.
 pub(crate) fn discover_manifests(roots: &[PathBuf], exclude_globs: &[String]) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
+    trace!(roots = ?roots, "scanning workspace roots for witcherscript.toml");
     for root in roots {
         if !root.is_dir() {
             continue;
@@ -92,6 +99,7 @@ pub(crate) fn discover_manifests(roots: &[PathBuf], exclude_globs: &[String]) ->
     }
     out.sort();
     out.dedup();
+    trace!(count = out.len(), "discovered witcherscript.toml manifests");
     out
 }
 
