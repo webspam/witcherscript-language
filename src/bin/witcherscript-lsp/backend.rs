@@ -81,7 +81,7 @@ pub(crate) struct Backend {
     pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
-    pub(crate) manifest_legacy_dirs: Arc<Mutex<HashMap<PathBuf, PathBuf>>>,
+    pub(crate) manifest_legacy_dirs: Arc<Mutex<HashMap<String, PathBuf>>>,
     pub(crate) legacy_replacements: Arc<Mutex<HashMap<String, String>>>,
     pub(crate) suppressed_base_uris: Arc<Mutex<HashSet<String>>>,
     pub(crate) filtered_base_catalogs: Arc<Mutex<Option<FilteredBaseCatalogs>>>,
