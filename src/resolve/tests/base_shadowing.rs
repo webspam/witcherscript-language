@@ -104,3 +104,43 @@ fn find_references_skips_unrelated_idents_in_shadowed_base_file() {
         refs
     );
 }
+
+#[test]
+fn find_references_omits_suppressed_base_declaration_when_excluded() {
+    let base_doc =
+        parse_document("class CR4Player { function Foo() { IsCiri(); } }\n").expect("parse");
+    let mod_doc = parse_document("class CR4Player {}\n").expect("parse");
+    let base_uri = "file:///game/content/content0/scripts/game/r4Player.ws";
+    let mod_uri = "file:///mod/legacy/game/r4Player.ws";
+    let mut base = WorkspaceIndex::default();
+    let mut workspace = WorkspaceIndex::default();
+    base.update_document(base_uri, &base_doc);
+    workspace.update_document(mod_uri, &mod_doc);
+    let mut suppressed = HashSet::new();
+    suppressed.insert(base_uri.to_string());
+    let db = SymbolDb::new(&workspace, &base).with_suppressed_base_uris(&suppressed);
+    let def = resolve_definition(
+        mod_uri,
+        &mod_doc,
+        &db,
+        SourcePosition {
+            line: 0,
+            character: 6,
+        },
+    )
+    .expect("class in mod");
+    let search = [(base_uri, &base_doc), (mod_uri, &mod_doc)];
+    let refs = find_references(&def, &mod_doc, &search, &db, false);
+    let class_decl_range = base_doc.line_index.byte_range_to_range(
+        &base_doc.source,
+        base_doc.source.find("CR4Player").unwrap(),
+        base_doc.source.find("CR4Player").unwrap() + "CR4Player".len(),
+    );
+    assert!(
+        !refs
+            .iter()
+            .any(|(uri, r)| uri == base_uri && *r == class_decl_range),
+        "suppressed base declaration must be omitted when include_declaration is false, got {:?}",
+        refs
+    );
+}

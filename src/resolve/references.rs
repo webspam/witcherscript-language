@@ -135,13 +135,19 @@ pub fn find_references(
     for (uri, document) in search_documents {
         if paired_base.as_deref() == Some(*uri) {
             let mut byte_ranges: Vec<std::ops::Range<usize>> = Vec::new();
-            collect_ident_occurrences(
-                document.tree.root_node(),
-                document.source.as_bytes(),
-                name,
-                None,
-                &mut byte_ranges,
-            );
+            if db.base.is_indexed(uri) {
+                if let Some(ranges) = db.base.ident_ranges_in_doc(uri, name) {
+                    byte_ranges.extend_from_slice(ranges);
+                }
+            } else {
+                collect_ident_occurrences(
+                    document.tree.root_node(),
+                    document.source.as_bytes(),
+                    name,
+                    None,
+                    &mut byte_ranges,
+                );
+            }
             for byte_range in byte_ranges {
                 if !paired_base_occurrence_matches(
                     uri,
@@ -152,6 +158,17 @@ pub fn find_references(
                     &equiv_keys,
                     paired_base_top_key.as_ref(),
                 ) {
+                    continue;
+                }
+                let occurrence_key = (uri.to_string(), byte_range.clone());
+                if let Some(idx) = equiv_keys.iter().position(|k| *k == occurrence_key) {
+                    decl_found[idx] = true;
+                    if !include_declaration {
+                        continue;
+                    }
+                } else if !include_declaration
+                    && paired_base_top_key.as_ref() == Some(&occurrence_key)
+                {
                     continue;
                 }
                 let range = document.line_index.byte_range_to_range(
