@@ -231,17 +231,17 @@ impl<'a> Formatter<'a> {
         }
         self.nl();
         self.level += 1;
-        let variant_count = members
+        let member_count = members
             .iter()
             .filter(|n| n.kind() == "enum_decl_variant")
             .count();
-        let mut emitted_variants = 0;
+        let mut emitted_members = 0;
         for member in &members {
             self.emit_indent();
             if member.kind() == "enum_decl_variant" {
                 self.format_children(*member);
-                emitted_variants += 1;
-                if emitted_variants < variant_count {
+                emitted_members += 1;
+                if emitted_members < member_count {
                     self.emit(",");
                 }
             } else {

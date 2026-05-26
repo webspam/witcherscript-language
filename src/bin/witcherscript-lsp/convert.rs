@@ -251,7 +251,7 @@ fn lsp_symbol_kind(kind: SymbolKind) -> lsp_types::SymbolKind {
         SymbolKind::Class => lsp_types::SymbolKind::CLASS,
         SymbolKind::Struct => lsp_types::SymbolKind::STRUCT,
         SymbolKind::Enum => lsp_types::SymbolKind::ENUM,
-        SymbolKind::EnumVariant => lsp_types::SymbolKind::ENUM_MEMBER,
+        SymbolKind::EnumMember => lsp_types::SymbolKind::ENUM_MEMBER,
         SymbolKind::Function => lsp_types::SymbolKind::FUNCTION,
         SymbolKind::Method | SymbolKind::Event => lsp_types::SymbolKind::METHOD,
         SymbolKind::Field => lsp_types::SymbolKind::FIELD,

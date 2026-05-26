@@ -11,12 +11,12 @@ use super::Definition;
 pub struct CompletionCatalog {
     pub callables: Arc<[Definition]>,
     pub types: Arc<[Definition]>,
-    pub enum_variants: Arc<[Definition]>,
+    pub enum_members: Arc<[Definition]>,
 }
 
 pub fn global_catalog_changed(keys: &[ObservedKey]) -> bool {
     keys.iter()
-        .any(|k| matches!(k, ObservedKey::TopLevel(_) | ObservedKey::EnumVariant(_)))
+        .any(|k| matches!(k, ObservedKey::TopLevel(_) | ObservedKey::EnumMember(_)))
 }
 
 pub fn build_callables(
@@ -40,10 +40,10 @@ pub fn build_types(top_level: &std::collections::HashMap<String, Definition>) ->
         .collect()
 }
 
-pub fn build_enum_variants(
-    enum_variant_by_name: &std::collections::HashMap<String, Definition>,
+pub fn build_enum_members(
+    enum_member_by_name: &std::collections::HashMap<String, Definition>,
 ) -> Vec<Definition> {
-    enum_variant_by_name.values().cloned().collect()
+    enum_member_by_name.values().cloned().collect()
 }
 
 pub fn merge_ws_base(ws: Arc<[Definition]>, base: Arc<[Definition]>) -> Arc<[Definition]> {

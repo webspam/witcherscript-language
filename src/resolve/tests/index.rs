@@ -297,7 +297,7 @@ fn completion_catalog_stable_on_local_var_edit() {
     index.update_document("file:///a.ws", &baseline);
     let callables = index.callables_catalog();
     let types = index.types_catalog();
-    let variants = index.enum_variants_catalog();
+    let members = index.enum_members_catalog();
 
     index.update_document(
         "file:///a.ws",
@@ -310,8 +310,8 @@ fn completion_catalog_stable_on_local_var_edit() {
     ));
     assert!(std::sync::Arc::ptr_eq(&types, &index.types_catalog()));
     assert!(std::sync::Arc::ptr_eq(
-        &variants,
-        &index.enum_variants_catalog()
+        &members,
+        &index.enum_members_catalog()
     ));
 }
 
@@ -344,15 +344,15 @@ fn merged_global_completions_matches_lsp_cache_globals_shape() {
 }
 
 #[test]
-fn merged_enum_variants_catalog_includes_builtins() {
+fn merged_enum_members_catalog_includes_builtins() {
     let workspace = crate::resolve::WorkspaceIndex::default();
     let base = crate::resolve::WorkspaceIndex::default();
     let builtins = crate::builtins::load_builtins_index();
     let db = crate::resolve::SymbolDb::new(&workspace, &base).with_builtins(&builtins);
-    let merged = db.merged_enum_variants_catalog();
+    let merged = db.merged_enum_members_catalog();
     assert!(
         merged.iter().any(|d| d.symbol.name == "AD_Front"),
-        "merged enum variants must include builtins; sample missing"
+        "merged enum members must include builtins; sample missing"
     );
 }
 
@@ -389,7 +389,7 @@ fn merged_callables_workspace_shadows_base_and_excludes_exec_quest() {
 }
 
 #[test]
-fn removing_duplicate_enum_variant_keeps_original_visible() {
+fn removing_duplicate_enum_member_keeps_original_visible() {
     let mut t = TestDb::new(
         "\
 //- /a.ws
@@ -403,7 +403,7 @@ enum E { V }
 
     let def = t
         .workspace
-        .find_enum_variant("V")
-        .expect("Enum variant V should still resolve after duplicate enum removed");
+        .find_enum_member("V")
+        .expect("Enum member V should still resolve after duplicate enum removed");
     assert_eq!(def.uri, "file:///a.ws");
 }

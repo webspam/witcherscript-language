@@ -196,7 +196,7 @@ Formats a symbol as a multi-line string for LSP hover:
 | `Function` | full signature text |
 | `Class`/`Struct`/`State` | `class Name` + `extends Base` on next line |
 | `Enum` | `enum Name` |
-| `EnumVariant` | `enum variant Name` |
+| `EnumMember` | `enum member Name` |
 | `Variable` | `var name : Type` |
 | `Parameter` | `(parameter) name : Type` |
 | `Event` | `event Name(params)` |

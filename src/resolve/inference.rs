@@ -134,7 +134,7 @@ pub(super) fn resolve_name_local_to_workspace(
         .or_else(|| resolve_current_type_member(uri, document, db, byte_offset, name))
         .or_else(|| resolve_document_top_level(uri, document, name))
         .or_else(|| db.find_top_level(name))
-        .or_else(|| db.find_enum_variant(name))
+        .or_else(|| db.find_enum_member(name))
 }
 
 pub(super) fn resolve_name(
@@ -150,7 +150,7 @@ pub(super) fn resolve_name(
 
 pub(super) fn definition_type_name(definition: &Definition) -> Option<String> {
     definition.symbol.type_annotation.clone().or_else(|| {
-        if definition.symbol.kind == SymbolKind::EnumVariant {
+        if definition.symbol.kind == SymbolKind::EnumMember {
             definition.symbol.container_name.clone()
         } else {
             None

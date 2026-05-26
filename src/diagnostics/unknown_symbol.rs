@@ -49,7 +49,7 @@ pub(crate) fn run_unknown_symbol_parallel(
     tracing::debug!(
         top_level = shard.telemetry.top_level_lookups,
         member = shard.telemetry.member_lookups,
-        enum_variant = shard.telemetry.enum_variant_lookups,
+        enum_member = shard.telemetry.enum_member_lookups,
         type_inference = shard.telemetry.type_inferences,
         definition = shard.telemetry.definition_resolutions,
         "cst lookup counts"

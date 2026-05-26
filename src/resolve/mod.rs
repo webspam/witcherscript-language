@@ -42,12 +42,12 @@ pub use workspace_index::{ObservedKey, WorkspaceIndex};
 pub struct ObservationSet {
     pub top_level: HashSet<String>,
     pub members: HashSet<(String, String)>,
-    pub enum_variants: HashSet<String>,
+    pub enum_members: HashSet<String>,
 }
 
 impl ObservationSet {
     pub fn is_empty(&self) -> bool {
-        self.top_level.is_empty() && self.members.is_empty() && self.enum_variants.is_empty()
+        self.top_level.is_empty() && self.members.is_empty() && self.enum_members.is_empty()
     }
 }
 

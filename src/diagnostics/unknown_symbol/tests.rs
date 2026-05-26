@@ -119,7 +119,7 @@ fn kinds(diags: &[super::WorkspaceDiagnostic]) -> Vec<&str> {
     "class Foo {} \
      @wrapMethod(Foo) function W() { wrappedMethod(); }\n"
 )]
-#[case::enum_variant_used_as_value("enum E { V } function F() { var x : E; x = V; }\n")]
+#[case::enum_member_used_as_value("enum E { V } function F() { var x : E; x = V; }\n")]
 #[case::type_name_in_annotation("class C {} function F() { var x : C; }\n")]
 #[case::type_name_in_new_expr(
     "class C {} function F(host : C) { var c : C; c = new C in host; }\n"
