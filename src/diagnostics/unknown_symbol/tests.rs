@@ -127,6 +127,10 @@ fn kinds(diags: &[super::WorkspaceDiagnostic]) -> Vec<&str> {
 #[case::type_name_in_cast(
     "class C {} class D {} function F() { var c : C; var d : D; d = (D) c; }\n"
 )]
+#[case::struct_constructor_call(
+    "struct Vector { var X, Y, Z : float; } \
+     function F() { var v : Vector = Vector(0, 0, 0); }\n"
+)]
 fn produces_no_diagnostics(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     let result = collect_unknown_symbol_diagnostics(&t.search_docs(), &t.db());
@@ -220,6 +224,11 @@ fn produces_no_diagnostics(#[case] fixture: &str) {
     "class C {} function F() { var x : int; x = C; }\n",
     &["type_used_as_value"],
     &["'C'"],
+)]
+#[case::type_used_as_value_struct_assignment(
+    "struct S { var x : int; } function F() { var v : int; v = S; }\n",
+    &["type_used_as_value"],
+    &["'S'"],
 )]
 #[case::type_used_as_function_call(
     "enum E { V } function F() { E(); }\n",
