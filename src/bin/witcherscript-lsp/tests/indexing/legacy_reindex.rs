@@ -34,6 +34,44 @@ async fn reindexing_keeps_an_open_legacy_file_indexed() {
 }
 
 #[tokio::test]
+async fn refresh_override_maps_keeps_open_legacy_pairing() {
+    let temp = LocalTempDir::new("ws_refresh_open_legacy_pairing");
+    let (game_dir, base_url) =
+        make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+    let legacy_dir = temp.path().join("legacy");
+    let legacy_path = write_script(
+        &legacy_dir,
+        "game/r4Player.ws",
+        "class CR4Player {}\n// legacy\n",
+    );
+    let legacy_url = Url::from_file_path(&legacy_path).expect("legacy path -> url");
+
+    let backend = make_backend();
+    *backend.base_scripts_path.lock() = Some(game_dir);
+    *backend.legacy_script_dirs.lock() = vec![legacy_dir];
+
+    backend.index_base_scripts().await;
+    backend.update_open_document(
+        legacy_url.clone(),
+        "class CR4Player {}\n// legacy\n".to_string(),
+    );
+    backend
+        .workspace_documents
+        .lock()
+        .remove(legacy_url.as_str());
+
+    backend.refresh_legacy_override_maps();
+
+    assert!(
+        backend
+            .suppressed_base_uris
+            .lock()
+            .contains(base_url.as_str()),
+        "refresh must pair an open legacy override using workspace_index, not workspace_documents",
+    );
+}
+
+#[tokio::test]
 async fn reindexing_keeps_an_open_overridden_base_script_indexed() {
     let temp = LocalTempDir::new("ws_reindex_keeps_open_overridden_base");
     let (game_dir, base_url) =

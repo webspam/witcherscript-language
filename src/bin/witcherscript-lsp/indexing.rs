@@ -276,52 +276,36 @@ impl Backend {
         dirs
     }
 
-    fn legacy_uris_in_workspace_documents(&self) -> Vec<String> {
+    fn uri_under_legacy_dirs(uri: &str, legacy_dirs: &[PathBuf]) -> bool {
+        Url::parse(uri)
+            .ok()
+            .and_then(|u| u.to_file_path().ok())
+            .is_some_and(|path| legacy_dirs.iter().any(|dir| path.starts_with(dir)))
+    }
+
+    // Pairing must see open legacy overrides; those live in workspace_index, not workspace_documents.
+    fn legacy_uris_in_workspace_index(&self) -> Vec<String> {
         let legacy_dirs = self.effective_legacy_dirs();
         if legacy_dirs.is_empty() {
             return Vec::new();
         }
-        self.workspace_documents
+        self.workspace_index
             .lock()
-            .keys()
-            .filter(|uri| {
-                Url::parse(uri)
-                    .ok()
-                    .and_then(|u| u.to_file_path().ok())
-                    .is_some_and(|path| legacy_dirs.iter().any(|dir| path.starts_with(dir)))
-            })
-            .cloned()
+            .documents()
+            .map(|(uri, _)| uri.to_string())
+            .filter(|uri| Self::uri_under_legacy_dirs(uri, &legacy_dirs))
             .collect()
     }
 
     pub(crate) fn refresh_legacy_override_maps(&self) {
         let base_uris: Vec<String> = self.base_scripts_documents.lock().keys().cloned().collect();
-        let legacy_uris = self.legacy_uris_in_workspace_documents();
+        let legacy_uris = self.legacy_uris_in_workspace_index();
         let (suppressed, replacements) = legacy_base_replacements(&base_uris, &legacy_uris);
         *self.suppressed_base_uris.lock() = suppressed;
         *self.legacy_replacements.lock() = replacements;
     }
 
-    pub(crate) fn upsert_legacy_workspace_document(
-        &self,
-        canonical: &str,
-        document: ParsedDocument,
-    ) -> HashSet<String> {
-        let open_canonical: HashSet<String> = {
-            let documents = self.documents.lock();
-            documents.keys().filter_map(canonical_uri).collect()
-        };
-        if open_canonical.contains(canonical) {
-            return HashSet::new();
-        }
-        let mut index = self.workspace_index.lock();
-        let mut docs = self.workspace_documents.lock();
-        let invalidated = index.update_document(canonical, &document);
-        docs.insert(canonical.to_string(), document);
-        invalidated
-    }
-
-    pub(crate) fn remove_legacy_workspace_document(&self, canonical: &str) -> HashSet<String> {
+    fn remove_legacy_workspace_document(&self, canonical: &str) -> HashSet<String> {
         let mut index = self.workspace_index.lock();
         let mut docs = self.workspace_documents.lock();
         let invalidated = index.remove_document(canonical);
@@ -346,10 +330,7 @@ impl Backend {
                 if current.contains(*uri) || open_canonical.contains(*uri) {
                     return false;
                 }
-                Url::parse(uri)
-                    .ok()
-                    .and_then(|u| u.to_file_path().ok())
-                    .is_some_and(|path| legacy_dirs.iter().any(|dir| path.starts_with(dir)))
+                Self::uri_under_legacy_dirs(uri, &legacy_dirs)
             })
             .cloned()
             .collect();
@@ -367,11 +348,25 @@ impl Backend {
         &self,
         parsed: Vec<(String, ParsedDocument)>,
     ) -> HashSet<String> {
+        let open_canonical: HashSet<String> = {
+            let documents = self.documents.lock();
+            documents.keys().filter_map(canonical_uri).collect()
+        };
         let mut current = HashSet::new();
         let mut invalidated = HashSet::new();
-        for (uri, document) in parsed {
-            current.insert(uri.clone());
-            invalidated.extend(self.upsert_legacy_workspace_document(&uri, document));
+        {
+            let mut ws_idx = self.workspace_index.lock();
+            let mut ws_docs = self.workspace_documents.lock();
+            ws_idx.begin_bulk_catalog_update();
+            for (uri, document) in parsed {
+                current.insert(uri.clone());
+                if open_canonical.contains(&uri) {
+                    continue;
+                }
+                invalidated.extend(ws_idx.update_document(uri.as_str(), &document));
+                ws_docs.insert(uri, document);
+            }
+            ws_idx.end_bulk_catalog_update();
         }
         self.prune_stale_legacy_workspace_files(&current);
         invalidated
