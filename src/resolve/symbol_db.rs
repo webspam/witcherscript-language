@@ -5,6 +5,7 @@ use crate::script_env::ScriptEnvironment;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
 use super::completion_catalog::{merge_ws_base, merge_ws_base_three};
+use super::shadowed_base::{filter_catalog, ShadowedBase};
 use super::workspace_index::WorkspaceIndex;
 use super::{dedup_by_name, dedup_definitions, Definition, ObservationSet, MAX_INHERITANCE_DEPTH};
 
@@ -16,6 +17,7 @@ const OBJECT_ROOT_CHAIN: [&str; 3] = ["CObject", "IScriptable", "ISerializable"]
 
 pub struct SymbolDb<'a> {
     pub(super) workspace: &'a WorkspaceIndex,
+    /// Full base index, including suppressed URIs (e.g. find-references in shadowed vanilla files).
     pub(super) base: &'a WorkspaceIndex,
     builtins: Option<&'a WorkspaceIndex>,
     script_env: Option<&'a ScriptEnvironment>,
@@ -33,11 +35,10 @@ pub struct FilteredBaseCatalogs {
 
 impl FilteredBaseCatalogs {
     pub fn build(base: &WorkspaceIndex, suppressed: &HashSet<String>) -> Self {
-        let suppressed = Some(suppressed);
         Self {
-            callables: SymbolDb::filter_base_catalog(base.callables_catalog(), suppressed),
-            types: SymbolDb::filter_base_catalog(base.types_catalog(), suppressed),
-            enum_variants: SymbolDb::filter_base_catalog(base.enum_variants_catalog(), suppressed),
+            callables: filter_catalog(base.callables_catalog(), Some(suppressed)),
+            types: filter_catalog(base.types_catalog(), Some(suppressed)),
+            enum_variants: filter_catalog(base.enum_variants_catalog(), Some(suppressed)),
         }
     }
 }
@@ -94,50 +95,29 @@ impl<'a> SymbolDb<'a> {
         self.suppressed_base_uris
     }
 
-    fn base_def_allowed(&self, def: &Definition) -> bool {
-        match self.suppressed_base_uris {
-            Some(sup) => !sup.contains(def.uri.as_str()),
-            None => true,
-        }
-    }
-
-    fn filter_base_catalog(
-        catalog: std::sync::Arc<[Definition]>,
-        suppressed: Option<&HashSet<String>>,
-    ) -> std::sync::Arc<[Definition]> {
-        let Some(sup) = suppressed else {
-            return catalog;
-        };
-        if sup.is_empty() {
-            return catalog;
-        }
-        let filtered: Vec<Definition> = catalog
-            .iter()
-            .filter(|d| !sup.contains(d.uri.as_str()))
-            .cloned()
-            .collect();
-        Arc::from(filtered)
+    fn shadowed_base(&self) -> ShadowedBase<'a> {
+        ShadowedBase::new(self.base, self.suppressed_base_uris)
     }
 
     fn base_callables_for_merge(&self) -> std::sync::Arc<[Definition]> {
         if let Some(prefiltered) = self.prefiltered_base {
             return prefiltered.callables.clone();
         }
-        Self::filter_base_catalog(self.base.callables_catalog(), self.suppressed_base_uris)
+        self.shadowed_base().callables_catalog()
     }
 
     fn base_types_for_merge(&self) -> std::sync::Arc<[Definition]> {
         if let Some(prefiltered) = self.prefiltered_base {
             return prefiltered.types.clone();
         }
-        Self::filter_base_catalog(self.base.types_catalog(), self.suppressed_base_uris)
+        self.shadowed_base().types_catalog()
     }
 
     fn base_enum_variants_for_merge(&self) -> std::sync::Arc<[Definition]> {
         if let Some(prefiltered) = self.prefiltered_base {
             return prefiltered.enum_variants.clone();
         }
-        Self::filter_base_catalog(self.base.enum_variants_catalog(), self.suppressed_base_uris)
+        self.shadowed_base().enum_variants_catalog()
     }
 
     pub fn merge_observations(&self, other: ObservationSet) {
@@ -197,11 +177,7 @@ impl<'a> SymbolDb<'a> {
         self.record_top_level(name);
         self.workspace
             .find_top_level(name)
-            .or_else(|| {
-                self.base
-                    .find_top_level(name)
-                    .filter(|d| self.base_def_allowed(d))
-            })
+            .or_else(|| self.shadowed_base().find_top_level(name))
             .or_else(|| self.builtins.and_then(|b| b.find_top_level(name)))
     }
 
@@ -209,11 +185,7 @@ impl<'a> SymbolDb<'a> {
         self.record_enum_variant(name);
         self.workspace
             .find_enum_variant(name)
-            .or_else(|| {
-                self.base
-                    .find_enum_variant(name)
-                    .filter(|d| self.base_def_allowed(d))
-            })
+            .or_else(|| self.shadowed_base().find_enum_variant(name))
             .or_else(|| self.builtins.and_then(|b| b.find_enum_variant(name)))
     }
 
@@ -228,16 +200,7 @@ impl<'a> SymbolDb<'a> {
         self.record_top_level(class_name);
         self.workspace
             .superclass_of(class_name)
-            .or_else(|| {
-                if self
-                    .base
-                    .find_top_level(class_name)
-                    .is_some_and(|d| !self.base_def_allowed(&d))
-                {
-                    return None;
-                }
-                self.base.superclass_of(class_name)
-            })
+            .or_else(|| self.shadowed_base().superclass_of(class_name))
             .or_else(|| self.builtins.and_then(|b| b.superclass_of(class_name)))
             .or_else(|| self.virtual_object_base(class_name))
     }
@@ -273,9 +236,8 @@ impl<'a> SymbolDb<'a> {
             self.workspace
                 .direct_member_of(container, name, AccessLevel::Private)
                 .or_else(|| {
-                    self.base
+                    self.shadowed_base()
                         .direct_member_of(container, name, AccessLevel::Private)
-                        .filter(|d| self.base_def_allowed(d))
                 })
                 .or_else(|| {
                     self.builtins
@@ -301,12 +263,7 @@ impl<'a> SymbolDb<'a> {
             self.workspace
                 .direct_members_of(lookup, min_access)
                 .into_iter()
-                .chain(
-                    self.base
-                        .direct_members_of(lookup, min_access)
-                        .into_iter()
-                        .filter(|d| self.base_def_allowed(d)),
-                )
+                .chain(self.shadowed_base().direct_members_of(lookup, min_access))
                 .chain(
                     self.builtins
                         .map(|b| b.direct_members_of(lookup, min_access))
@@ -343,10 +300,8 @@ impl<'a> SymbolDb<'a> {
                 .direct_members_of(c, AccessLevel::Private)
                 .into_iter()
                 .chain(
-                    self.base
-                        .direct_members_of(c, AccessLevel::Private)
-                        .into_iter()
-                        .filter(|d| self.base_def_allowed(d)),
+                    self.shadowed_base()
+                        .direct_members_of(c, AccessLevel::Private),
                 )
                 .chain(
                     self.builtins
@@ -377,12 +332,7 @@ impl<'a> SymbolDb<'a> {
             .workspace
             .annotated_members(container, name)
             .into_iter()
-            .chain(
-                self.base
-                    .annotated_members(container, name)
-                    .into_iter()
-                    .filter(|d| self.base_def_allowed(d)),
-            )
+            .chain(self.shadowed_base().annotated_members(container, name))
             .chain(
                 self.builtins
                     .map(|b| b.annotated_members(container, name))
@@ -466,7 +416,7 @@ impl<'a> SymbolDb<'a> {
         if !params.is_empty() {
             return params;
         }
-        let params = self.base.parameters_of(uri, callable_id);
+        let params = self.shadowed_base().parameters_of(uri, callable_id);
         if !params.is_empty() {
             return params;
         }
@@ -480,7 +430,7 @@ impl<'a> SymbolDb<'a> {
         if !params.is_empty() {
             return params;
         }
-        let params = self.base.full_parameters_of(uri, callable_id);
+        let params = self.shadowed_base().full_parameters_of(uri, callable_id);
         if !params.is_empty() {
             return params;
         }

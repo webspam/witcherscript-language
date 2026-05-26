@@ -8,6 +8,7 @@ mod completion_catalog;
 mod definition;
 mod inference;
 mod references;
+mod shadowed_base;
 mod signature;
 mod symbol_db;
 mod workspace_index;
