@@ -273,7 +273,7 @@ impl Backend {
                 }
             }
         }
-        for dir in self.manifest_legacy_dirs.lock().iter() {
+        for dir in self.manifest_legacy_dirs.lock().values() {
             if !dirs.contains(dir) {
                 dirs.push(dir.clone());
             }
@@ -282,21 +282,55 @@ impl Backend {
     }
 
     pub(crate) fn refresh_manifest_legacy_dirs(&self) -> bool {
-        let prev: HashSet<PathBuf> = self.manifest_legacy_dirs.lock().iter().cloned().collect();
-        let next: Vec<PathBuf> = if !self.config.load().auto_detect_project_manifests {
-            Vec::new()
+        let prev: HashSet<PathBuf> = self.manifest_legacy_dirs.lock().values().cloned().collect();
+        let next: HashMap<PathBuf, PathBuf> = if !self.config.load().auto_detect_project_manifests {
+            HashMap::new()
         } else {
             let roots = self.workspace_roots.lock().clone();
             if roots.is_empty() {
-                Vec::new()
+                HashMap::new()
             } else {
                 let exclude_globs = self.files_exclude.lock().clone();
-                crate::project_manifest::discovered_scripts_roots(&roots, &exclude_globs)
+                crate::project_manifest::discover_manifests(&roots, &exclude_globs)
+                    .into_iter()
+                    .filter_map(|toml| {
+                        crate::project_manifest::parse_manifest(&toml).map(|root| (toml, root))
+                    })
+                    .collect()
             }
         };
-        let next_set: HashSet<PathBuf> = next.iter().cloned().collect();
+        let next_set: HashSet<PathBuf> = next.values().cloned().collect();
         *self.manifest_legacy_dirs.lock() = next;
         prev != next_set
+    }
+
+    pub(crate) fn apply_manifest_event(
+        &self,
+        toml_path: &Path,
+        typ: lsp_types::FileChangeType,
+    ) -> bool {
+        let prev: HashSet<PathBuf> = self.manifest_legacy_dirs.lock().values().cloned().collect();
+        let resolved = if !self.config.load().auto_detect_project_manifests
+            || matches!(typ, lsp_types::FileChangeType::DELETED)
+        {
+            None
+        } else {
+            crate::project_manifest::parse_manifest(toml_path)
+        };
+        {
+            let mut map = self.manifest_legacy_dirs.lock();
+            let key = toml_path.to_path_buf();
+            match resolved {
+                Some(root) => {
+                    map.insert(key, root);
+                }
+                None => {
+                    map.remove(&key);
+                }
+            }
+        }
+        let next: HashSet<PathBuf> = self.manifest_legacy_dirs.lock().values().cloned().collect();
+        prev != next
     }
 
     fn uri_under_legacy_dirs(uri: &str, legacy_dirs: &[PathBuf]) -> bool {

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::{discover_manifests, discovered_scripts_roots, parse_manifest, MANIFEST_FILENAME};
+use super::{discover_manifests, parse_manifest, MANIFEST_FILENAME};
 
 struct TempDir {
     path: PathBuf,
@@ -189,48 +189,4 @@ fn discover_manifests_finds_gitignored_files() {
         1,
         "gitignored manifests must still be found; got {found:?}"
     );
-}
-
-#[test]
-fn discovered_scripts_roots_dedupes_when_two_manifests_resolve_same_dir() {
-    let tmp = TempDir::new("disc-dedup");
-    let shared = tmp.path().join("shared_scripts");
-    fs::create_dir_all(&shared).unwrap();
-    write(
-        tmp.path(),
-        "a/witcherscript.toml",
-        &format!(
-            "[content]\nscripts_root = \"{}\"\n",
-            shared.display().to_string().replace('\\', "/")
-        ),
-    );
-    write(
-        tmp.path(),
-        "b/witcherscript.toml",
-        &format!(
-            "[content]\nscripts_root = \"{}\"\n",
-            shared.display().to_string().replace('\\', "/")
-        ),
-    );
-    let roots = discovered_scripts_roots(&[tmp.path().to_path_buf()], &[]);
-    assert_eq!(roots.len(), 1, "expected dedup, got {roots:?}");
-}
-
-#[test]
-fn discovered_scripts_roots_skips_manifests_with_no_existing_dir() {
-    let tmp = TempDir::new("disc-broken");
-    write(
-        tmp.path(),
-        "ok/witcherscript.toml",
-        "[content]\nscripts_root = \"scripts\"\n",
-    );
-    fs::create_dir_all(tmp.path().join("ok/scripts")).unwrap();
-    write(
-        tmp.path(),
-        "broken/witcherscript.toml",
-        "[content]\nscripts_root = \"missing\"\n",
-    );
-    let roots = discovered_scripts_roots(&[tmp.path().to_path_buf()], &[]);
-    assert_eq!(roots.len(), 1);
-    assert!(roots[0].ends_with("scripts"));
 }

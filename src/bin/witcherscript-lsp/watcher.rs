@@ -174,11 +174,18 @@ impl Backend {
             self.evict_cache_entries(&invalidated);
         }
 
-        let manifest_set_changed = if manifest_events.is_empty() {
-            false
-        } else {
-            self.refresh_manifest_legacy_dirs()
-        };
+        let mut manifest_set_changed = false;
+        for event in manifest_events {
+            let Ok(path) = event.uri.to_file_path() else {
+                continue;
+            };
+            if !matches!(event.typ, FileChangeType::DELETED) && filter.matches(&path) {
+                continue;
+            }
+            if self.apply_manifest_event(&path, event.typ) {
+                manifest_set_changed = true;
+            }
+        }
 
         if legacy_map_refresh || manifest_set_changed {
             self.refresh_legacy_override_maps();

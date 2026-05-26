@@ -56,7 +56,12 @@ fn refresh_honors_files_exclude() {
 
     backend.refresh_manifest_legacy_dirs();
 
-    let dirs = backend.manifest_legacy_dirs.lock();
+    let dirs: Vec<_> = backend
+        .manifest_legacy_dirs
+        .lock()
+        .values()
+        .cloned()
+        .collect();
     assert_eq!(
         dirs.len(),
         1,

@@ -95,18 +95,5 @@ pub(crate) fn discover_manifests(roots: &[PathBuf], exclude_globs: &[String]) ->
     out
 }
 
-pub(crate) fn discovered_scripts_roots(
-    roots: &[PathBuf],
-    exclude_globs: &[String],
-) -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = discover_manifests(roots, exclude_globs)
-        .iter()
-        .filter_map(|toml| parse_manifest(toml))
-        .collect();
-    out.sort();
-    out.dedup();
-    out
-}
-
 #[cfg(test)]
 mod tests;
