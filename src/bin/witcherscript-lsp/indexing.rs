@@ -16,6 +16,12 @@ use crate::backend::Backend;
 use crate::convert::source_position;
 use crate::file_scope::{classify_file_scope, FileScope};
 
+fn path_to_canonical_uri(path: &Path) -> Option<String> {
+    Url::from_file_path(path)
+        .ok()
+        .and_then(|u| canonical_uri(&u))
+}
+
 pub(crate) fn legacy_replaces_base(base_uri: &str, legacy_uri: &str) -> bool {
     let Some(tail) = relative_from_scripts(base_uri) else {
         return false;
@@ -273,7 +279,81 @@ impl Backend {
                 }
             }
         }
+        for dir in self.manifest_legacy_dirs.lock().values() {
+            if !dirs.contains(dir) {
+                dirs.push(dir.clone());
+            }
+        }
         dirs
+    }
+
+    pub(crate) fn refresh_manifest_legacy_dirs(&self) -> bool {
+        let prev: HashSet<PathBuf> = self.manifest_legacy_dirs.lock().values().cloned().collect();
+        let next: HashMap<String, PathBuf> = if !self.config.load().auto_detect_project_manifests {
+            HashMap::new()
+        } else {
+            let roots = self.workspace_roots.lock().clone();
+            if roots.is_empty() {
+                HashMap::new()
+            } else {
+                let exclude_globs = self.files_exclude.lock().clone();
+                crate::project_manifest::discover_manifests(&roots, &exclude_globs)
+                    .into_iter()
+                    .filter_map(|toml| {
+                        let key = path_to_canonical_uri(&toml)?;
+                        let root = crate::project_manifest::parse_manifest(&toml)?;
+                        Some((key, root))
+                    })
+                    .collect()
+            }
+        };
+        let next_set: HashSet<PathBuf> = next.values().cloned().collect();
+        let changed = prev != next_set;
+        tracing::trace!(
+            count = next.len(),
+            changed,
+            "refreshed manifest_legacy_dirs"
+        );
+        *self.manifest_legacy_dirs.lock() = next;
+        changed
+    }
+
+    pub(crate) fn apply_manifest_event(
+        &self,
+        toml_path: &Path,
+        typ: lsp_types::FileChangeType,
+    ) -> bool {
+        let prev: HashSet<PathBuf> = self.manifest_legacy_dirs.lock().values().cloned().collect();
+        let resolved = if !self.config.load().auto_detect_project_manifests
+            || matches!(typ, lsp_types::FileChangeType::DELETED)
+        {
+            None
+        } else {
+            crate::project_manifest::parse_manifest(toml_path)
+        };
+        let Some(key) = path_to_canonical_uri(toml_path) else {
+            return false;
+        };
+        {
+            let mut map = self.manifest_legacy_dirs.lock();
+            match resolved {
+                Some(root) => {
+                    map.insert(key, root);
+                }
+                None => {
+                    map.remove(&key);
+                }
+            }
+        }
+        let next: HashSet<PathBuf> = self.manifest_legacy_dirs.lock().values().cloned().collect();
+        let changed = prev != next;
+        tracing::trace!(
+            manifest = %toml_path.display(),
+            ?typ,
+            changed,
+            "applied manifest watcher event"
+        );
+        changed
     }
 
     fn uri_under_legacy_dirs(uri: &str, legacy_dirs: &[PathBuf]) -> bool {

@@ -6,13 +6,23 @@ use lsp_types::{
     DidChangeWatchedFilesRegistrationOptions, FileChangeType, FileEvent, FileSystemWatcher,
     GlobPattern, Registration, RegistrationParams,
 };
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::files::{
     canonical_uri, is_witcherscript_file, read_script_file, ExcludeFilter,
 };
 
 use crate::backend::Backend;
+use crate::project_manifest::MANIFEST_FILENAME;
+
+fn event_is_manifest(event: &FileEvent) -> bool {
+    event
+        .uri
+        .to_file_path()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n == MANIFEST_FILENAME))
+        .unwrap_or(false)
+}
 
 pub(crate) fn event_touches_legacy_dir(event: &FileEvent, legacy_dirs: &[PathBuf]) -> bool {
     if legacy_dirs.is_empty() {
@@ -58,12 +68,17 @@ pub(crate) fn classify_watched_event(
 
 impl Backend {
     pub(crate) async fn register_file_watchers(&self) {
-        let watcher = FileSystemWatcher {
-            glob_pattern: GlobPattern::String("**/*.ws".to_string()),
-            kind: None,
-        };
         let options = DidChangeWatchedFilesRegistrationOptions {
-            watchers: vec![watcher],
+            watchers: vec![
+                FileSystemWatcher {
+                    glob_pattern: GlobPattern::String("**/*.ws".to_string()),
+                    kind: None,
+                },
+                FileSystemWatcher {
+                    glob_pattern: GlobPattern::String(format!("**/{MANIFEST_FILENAME}")),
+                    kind: None,
+                },
+            ],
         };
         let registration = Registration {
             id: "witcherscript-ws-files".to_string(),
@@ -92,12 +107,15 @@ impl Backend {
         let filter = self.exclude_filter();
         let legacy_dirs = self.effective_legacy_dirs();
 
+        let (manifest_events, ws_events): (Vec<FileEvent>, Vec<FileEvent>) =
+            events.into_iter().partition(event_is_manifest);
+
         let mut updates: Vec<(String, witcherscript_language::document::ParsedDocument)> =
             Vec::new();
         let mut removals: Vec<String> = Vec::new();
         let mut legacy_map_refresh = false;
 
-        for event in events {
+        for event in ws_events {
             let touches_legacy = event_touches_legacy_dir(&event, &legacy_dirs);
             let Some(decision) = classify_watched_event(&event, &open_canonical, &filter) else {
                 continue;
@@ -156,13 +174,40 @@ impl Backend {
             self.evict_cache_entries(&invalidated);
         }
 
-        if legacy_map_refresh {
+        let mut manifest_set_changed = false;
+        if !manifest_events.is_empty() {
+            trace!(
+                count = manifest_events.len(),
+                "processing witcherscript.toml watcher events"
+            );
+        }
+        for event in manifest_events {
+            let Ok(path) = event.uri.to_file_path() else {
+                continue;
+            };
+            if !matches!(event.typ, FileChangeType::DELETED) && filter.matches(&path) {
+                continue;
+            }
+            if self.apply_manifest_event(&path, event.typ) {
+                manifest_set_changed = true;
+            }
+        }
+
+        if legacy_map_refresh || manifest_set_changed {
             self.refresh_legacy_override_maps();
             self.publish_legacy_script_status();
             self.publish_file_scope_status();
         }
 
-        if had_updates || had_removals || legacy_map_refresh {
+        if manifest_set_changed {
+            trace!("manifest dir set changed; spawning index_base_scripts");
+            let backend = self.clone();
+            crate::spawn_logged("manifest-set-changed reindex", async move {
+                backend.index_base_scripts().await;
+            });
+        }
+
+        if had_updates || had_removals || legacy_map_refresh || manifest_set_changed {
             self.publish_open_diagnostics();
         }
     }

@@ -12,7 +12,7 @@ pub fn canonical_uri(uri: &Url) -> Option<String> {
     Url::from_file_path(path).ok().map(|u| u.to_string())
 }
 
-fn build_overrides(root: &Path, exclude_globs: &[String]) -> Result<Override, ignore::Error> {
+pub fn build_overrides(root: &Path, exclude_globs: &[String]) -> Result<Override, ignore::Error> {
     let mut builder = OverrideBuilder::new(root);
     for glob in exclude_globs {
         builder.add(&format!("!{glob}"))?;

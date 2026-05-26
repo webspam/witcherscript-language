@@ -87,6 +87,9 @@ impl Backend {
             {
                 cfg.auto_load_mod_shared_imports = b;
             }
+            if let Some(b) = opts.get("detectProjectManifests").and_then(|v| v.as_bool()) {
+                cfg.auto_detect_project_manifests = b;
+            }
             if let Some(diag) = opts.get("diagnostics") {
                 if let Some(s) = diag.get("scope").and_then(|v| v.as_str()) {
                     cfg.diagnostics_scope = DiagnosticsScope::from_setting(s);
@@ -183,6 +186,7 @@ impl Backend {
         tracing::trace!("initialized: fetching config and indexing");
         self.fetch_config().await;
         self.index_workspace().await;
+        self.refresh_manifest_legacy_dirs();
         self.register_file_watchers().await;
         self.index_base_scripts().await;
         self.initial_index_done.store(true, Ordering::Release);
@@ -199,6 +203,7 @@ impl Backend {
         if change.needs_reindex {
             tracing::trace!("did_change_configuration: index-relevant config changed, re-indexing");
             self.index_workspace().await;
+            self.refresh_manifest_legacy_dirs();
             self.index_base_scripts().await;
             self.reindex_open_documents();
             self.publish_open_diagnostics();

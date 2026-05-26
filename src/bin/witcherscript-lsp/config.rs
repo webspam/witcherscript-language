@@ -29,6 +29,7 @@ impl DiagnosticsScope {
 pub(crate) struct Config {
     pub(crate) log_level: u8,
     pub(crate) auto_load_mod_shared_imports: bool,
+    pub(crate) auto_detect_project_manifests: bool,
     pub(crate) diagnostics_scope: DiagnosticsScope,
     pub(crate) formatter_line_limit: u32,
     pub(crate) formatter_compact_colon: bool,
@@ -40,6 +41,7 @@ impl Default for Config {
         Self {
             log_level: level_to_u8(DEFAULT_LOG_LEVEL),
             auto_load_mod_shared_imports: true,
+            auto_detect_project_manifests: true,
             diagnostics_scope: DiagnosticsScope::Workspace,
             formatter_line_limit: 100,
             formatter_compact_colon: false,
@@ -104,6 +106,10 @@ impl Backend {
             ConfigurationItem {
                 scope_uri: None,
                 section: Some("witcherscript.legacyScriptDirectories".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.detectProjectManifests".to_string()),
             },
             ConfigurationItem {
                 scope_uri: None,
@@ -200,6 +206,10 @@ impl Backend {
                 self.legacy_script_dirs.lock().clear();
             }
         }
+        next_cfg.auto_detect_project_manifests = match iter.next() {
+            Some(Value::Bool(b)) => b,
+            _ => true,
+        };
         next_cfg.diagnostics_scope = match iter.next() {
             Some(Value::String(s)) => DiagnosticsScope::from_setting(&s),
             _ => DiagnosticsScope::Workspace,
@@ -215,6 +225,8 @@ impl Backend {
         let legacy_changed = *self.legacy_script_dirs.lock() != prev_legacy;
         let auto_load_changed =
             next_cfg.auto_load_mod_shared_imports != prev_cfg.auto_load_mod_shared_imports;
+        let auto_detect_manifests_changed =
+            next_cfg.auto_detect_project_manifests != prev_cfg.auto_detect_project_manifests;
         let diagnostics_changed = next_cfg.diagnostics_scope != prev_cfg.diagnostics_scope;
         if base_scripts_changed {
             trace!(setting = "gameDirectory", "setting changed");
@@ -238,6 +250,14 @@ impl Backend {
                 "setting changed"
             );
         }
+        if auto_detect_manifests_changed {
+            trace!(
+                setting = "detectProjectManifests",
+                prev = prev_cfg.auto_detect_project_manifests,
+                new = next_cfg.auto_detect_project_manifests,
+                "setting changed"
+            );
+        }
         if diagnostics_changed {
             trace!(setting = "diagnostics", "setting changed");
         }
@@ -249,7 +269,8 @@ impl Backend {
                 || files_exclude_changed
                 || additional_changed
                 || legacy_changed
-                || auto_load_changed,
+                || auto_load_changed
+                || auto_detect_manifests_changed,
             diagnostics_changed,
         }
     }

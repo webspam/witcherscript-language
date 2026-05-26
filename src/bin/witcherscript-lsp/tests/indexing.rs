@@ -118,3 +118,12 @@ mod file_operation_events;
 
 #[cfg(test)]
 mod loose_files;
+
+#[cfg(test)]
+mod manifest_discovery;
+
+#[cfg(test)]
+mod manifest_reindex;
+
+#[cfg(test)]
+mod manifest_routing;

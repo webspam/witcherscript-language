@@ -156,6 +156,9 @@ impl Backend {
         }
 
         self.index_workspace().await;
+        if self.refresh_manifest_legacy_dirs() {
+            self.index_base_scripts().await;
+        }
         self.reindex_open_documents();
         self.publish_open_diagnostics();
         self.publish_file_scope_status();
