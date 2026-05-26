@@ -234,7 +234,7 @@ pub fn hover_text(definition: &Definition) -> String {
                 SymbolKind::Class => "class",
                 SymbolKind::Struct => "struct",
                 SymbolKind::Enum => "enum",
-                SymbolKind::EnumVariant => "enum variant",
+                SymbolKind::EnumMember => "enum member",
                 SymbolKind::Function => "function",
                 SymbolKind::Variable => "var",
                 SymbolKind::Parameter => "(parameter)",

@@ -1,4 +1,4 @@
-// Built-in: engine enum variants with no known home enum; the synthetic bucket enum is excluded from type completion.
+// Built-in: engine enum members with no known home enum; the synthetic bucket enum is excluded from type completion.
 enum WLSP_TooHardBasket {
     BTAP_AboveEmergency2 = 66,
     DT_fromScript = 1024,

@@ -19,7 +19,7 @@ pub(crate) type TypeMemo = HashMap<(usize, usize), Option<String>>;
 pub(crate) struct RuleTelemetry {
     pub top_level_lookups: usize,
     pub member_lookups: usize,
-    pub enum_variant_lookups: usize,
+    pub enum_member_lookups: usize,
     pub type_inferences: usize,
     pub definition_resolutions: usize,
     pub branch_type_ref_us: u64,
@@ -42,7 +42,7 @@ impl Add for RuleTelemetry {
         Self {
             top_level_lookups: self.top_level_lookups + other.top_level_lookups,
             member_lookups: self.member_lookups + other.member_lookups,
-            enum_variant_lookups: self.enum_variant_lookups + other.enum_variant_lookups,
+            enum_member_lookups: self.enum_member_lookups + other.enum_member_lookups,
             type_inferences: self.type_inferences + other.type_inferences,
             definition_resolutions: self.definition_resolutions + other.definition_resolutions,
             branch_type_ref_us: self.branch_type_ref_us + other.branch_type_ref_us,
@@ -147,7 +147,7 @@ pub(crate) fn run_rules_on_document(
     tracing::debug!(
         top_level = telemetry.top_level_lookups,
         member = telemetry.member_lookups,
-        enum_variant = telemetry.enum_variant_lookups,
+        enum_member = telemetry.enum_member_lookups,
         type_inference = telemetry.type_inferences,
         definition = telemetry.definition_resolutions,
         memo_size = memo.len(),
@@ -293,7 +293,7 @@ fn merge_shards(mut a: ParallelRuleShard, b: ParallelRuleShard) -> ParallelRuleS
     a.diagnostics.extend(b.diagnostics);
     a.observer.top_level.extend(b.observer.top_level);
     a.observer.members.extend(b.observer.members);
-    a.observer.enum_variants.extend(b.observer.enum_variants);
+    a.observer.enum_members.extend(b.observer.enum_members);
     a
 }
 

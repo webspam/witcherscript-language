@@ -159,9 +159,9 @@ Commit message format: one imperative-mood subject line (≤50 chars), blank lin
 optional body. Be CONCISE. Examples:
 
 ```
-Add hover text for enum variant symbols
+Add hover text for enum member symbols
 
-Extend hover_text() to emit "enum variant <Name>" for EnumVariant kind.
+Extend hover_text() to emit "enum member <Name>" for EnumMember kind.
 ```
 
 ```

@@ -170,7 +170,7 @@ in `package.json`.
 
 The library extracts a flat symbol table from each document during parsing. Symbols carry:
 
-- `name`, `kind` (Class, Struct, Enum, EnumVariant, Function, Method, Field, Variable,
+- `name`, `kind` (Class, Struct, Enum, EnumMember, Function, Method, Field, Variable,
   Parameter, State, Event)
 - `range` / `selection_range` as UTF-16 line/character positions (LSP-compatible)
 - `byte_range` / `selection_byte_range` for fast cursor queries

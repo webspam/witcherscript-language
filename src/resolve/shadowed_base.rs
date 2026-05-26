@@ -33,9 +33,9 @@ impl<'a> ShadowedBase<'a> {
             .filter(|d| self.def_visible(d))
     }
 
-    pub(super) fn find_enum_variant(&self, name: &str) -> Option<Definition> {
+    pub(super) fn find_enum_member(&self, name: &str) -> Option<Definition> {
         self.index
-            .find_enum_variant(name)
+            .find_enum_member(name)
             .filter(|d| self.def_visible(d))
     }
 
@@ -83,8 +83,8 @@ impl<'a> ShadowedBase<'a> {
         filter_catalog(self.index.types_catalog(), self.suppressed)
     }
 
-    pub(super) fn enum_variants_catalog(&self) -> Arc<[Definition]> {
-        filter_catalog(self.index.enum_variants_catalog(), self.suppressed)
+    pub(super) fn enum_members_catalog(&self) -> Arc<[Definition]> {
+        filter_catalog(self.index.enum_members_catalog(), self.suppressed)
     }
 
     pub(super) fn parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<String> {

@@ -164,15 +164,15 @@ fn parameter_appears_with_kind_parameter() {
 }
 
 #[test]
-fn enum_variants_appear_in_globals_with_correct_kind() {
+fn enum_members_appear_in_globals_with_correct_kind() {
     let (t, r) = run_at_cursor("enum EColor { ERed = 0, EBlue = 1 }\nfunction F() {\n  $0\n}\n");
     let globals = globals_for_stmt(&t, &r);
-    let has_variant = globals
+    let has_member = globals
         .iter()
-        .any(|d| d.symbol.name == "ERed" && d.symbol.kind == SymbolKind::EnumVariant);
+        .any(|d| d.symbol.name == "ERed" && d.symbol.kind == SymbolKind::EnumMember);
     assert!(
-        has_variant,
-        "enum variants must appear in statement-context globals; got {:?}",
+        has_member,
+        "enum members must appear in statement-context globals; got {:?}",
         def_names(&globals)
     );
 }

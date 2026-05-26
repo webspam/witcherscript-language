@@ -18,19 +18,19 @@ use crate::test_support::TestDb;
     Some(SymbolKind::Method),
     None
 )]
-#[case::enum_variant_self_site(
+#[case::enum_member_self_site(
     "enum EFoo {\n $0VALUE_A = 0\n}\n",
     "VALUE_A",
-    Some(SymbolKind::EnumVariant),
+    Some(SymbolKind::EnumMember),
     None
 )]
-#[case::enum_variant_cross_document(
+#[case::enum_member_cross_document(
     "//- /enums.ws\n\
      enum EColor { ERed = 0 }\n\
      //- /user.ws\n\
      function F() { var c : EColor; c = E$0Red; }\n",
     "ERed",
-    Some(SymbolKind::EnumVariant),
+    Some(SymbolKind::EnumMember),
     Some("file:///enums.ws")
 )]
 #[case::receiver_variable_resolves_to_declaration(
@@ -245,15 +245,15 @@ fn variable_dot_method_resolves_into_declared_type_not_current_class() {
 }
 
 #[test]
-fn resolves_enum_variant_reference_in_expression() {
+fn resolves_enum_member_reference_in_expression() {
     let t = TestDb::new(
         "enum EColor { ERed = 0, EBlue = 1 }\nfunction F() { var c : EColor = E$0Red; }\n",
     );
     let (uri, pos) = t.cursor();
     let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
-        .expect("enum variant reference in expression should resolve");
+        .expect("enum member reference in expression should resolve");
     assert_eq!(def.symbol.name, "ERed");
-    assert_eq!(def.symbol.kind, SymbolKind::EnumVariant);
+    assert_eq!(def.symbol.kind, SymbolKind::EnumMember);
     assert_eq!(def.symbol.selection_range.start.line, 0);
 }
 

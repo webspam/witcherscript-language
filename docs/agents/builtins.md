@@ -42,7 +42,7 @@ Nested generics (`array<array<int>>`) substitute one level: `Last() : T` becomes
 
 - `prepare_rename` and `rename` reject any symbol whose URI is a builtin URI (`builtin_source(uri).is_some()`).
 - `rename_changes` filters out reference sites that land inside a builtin file — same shape as the base-scripts guard.
-- `SymbolDb::all_types()` includes builtin enums and classes (real, usable types) but excludes whatever `is_non_type_builtin()` flags — `array` (only valid as `array<T>`) and the orphan catch-all enum — since neither can be written as a plain type name. `all_enum_variants()` still includes every builtin enum value, the orphan ones included.
+- `SymbolDb::all_types()` includes builtin enums and classes (real, usable types) but excludes whatever `is_non_type_builtin()` flags — `array` (only valid as `array<T>`) and the orphan catch-all enum — since neither can be written as a plain type name. `all_enum_members()` still includes every builtin enum value, the orphan ones included.
 
 ## Adding a new built-in
 

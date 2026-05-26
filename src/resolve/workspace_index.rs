@@ -8,7 +8,7 @@ use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
 use super::ast::is_type_like;
 use super::completion_catalog::{
-    build_callables, build_enum_variants, build_types, global_catalog_changed, CompletionCatalog,
+    build_callables, build_enum_members, build_types, global_catalog_changed, CompletionCatalog,
 };
 use super::{annotation_target_class, Definition, ObservationSet};
 
@@ -16,7 +16,7 @@ use super::{annotation_target_class, Definition, ObservationSet};
 pub struct WorkspaceIndex {
     documents: HashMap<String, Vec<Symbol>>,
     top_level_by_name: HashMap<String, Definition>,
-    enum_variant_by_name: HashMap<String, Definition>,
+    enum_member_by_name: HashMap<String, Definition>,
     superclass_by_name: HashMap<String, String>,
     member_by_type: HashMap<String, HashMap<String, Definition>>,
     annotated_members_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
@@ -27,7 +27,7 @@ pub struct WorkspaceIndex {
     doc_outward_hashes: HashMap<String, HashMap<ObservedKey, u64>>,
     top_level_subscribers: HashMap<String, HashSet<String>>,
     member_subscribers: HashMap<(String, String), HashSet<String>>,
-    enum_variant_subscribers: HashMap<String, HashSet<String>>,
+    enum_member_subscribers: HashMap<String, HashSet<String>>,
     subscriber_keys: HashMap<String, ObservationSet>,
     completion_catalog: CompletionCatalog,
     completion_catalog_dirty: bool,
@@ -38,7 +38,7 @@ pub struct WorkspaceIndex {
 pub enum ObservedKey {
     TopLevel(String),
     Member(String, String),
-    EnumVariant(String),
+    EnumMember(String),
 }
 
 impl WorkspaceIndex {
@@ -117,7 +117,7 @@ impl WorkspaceIndex {
         self.completion_catalog = CompletionCatalog {
             callables: Arc::from(build_callables(&self.top_level_by_name)),
             types: Arc::from(build_types(&self.top_level_by_name)),
-            enum_variants: Arc::from(build_enum_variants(&self.enum_variant_by_name)),
+            enum_members: Arc::from(build_enum_members(&self.enum_member_by_name)),
         };
         self.completion_catalog_dirty = false;
     }
@@ -136,8 +136,8 @@ impl WorkspaceIndex {
         self.completion_catalog.types.clone()
     }
 
-    pub fn enum_variants_catalog(&self) -> Arc<[Definition]> {
-        self.completion_catalog.enum_variants.clone()
+    pub fn enum_members_catalog(&self) -> Arc<[Definition]> {
+        self.completion_catalog.enum_members.clone()
     }
 
     pub fn register_subscription(&mut self, subscriber_uri: &str, observations: ObservationSet) {
@@ -154,8 +154,8 @@ impl WorkspaceIndex {
                 .or_default()
                 .insert(subscriber_uri.to_string());
         }
-        for name in &observations.enum_variants {
-            self.enum_variant_subscribers
+        for name in &observations.enum_members {
+            self.enum_member_subscribers
                 .entry(name.clone())
                 .or_default()
                 .insert(subscriber_uri.to_string());
@@ -184,11 +184,11 @@ impl WorkspaceIndex {
                 }
             }
         }
-        for name in prev.enum_variants {
-            if let Some(set) = self.enum_variant_subscribers.get_mut(&name) {
+        for name in prev.enum_members {
+            if let Some(set) = self.enum_member_subscribers.get_mut(&name) {
                 set.remove(subscriber_uri);
                 if set.is_empty() {
-                    self.enum_variant_subscribers.remove(&name);
+                    self.enum_member_subscribers.remove(&name);
                 }
             }
         }
@@ -200,7 +200,7 @@ impl WorkspaceIndex {
             let bucket = match key {
                 ObservedKey::TopLevel(n) => self.top_level_subscribers.get(n),
                 ObservedKey::Member(c, n) => self.member_subscribers.get(&(c.clone(), n.clone())),
-                ObservedKey::EnumVariant(n) => self.enum_variant_subscribers.get(n),
+                ObservedKey::EnumMember(n) => self.enum_member_subscribers.get(n),
             };
             if let Some(set) = bucket {
                 for uri in set {
@@ -304,18 +304,18 @@ impl WorkspaceIndex {
                         self.member_by_type.remove(cn);
                     }
                 }
-                if sym.kind == SymbolKind::EnumVariant
+                if sym.kind == SymbolKind::EnumMember
                     && self
-                        .enum_variant_by_name
+                        .enum_member_by_name
                         .get(&sym.name)
                         .map(|d| d.uri == uri)
                         .unwrap_or(false)
                 {
-                    self.enum_variant_by_name.remove(&sym.name);
+                    self.enum_member_by_name.remove(&sym.name);
                     if let Some(def) = self.find_replacement_def(uri, |s| {
-                        s.kind == SymbolKind::EnumVariant && s.name == sym.name
+                        s.kind == SymbolKind::EnumMember && s.name == sym.name
                     }) {
-                        self.enum_variant_by_name.insert(sym.name.clone(), def);
+                        self.enum_member_by_name.insert(sym.name.clone(), def);
                     }
                 }
             }
@@ -374,8 +374,8 @@ impl WorkspaceIndex {
                         symbol: sym.clone(),
                     },
                 );
-                if sym.kind == SymbolKind::EnumVariant {
-                    self.enum_variant_by_name.insert(
+                if sym.kind == SymbolKind::EnumMember {
+                    self.enum_member_by_name.insert(
                         sym.name.clone(),
                         Definition {
                             uri: uri.to_string(),
@@ -391,12 +391,12 @@ impl WorkspaceIndex {
         self.top_level_by_name.get(name).cloned()
     }
 
-    pub fn find_enum_variant(&self, name: &str) -> Option<Definition> {
-        self.enum_variant_by_name.get(name).cloned()
+    pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
+        self.enum_member_by_name.get(name).cloned()
     }
 
-    pub fn all_enum_variants(&self) -> Vec<Definition> {
-        self.enum_variants_catalog().iter().cloned().collect()
+    pub fn all_enum_members(&self) -> Vec<Definition> {
+        self.enum_members_catalog().iter().cloned().collect()
     }
 
     pub fn all_types(&self) -> Vec<Definition> {
@@ -512,7 +512,7 @@ fn is_outward_visible(s: &Symbol) -> bool {
 fn outward_key_for(s: &Symbol) -> ObservedKey {
     match (s.container.is_none(), s.kind) {
         (true, _) => ObservedKey::TopLevel(s.name.clone()),
-        (false, SymbolKind::EnumVariant) => ObservedKey::EnumVariant(s.name.clone()),
+        (false, SymbolKind::EnumMember) => ObservedKey::EnumMember(s.name.clone()),
         (false, _) => {
             ObservedKey::Member(s.container_name.clone().unwrap_or_default(), s.name.clone())
         }

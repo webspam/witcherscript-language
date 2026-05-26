@@ -57,7 +57,7 @@ static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock
     ])
 });
 
-/// `array` (only valid as `array<T>`) and the orphan-variant bucket (a synthetic enum) are not bare-writable type names, so their types must stay out of type completion.
+/// `array` (only valid as `array<T>`) and the orphan-member bucket (a synthetic enum) are not bare-writable type names, so their types must stay out of type completion.
 pub fn is_non_type_builtin(uri: &str) -> bool {
     uri == BUILTIN_ARRAY_URI || uri == BUILTIN_ORPHAN_ENUMS_URI
 }

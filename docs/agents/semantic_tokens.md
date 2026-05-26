@@ -8,7 +8,7 @@
 pub const TOKEN_TYPES: &[&str] = &[
     "class",      // 0  — Class, Struct, State declarations and references
     "enum",       // 1  — Enum declarations
-    "enumMember", // 2  — EnumVariant; also CName literals ('SomeName')
+    "enumMember", // 2  — EnumMember; also CName literals ('SomeName')
     "function",   // 3  — Function, Method, Event
     "parameter",  // 4  — Parameter
     "variable",   // 5  — Variable (local)
@@ -72,7 +72,7 @@ All reference-site `ident` nodes fall through to the `_` arm in `classify_ident`
 
 1. Calls `classify_locally()` (local variables/parameters of enclosing function, then members of enclosing class/struct/state, then top-level symbols in the current document).
 2. If the ident is the RHS of a `member_access_expr` (i.e. after the `.`), calls `classify_definition_at_ident()` directly, which dispatches to `resolve_member_access()` to infer the receiver type and look up the member.
-3. Otherwise, calls `classify_definition_at_ident()` which searches locals, type members, document top-level, then the workspace db (`find_top_level`, `find_enum_variant`, `find_script_global`).
+3. Otherwise, calls `classify_definition_at_ident()` which searches locals, type members, document top-level, then the workspace db (`find_top_level`, `find_enum_member`, `find_script_global`).
 
 If nothing resolves, no token is emitted for the identifier.
 

@@ -217,7 +217,7 @@ fn symbol_kind_to_token_type(kind: SymbolKind) -> u32 {
     match kind {
         SymbolKind::Class | SymbolKind::Struct | SymbolKind::State => TT_CLASS,
         SymbolKind::Enum => TT_ENUM,
-        SymbolKind::EnumVariant => TT_ENUM_MEMBER,
+        SymbolKind::EnumMember => TT_ENUM_MEMBER,
         SymbolKind::Function | SymbolKind::Method | SymbolKind::Event => TT_FUNCTION,
         SymbolKind::Field => TT_PROPERTY,
         SymbolKind::Variable => TT_VARIABLE,

@@ -21,7 +21,7 @@ pub enum SymbolKind {
     Class,
     Struct,
     Enum,
-    EnumVariant,
+    EnumMember,
     Function,
     Method,
     Field,
@@ -371,10 +371,10 @@ impl SymbolExtractor<'_> {
             },
         );
 
-        self.visit_enum_variants(node, enum_id);
+        self.visit_enum_members(node, enum_id);
     }
 
-    fn visit_enum_variants(&mut self, node: Node, enum_id: SymbolId) {
+    fn visit_enum_members(&mut self, node: Node, enum_id: SymbolId) {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor).filter(|child| child.is_named()) {
             if child.kind() == "enum_decl_variant" {
@@ -382,7 +382,7 @@ impl SymbolExtractor<'_> {
                     self.push_symbol(
                         child,
                         name_node,
-                        SymbolKind::EnumVariant,
+                        SymbolKind::EnumMember,
                         SymbolSpec {
                             container: Some(enum_id),
                             ..Default::default()
@@ -390,7 +390,7 @@ impl SymbolExtractor<'_> {
                     );
                 }
             } else {
-                self.visit_enum_variants(child, enum_id);
+                self.visit_enum_members(child, enum_id);
             }
         }
     }

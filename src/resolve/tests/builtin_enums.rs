@@ -19,16 +19,16 @@ fn enum_type_is_indexed_as_global_type() {
 }
 
 #[rstest]
-#[case::first_enum_sole_variant("EAIASM_GuardArea")]
-#[case::mid_list_variant("AD_Back")]
-#[case::lowercase_enums_variant("TreasureHunt")]
-fn enum_variant_is_a_global_symbol(#[case] variant: &str) {
+#[case::first_enum_sole_member("EAIASM_GuardArea")]
+#[case::mid_list_member("AD_Back")]
+#[case::lowercase_enums_member("TreasureHunt")]
+fn enum_member_is_a_global_symbol(#[case] member: &str) {
     let t = TestDb::new("").with_builtins_index();
     let def = t
         .db()
-        .find_enum_variant(variant)
-        .unwrap_or_else(|| panic!("{variant} should resolve"));
-    assert_eq!(def.symbol.kind, SymbolKind::EnumVariant);
+        .find_enum_member(member)
+        .unwrap_or_else(|| panic!("{member} should resolve"));
+    assert_eq!(def.symbol.kind, SymbolKind::EnumMember);
     assert_eq!(def.uri, BUILTIN_ENUMS_URI);
 }
 
@@ -50,37 +50,37 @@ fn enum_types_appear_in_type_completions() {
 }
 
 #[test]
-fn enum_variants_appear_in_enum_variant_globals() {
+fn enum_members_appear_in_enum_member_globals() {
     let t = TestDb::new("").with_builtins_index();
     assert!(
         t.db()
-            .all_enum_variants()
+            .all_enum_members()
             .iter()
             .any(|d| d.symbol.name == "VMT_TeleportAndMount"),
-        "builtin enum variant should appear in all_enum_variants()"
+        "builtin enum member should appear in all_enum_members()"
     );
 }
 
 #[test]
-fn orphan_variant_bucket_is_excluded_from_type_completions() {
+fn orphan_member_bucket_is_excluded_from_type_completions() {
     let t = TestDb::new("").with_builtins_index();
     let db = t.db();
     assert!(
         !db.all_types()
             .iter()
             .any(|d| d.symbol.name == "WLSP_TooHardBasket"),
-        "the synthetic orphan-variant bucket enum must not appear in all_types()"
+        "the synthetic orphan-member bucket enum must not appear in all_types()"
     );
     assert!(
-        db.all_enum_variants()
+        db.all_enum_members()
             .iter()
             .any(|d| d.symbol.name == "FLAG_OnlyActors"),
-        "orphan enum variants must still appear in all_enum_variants()"
+        "orphan enum members must still appear in all_enum_members()"
     );
 }
 
 #[test]
-fn goto_definition_on_enum_variant_resolves_into_builtin_file() {
+fn goto_definition_on_enum_member_resolves_into_builtin_file() {
     let t = TestDb::new(concat!(
         "function Test() {\n",
         "  var d : EAttackDirection;\n",
@@ -94,7 +94,7 @@ fn goto_definition_on_enum_variant_resolves_into_builtin_file() {
 
     assert_eq!(def.uri, BUILTIN_ENUMS_URI);
     assert_eq!(def.symbol.name, "AD_Back");
-    assert_eq!(def.symbol.kind, SymbolKind::EnumVariant);
+    assert_eq!(def.symbol.kind, SymbolKind::EnumMember);
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn type_completions_offer_builtin_enum() {
 }
 
 #[test]
-fn statement_completions_offer_builtin_enum_variant() {
+fn statement_completions_offer_builtin_enum_member() {
     let t = TestDb::new("function Test() {\n  AD_$0\n}\n").with_builtins_index();
     let (uri, pos) = t.cursor();
     let result = statement_completions(&uri, t.doc_for(&uri), &t.db(), pos);
@@ -125,8 +125,8 @@ fn statement_completions_offer_builtin_enum_variant() {
     assert!(
         globals
             .iter()
-            .any(|d| d.symbol.name == "AD_Front" && d.symbol.kind == SymbolKind::EnumVariant),
-        "statement globals should include builtin enum variants; got {:?}",
+            .any(|d| d.symbol.name == "AD_Front" && d.symbol.kind == SymbolKind::EnumMember),
+        "statement globals should include builtin enum members; got {:?}",
         globals
             .iter()
             .map(|d| d.symbol.name.as_str())

@@ -30,7 +30,7 @@ pub struct SymbolDb<'a> {
 pub struct FilteredBaseCatalogs {
     pub callables: Arc<[Definition]>,
     pub types: Arc<[Definition]>,
-    pub enum_variants: Arc<[Definition]>,
+    pub enum_members: Arc<[Definition]>,
 }
 
 impl FilteredBaseCatalogs {
@@ -38,7 +38,7 @@ impl FilteredBaseCatalogs {
         Self {
             callables: filter_catalog(base.callables_catalog(), Some(suppressed)),
             types: filter_catalog(base.types_catalog(), Some(suppressed)),
-            enum_variants: filter_catalog(base.enum_variants_catalog(), Some(suppressed)),
+            enum_members: filter_catalog(base.enum_members_catalog(), Some(suppressed)),
         }
     }
 }
@@ -113,11 +113,11 @@ impl<'a> SymbolDb<'a> {
         self.shadowed_base().types_catalog()
     }
 
-    fn base_enum_variants_for_merge(&self) -> std::sync::Arc<[Definition]> {
+    fn base_enum_members_for_merge(&self) -> std::sync::Arc<[Definition]> {
         if let Some(prefiltered) = self.prefiltered_base {
-            return prefiltered.enum_variants.clone();
+            return prefiltered.enum_members.clone();
         }
-        self.shadowed_base().enum_variants_catalog()
+        self.shadowed_base().enum_members_catalog()
     }
 
     pub fn merge_observations(&self, other: ObservationSet) {
@@ -127,7 +127,7 @@ impl<'a> SymbolDb<'a> {
         let mut outer = outer.lock().expect("observer mutex poisoned");
         outer.top_level.extend(other.top_level);
         outer.members.extend(other.members);
-        outer.enum_variants.extend(other.enum_variants);
+        outer.enum_members.extend(other.enum_members);
     }
 
     fn record_top_level(&self, name: &str) {
@@ -149,11 +149,11 @@ impl<'a> SymbolDb<'a> {
         }
     }
 
-    fn record_enum_variant(&self, name: &str) {
+    fn record_enum_member(&self, name: &str) {
         if let Some(obs) = self.observer {
             let mut o = obs.lock().expect("observer mutex poisoned");
-            if !o.enum_variants.contains(name) {
-                o.enum_variants.insert(name.to_string());
+            if !o.enum_members.contains(name) {
+                o.enum_members.insert(name.to_string());
             }
         }
     }
@@ -181,19 +181,16 @@ impl<'a> SymbolDb<'a> {
             .or_else(|| self.builtins.and_then(|b| b.find_top_level(name)))
     }
 
-    pub fn find_enum_variant(&self, name: &str) -> Option<Definition> {
-        self.record_enum_variant(name);
+    pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
+        self.record_enum_member(name);
         self.workspace
-            .find_enum_variant(name)
-            .or_else(|| self.shadowed_base().find_enum_variant(name))
-            .or_else(|| self.builtins.and_then(|b| b.find_enum_variant(name)))
+            .find_enum_member(name)
+            .or_else(|| self.shadowed_base().find_enum_member(name))
+            .or_else(|| self.builtins.and_then(|b| b.find_enum_member(name)))
     }
 
-    pub fn all_enum_variants(&self) -> Vec<Definition> {
-        self.merged_enum_variants_catalog()
-            .iter()
-            .cloned()
-            .collect()
+    pub fn all_enum_members(&self) -> Vec<Definition> {
+        self.merged_enum_members_catalog().iter().cloned().collect()
     }
 
     pub fn superclass_of(&self, class_name: &str) -> Option<String> {
@@ -388,11 +385,11 @@ impl<'a> SymbolDb<'a> {
         }
     }
 
-    pub fn merged_enum_variants_catalog(&self) -> std::sync::Arc<[Definition]> {
-        let ws = self.workspace.enum_variants_catalog();
-        let base = self.base_enum_variants_for_merge();
+    pub fn merged_enum_members_catalog(&self) -> std::sync::Arc<[Definition]> {
+        let ws = self.workspace.enum_members_catalog();
+        let base = self.base_enum_members_for_merge();
         match self.builtins {
-            Some(b) => merge_ws_base_three(ws, base, b.enum_variants_catalog()),
+            Some(b) => merge_ws_base_three(ws, base, b.enum_members_catalog()),
             None => merge_ws_base(ws, base),
         }
     }
