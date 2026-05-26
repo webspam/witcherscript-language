@@ -1,3 +1,4 @@
+mod base_shadowing;
 mod builtin_array;
 mod builtin_classes;
 mod builtin_enums;

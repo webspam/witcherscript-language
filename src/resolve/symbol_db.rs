@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use std::sync::Mutex;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 
 use crate::script_env::ScriptEnvironment;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
@@ -20,6 +20,7 @@ pub struct SymbolDb<'a> {
     builtins: Option<&'a WorkspaceIndex>,
     script_env: Option<&'a ScriptEnvironment>,
     observer: Option<&'a Mutex<ObservationSet>>,
+    suppressed_base_uris: Option<&'a HashSet<String>>,
 }
 
 impl<'a> SymbolDb<'a> {
@@ -30,7 +31,13 @@ impl<'a> SymbolDb<'a> {
             builtins: None,
             script_env: None,
             observer: None,
+            suppressed_base_uris: None,
         }
+    }
+
+    pub fn with_suppressed_base_uris(mut self, uris: &'a HashSet<String>) -> Self {
+        self.suppressed_base_uris = Some(uris);
+        self
     }
 
     pub fn with_script_env(mut self, env: &'a ScriptEnvironment) -> Self {
@@ -53,7 +60,34 @@ impl<'a> SymbolDb<'a> {
             builtins: self.builtins,
             script_env: self.script_env,
             observer: Some(observer),
+            suppressed_base_uris: self.suppressed_base_uris,
         }
+    }
+
+    pub(super) fn suppressed_base_uris(&self) -> Option<&HashSet<String>> {
+        self.suppressed_base_uris
+    }
+
+    fn base_def_allowed(&self, def: &Definition) -> bool {
+        match self.suppressed_base_uris {
+            Some(sup) => !sup.contains(def.uri.as_str()),
+            None => true,
+        }
+    }
+
+    fn filter_base_catalog(
+        catalog: std::sync::Arc<[Definition]>,
+        suppressed: Option<&HashSet<String>>,
+    ) -> std::sync::Arc<[Definition]> {
+        let Some(sup) = suppressed else {
+            return catalog;
+        };
+        let filtered: Vec<Definition> = catalog
+            .iter()
+            .filter(|d| !sup.contains(d.uri.as_str()))
+            .cloned()
+            .collect();
+        Arc::from(filtered)
     }
 
     pub fn merge_observations(&self, other: ObservationSet) {
@@ -113,7 +147,11 @@ impl<'a> SymbolDb<'a> {
         self.record_top_level(name);
         self.workspace
             .find_top_level(name)
-            .or_else(|| self.base.find_top_level(name))
+            .or_else(|| {
+                self.base
+                    .find_top_level(name)
+                    .filter(|d| self.base_def_allowed(d))
+            })
             .or_else(|| self.builtins.and_then(|b| b.find_top_level(name)))
     }
 
@@ -121,7 +159,11 @@ impl<'a> SymbolDb<'a> {
         self.record_enum_variant(name);
         self.workspace
             .find_enum_variant(name)
-            .or_else(|| self.base.find_enum_variant(name))
+            .or_else(|| {
+                self.base
+                    .find_enum_variant(name)
+                    .filter(|d| self.base_def_allowed(d))
+            })
             .or_else(|| self.builtins.and_then(|b| b.find_enum_variant(name)))
     }
 
@@ -136,7 +178,16 @@ impl<'a> SymbolDb<'a> {
         self.record_top_level(class_name);
         self.workspace
             .superclass_of(class_name)
-            .or_else(|| self.base.superclass_of(class_name))
+            .or_else(|| {
+                if self
+                    .base
+                    .find_top_level(class_name)
+                    .is_some_and(|d| !self.base_def_allowed(&d))
+                {
+                    return None;
+                }
+                self.base.superclass_of(class_name)
+            })
             .or_else(|| self.builtins.and_then(|b| b.superclass_of(class_name)))
             .or_else(|| self.virtual_object_base(class_name))
     }
@@ -174,6 +225,7 @@ impl<'a> SymbolDb<'a> {
                 .or_else(|| {
                     self.base
                         .direct_member_of(container, name, AccessLevel::Private)
+                        .filter(|d| self.base_def_allowed(d))
                 })
                 .or_else(|| {
                     self.builtins
@@ -199,7 +251,12 @@ impl<'a> SymbolDb<'a> {
             self.workspace
                 .direct_members_of(lookup, min_access)
                 .into_iter()
-                .chain(self.base.direct_members_of(lookup, min_access))
+                .chain(
+                    self.base
+                        .direct_members_of(lookup, min_access)
+                        .into_iter()
+                        .filter(|d| self.base_def_allowed(d)),
+                )
                 .chain(
                     self.builtins
                         .map(|b| b.direct_members_of(lookup, min_access))
@@ -235,7 +292,12 @@ impl<'a> SymbolDb<'a> {
                 .workspace
                 .direct_members_of(c, AccessLevel::Private)
                 .into_iter()
-                .chain(self.base.direct_members_of(c, AccessLevel::Private))
+                .chain(
+                    self.base
+                        .direct_members_of(c, AccessLevel::Private)
+                        .into_iter()
+                        .filter(|d| self.base_def_allowed(d)),
+                )
                 .chain(
                     self.builtins
                         .map(|b| b.direct_members_of(c, AccessLevel::Private))
@@ -265,7 +327,12 @@ impl<'a> SymbolDb<'a> {
             .workspace
             .annotated_members(container, name)
             .into_iter()
-            .chain(self.base.annotated_members(container, name))
+            .chain(
+                self.base
+                    .annotated_members(container, name)
+                    .into_iter()
+                    .filter(|d| self.base_def_allowed(d)),
+            )
             .chain(
                 self.builtins
                     .map(|b| b.annotated_members(container, name))
@@ -308,13 +375,13 @@ impl<'a> SymbolDb<'a> {
     pub fn merged_callables_catalog(&self) -> std::sync::Arc<[Definition]> {
         merge_ws_base(
             self.workspace.callables_catalog(),
-            self.base.callables_catalog(),
+            Self::filter_base_catalog(self.base.callables_catalog(), self.suppressed_base_uris),
         )
     }
 
     pub fn merged_types_catalog(&self) -> std::sync::Arc<[Definition]> {
         let ws = self.workspace.types_catalog();
-        let base = self.base.types_catalog();
+        let base = Self::filter_base_catalog(self.base.types_catalog(), self.suppressed_base_uris);
         match self.builtins {
             Some(_) => merge_ws_base_three(ws, base, crate::builtins::types_completion_catalog()),
             None => merge_ws_base(ws, base),
@@ -323,7 +390,8 @@ impl<'a> SymbolDb<'a> {
 
     pub fn merged_enum_variants_catalog(&self) -> std::sync::Arc<[Definition]> {
         let ws = self.workspace.enum_variants_catalog();
-        let base = self.base.enum_variants_catalog();
+        let base =
+            Self::filter_base_catalog(self.base.enum_variants_catalog(), self.suppressed_base_uris);
         match self.builtins {
             Some(b) => merge_ws_base_three(ws, base, b.enum_variants_catalog()),
             None => merge_ws_base(ws, base),

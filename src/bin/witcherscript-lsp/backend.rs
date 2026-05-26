@@ -19,7 +19,6 @@ use lsp_types::{
 };
 use parking_lot::{Mutex, MutexGuard};
 use serde_json::{json, Value};
-use tokio::sync::Notify;
 use tracing::trace;
 use witcherscript_language::builtins::{builtin_source, load_builtins_index};
 use witcherscript_language::document::ParsedDocument;
@@ -82,8 +81,8 @@ pub(crate) struct Backend {
     pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
-    pub(crate) legacy_indexed_uris: Arc<Mutex<HashSet<String>>>,
     pub(crate) legacy_replacements: Arc<Mutex<HashMap<String, String>>>,
+    pub(crate) suppressed_base_uris: Arc<Mutex<HashSet<String>>>,
     pub(crate) sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,
     pub(crate) sent_file_scope_status: Arc<Mutex<HashMap<Url, FileScopeStatusParams>>>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
@@ -97,8 +96,6 @@ pub(crate) struct Backend {
     pub(crate) merged_completion_cache_workspace: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) merged_completion_cache_loose: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
-    // Coalesces legacy-reindex bursts so an older scan cannot finish after a newer one and overwrite it.
-    pub(crate) reindex_notify: Arc<Notify>,
 }
 
 pub(crate) struct DbHandles<'a> {
@@ -106,11 +103,13 @@ pub(crate) struct DbHandles<'a> {
     base: MutexGuard<'a, WorkspaceIndex>,
     script_env: MutexGuard<'a, ScriptEnvironment>,
     builtins: &'a WorkspaceIndex,
+    suppressed_base_uris: MutexGuard<'a, HashSet<String>>,
 }
 
 impl<'a> DbHandles<'a> {
     pub(crate) fn db(&'a self) -> SymbolDb<'a> {
         SymbolDb::new(&self.workspace, &self.base)
+            .with_suppressed_base_uris(&self.suppressed_base_uris)
             .with_script_env(&self.script_env)
             .with_builtins(self.builtins)
     }
@@ -138,8 +137,8 @@ impl Backend {
             base_scripts_path: Arc::new(Mutex::new(None)),
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
-            legacy_indexed_uris: Arc::new(Mutex::new(HashSet::new())),
             legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
+            suppressed_base_uris: Arc::new(Mutex::new(HashSet::new())),
             sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
             sent_file_scope_status: Arc::new(Mutex::new(HashMap::new())),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
@@ -152,7 +151,6 @@ impl Backend {
             merged_completion_cache_workspace: Arc::new(Mutex::new(None)),
             merged_completion_cache_loose: Arc::new(Mutex::new(None)),
             initial_index_done: Arc::new(AtomicBool::new(false)),
-            reindex_notify: Arc::new(Notify::new()),
         }
     }
 
@@ -233,6 +231,7 @@ impl Backend {
             base: self.base_scripts_index.lock(),
             script_env: self.script_env.lock(),
             builtins: self.builtins_index.as_ref(),
+            suppressed_base_uris: self.suppressed_base_uris.lock(),
         }
     }
 

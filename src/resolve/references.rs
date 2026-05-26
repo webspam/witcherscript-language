@@ -43,6 +43,20 @@ fn definition_search_scope(
     }
 }
 
+// A legacy override keeps the vanilla file on disk; references there share the effective top-level name.
+fn paired_suppressed_base_uri(definition: &Definition, db: &SymbolDb) -> Option<String> {
+    if definition.symbol.container.is_some() {
+        return None;
+    }
+    let suppressed = db.suppressed_base_uris()?;
+    let base_def = db.base.find_top_level(&definition.symbol.name)?;
+    if !suppressed.contains(base_def.uri.as_str()) {
+        return None;
+    }
+    let ws_def = db.workspace.find_top_level(&definition.symbol.name)?;
+    (ws_def.uri == definition.uri).then_some(base_def.uri)
+}
+
 pub fn find_references(
     definition: &Definition,
     definition_document: &ParsedDocument,
@@ -63,10 +77,32 @@ pub fn find_references(
         definition_search_scope(definition, definition_document)
     };
 
+    let paired_base = paired_suppressed_base_uri(definition, db);
+
     let mut results = Vec::new();
     let mut decl_found = vec![false; equiv.len()];
 
     for (uri, document) in search_documents {
+        if paired_base.as_deref() == Some(*uri) {
+            let mut byte_ranges: Vec<std::ops::Range<usize>> = Vec::new();
+            collect_ident_occurrences(
+                document.tree.root_node(),
+                document.source.as_bytes(),
+                name,
+                None,
+                &mut byte_ranges,
+            );
+            for byte_range in byte_ranges {
+                let range = document.line_index.byte_range_to_range(
+                    &document.source,
+                    byte_range.start,
+                    byte_range.end,
+                );
+                results.push((uri.to_string(), range));
+            }
+            continue;
+        }
+
         let scan_range: Option<&std::ops::Range<usize>> = match &scope {
             SearchScope::AllDocuments => None,
             SearchScope::SingleFile => {

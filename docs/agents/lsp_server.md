@@ -49,6 +49,7 @@ struct Backend {
     base_scripts_index: Arc<Mutex<WorkspaceIndex>>,                          // base game scripts symbol index
     base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,     // parsed base scripts, keyed by canonical URI
     legacy_replacements: Arc<Mutex<HashMap<String, String>>>,                // canonical legacy URI → replaced base script's game-relative path
+    suppressed_base_uris: Arc<Mutex<HashSet<String>>>,                     // vanilla URIs shadowed by a legacy override (still in base index)
     sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,  // last legacy-script status pushed per open document
     builtins_index: Arc<WorkspaceIndex>,                                     // built-in type symbol index (read-only, no Mutex)
     script_env: Arc<Mutex<ScriptEnvironment>>,                               // INI-loaded globals
@@ -140,7 +141,7 @@ did_close()
 
 `witcherscript/legacyScriptStatus` is a custom server→client notification (defined in `legacy_status.rs`, payload `LegacyScriptStatusParams`). It tells the editor whether an open `.ws` file actually replaces a base game script of the same game-relative path, so the VS Code "legacy script" status bar shows only for real overrides — not for brand-new scripts that merely sit in a legacy folder.
 
-`index_base_scripts` builds `legacy_replacements` (canonical legacy URI → replaced game-relative path) while it computes which base scripts a legacy file shadows. `publish_legacy_script_status` then pushes one notification per open document, deduped against `sent_legacy_status`. It fires after base-script indexing and on document open.
+`index_base_scripts` builds `legacy_replacements` (canonical legacy URI → replaced game-relative path) and `suppressed_base_uris` (vanilla URIs shadowed by a legacy override). Overridden vanilla files **stay** in `base_scripts_index` / `base_scripts_documents` for reference search; `SymbolDb` skips them for resolution and completion. Legacy paths listed in `witcherscript.legacyScriptDirectories` (and auto `modSharedImports`) are indexed into `workspace_index` like project scripts; file-watcher changes use the same incremental path as other `.ws` files, then `refresh_legacy_override_maps()`. `publish_legacy_script_status` pushes one notification per open document, deduped against `sent_legacy_status`.
 
 ## Workspace indexing
 
@@ -157,11 +158,14 @@ initialized()
     │      for each .ws file: parse → workspace_index.update_document
     │
     └─ index_base_scripts()
-           find scripts at gameDirectory/content/content0/scripts/
+           find scripts at gameDirectory/content/content0/scripts/ (+ legacyScriptDirectories)
            parse redscripts.ini → ScriptEnvironment
            rayon parallel parse (each thread: new Parser + parse_document_with_parser)
-           base_scripts_index.update_document for each file
+           base_scripts_index.update_document for each file (overridden vanilla URIs are not removed)
+           sync legacy overrides into workspace_index; set suppressed_base_uris
 ```
+
+External `.ws` changes (including under legacy dirs) go through `apply_watched_file_events` — incremental workspace upsert/remove, then `refresh_legacy_override_maps()` when a legacy path changed. There is no background full re-index coalescer.
 
 Base scripts use `rayon` for parallel parsing. Each rayon thread gets its own `tree_sitter::Parser` because Parser is not `Send`.
 
