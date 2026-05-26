@@ -1,10 +1,34 @@
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
+use super::super::NameContext;
 use super::{Definition, WorkspaceIndex};
 
 impl WorkspaceIndex {
+    /// First match for `name`, preferring a non-state kind so callers that
+    /// only want one definition (e.g. `this` resolution, hover) keep working
+    /// when a same-named function or class exists alongside the state.
     pub fn find_top_level(&self, name: &str) -> Option<Definition> {
-        self.top_level_by_name.get(name).cloned()
+        let defs = self.top_level_by_name.get(name)?;
+        defs.iter()
+            .find(|d| d.symbol.kind != SymbolKind::State)
+            .or_else(|| defs.first())
+            .cloned()
+    }
+
+    /// First match whose kind is accepted by `ctx`.
+    pub fn find_top_level_filtered(&self, name: &str, ctx: &NameContext) -> Option<Definition> {
+        self.top_level_by_name
+            .get(name)?
+            .iter()
+            .find(|d| ctx.accepts(d.symbol.kind))
+            .cloned()
+    }
+
+    pub fn all_top_level_with_name(&self, name: &str) -> &[Definition] {
+        self.top_level_by_name
+            .get(name)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {

@@ -6,7 +6,7 @@ use super::super::completion_catalog::{merge_ws_base, merge_ws_base_three};
 use super::super::{dedup_by_name, dedup_definitions, MAX_INHERITANCE_DEPTH};
 use super::generics::{generic_lookup_target, substitute_in_definition};
 use super::SymbolDb;
-use crate::resolve::Definition;
+use crate::resolve::{Definition, NameContext};
 
 const OBJECT_BASE_CLASS: &str = "CObject";
 const STATE_BASE_CLASS: &str = "CScriptableState";
@@ -34,6 +34,17 @@ impl<'a> SymbolDb<'a> {
             .find_top_level(name)
             .or_else(|| self.shadowed_base().find_top_level(name))
             .or_else(|| self.builtins.and_then(|b| b.find_top_level(name)))
+    }
+
+    pub fn find_top_level_filtered(&self, name: &str, ctx: &NameContext) -> Option<Definition> {
+        self.record_top_level(name);
+        self.workspace
+            .find_top_level_filtered(name, ctx)
+            .or_else(|| self.shadowed_base().find_top_level_filtered(name, ctx))
+            .or_else(|| {
+                self.builtins
+                    .and_then(|b| b.find_top_level_filtered(name, ctx))
+            })
     }
 
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {

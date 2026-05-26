@@ -20,10 +20,11 @@ pub fn global_catalog_changed(keys: &[ObservedKey]) -> bool {
 }
 
 pub fn build_callables(
-    top_level: &std::collections::HashMap<String, Definition>,
+    top_level: &std::collections::HashMap<String, Vec<Definition>>,
 ) -> Vec<Definition> {
     top_level
         .values()
+        .flat_map(|defs| defs.iter())
         .filter(|d| {
             matches!(d.symbol.kind, SymbolKind::Function | SymbolKind::Event)
                 && !matches!(d.symbol.flavour.as_deref(), Some("exec") | Some("quest"))
@@ -32,9 +33,12 @@ pub fn build_callables(
         .collect()
 }
 
-pub fn build_types(top_level: &std::collections::HashMap<String, Definition>) -> Vec<Definition> {
+pub fn build_types(
+    top_level: &std::collections::HashMap<String, Vec<Definition>>,
+) -> Vec<Definition> {
     top_level
         .values()
+        .flat_map(|defs| defs.iter())
         .filter(|d| is_type_like(d.symbol.kind) || d.symbol.kind == SymbolKind::Enum)
         .cloned()
         .collect()
