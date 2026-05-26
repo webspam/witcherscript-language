@@ -32,7 +32,12 @@ impl Backend {
         // The client drops a file's status on close; force a fresh push.
         self.sent_legacy_status.lock().remove(&uri);
         self.sent_file_scope_status.lock().remove(&uri);
+        let legacy_dirs = self.effective_legacy_dirs();
         self.update_open_document(uri.clone(), params.text_document.text);
+        if uri_within_any(uri.as_str(), &legacy_dirs) {
+            self.refresh_legacy_override_maps();
+            self.publish_open_diagnostics();
+        }
         self.publish_legacy_script_status();
         self.publish_file_scope_status();
     }
