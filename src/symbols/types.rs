@@ -74,7 +74,7 @@ pub struct DocumentSymbols {
     symbols: Vec<Symbol>,
     by_start_byte: Vec<SymbolId>,
     top_level_by_name: HashMap<String, Vec<SymbolId>>,
-    type_by_name: HashMap<String, SymbolId>,
+    type_by_name: HashMap<String, Vec<SymbolId>>,
     members_by_container: HashMap<SymbolId, HashMap<String, Vec<SymbolId>>>,
     locals_in_function: HashMap<SymbolId, HashMap<String, Vec<SymbolId>>>,
 }
@@ -114,11 +114,42 @@ impl DocumentSymbols {
 
     pub fn top_level_by_name(&self, name: &str) -> Option<&Symbol> {
         let ids = self.top_level_by_name.get(name)?;
-        ids.first().map(|id| &self.symbols[id.0])
+        ids.iter()
+            .map(|id| &self.symbols[id.0])
+            .find(|s| s.kind != SymbolKind::State)
+            .or_else(|| ids.first().map(|id| &self.symbols[id.0]))
+    }
+
+    pub fn top_level_by_name_filtered(
+        &self,
+        name: &str,
+        accept: impl Fn(SymbolKind) -> bool,
+    ) -> Option<&Symbol> {
+        self.top_level_by_name
+            .get(name)?
+            .iter()
+            .map(|id| &self.symbols[id.0])
+            .find(|s| accept(s.kind))
     }
 
     pub fn type_by_name(&self, name: &str) -> Option<&Symbol> {
-        self.type_by_name.get(name).map(|id| &self.symbols[id.0])
+        let ids = self.type_by_name.get(name)?;
+        ids.iter()
+            .map(|id| &self.symbols[id.0])
+            .find(|s| s.kind != SymbolKind::State)
+            .or_else(|| ids.first().map(|id| &self.symbols[id.0]))
+    }
+
+    pub fn type_by_name_filtered(
+        &self,
+        name: &str,
+        accept: impl Fn(SymbolKind) -> bool,
+    ) -> Option<&Symbol> {
+        self.type_by_name
+            .get(name)?
+            .iter()
+            .map(|id| &self.symbols[id.0])
+            .find(|s| accept(s.kind))
     }
 
     pub fn member_of(&self, container: SymbolId, name: &str) -> impl Iterator<Item = &Symbol> {
@@ -181,7 +212,10 @@ impl DocumentSymbols {
                 sym.kind,
                 SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
             ) {
-                self.type_by_name.entry(sym.name.clone()).or_insert(sym.id);
+                self.type_by_name
+                    .entry(sym.name.clone())
+                    .or_default()
+                    .push(sym.id);
             }
         }
 
