@@ -276,6 +276,110 @@ impl Backend {
         dirs
     }
 
+    fn uri_under_legacy_dirs(uri: &str, legacy_dirs: &[PathBuf]) -> bool {
+        Url::parse(uri)
+            .ok()
+            .and_then(|u| u.to_file_path().ok())
+            .is_some_and(|path| legacy_dirs.iter().any(|dir| path.starts_with(dir)))
+    }
+
+    // Pairing must see open legacy overrides; those live in workspace_index, not workspace_documents.
+    fn legacy_uris_in_workspace_index(&self) -> Vec<String> {
+        let legacy_dirs = self.effective_legacy_dirs();
+        if legacy_dirs.is_empty() {
+            return Vec::new();
+        }
+        self.workspace_index
+            .lock()
+            .documents()
+            .map(|(uri, _)| uri.to_string())
+            .filter(|uri| Self::uri_under_legacy_dirs(uri, &legacy_dirs))
+            .collect()
+    }
+
+    pub(crate) fn refresh_legacy_override_maps(&self) {
+        let base_uris: Vec<String> = self.base_scripts_documents.lock().keys().cloned().collect();
+        let legacy_uris = self.legacy_uris_in_workspace_index();
+        let (suppressed, replacements) = legacy_base_replacements(&base_uris, &legacy_uris);
+        *self.suppressed_base_uris.lock() = suppressed;
+        *self.legacy_replacements.lock() = replacements;
+        self.rebuild_filtered_base_catalogs();
+    }
+
+    pub(crate) fn refresh_legacy_override_maps_if_legacy_uri(&self, uri: &Url) {
+        let legacy_dirs = self.effective_legacy_dirs();
+        if Self::uri_under_legacy_dirs(uri.as_str(), &legacy_dirs) {
+            self.refresh_legacy_override_maps();
+        }
+    }
+
+    fn remove_legacy_workspace_document(&self, canonical: &str) -> HashSet<String> {
+        let mut index = self.workspace_index.lock();
+        let mut docs = self.workspace_documents.lock();
+        let invalidated = index.remove_document(canonical);
+        docs.remove(canonical);
+        invalidated
+    }
+
+    fn prune_stale_legacy_workspace_files(&self, current: &HashSet<String>) {
+        let legacy_dirs = self.effective_legacy_dirs();
+        if legacy_dirs.is_empty() {
+            return;
+        }
+        let open_canonical: HashSet<String> = {
+            let documents = self.documents.lock();
+            documents.keys().filter_map(canonical_uri).collect()
+        };
+        let stale: Vec<String> = self
+            .workspace_documents
+            .lock()
+            .keys()
+            .filter(|uri| {
+                if current.contains(*uri) || open_canonical.contains(*uri) {
+                    return false;
+                }
+                Self::uri_under_legacy_dirs(uri, &legacy_dirs)
+            })
+            .cloned()
+            .collect();
+        if stale.is_empty() {
+            return;
+        }
+        let mut invalidated = HashSet::new();
+        for uri in stale {
+            invalidated.extend(self.remove_legacy_workspace_document(&uri));
+        }
+        self.evict_cache_entries(&invalidated);
+    }
+
+    fn sync_legacy_workspace_from_parsed(
+        &self,
+        parsed: Vec<(String, ParsedDocument)>,
+    ) -> HashSet<String> {
+        let open_canonical: HashSet<String> = {
+            let documents = self.documents.lock();
+            documents.keys().filter_map(canonical_uri).collect()
+        };
+        let mut current = HashSet::new();
+        let mut invalidated = HashSet::new();
+        {
+            let mut ws_idx = self.workspace_index.lock();
+            let mut ws_docs = self.workspace_documents.lock();
+            ws_idx.begin_bulk_catalog_update();
+            for (uri, document) in parsed {
+                current.insert(uri.clone());
+                if open_canonical.contains(&uri) {
+                    continue;
+                }
+                invalidated.extend(ws_idx.update_document(uri.as_str(), &document));
+                ws_docs.insert(uri, document);
+            }
+            ws_idx.end_bulk_catalog_update();
+        }
+        self.prune_stale_legacy_workspace_files(&current);
+        invalidated
+    }
+
     fn is_base_script_uri(&self, uri: &Url) -> bool {
         matches!(self.file_scope_of(uri), FileScope::AdditionalBase)
     }
@@ -407,35 +511,6 @@ impl Backend {
         resolve_definition(uri.as_str(), document, &db, source_position(position))
     }
 
-    // A deleted legacy file has no other removal path, so each run drops the previous set.
-    fn reconcile_legacy_workspace_files(&self, parsed: Vec<(String, ParsedDocument)>) {
-        let open_canonical: HashSet<String> = {
-            let documents = self.documents.lock();
-            documents.keys().filter_map(canonical_uri).collect()
-        };
-        let mut ws_idx = self.workspace_index.lock();
-        let mut ws_docs = self.workspace_documents.lock();
-        let mut tracked = self.legacy_indexed_uris.lock();
-        for uri in tracked.drain() {
-            // An open legacy file is owned by update_open_document; leave it alone.
-            if open_canonical.contains(&uri) {
-                continue;
-            }
-            ws_idx.remove_document(&uri);
-            ws_docs.remove(&uri);
-        }
-        ws_idx.begin_bulk_catalog_update();
-        for (uri, doc) in parsed {
-            if open_canonical.contains(&uri) {
-                continue;
-            }
-            ws_idx.update_document(uri.as_str(), &doc);
-            ws_docs.insert(uri.clone(), doc);
-            tracked.insert(uri);
-        }
-        ws_idx.end_bulk_catalog_update();
-    }
-
     pub(crate) async fn index_base_scripts(&self) {
         let game_dir_opt = self.base_scripts_path.lock().clone();
         let extras = self.additional_script_dirs.lock().clone();
@@ -449,7 +524,9 @@ impl Backend {
                 docs.clear();
             }
             self.legacy_replacements.lock().clear();
-            self.reconcile_legacy_workspace_files(Vec::new());
+            self.suppressed_base_uris.lock().clear();
+            self.rebuild_filtered_base_catalogs();
+            self.prune_stale_legacy_workspace_files(&HashSet::new());
             self.publish_open_diagnostics();
             self.publish_legacy_script_status();
             self.publish_file_scope_status();
@@ -577,14 +654,10 @@ impl Backend {
             let base_uris: Vec<String> = base_docs.keys().cloned().collect();
             let legacy_uris: Vec<String> =
                 legacy_parsed.iter().map(|(uri, _)| uri.clone()).collect();
-            let (skip_base, legacy_replacements) =
+            let (suppressed_base, legacy_replacements) =
                 legacy_base_replacements(&base_uris, &legacy_uris);
-            for skip_uri in &skip_base {
-                base_index.remove_document(skip_uri);
-                base_docs.remove(skip_uri);
-            }
             base_index.end_bulk_catalog_update();
-            let matched_count = skip_base.len();
+            let matched_count = suppressed_base.len();
             let legacy_total = legacy_parsed.len();
 
             (
@@ -595,6 +668,7 @@ impl Backend {
                 legacy_total,
                 matched_count,
                 legacy_replacements,
+                suppressed_base,
             )
         })
         .await;
@@ -607,6 +681,7 @@ impl Backend {
             legacy_total,
             matched_count,
             legacy_replacements,
+            suppressed_base,
         ) = match join_result {
             Ok(tuple) => tuple,
             Err(err) => {
@@ -622,9 +697,12 @@ impl Backend {
             *docs = base_new_docs;
         }
         *self.legacy_replacements.lock() = legacy_replacements;
+        *self.suppressed_base_uris.lock() = suppressed_base;
         self.merge_open_base_documents();
+        self.rebuild_filtered_base_catalogs();
 
-        self.reconcile_legacy_workspace_files(legacy_parsed);
+        let invalidated = self.sync_legacy_workspace_from_parsed(legacy_parsed);
+        self.evict_cache_entries(&invalidated);
 
         let elapsed_ms = total_start.elapsed().as_millis();
         info!(

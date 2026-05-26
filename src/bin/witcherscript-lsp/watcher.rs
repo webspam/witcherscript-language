@@ -6,7 +6,7 @@ use lsp_types::{
     DidChangeWatchedFilesRegistrationOptions, FileChangeType, FileEvent, FileSystemWatcher,
     GlobPattern, Registration, RegistrationParams,
 };
-use tracing::{debug, trace, warn};
+use tracing::{debug, warn};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::files::{
     canonical_uri, is_witcherscript_file, read_script_file, ExcludeFilter,
@@ -92,15 +92,14 @@ impl Backend {
         let filter = self.exclude_filter();
         let legacy_dirs = self.effective_legacy_dirs();
 
-        let (legacy_events, normal_events): (Vec<FileEvent>, Vec<FileEvent>) = events
-            .into_iter()
-            .partition(|event| event_touches_legacy_dir(event, &legacy_dirs));
-
         let mut updates: Vec<(String, witcherscript_language::document::ParsedDocument)> =
             Vec::new();
         let mut removals: Vec<String> = Vec::new();
-        for event in &normal_events {
-            let Some(decision) = classify_watched_event(event, &open_canonical, &filter) else {
+        let mut legacy_map_refresh = false;
+
+        for event in events {
+            let touches_legacy = event_touches_legacy_dir(&event, &legacy_dirs);
+            let Some(decision) = classify_watched_event(&event, &open_canonical, &filter) else {
                 continue;
             };
             match decision {
@@ -121,46 +120,49 @@ impl Backend {
                     };
                     debug!(canonical = %canonical, "watched file upserted");
                     updates.push((canonical, document));
+                    if touches_legacy {
+                        legacy_map_refresh = true;
+                    }
                 }
                 WatchedEvent::Remove { canonical } => {
                     debug!(canonical = %canonical, "watched file removed");
                     removals.push(canonical);
+                    if touches_legacy {
+                        legacy_map_refresh = true;
+                    }
                 }
             }
         }
 
-        let has_normal_work = !updates.is_empty() || !removals.is_empty();
-        if has_normal_work {
-            let invalidated = {
+        let had_updates = !updates.is_empty();
+        let had_removals = !removals.is_empty();
+        let mut invalidated = HashSet::new();
+        if had_updates || had_removals {
+            {
                 let mut index = self.workspace_index.lock();
                 let mut docs = self.workspace_documents.lock();
                 let mut known = self.workspace_known_files.lock();
-                let mut invalidated: HashSet<String> = HashSet::new();
                 for (canonical, document) in updates {
                     invalidated.extend(index.update_document(canonical.as_str(), &document));
                     known.insert(canonical.clone());
                     docs.insert(canonical, document);
                 }
-                for canonical in removals {
-                    invalidated.extend(index.remove_document(&canonical));
-                    known.remove(&canonical);
-                    docs.remove(&canonical);
+                for canonical in &removals {
+                    invalidated.extend(index.remove_document(canonical));
+                    known.remove(canonical);
+                    docs.remove(canonical);
                 }
-                invalidated
-            };
+            }
             self.evict_cache_entries(&invalidated);
         }
 
-        if !legacy_events.is_empty() {
-            trace!(
-                count = legacy_events.len(),
-                "watched file events touched a legacy script directory; triggering full re-index"
-            );
-            self.reindex_notify.notify_one();
-            return;
+        if legacy_map_refresh {
+            self.refresh_legacy_override_maps();
+            self.publish_legacy_script_status();
+            self.publish_file_scope_status();
         }
 
-        if has_normal_work {
+        if had_updates || had_removals || legacy_map_refresh {
             self.publish_open_diagnostics();
         }
     }

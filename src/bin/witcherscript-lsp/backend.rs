@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::ControlFlow;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -19,12 +19,11 @@ use lsp_types::{
 };
 use parking_lot::{Mutex, MutexGuard};
 use serde_json::{json, Value};
-use tokio::sync::Notify;
 use tracing::trace;
 use witcherscript_language::builtins::{builtin_source, load_builtins_index};
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
-use witcherscript_language::resolve::{SymbolDb, WorkspaceIndex};
+use witcherscript_language::resolve::{FilteredBaseCatalogs, SymbolDb, WorkspaceIndex};
 use witcherscript_language::script_env::ScriptEnvironment;
 
 use crate::completion_cache::MergedCompletionCache;
@@ -82,8 +81,9 @@ pub(crate) struct Backend {
     pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
-    pub(crate) legacy_indexed_uris: Arc<Mutex<HashSet<String>>>,
     pub(crate) legacy_replacements: Arc<Mutex<HashMap<String, String>>>,
+    pub(crate) suppressed_base_uris: Arc<Mutex<HashSet<String>>>,
+    pub(crate) filtered_base_catalogs: Arc<Mutex<Option<FilteredBaseCatalogs>>>,
     pub(crate) sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,
     pub(crate) sent_file_scope_status: Arc<Mutex<HashMap<Url, FileScopeStatusParams>>>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
@@ -97,8 +97,25 @@ pub(crate) struct Backend {
     pub(crate) merged_completion_cache_workspace: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) merged_completion_cache_loose: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
-    // Coalesces legacy-reindex bursts so an older scan cannot finish after a newer one and overwrite it.
-    pub(crate) reindex_notify: Arc<Notify>,
+    pub(crate) legacy_db_generation: Arc<AtomicU64>,
+}
+
+pub(super) fn build_symbol_db<'a>(
+    workspace: &'a WorkspaceIndex,
+    base: &'a WorkspaceIndex,
+    script_env: &'a ScriptEnvironment,
+    builtins: &'a WorkspaceIndex,
+    suppressed: &'a HashSet<String>,
+    filtered: Option<&'a FilteredBaseCatalogs>,
+) -> SymbolDb<'a> {
+    let mut db = SymbolDb::new(workspace, base)
+        .with_suppressed_base_uris(suppressed)
+        .with_script_env(script_env)
+        .with_builtins(builtins);
+    if let Some(catalogs) = filtered {
+        db = db.with_prefiltered_base(catalogs);
+    }
+    db
 }
 
 pub(crate) struct DbHandles<'a> {
@@ -106,13 +123,20 @@ pub(crate) struct DbHandles<'a> {
     base: MutexGuard<'a, WorkspaceIndex>,
     script_env: MutexGuard<'a, ScriptEnvironment>,
     builtins: &'a WorkspaceIndex,
+    suppressed_base_uris: MutexGuard<'a, HashSet<String>>,
+    filtered_base_catalogs: MutexGuard<'a, Option<FilteredBaseCatalogs>>,
 }
 
 impl<'a> DbHandles<'a> {
     pub(crate) fn db(&'a self) -> SymbolDb<'a> {
-        SymbolDb::new(&self.workspace, &self.base)
-            .with_script_env(&self.script_env)
-            .with_builtins(self.builtins)
+        build_symbol_db(
+            &self.workspace,
+            &self.base,
+            &self.script_env,
+            self.builtins,
+            &self.suppressed_base_uris,
+            self.filtered_base_catalogs.as_ref(),
+        )
     }
 
     pub(crate) fn workspace(&self) -> &WorkspaceIndex {
@@ -138,8 +162,9 @@ impl Backend {
             base_scripts_path: Arc::new(Mutex::new(None)),
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
-            legacy_indexed_uris: Arc::new(Mutex::new(HashSet::new())),
             legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
+            suppressed_base_uris: Arc::new(Mutex::new(HashSet::new())),
+            filtered_base_catalogs: Arc::new(Mutex::new(None)),
             sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
             sent_file_scope_status: Arc::new(Mutex::new(HashMap::new())),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
@@ -152,7 +177,19 @@ impl Backend {
             merged_completion_cache_workspace: Arc::new(Mutex::new(None)),
             merged_completion_cache_loose: Arc::new(Mutex::new(None)),
             initial_index_done: Arc::new(AtomicBool::new(false)),
-            reindex_notify: Arc::new(Notify::new()),
+            legacy_db_generation: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    pub(crate) fn db_fingerprint(
+        &self,
+        base: &WorkspaceIndex,
+        env: &ScriptEnvironment,
+    ) -> crate::cst_cache::DbFingerprint {
+        crate::cst_cache::DbFingerprint {
+            base_surface: base.surface_hash(),
+            env: env.version(),
+            legacy_db_generation: self.legacy_db_generation.load(Ordering::Relaxed),
         }
     }
 
@@ -233,7 +270,23 @@ impl Backend {
             base: self.base_scripts_index.lock(),
             script_env: self.script_env.lock(),
             builtins: self.builtins_index.as_ref(),
+            suppressed_base_uris: self.suppressed_base_uris.lock(),
+            filtered_base_catalogs: self.filtered_base_catalogs.lock(),
         }
+    }
+
+    pub(crate) fn rebuild_filtered_base_catalogs(&self) {
+        let base = self.base_scripts_index.lock();
+        let suppressed = self.suppressed_base_uris.lock();
+        let mut slot = self.filtered_base_catalogs.lock();
+        *slot = if suppressed.is_empty() {
+            None
+        } else {
+            Some(FilteredBaseCatalogs::build(&base, &suppressed))
+        };
+        *self.merged_completion_cache_workspace.lock() = None;
+        *self.merged_completion_cache_loose.lock() = None;
+        self.legacy_db_generation.fetch_add(1, Ordering::Relaxed);
     }
 
     pub(crate) fn merged_completion_cache(

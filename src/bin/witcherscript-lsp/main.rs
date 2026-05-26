@@ -76,8 +76,6 @@ async fn main() {
 
         let backend = Backend::new(client, Arc::clone(&config_for_backend));
 
-        spawn_reindex_coalescer(backend.clone());
-
         let mut router: Router<Backend> = Router::from_language_server(backend);
         router.request::<BuiltinSourceRequest, _>(|backend, params| {
             let backend = backend.clone();
@@ -215,17 +213,6 @@ where
     tokio::spawn(async move {
         if let Err(panic) = std::panic::AssertUnwindSafe(fut).catch_unwind().await {
             log_panic(panic, what);
-        }
-    });
-}
-
-fn spawn_reindex_coalescer(backend: Backend) {
-    spawn_logged("legacy reindex coalescer", async move {
-        let notify = Arc::clone(&backend.reindex_notify);
-        loop {
-            notify.notified().await;
-            backend.index_workspace().await;
-            backend.index_base_scripts().await;
         }
     });
 }

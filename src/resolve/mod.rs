@@ -8,6 +8,7 @@ mod completion_catalog;
 mod definition;
 mod inference;
 mod references;
+mod shadowed_base;
 mod signature;
 mod symbol_db;
 mod workspace_index;
@@ -34,7 +35,7 @@ pub use definition::{
 pub use inference::infer_expr_type_memo;
 pub use references::find_references;
 pub use signature::{hover_text, signature_help, SignatureHelpInfo};
-pub use symbol_db::SymbolDb;
+pub use symbol_db::{FilteredBaseCatalogs, SymbolDb};
 pub use workspace_index::{ObservedKey, WorkspaceIndex};
 
 #[derive(Debug, Default, Clone)]

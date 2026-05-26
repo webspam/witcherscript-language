@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use lsp_types::Url;
+use lsp_types::{FileChangeType, FileEvent, Url};
 use witcherscript_language::diagnostics::{
     collect_base_script_conflict_diagnostics, collect_duplicate_symbol_diagnostics,
 };
@@ -10,7 +10,7 @@ use crate::config::{Config, DiagnosticsScope};
 use super::legacy_helpers::{make_backend, make_game_dir, write_script, LocalTempDir};
 
 #[tokio::test]
-async fn matching_legacy_file_drops_base_and_lands_in_workspace() {
+async fn matching_legacy_file_shadows_base_and_lands_in_workspace() {
     let temp = LocalTempDir::new("ws_matching_legacy_file_drops_base");
     let (game_dir, base_url) =
         make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
@@ -30,9 +30,16 @@ async fn matching_legacy_file_drops_base_and_lands_in_workspace() {
 
     let base_docs = backend.base_scripts_documents.lock();
     assert!(
-        !base_docs.contains_key(base_url.as_str()),
-        "base script should be replaced; got keys {:?}",
+        base_docs.contains_key(base_url.as_str()),
+        "base script must stay in the base index for references; got keys {:?}",
         base_docs.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        backend
+            .suppressed_base_uris
+            .lock()
+            .contains(base_url.as_str()),
+        "overridden base URI must be in suppressed_base_uris",
     );
 
     let ws_docs = backend.workspace_documents.lock();
@@ -44,7 +51,7 @@ async fn matching_legacy_file_drops_base_and_lands_in_workspace() {
 }
 
 #[tokio::test]
-async fn mod_shared_imports_override_drops_base_and_lands_in_workspace() {
+async fn mod_shared_imports_override_shadows_base_and_lands_in_workspace() {
     let temp = LocalTempDir::new("ws_mod_shared_imports_override");
     let (game_dir, base_url) = make_game_dir(
         temp.path(),
@@ -64,11 +71,18 @@ async fn mod_shared_imports_override_drops_base_and_lands_in_workspace() {
     backend.index_base_scripts().await;
 
     assert!(
-        !backend
+        backend
             .base_scripts_documents
             .lock()
             .contains_key(base_url.as_str()),
-        "a modSharedImports replacement script must drop the base script it overrides"
+        "a modSharedImports replacement must keep the base script in the base index"
+    );
+    assert!(
+        backend
+            .suppressed_base_uris
+            .lock()
+            .contains(base_url.as_str()),
+        "a modSharedImports replacement must suppress the base URI in resolution",
     );
     assert!(
         backend
@@ -155,10 +169,6 @@ async fn deleting_a_legacy_file_removes_it_from_the_workspace() {
             .lock()
             .contains_key(legacy_url.as_str()),
         "a deleted legacy file must not linger in workspace_documents"
-    );
-    assert!(
-        backend.legacy_indexed_uris.lock().is_empty(),
-        "tracked legacy URIs must be cleared once the file is gone"
     );
     assert!(
         backend
@@ -288,17 +298,76 @@ async fn additional_script_dir_overlapping_legacy_logs_and_wins_as_legacy() {
 
     let base_docs = backend.base_scripts_documents.lock();
     assert!(
-        !base_docs.contains_key(base_url.as_str()),
-        "legacy semantics must win when the same dir appears in both lists"
+        base_docs.contains_key(base_url.as_str()),
+        "legacy semantics must shadow the base script, not remove it from the base index"
     );
     assert!(
         !base_docs.contains_key(legacy_url.as_str()),
         "legacy file must not be loaded as a base overlay"
+    );
+    assert!(
+        backend
+            .suppressed_base_uris
+            .lock()
+            .contains(base_url.as_str()),
+        "overlapping legacy dir must suppress the replaced base URI",
     );
 
     let ws_docs = backend.workspace_documents.lock();
     assert!(
         ws_docs.contains_key(legacy_url.as_str()),
         "legacy file must land in workspace_documents"
+    );
+}
+
+#[tokio::test]
+async fn watched_legacy_change_updates_workspace_incrementally() {
+    let temp = LocalTempDir::new("ws_watched_legacy_incremental");
+    let (game_dir, base_url) =
+        make_game_dir(temp.path(), "game/r4Player.ws", "class CR4Player {}\n");
+    let legacy_dir = temp.path().join("legacy");
+    let legacy_path = write_script(
+        &legacy_dir,
+        "game/r4Player.ws",
+        "class CR4Player {}\n// legacy\n",
+    );
+    let legacy_url = Url::from_file_path(&legacy_path).expect("legacy path -> url");
+
+    let backend = make_backend();
+    *backend.base_scripts_path.lock() = Some(game_dir);
+    *backend.legacy_script_dirs.lock() = vec![legacy_dir];
+
+    backend.index_base_scripts().await;
+    let base_docs_before = backend.base_scripts_documents.lock().len();
+
+    std::fs::write(&legacy_path, "class CR4Player {}\n// legacy edited\n")
+        .expect("write legacy file");
+    backend.apply_watched_file_events(vec![FileEvent {
+        uri: legacy_url.clone(),
+        typ: FileChangeType::CHANGED,
+    }]);
+
+    assert_eq!(
+        backend.base_scripts_documents.lock().len(),
+        base_docs_before,
+        "a legacy file watch must not rebuild the entire base index"
+    );
+    assert!(
+        backend
+            .suppressed_base_uris
+            .lock()
+            .contains(base_url.as_str()),
+        "override pairing must remain after an incremental legacy watch",
+    );
+    let ws_source = backend
+        .workspace_documents
+        .lock()
+        .get(legacy_url.as_str())
+        .expect("legacy file in workspace")
+        .source
+        .clone();
+    assert!(
+        ws_source.contains("// legacy edited"),
+        "watched change must update workspace_documents"
     );
 }
