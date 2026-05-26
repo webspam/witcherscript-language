@@ -7,6 +7,7 @@ mod completion;
 mod completion_catalog;
 mod definition;
 mod inference;
+mod name_context;
 mod references;
 mod shadowed_base;
 mod signature;
@@ -33,6 +34,7 @@ pub use definition::{
     resolve_definition_at_byte, resolve_definition_at_ident,
 };
 pub use inference::infer_expr_type_memo;
+pub use name_context::{classify_ident_context, NameContext};
 pub use references::find_references;
 pub use signature::{hover_text, signature_help, SignatureHelpInfo};
 pub use symbol_db::{FilteredBaseCatalogs, SymbolDb};
