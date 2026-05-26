@@ -35,14 +35,7 @@ impl NameContext {
                 kind,
                 SymbolKind::Function | SymbolKind::Event | SymbolKind::Struct
             ),
-            NameContext::Value => matches!(
-                kind,
-                SymbolKind::Function
-                    | SymbolKind::Event
-                    | SymbolKind::Class
-                    | SymbolKind::Struct
-                    | SymbolKind::Enum
-            ),
+            NameContext::Value => kind != SymbolKind::State,
         }
     }
 }

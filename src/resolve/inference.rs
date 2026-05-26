@@ -210,7 +210,7 @@ pub(super) fn infer_name_type(
     byte_offset: usize,
     name: &str,
 ) -> Option<String> {
-    resolve_name_local_to_workspace(uri, document, db, byte_offset, name)
+    resolve_name_in_context(uri, document, db, byte_offset, name, &NameContext::Value)
         .and_then(|def| definition_type_name(&def))
         .or_else(|| db.script_global_type(name))
 }
