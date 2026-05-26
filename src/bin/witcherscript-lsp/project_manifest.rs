@@ -56,13 +56,12 @@ pub(crate) fn parse_manifest(toml_path: &Path) -> Option<PathBuf> {
         );
         return None;
     }
-    let canonical = resolved.canonicalize().unwrap_or(resolved);
     trace!(
         manifest = %toml_path.display(),
-        scripts_root = %canonical.display(),
+        scripts_root = %resolved.display(),
         "loaded witcherscript.toml manifest"
     );
-    Some(canonical)
+    Some(resolved)
 }
 
 /// Collect `witcherscript.toml` files. Honors `files.exclude`; ignores `.gitignore`. Not for hot paths.
