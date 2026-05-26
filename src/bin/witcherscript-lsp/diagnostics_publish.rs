@@ -82,15 +82,20 @@ impl Backend {
             let loose_uri_strs: HashSet<String> =
                 loose_uris.iter().map(|u| u.to_string()).collect();
             let suppressed = self.suppressed_base_uris.lock();
+            let filtered = self.filtered_base_catalogs.lock();
             let cst = {
-                let ws_db = SymbolDb::new(&workspace, &base)
+                let mut ws_db = SymbolDb::new(&workspace, &base)
                     .with_suppressed_base_uris(&suppressed)
                     .with_script_env(&env)
                     .with_builtins(&self.builtins_index);
-                let loose_db = SymbolDb::new(&loose, &base)
+                let mut loose_db = SymbolDb::new(&loose, &base)
                     .with_suppressed_base_uris(&suppressed)
                     .with_script_env(&env)
                     .with_builtins(&self.builtins_index);
+                if let Some(catalogs) = filtered.as_ref() {
+                    ws_db = ws_db.with_prefiltered_base(catalogs);
+                    loose_db = loose_db.with_prefiltered_base(catalogs);
+                }
                 tracing::debug_span!("cst_diagnostics", docs = diag_docs.len()).in_scope(|| {
                     cst_diagnostics_with_cache(
                         &diag_docs,

@@ -21,6 +21,25 @@ pub struct SymbolDb<'a> {
     script_env: Option<&'a ScriptEnvironment>,
     observer: Option<&'a Mutex<ObservationSet>>,
     suppressed_base_uris: Option<&'a HashSet<String>>,
+    prefiltered_base: Option<&'a FilteredBaseCatalogs>,
+}
+
+#[derive(Debug)]
+pub struct FilteredBaseCatalogs {
+    pub callables: Arc<[Definition]>,
+    pub types: Arc<[Definition]>,
+    pub enum_variants: Arc<[Definition]>,
+}
+
+impl FilteredBaseCatalogs {
+    pub fn build(base: &WorkspaceIndex, suppressed: &HashSet<String>) -> Self {
+        let suppressed = Some(suppressed);
+        Self {
+            callables: SymbolDb::filter_base_catalog(base.callables_catalog(), suppressed),
+            types: SymbolDb::filter_base_catalog(base.types_catalog(), suppressed),
+            enum_variants: SymbolDb::filter_base_catalog(base.enum_variants_catalog(), suppressed),
+        }
+    }
 }
 
 impl<'a> SymbolDb<'a> {
@@ -32,11 +51,17 @@ impl<'a> SymbolDb<'a> {
             script_env: None,
             observer: None,
             suppressed_base_uris: None,
+            prefiltered_base: None,
         }
     }
 
     pub fn with_suppressed_base_uris(mut self, uris: &'a HashSet<String>) -> Self {
         self.suppressed_base_uris = Some(uris);
+        self
+    }
+
+    pub fn with_prefiltered_base(mut self, catalogs: &'a FilteredBaseCatalogs) -> Self {
+        self.prefiltered_base = Some(catalogs);
         self
     }
 
@@ -61,6 +86,7 @@ impl<'a> SymbolDb<'a> {
             script_env: self.script_env,
             observer: Some(observer),
             suppressed_base_uris: self.suppressed_base_uris,
+            prefiltered_base: self.prefiltered_base,
         }
     }
 
@@ -82,12 +108,36 @@ impl<'a> SymbolDb<'a> {
         let Some(sup) = suppressed else {
             return catalog;
         };
+        if sup.is_empty() {
+            return catalog;
+        }
         let filtered: Vec<Definition> = catalog
             .iter()
             .filter(|d| !sup.contains(d.uri.as_str()))
             .cloned()
             .collect();
         Arc::from(filtered)
+    }
+
+    fn base_callables_for_merge(&self) -> std::sync::Arc<[Definition]> {
+        if let Some(prefiltered) = self.prefiltered_base {
+            return prefiltered.callables.clone();
+        }
+        Self::filter_base_catalog(self.base.callables_catalog(), self.suppressed_base_uris)
+    }
+
+    fn base_types_for_merge(&self) -> std::sync::Arc<[Definition]> {
+        if let Some(prefiltered) = self.prefiltered_base {
+            return prefiltered.types.clone();
+        }
+        Self::filter_base_catalog(self.base.types_catalog(), self.suppressed_base_uris)
+    }
+
+    fn base_enum_variants_for_merge(&self) -> std::sync::Arc<[Definition]> {
+        if let Some(prefiltered) = self.prefiltered_base {
+            return prefiltered.enum_variants.clone();
+        }
+        Self::filter_base_catalog(self.base.enum_variants_catalog(), self.suppressed_base_uris)
     }
 
     pub fn merge_observations(&self, other: ObservationSet) {
@@ -375,13 +425,13 @@ impl<'a> SymbolDb<'a> {
     pub fn merged_callables_catalog(&self) -> std::sync::Arc<[Definition]> {
         merge_ws_base(
             self.workspace.callables_catalog(),
-            Self::filter_base_catalog(self.base.callables_catalog(), self.suppressed_base_uris),
+            self.base_callables_for_merge(),
         )
     }
 
     pub fn merged_types_catalog(&self) -> std::sync::Arc<[Definition]> {
         let ws = self.workspace.types_catalog();
-        let base = Self::filter_base_catalog(self.base.types_catalog(), self.suppressed_base_uris);
+        let base = self.base_types_for_merge();
         match self.builtins {
             Some(_) => merge_ws_base_three(ws, base, crate::builtins::types_completion_catalog()),
             None => merge_ws_base(ws, base),
@@ -390,8 +440,7 @@ impl<'a> SymbolDb<'a> {
 
     pub fn merged_enum_variants_catalog(&self) -> std::sync::Arc<[Definition]> {
         let ws = self.workspace.enum_variants_catalog();
-        let base =
-            Self::filter_base_catalog(self.base.enum_variants_catalog(), self.suppressed_base_uris);
+        let base = self.base_enum_variants_for_merge();
         match self.builtins {
             Some(b) => merge_ws_base_three(ws, base, b.enum_variants_catalog()),
             None => merge_ws_base(ws, base),

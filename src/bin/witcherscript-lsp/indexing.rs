@@ -303,6 +303,7 @@ impl Backend {
         let (suppressed, replacements) = legacy_base_replacements(&base_uris, &legacy_uris);
         *self.suppressed_base_uris.lock() = suppressed;
         *self.legacy_replacements.lock() = replacements;
+        self.rebuild_filtered_base_catalogs();
     }
 
     pub(crate) fn refresh_legacy_override_maps_if_legacy_uri(&self, uri: &Url) {
@@ -524,6 +525,7 @@ impl Backend {
             }
             self.legacy_replacements.lock().clear();
             self.suppressed_base_uris.lock().clear();
+            self.rebuild_filtered_base_catalogs();
             self.prune_stale_legacy_workspace_files(&HashSet::new());
             self.publish_open_diagnostics();
             self.publish_legacy_script_status();
@@ -697,6 +699,7 @@ impl Backend {
         *self.legacy_replacements.lock() = legacy_replacements;
         *self.suppressed_base_uris.lock() = suppressed_base;
         self.merge_open_base_documents();
+        self.rebuild_filtered_base_catalogs();
 
         let invalidated = self.sync_legacy_workspace_from_parsed(legacy_parsed);
         self.evict_cache_entries(&invalidated);

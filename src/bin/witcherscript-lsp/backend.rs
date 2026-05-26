@@ -23,7 +23,7 @@ use tracing::trace;
 use witcherscript_language::builtins::{builtin_source, load_builtins_index};
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
-use witcherscript_language::resolve::{SymbolDb, WorkspaceIndex};
+use witcherscript_language::resolve::{FilteredBaseCatalogs, SymbolDb, WorkspaceIndex};
 use witcherscript_language::script_env::ScriptEnvironment;
 
 use crate::completion_cache::MergedCompletionCache;
@@ -83,6 +83,7 @@ pub(crate) struct Backend {
     pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) legacy_replacements: Arc<Mutex<HashMap<String, String>>>,
     pub(crate) suppressed_base_uris: Arc<Mutex<HashSet<String>>>,
+    pub(crate) filtered_base_catalogs: Arc<Mutex<Option<FilteredBaseCatalogs>>>,
     pub(crate) sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,
     pub(crate) sent_file_scope_status: Arc<Mutex<HashMap<Url, FileScopeStatusParams>>>,
     pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
@@ -104,14 +105,19 @@ pub(crate) struct DbHandles<'a> {
     script_env: MutexGuard<'a, ScriptEnvironment>,
     builtins: &'a WorkspaceIndex,
     suppressed_base_uris: MutexGuard<'a, HashSet<String>>,
+    filtered_base_catalogs: MutexGuard<'a, Option<FilteredBaseCatalogs>>,
 }
 
 impl<'a> DbHandles<'a> {
     pub(crate) fn db(&'a self) -> SymbolDb<'a> {
-        SymbolDb::new(&self.workspace, &self.base)
+        let mut db = SymbolDb::new(&self.workspace, &self.base)
             .with_suppressed_base_uris(&self.suppressed_base_uris)
             .with_script_env(&self.script_env)
-            .with_builtins(self.builtins)
+            .with_builtins(self.builtins);
+        if let Some(catalogs) = self.filtered_base_catalogs.as_ref() {
+            db = db.with_prefiltered_base(catalogs);
+        }
+        db
     }
 
     pub(crate) fn workspace(&self) -> &WorkspaceIndex {
@@ -139,6 +145,7 @@ impl Backend {
             legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
             suppressed_base_uris: Arc::new(Mutex::new(HashSet::new())),
+            filtered_base_catalogs: Arc::new(Mutex::new(None)),
             sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
             sent_file_scope_status: Arc::new(Mutex::new(HashMap::new())),
             base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
@@ -232,7 +239,21 @@ impl Backend {
             script_env: self.script_env.lock(),
             builtins: self.builtins_index.as_ref(),
             suppressed_base_uris: self.suppressed_base_uris.lock(),
+            filtered_base_catalogs: self.filtered_base_catalogs.lock(),
         }
+    }
+
+    pub(crate) fn rebuild_filtered_base_catalogs(&self) {
+        let base = self.base_scripts_index.lock();
+        let suppressed = self.suppressed_base_uris.lock();
+        let mut slot = self.filtered_base_catalogs.lock();
+        *slot = if suppressed.is_empty() {
+            None
+        } else {
+            Some(FilteredBaseCatalogs::build(&base, &suppressed))
+        };
+        *self.merged_completion_cache_workspace.lock() = None;
+        *self.merged_completion_cache_loose.lock() = None;
     }
 
     pub(crate) fn merged_completion_cache(
