@@ -11,6 +11,7 @@ use witcherscript_language::resolve::{ObservationSet, SymbolDb};
 pub(crate) struct DbFingerprint {
     pub base_surface: u64,
     pub env: u64,
+    pub legacy_db_generation: u64,
 }
 
 #[derive(Debug, Clone)]

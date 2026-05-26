@@ -2,6 +2,13 @@ use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
+use crate::backend::{build_symbol_db, diagnostics_document_set, Backend};
+use crate::config::DiagnosticsScope;
+use crate::convert::{lsp_diagnostics, lsp_workspace_diagnostic};
+use crate::cst_cache::cst_diagnostics_with_cache;
+use crate::file_scope::{classify_file_scope, FileScope};
+use crate::file_scope_status::{FileScopeStatusNotification, FileScopeStatusParams};
+use crate::legacy_status::{LegacyScriptStatusNotification, LegacyScriptStatusParams};
 use lsp_types::notification::PublishDiagnostics;
 use lsp_types::{Diagnostic, PublishDiagnosticsParams, Url};
 use tracing::trace;
@@ -11,15 +18,6 @@ use witcherscript_language::diagnostics::{
 };
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::line_index::SourceRange;
-use witcherscript_language::resolve::SymbolDb;
-
-use crate::backend::{diagnostics_document_set, Backend};
-use crate::config::DiagnosticsScope;
-use crate::convert::{lsp_diagnostics, lsp_workspace_diagnostic};
-use crate::cst_cache::{cst_diagnostics_with_cache, DbFingerprint};
-use crate::file_scope::{classify_file_scope, FileScope};
-use crate::file_scope_status::{FileScopeStatusNotification, FileScopeStatusParams};
-use crate::legacy_status::{LegacyScriptStatusNotification, LegacyScriptStatusParams};
 
 // A file is published under its canonical URI so its key is stable whether or not it is open.
 pub(crate) fn publish_url(diag_key: &str) -> Option<Url> {
@@ -75,27 +73,28 @@ impl Backend {
             shadow.extend(collect_shadowing_diagnostics(&loose, &env));
             dup_local.extend(collect_duplicate_local_diagnostics(&loose));
 
-            let fingerprint = DbFingerprint {
-                base_surface: base.surface_hash(),
-                env: env.version(),
-            };
+            let fingerprint = self.db_fingerprint(&base, &env);
             let loose_uri_strs: HashSet<String> =
                 loose_uris.iter().map(|u| u.to_string()).collect();
             let suppressed = self.suppressed_base_uris.lock();
             let filtered = self.filtered_base_catalogs.lock();
             let cst = {
-                let mut ws_db = SymbolDb::new(&workspace, &base)
-                    .with_suppressed_base_uris(&suppressed)
-                    .with_script_env(&env)
-                    .with_builtins(&self.builtins_index);
-                let mut loose_db = SymbolDb::new(&loose, &base)
-                    .with_suppressed_base_uris(&suppressed)
-                    .with_script_env(&env)
-                    .with_builtins(&self.builtins_index);
-                if let Some(catalogs) = filtered.as_ref() {
-                    ws_db = ws_db.with_prefiltered_base(catalogs);
-                    loose_db = loose_db.with_prefiltered_base(catalogs);
-                }
+                let ws_db = build_symbol_db(
+                    &workspace,
+                    &base,
+                    &env,
+                    self.builtins_index.as_ref(),
+                    &suppressed,
+                    filtered.as_ref(),
+                );
+                let loose_db = build_symbol_db(
+                    &loose,
+                    &base,
+                    &env,
+                    self.builtins_index.as_ref(),
+                    &suppressed,
+                    filtered.as_ref(),
+                );
                 tracing::debug_span!("cst_diagnostics", docs = diag_docs.len()).in_scope(|| {
                     cst_diagnostics_with_cache(
                         &diag_docs,

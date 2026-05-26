@@ -11,6 +11,7 @@ fn fp() -> DbFingerprint {
     DbFingerprint {
         base_surface: 0,
         env: 0,
+        legacy_db_generation: 0,
     }
 }
 
@@ -115,6 +116,7 @@ fn fingerprint_change_invalidates_all() {
     let fp_bumped = DbFingerprint {
         base_surface: fp().base_surface.wrapping_add(1),
         env: 0,
+        legacy_db_generation: 0,
     };
     let r = cst_diagnostics_with_cache(&documents, &db, None, fp_bumped, &mut cache);
     assert_eq!(r.stats.hits, 0);

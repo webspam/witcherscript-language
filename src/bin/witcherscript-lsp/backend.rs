@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::ControlFlow;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -97,6 +97,25 @@ pub(crate) struct Backend {
     pub(crate) merged_completion_cache_workspace: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) merged_completion_cache_loose: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
+    pub(crate) legacy_db_generation: Arc<AtomicU64>,
+}
+
+pub(super) fn build_symbol_db<'a>(
+    workspace: &'a WorkspaceIndex,
+    base: &'a WorkspaceIndex,
+    script_env: &'a ScriptEnvironment,
+    builtins: &'a WorkspaceIndex,
+    suppressed: &'a HashSet<String>,
+    filtered: Option<&'a FilteredBaseCatalogs>,
+) -> SymbolDb<'a> {
+    let mut db = SymbolDb::new(workspace, base)
+        .with_suppressed_base_uris(suppressed)
+        .with_script_env(script_env)
+        .with_builtins(builtins);
+    if let Some(catalogs) = filtered {
+        db = db.with_prefiltered_base(catalogs);
+    }
+    db
 }
 
 pub(crate) struct DbHandles<'a> {
@@ -110,14 +129,14 @@ pub(crate) struct DbHandles<'a> {
 
 impl<'a> DbHandles<'a> {
     pub(crate) fn db(&'a self) -> SymbolDb<'a> {
-        let mut db = SymbolDb::new(&self.workspace, &self.base)
-            .with_suppressed_base_uris(&self.suppressed_base_uris)
-            .with_script_env(&self.script_env)
-            .with_builtins(self.builtins);
-        if let Some(catalogs) = self.filtered_base_catalogs.as_ref() {
-            db = db.with_prefiltered_base(catalogs);
-        }
-        db
+        build_symbol_db(
+            &self.workspace,
+            &self.base,
+            &self.script_env,
+            self.builtins,
+            &self.suppressed_base_uris,
+            self.filtered_base_catalogs.as_ref(),
+        )
     }
 
     pub(crate) fn workspace(&self) -> &WorkspaceIndex {
@@ -158,6 +177,19 @@ impl Backend {
             merged_completion_cache_workspace: Arc::new(Mutex::new(None)),
             merged_completion_cache_loose: Arc::new(Mutex::new(None)),
             initial_index_done: Arc::new(AtomicBool::new(false)),
+            legacy_db_generation: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    pub(crate) fn db_fingerprint(
+        &self,
+        base: &WorkspaceIndex,
+        env: &ScriptEnvironment,
+    ) -> crate::cst_cache::DbFingerprint {
+        crate::cst_cache::DbFingerprint {
+            base_surface: base.surface_hash(),
+            env: env.version(),
+            legacy_db_generation: self.legacy_db_generation.load(Ordering::Relaxed),
         }
     }
 
@@ -254,6 +286,7 @@ impl Backend {
         };
         *self.merged_completion_cache_workspace.lock() = None;
         *self.merged_completion_cache_loose.lock() = None;
+        self.legacy_db_generation.fetch_add(1, Ordering::Relaxed);
     }
 
     pub(crate) fn merged_completion_cache(
