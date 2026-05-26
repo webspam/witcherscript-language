@@ -11,6 +11,7 @@ mod indexing;
 mod legacy_status;
 mod lifecycle;
 mod logging;
+mod project_manifest;
 mod queries;
 mod references_rename;
 #[cfg(test)]

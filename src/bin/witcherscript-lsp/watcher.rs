@@ -13,6 +13,16 @@ use witcherscript_language::files::{
 };
 
 use crate::backend::Backend;
+use crate::project_manifest::MANIFEST_FILENAME;
+
+fn event_is_manifest(event: &FileEvent) -> bool {
+    event
+        .uri
+        .to_file_path()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n == MANIFEST_FILENAME))
+        .unwrap_or(false)
+}
 
 pub(crate) fn event_touches_legacy_dir(event: &FileEvent, legacy_dirs: &[PathBuf]) -> bool {
     if legacy_dirs.is_empty() {
@@ -58,12 +68,17 @@ pub(crate) fn classify_watched_event(
 
 impl Backend {
     pub(crate) async fn register_file_watchers(&self) {
-        let watcher = FileSystemWatcher {
-            glob_pattern: GlobPattern::String("**/*.ws".to_string()),
-            kind: None,
-        };
         let options = DidChangeWatchedFilesRegistrationOptions {
-            watchers: vec![watcher],
+            watchers: vec![
+                FileSystemWatcher {
+                    glob_pattern: GlobPattern::String("**/*.ws".to_string()),
+                    kind: None,
+                },
+                FileSystemWatcher {
+                    glob_pattern: GlobPattern::String(format!("**/{MANIFEST_FILENAME}")),
+                    kind: None,
+                },
+            ],
         };
         let registration = Registration {
             id: "witcherscript-ws-files".to_string(),
@@ -92,12 +107,15 @@ impl Backend {
         let filter = self.exclude_filter();
         let legacy_dirs = self.effective_legacy_dirs();
 
+        let (manifest_events, ws_events): (Vec<FileEvent>, Vec<FileEvent>) =
+            events.into_iter().partition(event_is_manifest);
+
         let mut updates: Vec<(String, witcherscript_language::document::ParsedDocument)> =
             Vec::new();
         let mut removals: Vec<String> = Vec::new();
         let mut legacy_map_refresh = false;
 
-        for event in events {
+        for event in ws_events {
             let touches_legacy = event_touches_legacy_dir(&event, &legacy_dirs);
             let Some(decision) = classify_watched_event(&event, &open_canonical, &filter) else {
                 continue;
@@ -156,13 +174,19 @@ impl Backend {
             self.evict_cache_entries(&invalidated);
         }
 
-        if legacy_map_refresh {
+        let manifest_set_changed = if manifest_events.is_empty() {
+            false
+        } else {
+            self.refresh_manifest_legacy_dirs()
+        };
+
+        if legacy_map_refresh || manifest_set_changed {
             self.refresh_legacy_override_maps();
             self.publish_legacy_script_status();
             self.publish_file_scope_status();
         }
 
-        if had_updates || had_removals || legacy_map_refresh {
+        if had_updates || had_removals || legacy_map_refresh || manifest_set_changed {
             self.publish_open_diagnostics();
         }
     }

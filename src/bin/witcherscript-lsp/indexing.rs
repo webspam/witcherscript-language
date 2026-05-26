@@ -273,7 +273,30 @@ impl Backend {
                 }
             }
         }
+        for dir in self.manifest_legacy_dirs.lock().iter() {
+            if !dirs.contains(dir) {
+                dirs.push(dir.clone());
+            }
+        }
         dirs
+    }
+
+    pub(crate) fn refresh_manifest_legacy_dirs(&self) -> bool {
+        let prev: HashSet<PathBuf> = self.manifest_legacy_dirs.lock().iter().cloned().collect();
+        let next: Vec<PathBuf> = if !self.config.load().auto_detect_project_manifests {
+            Vec::new()
+        } else {
+            let roots = self.workspace_roots.lock().clone();
+            if roots.is_empty() {
+                Vec::new()
+            } else {
+                let exclude_globs = self.files_exclude.lock().clone();
+                crate::project_manifest::discovered_scripts_roots(&roots, &exclude_globs)
+            }
+        };
+        let next_set: HashSet<PathBuf> = next.iter().cloned().collect();
+        *self.manifest_legacy_dirs.lock() = next;
+        prev != next_set
     }
 
     fn uri_under_legacy_dirs(uri: &str, legacy_dirs: &[PathBuf]) -> bool {
