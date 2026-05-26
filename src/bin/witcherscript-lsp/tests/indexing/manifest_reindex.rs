@@ -19,8 +19,8 @@ fn write_manifest(temp: &std::path::Path, rel_dir: &str, scripts_subdir: &str) -
     Url::from_file_path(&toml_path).expect("manifest path -> url")
 }
 
-#[test]
-fn adding_a_manifest_via_watched_event_changes_the_dir_set() {
+#[tokio::test]
+async fn adding_a_manifest_via_watched_event_changes_the_dir_set() {
     let temp = LocalTempDir::new("ws_manifest_reindex_add");
     let backend = make_backend();
     *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
@@ -64,8 +64,8 @@ fn manifest_event_with_no_set_change_is_a_noop() {
     );
 }
 
-#[test]
-fn deleting_a_manifest_via_watched_event_removes_the_dir() {
+#[tokio::test]
+async fn deleting_a_manifest_via_watched_event_removes_the_dir() {
     let temp = LocalTempDir::new("ws_manifest_reindex_delete");
     let dir = temp.path().join("Mods/modA/content");
     std::fs::create_dir_all(dir.join("scripts")).unwrap();

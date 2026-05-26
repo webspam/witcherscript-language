@@ -186,6 +186,13 @@ impl Backend {
             self.publish_file_scope_status();
         }
 
+        if manifest_set_changed {
+            let backend = self.clone();
+            crate::spawn_logged("manifest-set-changed reindex", async move {
+                backend.index_base_scripts().await;
+            });
+        }
+
         if had_updates || had_removals || legacy_map_refresh || manifest_set_changed {
             self.publish_open_diagnostics();
         }
