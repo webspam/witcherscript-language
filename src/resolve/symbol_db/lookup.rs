@@ -47,6 +47,33 @@ impl<'a> SymbolDb<'a> {
             })
     }
 
+    /// Find a state named `name` declared in `start_owner` or any statemachine
+    /// class it inherits from.
+    pub fn find_state_in_owner_chain(&self, start_owner: &str, name: &str) -> Option<Definition> {
+        let mut current: String = start_owner.to_string();
+        let mut depth: usize = 0;
+        loop {
+            if depth > MAX_INHERITANCE_DEPTH {
+                return None;
+            }
+            self.record_top_level(&current);
+            if let Some(def) = self
+                .workspace
+                .find_state_in_owner(&current, name)
+                .or_else(|| self.shadowed_base().find_state_in_owner(&current, name))
+                .or_else(|| {
+                    self.builtins
+                        .and_then(|b| b.find_state_in_owner(&current, name))
+                })
+            {
+                return Some(def);
+            }
+            let parent = self.superclass_of(&current)?;
+            depth += 1;
+            current = parent;
+        }
+    }
+
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
         self.record_enum_member(name);
         self.workspace

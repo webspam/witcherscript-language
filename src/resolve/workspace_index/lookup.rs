@@ -31,6 +31,10 @@ impl WorkspaceIndex {
             .unwrap_or(&[])
     }
 
+    pub fn find_state_in_owner(&self, owner: &str, name: &str) -> Option<Definition> {
+        self.states_by_owner.get(owner)?.get(name).cloned()
+    }
+
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
         self.enum_member_by_name.get(name).cloned()
     }

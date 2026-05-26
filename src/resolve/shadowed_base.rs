@@ -45,6 +45,12 @@ impl<'a> ShadowedBase<'a> {
             .cloned()
     }
 
+    pub(super) fn find_state_in_owner(&self, owner: &str, name: &str) -> Option<Definition> {
+        self.index
+            .find_state_in_owner(owner, name)
+            .filter(|d| self.def_visible(d))
+    }
+
     pub(super) fn find_enum_member(&self, name: &str) -> Option<Definition> {
         self.index
             .find_enum_member(name)

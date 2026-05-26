@@ -23,6 +23,7 @@ pub struct WorkspaceIndex {
     top_level_by_name: HashMap<String, Vec<Definition>>,
     enum_member_by_name: HashMap<String, Definition>,
     superclass_by_name: HashMap<String, String>,
+    states_by_owner: HashMap<String, HashMap<String, Definition>>,
     member_by_type: HashMap<String, HashMap<String, Definition>>,
     annotated_members_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
     doc_idents: HashMap<String, HashMap<String, Vec<std::ops::Range<usize>>>>,

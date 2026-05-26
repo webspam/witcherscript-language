@@ -28,6 +28,37 @@ impl WorkspaceIndex {
                         self.superclass_by_name.insert(sym.name.clone(), base);
                     }
                 }
+                if sym.kind == SymbolKind::State {
+                    if let Some(owner) = &sym.owner_class {
+                        if let Some(by_name) = self.states_by_owner.get_mut(owner) {
+                            let owns = by_name
+                                .get(&sym.name)
+                                .map(|d| d.uri == uri)
+                                .unwrap_or(false);
+                            if owns {
+                                by_name.remove(&sym.name);
+                                let replacement = self.find_replacement_def(uri, |s| {
+                                    s.kind == SymbolKind::State
+                                        && s.name == sym.name
+                                        && s.owner_class.as_deref() == Some(owner.as_str())
+                                });
+                                if let Some(def) = replacement {
+                                    self.states_by_owner
+                                        .entry(owner.clone())
+                                        .or_default()
+                                        .insert(sym.name.clone(), def);
+                                } else if self
+                                    .states_by_owner
+                                    .get(owner)
+                                    .map(|m| m.is_empty())
+                                    .unwrap_or(false)
+                                {
+                                    self.states_by_owner.remove(owner);
+                                }
+                            }
+                        }
+                    }
+                }
                 if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field) {
                     if let Some(target) = annotation_target_class(&sym) {
                         if let Some(by_name) = self.annotated_members_by_type.get_mut(target) {
@@ -110,6 +141,20 @@ impl WorkspaceIndex {
                     if let Some(superclass) = &sym.base_class {
                         self.superclass_by_name
                             .insert(sym.name.clone(), superclass.clone());
+                    }
+                }
+                if sym.kind == SymbolKind::State {
+                    if let Some(owner) = &sym.owner_class {
+                        self.states_by_owner
+                            .entry(owner.clone())
+                            .or_default()
+                            .insert(
+                                sym.name.clone(),
+                                Definition {
+                                    uri: uri.to_string(),
+                                    symbol: sym.clone(),
+                                },
+                            );
                     }
                 }
                 if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field) {
