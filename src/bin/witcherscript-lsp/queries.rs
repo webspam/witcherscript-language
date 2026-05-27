@@ -1,9 +1,12 @@
 use async_lsp::ResponseError;
 use lsp_types::{
-    CodeActionParams, CodeActionResponse, DocumentFormattingParams, DocumentSymbolParams,
-    DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
-    HoverParams, Location, MarkupContent, MarkupKind, SemanticToken, SemanticTokens,
-    SemanticTokensParams, SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextEdit, Url,
+    CodeActionParams, CodeActionResponse, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentSymbolParams,
+    DocumentSymbolResponse, FullDocumentDiagnosticReport, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, MarkupContent, MarkupKind,
+    RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, SemanticToken,
+    SemanticTokens, SemanticTokensParams, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
+    TextEdit, UnchangedDocumentDiagnosticReport, Url,
 };
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::formatter::format_document;
@@ -21,6 +24,47 @@ use crate::convert::{
 type Result<T> = std::result::Result<T, ResponseError>;
 
 impl Backend {
+    pub(crate) async fn _document_diagnostic(
+        &self,
+        params: DocumentDiagnosticParams,
+    ) -> Result<DocumentDiagnosticReportResult> {
+        let uri = params.text_document.uri.clone();
+        let (items, result_id) = {
+            let documents = self.documents.lock();
+            let Some(document) = documents.get(&uri) else {
+                return Ok(DocumentDiagnosticReportResult::Report(
+                    DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+                        related_documents: None,
+                        full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                            result_id: None,
+                            items: Vec::new(),
+                        },
+                    }),
+                ));
+            };
+            self.compute_diagnostics_for_uri(&uri, document)
+        };
+        if params.previous_result_id.as_deref() == Some(result_id.as_str()) {
+            return Ok(DocumentDiagnosticReportResult::Report(
+                DocumentDiagnosticReport::Unchanged(RelatedUnchangedDocumentDiagnosticReport {
+                    related_documents: None,
+                    unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport {
+                        result_id,
+                    },
+                }),
+            ));
+        }
+        Ok(DocumentDiagnosticReportResult::Report(
+            DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+                related_documents: None,
+                full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                    result_id: Some(result_id),
+                    items,
+                },
+            }),
+        ))
+    }
+
     pub(crate) async fn _code_action(
         &self,
         params: CodeActionParams,

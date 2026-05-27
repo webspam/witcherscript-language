@@ -129,7 +129,7 @@ impl Backend {
             "workspace indexed"
         );
 
-        self.publish_open_diagnostics();
+        self.diagnostics_state_changed();
     }
 
     pub(crate) async fn index_base_scripts(&self) {
@@ -148,7 +148,7 @@ impl Backend {
             self.suppressed_base_uris.lock().clear();
             self.rebuild_filtered_base_catalogs();
             self.prune_stale_legacy_workspace_files(&HashSet::new());
-            self.publish_open_diagnostics();
+            self.diagnostics_state_changed();
             self.publish_legacy_script_status();
             self.publish_file_scope_status();
             return;
@@ -336,7 +336,7 @@ impl Backend {
             "base scripts indexed"
         );
 
-        self.publish_open_diagnostics();
+        self.diagnostics_state_changed();
         self.publish_legacy_script_status();
         self.publish_file_scope_status();
     }

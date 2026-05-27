@@ -110,6 +110,7 @@ async fn open_files_mode_close_clears_the_files_diagnostics() {
     let backend = make_backend_with(DiagnosticsScope::OpenFiles);
     index_dir(&backend, temp.path()).await;
     backend.update_open_document(url.clone(), "class CGood {\n".to_string());
+    backend.flush_pending_diagnostics().await;
     assert!(
         backend
             .published_diagnostics
@@ -120,6 +121,7 @@ async fn open_files_mode_close_clears_the_files_diagnostics() {
     );
 
     backend._did_close(close_params(&url));
+    backend.flush_pending_diagnostics().await;
 
     assert!(
         !backend.published_diagnostics.lock().contains_key(&url),

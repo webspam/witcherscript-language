@@ -208,7 +208,7 @@ impl Backend {
         }
 
         if had_updates || had_removals || legacy_map_refresh || manifest_set_changed {
-            self.publish_open_diagnostics();
+            self.spawn_diagnostics_state_changed();
         }
     }
 }

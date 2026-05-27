@@ -5,14 +5,15 @@ use std::sync::Arc;
 use async_lsp::ResponseError;
 use lsp_types::{
     CodeActionKind, CodeActionOptions, CodeActionProviderCapability, CompletionOptions,
-    DidChangeConfigurationParams, FileOperationFilter, FileOperationPattern,
-    FileOperationPatternKind, FileOperationRegistrationOptions, HoverProviderCapability,
-    InitializeParams, InitializeResult, InitializedParams, OneOf, RenameOptions,
-    SemanticTokenModifier, SemanticTokenType, SemanticTokensFullOptions, SemanticTokensLegend,
-    SemanticTokensOptions, SemanticTokensServerCapabilities, ServerCapabilities,
-    SignatureHelpOptions, TextDocumentSyncCapability, TextDocumentSyncKind,
-    WorkDoneProgressOptions, WorkspaceFileOperationsServerCapabilities,
-    WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
+    DiagnosticOptions, DiagnosticServerCapabilities, DidChangeConfigurationParams,
+    FileOperationFilter, FileOperationPattern, FileOperationPatternKind,
+    FileOperationRegistrationOptions, HoverProviderCapability, InitializeParams, InitializeResult,
+    InitializedParams, OneOf, RenameOptions, SemanticTokenModifier, SemanticTokenType,
+    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelpOptions,
+    TextDocumentSyncCapability, TextDocumentSyncKind, WorkDoneProgressOptions,
+    WorkspaceFileOperationsServerCapabilities, WorkspaceFoldersServerCapabilities,
+    WorkspaceServerCapabilities,
 };
 use tracing::info;
 use witcherscript_language::semantic_tokens::{TOKEN_MODIFIERS, TOKEN_TYPES};
@@ -112,9 +113,18 @@ impl Backend {
             self.config.store(Arc::new(cfg));
         }
 
+        let supports_pull = params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|td| td.diagnostic.as_ref())
+            .is_some();
+        self.client_supports_pull_diagnostics
+            .store(supports_pull, Ordering::Release);
+
         let roots = workspace_roots(params);
         let game_dir = self.base_scripts_path.lock().clone();
-        info!(roots = ?roots, game_dir = ?game_dir, "LSP initialize");
+        info!(roots = ?roots, game_dir = ?game_dir, supports_pull, "LSP initialize");
         *self.workspace_roots.lock() = roots;
 
         Ok(InitializeResult {
@@ -176,6 +186,14 @@ impl Backend {
                     }),
                     file_operations: Some(ws_file_operations_capabilities()),
                 }),
+                diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
+                    DiagnosticOptions {
+                        identifier: Some("witcherscript".to_string()),
+                        inter_file_dependencies: true,
+                        workspace_diagnostics: false,
+                        work_done_progress_options: WorkDoneProgressOptions::default(),
+                    },
+                )),
                 ..ServerCapabilities::default()
             },
             ..InitializeResult::default()
@@ -190,7 +208,7 @@ impl Backend {
         self.register_file_watchers().await;
         self.index_base_scripts().await;
         self.initial_index_done.store(true, Ordering::Release);
-        self.publish_open_diagnostics();
+        self.diagnostics_state_changed();
     }
 
     pub(crate) async fn _did_change_configuration(&self, _: DidChangeConfigurationParams) {
@@ -206,7 +224,7 @@ impl Backend {
             self.refresh_manifest_legacy_dirs();
             self.index_base_scripts().await;
             self.reindex_open_documents();
-            self.publish_open_diagnostics();
+            self.diagnostics_state_changed();
         } else {
             tracing::trace!(
                 "did_change_configuration: no index-relevant config change, skipping re-index"

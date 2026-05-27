@@ -30,11 +30,11 @@ fn unchanged_docs_hit_cache_on_second_call() {
     documents.insert("file:///b.ws".to_string(), &doc_b);
 
     let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
-    let r1 = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
+    let r1 = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
     assert_eq!(r1.stats.hits, 0);
     assert_eq!(r1.stats.misses, 2);
 
-    let r2 = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
+    let r2 = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
     assert_eq!(r2.stats.hits, 2);
     assert_eq!(r2.stats.misses, 0);
 }
@@ -55,7 +55,7 @@ fn text_only_edit_to_doc_keeps_others_hot() {
     let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
     {
         let db = SymbolDb::new(&idx, &base);
-        let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
+        let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
     }
 
     let fresh_a = make_doc("class A {} // comment-only edit\n");
@@ -63,7 +63,7 @@ fn text_only_edit_to_doc_keeps_others_hot() {
     documents.insert("file:///a.ws".to_string(), &fresh_a);
 
     let db = SymbolDb::new(&idx, &base);
-    let r = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
+    let r = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
     assert_eq!(r.stats.hits, 1, "doc b should still be a cache hit");
     assert_eq!(
         r.stats.misses, 1,
@@ -86,12 +86,12 @@ fn edited_doc_misses_others_hit() {
     documents.insert("file:///b.ws".to_string(), &doc_b);
 
     let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
-    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
+    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
 
     let fresh_a = make_doc("class A {} // edit\n");
     documents.insert("file:///a.ws".to_string(), &fresh_a);
 
-    let r = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
+    let r = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
     assert_eq!(r.stats.hits, 1);
     assert_eq!(r.stats.misses, 1);
 }
@@ -111,14 +111,14 @@ fn fingerprint_change_invalidates_all() {
     documents.insert("file:///b.ws".to_string(), &doc_b);
 
     let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
-    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
+    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
 
     let fp_bumped = DbFingerprint {
         base_surface: fp().base_surface.wrapping_add(1),
         env: 0,
         legacy_db_generation: 0,
     };
-    let r = cst_diagnostics_with_cache(&documents, &db, None, fp_bumped, &mut cache);
+    let r = cst_diagnostics_with_cache(&documents, &db, None, fp_bumped, &mut cache, &|| true);
     assert_eq!(r.stats.hits, 0);
     assert_eq!(r.stats.misses, 2);
 }
@@ -138,11 +138,11 @@ fn closed_docs_evicted_from_cache() {
     documents.insert("file:///b.ws".to_string(), &doc_b);
 
     let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
-    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
+    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
     assert_eq!(cache.len(), 2);
 
     documents.remove("file:///b.ws");
-    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache);
+    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
     assert_eq!(cache.len(), 1);
 }
 
@@ -164,7 +164,7 @@ fn editing_unobserved_doc_does_not_invalidate_dependents() {
 
     let warm = {
         let db = SymbolDb::new(&idx, &base);
-        cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache)
+        cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true)
     };
     for (uri, obs) in warm.new_subscriptions {
         idx.register_subscription(&uri, obs);
@@ -178,7 +178,7 @@ fn editing_unobserved_doc_does_not_invalidate_dependents() {
 
     let stats = {
         let db = SymbolDb::new(&idx, &base);
-        cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache).stats
+        cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true).stats
     };
     assert!(
         !invalidated.contains(user_uri),

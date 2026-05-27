@@ -124,7 +124,7 @@ impl Backend {
 
         self.evict_cache_entries(&invalidated);
         self.documents.lock().insert(uri.clone(), document);
-        self.publish_open_diagnostics();
+        self.spawn_diagnostics_state_changed();
     }
 
     pub(crate) fn evict_cache_entries(&self, uris: &HashSet<String>) {

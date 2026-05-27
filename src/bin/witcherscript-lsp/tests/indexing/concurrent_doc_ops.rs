@@ -1,3 +1,4 @@
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -137,5 +138,46 @@ fn semantic_tokens_after_did_change_sees_new_source() {
     assert!(
         !tokens.is_empty(),
         "semantic tokens must be produced from the post-change source",
+    );
+}
+
+// Demonstrates the version-counter discard pattern: when diagnostic_version is bumped past
+// the version a publish was issued for, that publish bails before recording anything,
+// so a stale spawned task can't overwrite a newer one's result.
+#[test]
+fn publish_open_diagnostics_bails_when_version_advanced() {
+    let backend = {
+        let (_main_loop, client) =
+            async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
+        let config = Arc::new(ArcSwap::from_pointee(Config {
+            diagnostics_scope: DiagnosticsScope::Workspace,
+            ..Config::default()
+        }));
+        let backend = Backend::new(client, config);
+        backend.initial_index_done.store(true, Ordering::Release);
+        backend
+    };
+    let uri: Url = "file:///stale.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "class CBroken {\n"));
+
+    let stale_version = backend.diagnostic_version.load(Ordering::Acquire);
+    backend
+        .published_diagnostics
+        .lock()
+        .insert(uri.clone(), Vec::new());
+    backend
+        .diagnostic_version
+        .store(stale_version + 100, Ordering::Release);
+
+    backend.publish_open_diagnostics(stale_version);
+
+    assert_eq!(
+        backend
+            .published_diagnostics
+            .lock()
+            .get(&uri)
+            .map(|d| d.len()),
+        Some(0),
+        "a stale-version publish must not overwrite the already-recorded diagnostics",
     );
 }

@@ -7,15 +7,16 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
 use futures::future::BoxFuture;
+use lsp_types::request::WorkspaceDiagnosticRefresh;
 use lsp_types::{
     CodeActionParams, CodeActionResponse, CompletionParams, CompletionResponse, Diagnostic,
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentFormattingParams,
-    DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse,
-    Hover, HoverParams, InitializeParams, InitializeResult, InitializedParams, Location,
-    PrepareRenameResponse, ReferenceParams, RenameParams, SemanticTokensParams,
-    SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextDocumentPositionParams, TextEdit,
-    Url, WorkspaceEdit,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
+    DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentSymbolParams,
+    DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams,
+    InitializeParams, InitializeResult, InitializedParams, Location, PrepareRenameResponse,
+    ReferenceParams, RenameParams, SemanticTokensParams, SemanticTokensResult, SignatureHelp,
+    SignatureHelpParams, TextDocumentPositionParams, TextEdit, Url, WorkspaceEdit,
 };
 use parking_lot::{Mutex, MutexGuard};
 use serde_json::{json, Value};
@@ -99,6 +100,10 @@ pub(crate) struct Backend {
     pub(crate) merged_completion_cache_loose: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
     pub(crate) legacy_db_generation: Arc<AtomicU64>,
+    pub(crate) diagnostic_version: Arc<AtomicU64>,
+    pub(crate) client_supports_pull_diagnostics: Arc<AtomicBool>,
+    // Held only so tests can await the most recent spawned publish; production never awaits this.
+    pub(crate) last_publish_task: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 pub(super) fn build_symbol_db<'a>(
@@ -180,6 +185,9 @@ impl Backend {
             merged_completion_cache_loose: Arc::new(Mutex::new(None)),
             initial_index_done: Arc::new(AtomicBool::new(false)),
             legacy_db_generation: Arc::new(AtomicU64::new(0)),
+            diagnostic_version: Arc::new(AtomicU64::new(0)),
+            client_supports_pull_diagnostics: Arc::new(AtomicBool::new(false)),
+            last_publish_task: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -322,6 +330,60 @@ impl Backend {
         );
         *slot = Some(fresh.clone());
         fresh
+    }
+
+    // Pull clients drive their own cadence; this tells them their cached diagnostics are stale.
+    pub(crate) fn request_workspace_diagnostic_refresh(&self) {
+        if !self
+            .client_supports_pull_diagnostics
+            .load(Ordering::Acquire)
+        {
+            return;
+        }
+        if tokio::runtime::Handle::try_current().is_err() {
+            return;
+        }
+        let client = self.client.clone();
+        crate::spawn_logged("workspace/diagnostic/refresh", async move {
+            let _ = client.request::<WorkspaceDiagnosticRefresh>(()).await;
+        });
+    }
+
+    // Sync entry for async-handler callers (bulk indexing, config changes) that are already
+    // on a tokio task and benefit from the publish completing before they return.
+    pub(crate) fn diagnostics_state_changed(&self) {
+        self.request_workspace_diagnostic_refresh();
+        let version = self.diagnostic_version.fetch_add(1, Ordering::AcqRel) + 1;
+        self.publish_open_diagnostics(version);
+    }
+
+    // Spawn entry for sync notification handlers (did_change/did_open/did_close/did_change_watched_files):
+    // returns immediately so the LSP loop isn't blocked. Stale spawned tasks bail at version checkpoints.
+    // Falls back to inline when no tokio runtime is active (unit tests).
+    pub(crate) fn spawn_diagnostics_state_changed(&self) {
+        self.request_workspace_diagnostic_refresh();
+        let version = self.diagnostic_version.fetch_add(1, Ordering::AcqRel) + 1;
+        if tokio::runtime::Handle::try_current().is_err() {
+            self.publish_open_diagnostics(version);
+            return;
+        }
+        let backend = self.clone();
+        let handle = tokio::spawn(async move {
+            let _ = tokio::task::spawn_blocking(move || backend.publish_open_diagnostics(version))
+                .await;
+        });
+        if let Ok(mut slot) = self.last_publish_task.try_lock() {
+            *slot = Some(handle);
+        }
+    }
+
+    // Test-only helper that awaits the most recent spawned publish so assertions can observe results.
+    #[cfg(test)]
+    pub(crate) async fn flush_pending_diagnostics(&self) {
+        let handle = self.last_publish_task.lock().await.take();
+        if let Some(h) = handle {
+            let _ = h.await;
+        }
     }
 
     pub(crate) async fn handle_builtin_source(&self, params: Value) -> Result<Value> {
@@ -472,5 +534,13 @@ impl LanguageServer for Backend {
     ) -> BoxFuture<'static, Result<Option<CodeActionResponse>>> {
         let backend = self.clone();
         Box::pin(async move { backend._code_action(params).await })
+    }
+
+    fn document_diagnostic(
+        &mut self,
+        params: DocumentDiagnosticParams,
+    ) -> BoxFuture<'static, Result<DocumentDiagnosticReportResult>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._document_diagnostic(params).await })
     }
 }
