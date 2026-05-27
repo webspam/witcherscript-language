@@ -226,17 +226,21 @@ fn script_global_override(
     def: &crate::resolve::Definition,
 ) -> (u32, u32) {
     let kind = def.symbol.kind;
-    if kind == SymbolKind::Variable {
-        return (TT_VARIABLE, MOD_DEFAULT_LIBRARY);
+    let Some(global_type) = db.script_global_type(name) else {
+        return (symbol_kind_to_token_type(kind), 0);
+    };
+    let matches_global = match kind {
+        SymbolKind::Variable => true,
+        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State => {
+            def.symbol.name == global_type
+        }
+        _ => false,
+    };
+    if matches_global {
+        (TT_VARIABLE, MOD_DEFAULT_LIBRARY)
+    } else {
+        (symbol_kind_to_token_type(kind), 0)
     }
-    let is_type = matches!(
-        kind,
-        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
-    );
-    if is_type && db.script_global_type(name).as_deref() == Some(def.symbol.name.as_str()) {
-        return (TT_VARIABLE, MOD_DEFAULT_LIBRARY);
-    }
-    (symbol_kind_to_token_type(kind), 0)
 }
 
 fn symbol_kind_to_token_type(kind: SymbolKind) -> u32 {
