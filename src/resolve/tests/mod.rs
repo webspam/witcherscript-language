@@ -23,12 +23,7 @@ mod script_globals;
 mod signature_help;
 
 use crate::document::{parse_document, ParsedDocument};
-use crate::script_env::ScriptEnvironment;
 
 pub(super) fn make_doc(source: &str) -> ParsedDocument {
     parse_document(source).expect("parse should succeed")
-}
-
-pub(super) fn make_env(name: &str, type_name: &str) -> ScriptEnvironment {
-    crate::test_support::script_env(name, type_name)
 }
