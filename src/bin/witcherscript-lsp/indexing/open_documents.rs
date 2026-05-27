@@ -165,6 +165,7 @@ impl Backend {
     ) {
         let started_at = Instant::now();
         let bytes = text.len();
+        let had_prior_tree = prior_tree.is_some();
         trace!(
             op = "update_open_document",
             uri = %uri,
@@ -172,6 +173,7 @@ impl Backend {
             at = %wall_clock_us(),
             "start",
         );
+        let parse_at = Instant::now();
         let parsed = match prior_tree {
             Some(tree) => {
                 let mut parser = Parser::new();
@@ -185,6 +187,7 @@ impl Backend {
             }
             None => parse_document(text),
         };
+        let parse_us = parse_at.elapsed().as_micros();
         let document = match parsed {
             Ok(document) => document,
             Err(err) => {
@@ -197,6 +200,7 @@ impl Backend {
         let scope = self.file_scope_of(&uri);
         let mut ws_changed: Vec<ObservedKey> = Vec::new();
         let mut loose_changed: Vec<ObservedKey> = Vec::new();
+        let publish_at = Instant::now();
         self.publish_compilation(|builder| {
             // A config change can move a file between scopes; drop every stale copy first.
             ws_changed.extend(remove_document_all_spellings(
@@ -235,9 +239,12 @@ impl Backend {
                 .insert(uri.clone(), document.clone());
         });
 
+        let publish_us = publish_at.elapsed().as_micros();
         let mut invalidated = self.invalidated_workspace(&ws_changed);
         invalidated.extend(self.invalidated_loose(&loose_changed));
+        let evict_at = Instant::now();
         self.evict_cache_entries(&invalidated);
+        let evict_us = evict_at.elapsed().as_micros();
         self.spawn_diagnostics_state_changed();
         let version = self
             .diagnostic_version
@@ -247,6 +254,10 @@ impl Backend {
             uri = %uri,
             bytes,
             version,
+            had_prior_tree,
+            parse_us,
+            publish_us,
+            evict_us,
             elapsed_us = started_at.elapsed().as_micros(),
             at = %wall_clock_us(),
             "complete",
