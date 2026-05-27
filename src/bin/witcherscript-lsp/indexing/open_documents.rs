@@ -4,7 +4,8 @@ use std::time::Instant;
 
 use lsp_types::{Position, Url};
 use tracing::{debug, error, trace};
-use witcherscript_language::document::parse_document;
+use tree_sitter::{Parser, Tree};
+use witcherscript_language::document::{parse_document, parse_document_with_prior};
 use witcherscript_language::files::{canonical_uri, read_script_file};
 use witcherscript_language::resolve::{resolve_definition, Definition, ObservedKey};
 
@@ -153,6 +154,15 @@ impl Backend {
     }
 
     pub(crate) fn update_open_document(&self, uri: Url, text: String) {
+        self.update_open_document_with_prior(uri, text, None);
+    }
+
+    pub(crate) fn update_open_document_with_prior(
+        &self,
+        uri: Url,
+        text: String,
+        prior_tree: Option<Tree>,
+    ) {
         let started_at = Instant::now();
         let bytes = text.len();
         trace!(
@@ -162,7 +172,19 @@ impl Backend {
             at = %wall_clock_us(),
             "start",
         );
-        let parsed = parse_document(text);
+        let parsed = match prior_tree {
+            Some(tree) => {
+                let mut parser = Parser::new();
+                match parser.set_language(&tree_sitter_witcherscript::language()) {
+                    Ok(()) => parse_document_with_prior(&mut parser, text, Some(&tree)),
+                    Err(err) => {
+                        error!(uri = %uri, error = %err, "failed to load WitcherScript grammar");
+                        return;
+                    }
+                }
+            }
+            None => parse_document(text),
+        };
         let document = match parsed {
             Ok(document) => document,
             Err(err) => {

@@ -11,7 +11,9 @@ fn range(start: SourcePosition, end: SourcePosition) -> Option<SourceRange> {
 
 fn apply(source: &str, r: Option<SourceRange>, new_text: &str) -> String {
     let index = LineIndex::new(source);
-    apply_content_change(source, &index, r, new_text).expect("apply succeeds")
+    apply_content_change(source, &index, r, new_text)
+        .expect("apply succeeds")
+        .0
 }
 
 #[test]
@@ -51,11 +53,13 @@ fn sequence_of_two_changes() {
     let source = "abc\nxyz\n";
 
     let index1 = LineIndex::new(source);
-    let step1 = apply_content_change(source, &index1, range(pos(0, 1), pos(0, 2)), "BB").unwrap();
+    let (step1, _) =
+        apply_content_change(source, &index1, range(pos(0, 1), pos(0, 2)), "BB").unwrap();
     assert_eq!(step1, "aBBc\nxyz\n");
 
     let index2 = LineIndex::new(&step1);
-    let step2 = apply_content_change(&step1, &index2, range(pos(1, 0), pos(1, 3)), "YYY").unwrap();
+    let (step2, _) =
+        apply_content_change(&step1, &index2, range(pos(1, 0), pos(1, 3)), "YYY").unwrap();
     assert_eq!(step2, "aBBc\nYYY\n");
 }
 
@@ -71,11 +75,13 @@ fn second_change_position_requires_first_change_applied() {
     let source = "abc";
 
     let index1 = LineIndex::new(source);
-    let step1 = apply_content_change(source, &index1, range(pos(0, 3), pos(0, 3)), "def").unwrap();
+    let (step1, _) =
+        apply_content_change(source, &index1, range(pos(0, 3), pos(0, 3)), "def").unwrap();
     assert_eq!(step1, "abcdef");
 
     let index2 = LineIndex::new(&step1);
-    let step2 = apply_content_change(&step1, &index2, range(pos(0, 5), pos(0, 6)), "").unwrap();
+    let (step2, _) =
+        apply_content_change(&step1, &index2, range(pos(0, 5), pos(0, 6)), "").unwrap();
     assert_eq!(step2, "abcde");
 
     let index_orig = LineIndex::new(source);

@@ -66,19 +66,26 @@ impl Backend {
             .snapshot()
             .documents
             .get(&uri)
-            .map(|d| (d.source.clone(), d.line_index.clone()));
+            .map(|d| (d.source.clone(), d.line_index.clone(), d.tree.clone()));
 
-        let Some((mut source, mut line_index)) = prior else {
+        let Some((mut source, mut line_index, mut prior_tree)) = prior else {
             error!(uri = %uri, "did_change before did_open");
             return;
         };
 
+        let mut prior_tree_valid = true;
         for change in params.content_changes {
             let range = change
                 .range
                 .map(|r| source_range(source_position(r.start), source_position(r.end)));
             match apply_content_change(&source, &line_index, range, &change.text) {
-                Some(next) => {
+                Some((next, edit)) => {
+                    match edit {
+                        Some(edit) if prior_tree_valid => prior_tree.edit(&edit),
+                        // A None edit means full-document replace; drop the prior tree.
+                        None => prior_tree_valid = false,
+                        _ => {}
+                    }
                     line_index = LineIndex::new(&next);
                     source = next;
                 }
@@ -89,7 +96,12 @@ impl Backend {
             }
         }
 
-        self.update_open_document(uri.clone(), source);
+        let prior = if prior_tree_valid {
+            Some(prior_tree)
+        } else {
+            None
+        };
+        self.update_open_document_with_prior(uri.clone(), source, prior);
         trace!(
             op = "did_change",
             uri = %uri,

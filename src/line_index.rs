@@ -30,6 +30,10 @@ impl LineIndex {
         Self { line_starts }
     }
 
+    pub fn line_starts(&self) -> &[usize] {
+        &self.line_starts
+    }
+
     pub fn point_to_position(&self, point: Point) -> SourcePosition {
         SourcePosition {
             line: point.row as u32,
