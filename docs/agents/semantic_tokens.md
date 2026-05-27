@@ -22,8 +22,10 @@ pub const TOKEN_TYPES: &[&str] = &[
     "modifier",   // 13 — specifier, func_flavour, autobind_single, declaration keywords
 ];
 
-pub const TOKEN_MODIFIERS: &[&str] = &["declaration"];
+pub const TOKEN_MODIFIERS: &[&str] = &["declaration", "defaultLibrary"];
 ```
+
+Only `defaultLibrary` is currently emitted; `declaration` is registered but never set.
 
 Index 11 (`"type"`) is intentionally never emitted. Type-annotation identifiers are resolved to their actual symbol kind and emitted with that kind's token type instead.
 
@@ -72,7 +74,8 @@ All reference-site `ident` nodes fall through to the `_` arm in `classify_ident`
 
 1. Calls `classify_locally()` (local variables/parameters of enclosing function, then members of enclosing class/struct/state, then top-level symbols in the current document).
 2. If the ident is the RHS of a `member_access_expr` (i.e. after the `.`), calls `classify_definition_at_ident()` directly, which dispatches to `resolve_member_access()` to infer the receiver type and look up the member.
-3. Otherwise, calls `classify_definition_at_ident()` which searches locals, type members, document top-level, then the workspace db (`find_top_level`, `find_enum_member`, `find_script_global`).
+3. Otherwise, if the name matches a `redscripts.ini` script global (`db.script_global_type(name).is_some()`), emits `variable` (5) with the `defaultLibrary` modifier bit set. Go-To-Def for the same name still jumps to the global's declared class via `find_script_global`; semantic tokens just refuse to colour `thePlayer` as a class.
+4. Otherwise, calls `classify_definition_at_ident()` which searches locals, type members, document top-level, then the workspace db (`find_top_level`, `find_enum_member`, `find_script_global`).
 
 If nothing resolves, no token is emitted for the identifier.
 
@@ -99,7 +102,7 @@ LSP semantic tokens use delta encoding. The output is a flat `Vec<u32>` with gro
 [delta_line, delta_start, length, token_type, token_modifiers_bitset]
 ```
 
-`delta_line` and `delta_start` are relative to the previous token (not absolute). On a new line `delta_start` resets to the absolute column. Token modifiers bitset is always 0 (the `declaration` modifier is registered but not currently emitted).
+`delta_line` and `delta_start` are relative to the previous token (not absolute). On a new line `delta_start` resets to the absolute column. The token modifiers bitset is 0 for almost every token; redscripts.ini globals are the only emitted tokens that set a modifier (`defaultLibrary`, bit 1).
 
 Tokens are produced in tree walk order (top-to-bottom, left-to-right), which matches LSP requirements.
 

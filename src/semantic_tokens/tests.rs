@@ -363,6 +363,75 @@ fn inherited_member_reference_resolves_via_workspace() {
 }
 
 #[test]
+fn script_global_classifies_as_variable_with_default_library_modifier() {
+    use crate::line_index::{SourcePosition, SourceRange};
+    use crate::script_env::{ScriptEnvironment, ScriptGlobal};
+    use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+
+    let pos = SourcePosition {
+        line: 0,
+        character: 0,
+    };
+    let range = SourceRange {
+        start: pos,
+        end: pos,
+    };
+    let env = ScriptEnvironment::new(vec![ScriptGlobal {
+        name: "thePlayer".to_string(),
+        type_name: "CR4Player".to_string(),
+        ini_uri: "file:///redscripts.ini".to_string(),
+        symbol: Symbol {
+            id: SymbolId(0),
+            name: "thePlayer".to_string(),
+            kind: SymbolKind::Variable,
+            range,
+            selection_range: range,
+            byte_range: 0..0,
+            selection_byte_range: 0..0,
+            container: None,
+            container_name: None,
+            type_annotation: Some("CR4Player".to_string()),
+            signature: None,
+            base_class: None,
+            owner_class: None,
+            flavour: None,
+            annotations: Vec::new(),
+            access: AccessLevel::Public,
+            is_optional: false,
+            is_out: false,
+            is_state_machine: false,
+            is_abstract: false,
+        },
+    }]);
+    let t = crate::test_support::TestDb::new(concat!(
+        "//- /semtok_test.ws\n",
+        "function Test() {\n thePlayer;\n}\n",
+    ))
+    .with_base_doc("file:///r4player.ws", "class CR4Player {}\n");
+    let db = t.db();
+    let db = db.with_script_env(&env);
+
+    let document = t.doc_for(TEST_URI);
+    let tokens = decode_tokens(&collect_semantic_tokens(TEST_URI, document, &db));
+    let player = tokens
+        .iter()
+        .find(|t| t.delta_line == 1)
+        .expect("expected a token on the body line");
+    assert_eq!(
+        player.token_type,
+        TT_VARIABLE,
+        "thePlayer should colour as variable, not class; got {}",
+        player.token_type_name(),
+    );
+    assert_ne!(
+        player.token_modifiers & super::MOD_DEFAULT_LIBRARY,
+        0,
+        "thePlayer should carry the defaultLibrary modifier bit; got {:#b}",
+        player.token_modifiers,
+    );
+}
+
+#[test]
 fn primitive_type_annotation_does_not_get_a_class_token() {
     let source = "function F() { var x : int; }\n";
     let empty = WorkspaceIndex::default();
