@@ -51,8 +51,8 @@ impl Backend {
             return;
         }
         let prior = self
+            .snapshot()
             .documents
-            .lock()
             .get(&uri)
             .map(|d| (d.source.clone(), d.line_index.clone()));
 
@@ -86,14 +86,19 @@ impl Backend {
             return;
         }
         let scope = self.file_scope_of(&uri);
-        self.documents.lock().remove(&uri);
+        let mut loose_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
+        self.publish_compilation(|builder| {
+            builder.documents_mut().remove(&uri);
+            if scope.is_loose() {
+                loose_changed.extend(crate::indexing::remove_document_all_spellings(
+                    builder.loose_index_mut(),
+                    &uri,
+                ));
+            }
+        });
         if scope.is_loose() {
             // A loose file is a transient compilation member: closing it drops it from the index entirely.
-            let changed = {
-                let mut index = self.loose_index.lock();
-                crate::indexing::remove_document_all_spellings(&mut index, &uri)
-            };
-            let invalidated = self.invalidated_loose(&changed);
+            let invalidated = self.invalidated_loose(&loose_changed);
             self.evict_cache_entries(&invalidated);
         } else {
             self.reindex_closed_file(&uri);
@@ -137,21 +142,24 @@ impl Backend {
 
         // index_workspace only adds files; a removed folder's scripts must be dropped here.
         if !removed.is_empty() {
-            let ws_changed = {
-                let mut index = self.workspace_index.lock();
-                let mut docs = self.workspace_documents.lock();
-                let stale: Vec<String> = docs
+            let mut ws_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
+            self.publish_compilation(|builder| {
+                let stale: Vec<String> = builder
+                    .base
+                    .workspace_documents
                     .keys()
                     .filter(|uri| uri_within_any(uri, &removed))
                     .cloned()
                     .collect();
-                let mut changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
-                for uri in stale {
-                    changed.extend(index.remove_document(&uri));
-                    docs.remove(&uri);
+                let docs = builder.workspace_documents_mut();
+                for uri in &stale {
+                    docs.remove(uri);
                 }
-                changed
-            };
+                let index = builder.workspace_index_mut();
+                for uri in &stale {
+                    ws_changed.extend(index.remove_document(uri));
+                }
+            });
             let invalidated = self.invalidated_workspace(&ws_changed);
             self.evict_cache_entries(&invalidated);
         }

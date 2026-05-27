@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use async_lsp::{ErrorCode, ResponseError};
 use lsp_types::{
@@ -15,28 +16,28 @@ use crate::convert::{lsp_range, source_position};
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
-// Open editor docs shadow workspace docs which shadow base docs — unsaved edits win.
+// Open editor docs shadow workspace docs which shadow base docs - unsaved edits win.
 // Loose files form a compilation isolated from the workspace, so a search whose
 // target is loose sees base + loose docs, and a workspace search excludes loose docs.
 pub(crate) fn merge_documents<'a>(
-    base_docs: &'a HashMap<String, ParsedDocument>,
-    workspace_docs: &'a HashMap<String, ParsedDocument>,
-    open_documents: &'a HashMap<Url, ParsedDocument>,
+    base_docs: &'a HashMap<String, Arc<ParsedDocument>>,
+    workspace_docs: &'a HashMap<String, Arc<ParsedDocument>>,
+    open_documents: &'a HashMap<Url, Arc<ParsedDocument>>,
     open_loose_uris: &HashSet<Url>,
     target_is_loose: bool,
 ) -> HashMap<String, &'a ParsedDocument> {
     let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
     for (uri, doc) in base_docs.iter() {
-        merged.insert(uri.clone(), doc);
+        merged.insert(uri.clone(), doc.as_ref());
     }
     if !target_is_loose {
         for (uri, doc) in workspace_docs.iter() {
-            merged.insert(uri.clone(), doc);
+            merged.insert(uri.clone(), doc.as_ref());
         }
     }
     for (url, doc) in open_documents.iter() {
         if open_loose_uris.contains(url) == target_is_loose {
-            merged.insert(url.to_string(), doc);
+            merged.insert(url.to_string(), doc.as_ref());
         }
     }
     merged
@@ -48,7 +49,7 @@ pub(crate) fn merge_documents<'a>(
 pub(crate) fn rename_changes(
     refs: &[(String, witcherscript_language::line_index::SourceRange)],
     new_name: &str,
-    base_docs: &HashMap<String, ParsedDocument>,
+    base_docs: &HashMap<String, Arc<ParsedDocument>>,
 ) -> HashMap<Url, Vec<TextEdit>> {
     let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
     for (ref_uri, range) in refs {
@@ -74,11 +75,12 @@ impl Backend {
         let position = params.text_document_position.position;
         let include_declaration = params.context.include_declaration;
 
-        let documents = self.documents.lock();
-        let Some(document) = documents.get(&uri) else {
+        let snap = self.snapshot();
+        let Some(document_arc) = snap.documents.get(&uri).cloned() else {
             return Ok(None);
         };
-        let handles = self.db_handles_for(&uri);
+        let document = document_arc.as_ref();
+        let handles = self.db_handles_for_with_snapshot(&uri, &snap);
         let db = handles.db();
 
         let ws_kb = handles.workspace().doc_idents_bytes() / 1024;
@@ -96,15 +98,13 @@ impl Backend {
             return Ok(Some(Vec::new()));
         };
 
-        let workspace_docs = self.workspace_documents.lock();
-        let base_docs = self.base_scripts_documents.lock();
-        let loose_uris = self.loose_open_uris(&documents);
+        let loose_uris = self.loose_open_uris(&snap.documents);
         let target_is_loose = loose_uris.contains(&uri);
 
         let merged = merge_documents(
-            &base_docs,
-            &workspace_docs,
-            &documents,
+            &snap.base_scripts_documents,
+            &snap.workspace_documents,
+            &snap.documents,
             &loose_uris,
             target_is_loose,
         );
@@ -145,8 +145,8 @@ impl Backend {
             return Ok(None);
         };
 
-        let base_docs = self.base_scripts_documents.lock();
-        if base_docs.contains_key(&definition.uri) {
+        let snap = self.snapshot();
+        if snap.base_scripts_documents.contains_key(&definition.uri) {
             return Err(ResponseError::new(
                 ErrorCode::INVALID_REQUEST,
                 "Cannot rename a symbol declared in a base script (read-only)",
@@ -172,12 +172,10 @@ impl Backend {
             return Ok(None);
         };
 
-        let documents = self.documents.lock();
-        let handles = self.db_handles_for(&uri);
-        let workspace_docs = self.workspace_documents.lock();
-        let base_docs = self.base_scripts_documents.lock();
+        let snap = self.snapshot();
+        let handles = self.db_handles_for_with_snapshot(&uri, &snap);
 
-        if base_docs.contains_key(&definition.uri) {
+        if snap.base_scripts_documents.contains_key(&definition.uri) {
             return Err(ResponseError::new(
                 ErrorCode::INVALID_REQUEST,
                 "Cannot rename a symbol declared in a base script (read-only)",
@@ -192,11 +190,11 @@ impl Backend {
 
         let db = handles.db();
 
-        let loose_uris = self.loose_open_uris(&documents);
+        let loose_uris = self.loose_open_uris(&snap.documents);
         let merged = merge_documents(
-            &base_docs,
-            &workspace_docs,
-            &documents,
+            &snap.base_scripts_documents,
+            &snap.workspace_documents,
+            &snap.documents,
             &loose_uris,
             loose_uris.contains(&uri),
         );
@@ -212,7 +210,7 @@ impl Backend {
 
         let refs = find_references(&definition, definition_document, &search_docs, &db, true);
 
-        let changes = rename_changes(&refs, &new_name, &base_docs);
+        let changes = rename_changes(&refs, &new_name, &snap.base_scripts_documents);
 
         Ok(Some(WorkspaceEdit {
             changes: Some(changes),

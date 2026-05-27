@@ -72,7 +72,8 @@ fn did_change_applies_incremental_edits() {
     backend._did_change(change_params(&uri, 2, (0, 3), (0, 3), "def"));
     backend._did_change(change_params(&uri, 3, (0, 5), (0, 6), ""));
 
-    let docs = backend.documents.lock();
+    let snap = backend.snapshot();
+    let docs = &snap.documents;
     assert_eq!(
         docs.get(&uri).map(|d| d.source.as_str()),
         Some("abcde"),
@@ -94,7 +95,8 @@ fn did_change_tracks_each_document_independently() {
     backend._did_change(change_params(&uri_a, 3, (0, 2), (0, 2), "X"));
     backend._did_change(change_params(&uri_b, 3, (0, 2), (0, 2), "Y"));
 
-    let docs = backend.documents.lock();
+    let snap = backend.snapshot();
+    let docs = &snap.documents;
     assert_eq!(
         docs.get(&uri_a).map(|d| d.source.as_str()),
         Some("aXX"),
@@ -125,16 +127,20 @@ fn semantic_tokens_after_did_change_sees_new_source() {
         "class CRenamed {}\n",
     ));
 
-    let documents = backend.documents.lock();
-    let document = documents.get(&uri).expect("document present after change");
+    let snap = backend.snapshot();
+    let document = snap
+        .documents
+        .get(&uri)
+        .expect("document present after change")
+        .clone();
     assert_eq!(
         document.source, "class CRenamed {}\n",
         "did_change must have applied before any read can observe `documents`",
     );
 
-    let handles = backend.db_handles_for(&uri);
+    let handles = backend.db_handles_for_with_snapshot(&uri, &snap);
     let db = handles.db();
-    let tokens = collect_semantic_tokens(uri.as_str(), document, &db);
+    let tokens = collect_semantic_tokens(uri.as_str(), document.as_ref(), &db);
     assert!(
         !tokens.is_empty(),
         "semantic tokens must be produced from the post-change source",

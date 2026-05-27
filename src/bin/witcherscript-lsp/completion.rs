@@ -27,11 +27,12 @@ impl Backend {
     ) -> Result<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
-        let documents = self.documents.lock();
-        let Some(document) = documents.get(&uri) else {
+        let snap = self.snapshot();
+        let Some(document_arc) = snap.documents.get(&uri).cloned() else {
             return Ok(None);
         };
-        let handles = self.db_handles_for(&uri);
+        let document = document_arc.as_ref();
+        let handles = self.db_handles_for_with_snapshot(&uri, &snap);
         let db = handles.db();
 
         let pos = source_position(position);

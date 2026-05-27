@@ -48,76 +48,78 @@ impl Backend {
         let whole_workspace = matches!(cfg.diagnostics_scope, DiagnosticsScope::Workspace);
         let start = Instant::now();
 
-        let documents = self.documents.lock();
+        let snap = self.snapshot();
         let legacy_dirs = self.effective_legacy_dirs();
-        let loose_uris = self.loose_open_uris(&documents);
+        let loose_uris = self.loose_open_uris(&snap.documents);
 
         let (to_publish, cst_stats): (Vec<(Url, Vec<Diagnostic>)>, _) = {
-            let workspace = self.workspace_index.lock();
-            let loose = self.loose_index.lock();
-            let base = self.base_scripts_index.lock();
-            let env = self.script_env.lock();
+            let workspace = &snap.workspace_index;
+            let loose = &snap.loose_index;
+            let base = &snap.base_scripts_index;
+            let env = &snap.script_env;
             let mut cache = self.cst_diag_cache.lock();
-            let workspace_documents = self.workspace_documents.lock();
 
             if self.diagnostic_version.load(Ordering::Acquire) != version {
                 return;
             }
 
-            let diag_docs =
-                diagnostics_document_set(&workspace_documents, &documents, whole_workspace);
+            let diag_docs = diagnostics_document_set(
+                &snap.workspace_documents,
+                &snap.documents,
+                whole_workspace,
+            );
 
             let mut dup = tracing::debug_span!("dup_symbols")
-                .in_scope(|| collect_duplicate_symbol_diagnostics(&workspace));
+                .in_scope(|| collect_duplicate_symbol_diagnostics(workspace));
             if self.diagnostic_version.load(Ordering::Acquire) != version {
                 return;
             }
             let mut shadow = tracing::debug_span!("shadowing")
-                .in_scope(|| collect_shadowing_diagnostics(&workspace, &env));
+                .in_scope(|| collect_shadowing_diagnostics(workspace, env));
             if self.diagnostic_version.load(Ordering::Acquire) != version {
                 return;
             }
             let mut dup_local = tracing::debug_span!("dup_locals")
-                .in_scope(|| collect_duplicate_local_diagnostics(&workspace));
+                .in_scope(|| collect_duplicate_local_diagnostics(workspace));
             if self.diagnostic_version.load(Ordering::Acquire) != version {
                 return;
             }
             let base_conflict = tracing::debug_span!("base_script_conflict").in_scope(|| {
-                collect_base_script_conflict_diagnostics(&workspace, &base, &legacy_dirs)
+                collect_base_script_conflict_diagnostics(workspace, base, &legacy_dirs)
             });
             if self.diagnostic_version.load(Ordering::Acquire) != version {
                 return;
             }
             // Loose files compile in isolation; duplicates among them are still real.
-            dup.extend(collect_duplicate_symbol_diagnostics(&loose));
-            shadow.extend(collect_shadowing_diagnostics(&loose, &env));
-            dup_local.extend(collect_duplicate_local_diagnostics(&loose));
+            dup.extend(collect_duplicate_symbol_diagnostics(loose));
+            shadow.extend(collect_shadowing_diagnostics(loose, env));
+            dup_local.extend(collect_duplicate_local_diagnostics(loose));
 
             if self.diagnostic_version.load(Ordering::Acquire) != version {
                 return;
             }
 
-            let fingerprint = self.db_fingerprint(&base, &env);
+            let fingerprint = self.db_fingerprint(base, env);
             let loose_uri_strs: HashSet<String> =
                 loose_uris.iter().map(|u| u.to_string()).collect();
-            let suppressed = self.suppressed_base_uris.lock();
-            let filtered = self.filtered_base_catalogs.lock();
+            let suppressed = &snap.suppressed_base_uris;
+            let filtered = snap.filtered_base_catalogs.as_deref();
             let cst = {
                 let ws_db = build_symbol_db(
-                    &workspace,
-                    &base,
-                    &env,
+                    workspace,
+                    base,
+                    env,
                     self.builtins_index.as_ref(),
-                    &suppressed,
-                    filtered.as_ref(),
+                    suppressed,
+                    filtered,
                 );
                 let loose_db = build_symbol_db(
-                    &loose,
-                    &base,
-                    &env,
+                    loose,
+                    base,
+                    env,
                     self.builtins_index.as_ref(),
-                    &suppressed,
-                    filtered.as_ref(),
+                    suppressed,
+                    filtered,
                 );
                 let diagnostic_version = self.diagnostic_version.clone();
                 let should_continue = move || diagnostic_version.load(Ordering::Acquire) == version;
@@ -201,8 +203,6 @@ impl Backend {
             (list, cst_stats)
         };
 
-        drop(documents);
-
         let republished = to_publish.len();
         for (uri, diagnostics) in to_publish {
             let _ = self
@@ -233,44 +233,44 @@ impl Backend {
     ) -> (Vec<Diagnostic>, String) {
         let is_loose = self.file_scope_of(uri).is_loose();
         let legacy_dirs = self.effective_legacy_dirs();
-        let workspace = self.workspace_index.lock();
-        let loose = self.loose_index.lock();
-        let base = self.base_scripts_index.lock();
-        let env = self.script_env.lock();
+        let snap = self.snapshot();
+        let workspace = &snap.workspace_index;
+        let loose = &snap.loose_index;
+        let base = &snap.base_scripts_index;
+        let env = &snap.script_env;
         let mut cache = self.cst_diag_cache.lock();
-        let suppressed = self.suppressed_base_uris.lock();
-        let filtered = self.filtered_base_catalogs.lock();
+        let suppressed = &snap.suppressed_base_uris;
+        let filtered = snap.filtered_base_catalogs.as_deref();
 
-        let mut dup = collect_duplicate_symbol_diagnostics(&workspace);
-        dup.extend(collect_duplicate_symbol_diagnostics(&loose));
-        let mut shadow = collect_shadowing_diagnostics(&workspace, &env);
-        shadow.extend(collect_shadowing_diagnostics(&loose, &env));
-        let mut dup_local = collect_duplicate_local_diagnostics(&workspace);
-        dup_local.extend(collect_duplicate_local_diagnostics(&loose));
-        let base_conflict =
-            collect_base_script_conflict_diagnostics(&workspace, &base, &legacy_dirs);
+        let mut dup = collect_duplicate_symbol_diagnostics(workspace);
+        dup.extend(collect_duplicate_symbol_diagnostics(loose));
+        let mut shadow = collect_shadowing_diagnostics(workspace, env);
+        shadow.extend(collect_shadowing_diagnostics(loose, env));
+        let mut dup_local = collect_duplicate_local_diagnostics(workspace);
+        dup_local.extend(collect_duplicate_local_diagnostics(loose));
+        let base_conflict = collect_base_script_conflict_diagnostics(workspace, base, &legacy_dirs);
 
         let mut loose_uri_strs: HashSet<String> = HashSet::new();
         if is_loose {
             loose_uri_strs.insert(uri.to_string());
         }
-        let fingerprint = self.db_fingerprint(&base, &env);
+        let fingerprint = self.db_fingerprint(base, env);
 
         let ws_db = build_symbol_db(
-            &workspace,
-            &base,
-            &env,
+            workspace,
+            base,
+            env,
             self.builtins_index.as_ref(),
-            &suppressed,
-            filtered.as_ref(),
+            suppressed,
+            filtered,
         );
         let loose_db = build_symbol_db(
-            &loose,
-            &base,
-            &env,
+            loose,
+            base,
+            env,
             self.builtins_index.as_ref(),
-            &suppressed,
-            filtered.as_ref(),
+            suppressed,
+            filtered,
         );
 
         let mut diag_docs: std::collections::HashMap<
@@ -324,11 +324,11 @@ impl Backend {
 
     fn publish_syntactic_only(&self) {
         let to_publish: Vec<(Url, Vec<Diagnostic>)> = {
-            let documents = self.documents.lock();
+            let documents = self.snapshot().documents.clone();
             let mut published = self.published_diagnostics.lock();
             let mut list = Vec::new();
             for (uri, document) in documents.iter() {
-                let diagnostics = lsp_diagnostics(document);
+                let diagnostics = lsp_diagnostics(document.as_ref());
                 let Some(publish_uri) = publish_url(uri.as_str()) else {
                     continue;
                 };
@@ -354,7 +354,7 @@ impl Backend {
 
     pub(crate) fn publish_legacy_script_status(&self) {
         let to_send: Vec<LegacyScriptStatusParams> = {
-            let documents = self.documents.lock();
+            let documents = self.snapshot().documents.clone();
             let replacements = self.legacy_replacements.lock();
             let mut sent = self.sent_legacy_status.lock();
             let mut list = Vec::new();
@@ -377,7 +377,7 @@ impl Backend {
 
     pub(crate) fn publish_file_scope_status(&self) {
         let to_send: Vec<FileScopeStatusParams> = {
-            let documents = self.documents.lock();
+            let documents = self.snapshot().documents.clone();
             let roots = self.workspace_roots.lock().clone();
             let legacy_dirs = self.effective_legacy_dirs();
             let game_dir = self.base_scripts_path.lock().clone();

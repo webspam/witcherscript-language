@@ -1,4 +1,5 @@
 mod backend;
+mod compilation;
 mod completion;
 mod completion_cache;
 mod config;

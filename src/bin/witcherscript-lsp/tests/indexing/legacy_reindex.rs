@@ -25,8 +25,8 @@ async fn reindexing_keeps_an_open_legacy_file_indexed() {
 
     assert!(
         backend
+            .snapshot()
             .workspace_index
-            .lock()
             .documents()
             .any(|(uri, _)| uri == legacy_url.as_str()),
         "an open legacy file must survive a re-index",
@@ -55,17 +55,18 @@ async fn refresh_override_maps_keeps_open_legacy_pairing() {
         legacy_url.clone(),
         "class CR4Player {}\n// legacy\n".to_string(),
     );
-    backend
-        .workspace_documents
-        .lock()
-        .remove(legacy_url.as_str());
+    backend.publish_compilation(|builder| {
+        builder
+            .workspace_documents_mut()
+            .remove(legacy_url.as_str());
+    });
 
     backend.refresh_legacy_override_maps();
 
     assert!(
         backend
+            .snapshot()
             .suppressed_base_uris
-            .lock()
             .contains(base_url.as_str()),
         "refresh must pair an open legacy override using workspace_index, not workspace_documents",
     );
@@ -93,8 +94,8 @@ async fn reindexing_keeps_an_open_overridden_base_script_indexed() {
 
     assert!(
         backend
+            .snapshot()
             .base_scripts_index
-            .lock()
             .documents()
             .any(|(uri, _)| uri == base_url.as_str()),
         "an open, legacy-overridden base script must survive a re-index",
@@ -142,8 +143,8 @@ async fn did_open_refreshes_legacy_override_maps_for_open_first_override() {
 
     assert!(
         backend
+            .snapshot()
             .suppressed_base_uris
-            .lock()
             .contains(base_url.as_str()),
         "did_open must refresh suppress maps when the override was not indexed before open",
     );

@@ -18,7 +18,7 @@ use lsp_types::{
     ReferenceParams, RenameParams, SemanticTokensParams, SemanticTokensResult, SignatureHelp,
     SignatureHelpParams, TextDocumentPositionParams, TextEdit, Url, WorkspaceEdit,
 };
-use parking_lot::{Mutex, MutexGuard};
+use parking_lot::Mutex;
 use serde_json::{json, Value};
 use tracing::trace;
 use witcherscript_language::builtins::{builtin_source, load_builtins_index};
@@ -29,6 +29,7 @@ use witcherscript_language::resolve::{
 };
 use witcherscript_language::script_env::ScriptEnvironment;
 
+use crate::compilation::{Compilation, CompilationBuilder};
 use crate::completion_cache::MergedCompletionCache;
 use crate::config::Config;
 use crate::file_scope::{classify_file_scope, FileScope};
@@ -39,21 +40,21 @@ type Result<T> = std::result::Result<T, ResponseError>;
 
 // The diagnosed set excludes read-only base scripts, so it cannot reuse merge_documents.
 pub(crate) fn diagnostics_document_set<'a>(
-    workspace_docs: &'a HashMap<String, ParsedDocument>,
-    open_documents: &'a HashMap<Url, ParsedDocument>,
+    workspace_docs: &'a HashMap<String, Arc<ParsedDocument>>,
+    open_documents: &'a HashMap<Url, Arc<ParsedDocument>>,
     whole_workspace: bool,
 ) -> HashMap<String, &'a ParsedDocument> {
     let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
     if whole_workspace {
         for (uri, doc) in workspace_docs.iter() {
-            merged.insert(uri.clone(), doc);
+            merged.insert(uri.clone(), doc.as_ref());
         }
     }
     for (url, doc) in open_documents.iter() {
         if let Some(canonical) = canonical_uri(url) {
             merged.remove(&canonical);
         }
-        merged.insert(url.to_string(), doc);
+        merged.insert(url.to_string(), doc.as_ref());
     }
     merged
 }
@@ -75,10 +76,13 @@ pub(crate) fn builtin_source_response(uri: &str) -> Result<Value> {
 pub(crate) struct Backend {
     pub(crate) client: ClientSocket,
     pub(crate) config: Arc<ArcSwap<Config>>,
-    pub(crate) documents: Arc<Mutex<HashMap<Url, ParsedDocument>>>,
+    // Single atomically-published snapshot containing every field a reader handler needs.
+    // Readers do one ArcSwap::load_full() and read lock-free for the handler duration.
+    pub(crate) compilation: Arc<ArcSwap<Compilation>>,
+    // Writers serialize through this; the writer never blocks readers because mutation happens
+    // on a shadow Compilation that is then atomically swapped into `compilation`.
+    pub(crate) writer_lock: Arc<Mutex<()>>,
     pub(crate) published_diagnostics: Arc<Mutex<HashMap<Url, Vec<Diagnostic>>>>,
-    pub(crate) workspace_index: Arc<Mutex<WorkspaceIndex>>,
-    pub(crate) workspace_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     pub(crate) workspace_roots: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) files_exclude: Arc<Mutex<Vec<String>>>,
     pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
@@ -86,21 +90,15 @@ pub(crate) struct Backend {
     pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) manifest_legacy_dirs: Arc<Mutex<HashMap<String, PathBuf>>>,
     pub(crate) legacy_replacements: Arc<Mutex<HashMap<String, String>>>,
-    pub(crate) suppressed_base_uris: Arc<Mutex<HashSet<String>>>,
-    pub(crate) filtered_base_catalogs: Arc<Mutex<Option<FilteredBaseCatalogs>>>,
     pub(crate) sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,
     pub(crate) sent_file_scope_status: Arc<Mutex<HashMap<Url, FileScopeStatusParams>>>,
-    pub(crate) base_scripts_index: Arc<Mutex<WorkspaceIndex>>,
-    pub(crate) base_scripts_documents: Arc<Mutex<HashMap<String, ParsedDocument>>>,
     // Canonical URIs the workspace walker yielded; "under a root but missing" means gitignored.
     pub(crate) workspace_known_files: Arc<Mutex<HashSet<String>>>,
-    pub(crate) loose_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) builtins_index: Arc<WorkspaceIndex>,
     // Subscribers are bookkeeping for CST-cache invalidation; lifted out of WorkspaceIndex so the
     // index itself is read-only from the publisher's point of view.
     pub(crate) workspace_subscriptions: Arc<Mutex<SubscriptionRegistry>>,
     pub(crate) loose_subscriptions: Arc<Mutex<SubscriptionRegistry>>,
-    pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
     pub(crate) cst_diag_cache: Arc<Mutex<HashMap<String, crate::cst_cache::CstCacheEntry>>>,
     pub(crate) merged_completion_cache_workspace: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) merged_completion_cache_loose: Arc<Mutex<Option<MergedCompletionCache>>>,
@@ -130,24 +128,26 @@ pub(super) fn build_symbol_db<'a>(
     db
 }
 
-pub(crate) struct DbHandles<'a> {
-    workspace: MutexGuard<'a, WorkspaceIndex>,
-    base: MutexGuard<'a, WorkspaceIndex>,
-    script_env: MutexGuard<'a, ScriptEnvironment>,
-    builtins: &'a WorkspaceIndex,
-    suppressed_base_uris: MutexGuard<'a, HashSet<String>>,
-    filtered_base_catalogs: MutexGuard<'a, Option<FilteredBaseCatalogs>>,
+// Owned Arcs cloned from a Compilation snapshot. No locks held; the handler keeps the snapshot
+// alive as long as it holds this struct, so a concurrent publish cannot tear the view.
+pub(crate) struct DbHandles {
+    workspace: Arc<WorkspaceIndex>,
+    base: Arc<WorkspaceIndex>,
+    script_env: Arc<ScriptEnvironment>,
+    builtins: Arc<WorkspaceIndex>,
+    suppressed_base_uris: Arc<HashSet<String>>,
+    filtered_base_catalogs: Option<Arc<FilteredBaseCatalogs>>,
 }
 
-impl<'a> DbHandles<'a> {
-    pub(crate) fn db(&'a self) -> SymbolDb<'a> {
+impl DbHandles {
+    pub(crate) fn db(&self) -> SymbolDb<'_> {
         build_symbol_db(
             &self.workspace,
             &self.base,
             &self.script_env,
-            self.builtins,
+            &self.builtins,
             &self.suppressed_base_uris,
-            self.filtered_base_catalogs.as_ref(),
+            self.filtered_base_catalogs.as_deref(),
         )
     }
 
@@ -158,6 +158,10 @@ impl<'a> DbHandles<'a> {
     pub(crate) fn base(&self) -> &WorkspaceIndex {
         &self.base
     }
+
+    pub(crate) fn script_env(&self) -> &ScriptEnvironment {
+        &self.script_env
+    }
 }
 
 impl Backend {
@@ -165,10 +169,9 @@ impl Backend {
         Backend {
             client,
             config,
-            documents: Arc::new(Mutex::new(HashMap::new())),
+            compilation: Arc::new(ArcSwap::from_pointee(Compilation::default())),
+            writer_lock: Arc::new(Mutex::new(())),
             published_diagnostics: Arc::new(Mutex::new(HashMap::new())),
-            workspace_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
-            workspace_documents: Arc::new(Mutex::new(HashMap::new())),
             workspace_roots: Arc::new(Mutex::new(Vec::new())),
             files_exclude: Arc::new(Mutex::new(Vec::new())),
             base_scripts_path: Arc::new(Mutex::new(None)),
@@ -176,18 +179,12 @@ impl Backend {
             legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
             manifest_legacy_dirs: Arc::new(Mutex::new(HashMap::new())),
             legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
-            suppressed_base_uris: Arc::new(Mutex::new(HashSet::new())),
-            filtered_base_catalogs: Arc::new(Mutex::new(None)),
             sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
             sent_file_scope_status: Arc::new(Mutex::new(HashMap::new())),
-            base_scripts_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
-            base_scripts_documents: Arc::new(Mutex::new(HashMap::new())),
             workspace_known_files: Arc::new(Mutex::new(HashSet::new())),
-            loose_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             builtins_index: Arc::new(load_builtins_index()),
             workspace_subscriptions: Arc::new(Mutex::new(SubscriptionRegistry::default())),
             loose_subscriptions: Arc::new(Mutex::new(SubscriptionRegistry::default())),
-            script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
             cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
             merged_completion_cache_workspace: Arc::new(Mutex::new(None)),
             merged_completion_cache_loose: Arc::new(Mutex::new(None)),
@@ -197,6 +194,24 @@ impl Backend {
             client_supports_pull_diagnostics: Arc::new(AtomicBool::new(false)),
             last_publish_task: Arc::new(tokio::sync::Mutex::new(None)),
         }
+    }
+
+    pub(crate) fn snapshot(&self) -> Arc<Compilation> {
+        self.compilation.load_full()
+    }
+
+    // Single-writer publish: build the next Compilation on a shadow and atomically swap.
+    // Holding `writer_lock` serializes writers without blocking readers; the swap itself is
+    // one atomic pointer write.
+    pub(crate) fn publish_compilation<F>(&self, edit: F)
+    where
+        F: FnOnce(&mut CompilationBuilder),
+    {
+        let _guard = self.writer_lock.lock();
+        let current = self.compilation.load_full();
+        let mut builder = CompilationBuilder::new(current);
+        edit(&mut builder);
+        self.compilation.store(Arc::new(builder.finish()));
     }
 
     pub(crate) fn invalidated_workspace(&self, keys: &[ObservedKey]) -> HashSet<String> {
@@ -260,7 +275,10 @@ impl Backend {
         )
     }
 
-    pub(crate) fn loose_open_uris(&self, documents: &HashMap<Url, ParsedDocument>) -> HashSet<Url> {
+    pub(crate) fn loose_open_uris(
+        &self,
+        documents: &HashMap<Url, Arc<ParsedDocument>>,
+    ) -> HashSet<Url> {
         let roots = self.workspace_roots.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
         let game_dir = self.base_scripts_path.lock().clone();
@@ -285,31 +303,37 @@ impl Backend {
 
     // A loose file resolves against loose_index in the workspace slot, isolating
     // it from the real project's symbols.
-    pub(crate) fn db_handles_for(&self, uri: &Url) -> DbHandles<'_> {
+    pub(crate) fn db_handles_for_with_snapshot(
+        &self,
+        uri: &Url,
+        snap: &Arc<Compilation>,
+    ) -> DbHandles {
         let workspace = if self.file_scope_of(uri).is_loose() {
-            self.loose_index.lock()
+            snap.loose_index.clone()
         } else {
-            self.workspace_index.lock()
+            snap.workspace_index.clone()
         };
         DbHandles {
             workspace,
-            base: self.base_scripts_index.lock(),
-            script_env: self.script_env.lock(),
-            builtins: self.builtins_index.as_ref(),
-            suppressed_base_uris: self.suppressed_base_uris.lock(),
-            filtered_base_catalogs: self.filtered_base_catalogs.lock(),
+            base: snap.base_scripts_index.clone(),
+            script_env: snap.script_env.clone(),
+            builtins: self.builtins_index.clone(),
+            suppressed_base_uris: snap.suppressed_base_uris.clone(),
+            filtered_base_catalogs: snap.filtered_base_catalogs.clone(),
         }
     }
 
     pub(crate) fn rebuild_filtered_base_catalogs(&self) {
-        let base = self.base_scripts_index.lock();
-        let suppressed = self.suppressed_base_uris.lock();
-        let mut slot = self.filtered_base_catalogs.lock();
-        *slot = if suppressed.is_empty() {
-            None
-        } else {
-            Some(FilteredBaseCatalogs::build(&base, &suppressed))
-        };
+        self.publish_compilation(|builder| {
+            let suppressed = builder.base.suppressed_base_uris.clone();
+            let base_index = builder.base.base_scripts_index.clone();
+            let next = if suppressed.is_empty() {
+                None
+            } else {
+                Some(FilteredBaseCatalogs::build(&base_index, &suppressed))
+            };
+            builder.set_filtered_base_catalogs(next);
+        });
         *self.merged_completion_cache_workspace.lock() = None;
         *self.merged_completion_cache_loose.lock() = None;
         self.legacy_db_generation.fetch_add(1, Ordering::Relaxed);
@@ -318,11 +342,11 @@ impl Backend {
     pub(crate) fn merged_completion_cache(
         &self,
         uri: &Url,
-        handles: &DbHandles<'_>,
+        handles: &DbHandles,
     ) -> MergedCompletionCache {
         let workspace_surface = handles.workspace().surface_hash();
         let base_surface = handles.base().surface_hash();
-        let script_env_version = handles.script_env.version();
+        let script_env_version = handles.script_env().version();
         let slot = if self.file_scope_of(uri).is_loose() {
             &self.merged_completion_cache_loose
         } else {
@@ -342,7 +366,7 @@ impl Backend {
             handles.workspace(),
             handles.base(),
             &db,
-            &handles.script_env,
+            handles.script_env(),
         );
         *slot = Some(fresh.clone());
         fresh

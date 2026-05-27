@@ -30,8 +30,8 @@ impl Backend {
     ) -> Result<DocumentDiagnosticReportResult> {
         let uri = params.text_document.uri.clone();
         let (items, result_id) = {
-            let documents = self.documents.lock();
-            let Some(document) = documents.get(&uri) else {
+            let snap = self.snapshot();
+            let Some(document) = snap.documents.get(&uri).cloned() else {
                 return Ok(DocumentDiagnosticReportResult::Report(
                     DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
                         related_documents: None,
@@ -42,7 +42,7 @@ impl Backend {
                     }),
                 ));
             };
-            self.compute_diagnostics_for_uri(&uri, document)
+            self.compute_diagnostics_for_uri(&uri, document.as_ref())
         };
         if params.previous_result_id.as_deref() == Some(result_id.as_str()) {
             return Ok(DocumentDiagnosticReportResult::Report(
@@ -80,11 +80,12 @@ impl Backend {
     ) -> Result<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let documents = self.documents.lock();
-        let Some(document) = documents.get(&uri) else {
+        let snap = self.snapshot();
+        let Some(document_arc) = snap.documents.get(&uri).cloned() else {
             return Ok(None);
         };
-        let handles = self.db_handles_for(&uri);
+        let document = document_arc.as_ref();
+        let handles = self.db_handles_for_with_snapshot(&uri, &snap);
         let db = handles.db();
         let definitions =
             resolve_all_definitions(uri.as_str(), document, &db, source_position(position));
@@ -109,11 +110,12 @@ impl Backend {
     pub(crate) async fn _hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let documents = self.documents.lock();
-        let Some(document) = documents.get(&uri) else {
+        let snap = self.snapshot();
+        let Some(document_arc) = snap.documents.get(&uri).cloned() else {
             return Ok(None);
         };
-        let handles = self.db_handles_for(&uri);
+        let document = document_arc.as_ref();
+        let handles = self.db_handles_for_with_snapshot(&uri, &snap);
         let db = handles.db();
         let Some(definition) =
             resolve_definition(uri.as_str(), document, &db, source_position(position))
@@ -136,11 +138,12 @@ impl Backend {
     ) -> Result<Option<SignatureHelp>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let documents = self.documents.lock();
-        let Some(document) = documents.get(&uri) else {
+        let snap = self.snapshot();
+        let Some(document_arc) = snap.documents.get(&uri).cloned() else {
             return Ok(None);
         };
-        let handles = self.db_handles_for(&uri);
+        let document = document_arc.as_ref();
+        let handles = self.db_handles_for_with_snapshot(&uri, &snap);
         let db = handles.db();
         let compact_colon = self.config.load().formatter_compact_colon;
 
@@ -158,8 +161,8 @@ impl Backend {
         &self,
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
-        let documents = self.documents.lock();
-        let Some(document) = documents.get(&params.text_document.uri) else {
+        let snap = self.snapshot();
+        let Some(document) = snap.documents.get(&params.text_document.uri).cloned() else {
             return Ok(None);
         };
 
@@ -175,11 +178,12 @@ impl Backend {
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
-        let documents = self.documents.lock();
-        let Some(document) = documents.get(&uri) else {
+        let snap = self.snapshot();
+        let Some(document_arc) = snap.documents.get(&uri).cloned() else {
             return Ok(None);
         };
-        let handles = self.db_handles_for(&uri);
+        let document = document_arc.as_ref();
+        let handles = self.db_handles_for_with_snapshot(&uri, &snap);
         let db = handles.db();
         let data = collect_semantic_tokens(uri.as_str(), document, &db);
         let tokens: Vec<SemanticToken> = data
@@ -209,10 +213,11 @@ impl Backend {
         let tab_size = params.options.tab_size;
         let use_tabs = !params.options.insert_spaces;
 
-        let documents = self.documents.lock();
-        let Some(document) = documents.get(&uri) else {
+        let snap = self.snapshot();
+        let Some(document_arc) = snap.documents.get(&uri).cloned() else {
             return Ok(None);
         };
+        let document = document_arc.as_ref();
 
         let cfg = self.config.load();
         let line_limit = cfg.formatter_line_limit;

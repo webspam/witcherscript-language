@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use lsp_types::{Position, Url};
 use tracing::error;
@@ -16,8 +17,8 @@ impl Backend {
     // A workspace-folder or config change reroutes open docs now, not on next keystroke.
     #[tracing::instrument(skip(self), level = "debug")]
     pub(crate) fn reindex_open_documents(&self) {
-        let documents = self.documents.lock();
-        if documents.is_empty() {
+        let snap = self.snapshot();
+        if snap.documents.is_empty() {
             return;
         }
         let roots = self.workspace_roots.lock().clone();
@@ -25,7 +26,8 @@ impl Backend {
         let game_dir = self.base_scripts_path.lock().clone();
         let additional = self.additional_script_dirs.lock().clone();
         let replacements = self.legacy_replacements.lock().clone();
-        let scopes: Vec<(Url, FileScope)> = documents
+        let scopes: Vec<(Url, FileScope)> = snap
+            .documents
             .keys()
             .map(|uri| {
                 (
@@ -45,32 +47,48 @@ impl Backend {
         let mut ws_changed: Vec<ObservedKey> = Vec::new();
         let mut loose_changed: Vec<ObservedKey> = Vec::new();
         let mut invalidated: HashSet<String> = HashSet::new();
-        {
-            let mut workspace = self.workspace_index.lock();
-            let mut loose = self.loose_index.lock();
-            let mut base = self.base_scripts_index.lock();
+        self.publish_compilation(|builder| {
+            let docs = builder.base.documents.clone();
+            let workspace = builder.workspace_index_mut();
+            for (uri, _) in &scopes {
+                ws_changed.extend(remove_document_all_spellings(workspace, uri));
+            }
+            let loose = builder.loose_index_mut();
+            for (uri, _) in &scopes {
+                loose_changed.extend(remove_document_all_spellings(loose, uri));
+            }
+            let base = builder.base_scripts_index_mut();
+            for (uri, _) in &scopes {
+                let _ = remove_document_all_spellings(base, uri);
+            }
             for (uri, scope) in &scopes {
-                let Some(document) = documents.get(uri) else {
+                let Some(document) = docs.get(uri) else {
                     continue;
                 };
-                ws_changed.extend(remove_document_all_spellings(&mut workspace, uri));
-                loose_changed.extend(remove_document_all_spellings(&mut loose, uri));
-                let _ = remove_document_all_spellings(&mut base, uri);
                 match scope {
                     FileScope::AdditionalBase => {
-                        let _ = base.update_document(uri.as_str(), document);
+                        let _ = builder
+                            .base_scripts_index_mut()
+                            .update_document(uri.as_str(), document.as_ref());
                     }
                     FileScope::OutOfScope | FileScope::SingleFile => {
-                        loose_changed.extend(loose.update_document(uri.as_str(), document));
+                        loose_changed.extend(
+                            builder
+                                .loose_index_mut()
+                                .update_document(uri.as_str(), document.as_ref()),
+                        );
                     }
                     _ => {
-                        ws_changed.extend(workspace.update_document(uri.as_str(), document));
+                        ws_changed.extend(
+                            builder
+                                .workspace_index_mut()
+                                .update_document(uri.as_str(), document.as_ref()),
+                        );
                     }
                 }
                 invalidated.insert(uri.to_string());
             }
-        }
-        drop(documents);
+        });
         invalidated.extend(self.invalidated_workspace(&ws_changed));
         invalidated.extend(self.invalidated_loose(&loose_changed));
         self.evict_cache_entries(&invalidated);
@@ -86,17 +104,19 @@ impl Backend {
             .and_then(|path| read_script_file(&path).ok())
             .and_then(|text| parse_document(text).ok());
 
+        let mut changed: Vec<ObservedKey> = Vec::new();
+        self.publish_compilation(|builder| {
+            if is_base {
+                let (index, docs) = builder.base_scripts_index_and_docs_mut();
+                let _ = reindex_into(index, docs, uri.as_str(), &canonical, parsed);
+            } else {
+                let (index, docs) = builder.workspace_index_and_docs_mut();
+                changed.extend(reindex_into(index, docs, uri.as_str(), &canonical, parsed));
+            }
+        });
         let invalidated = if is_base {
-            let mut index = self.base_scripts_index.lock();
-            let mut docs = self.base_scripts_documents.lock();
-            let _ = reindex_into(&mut index, &mut docs, uri.as_str(), &canonical, parsed);
             HashSet::new()
         } else {
-            let changed = {
-                let mut index = self.workspace_index.lock();
-                let mut docs = self.workspace_documents.lock();
-                reindex_into(&mut index, &mut docs, uri.as_str(), &canonical, parsed)
-            };
             self.invalidated_workspace(&changed)
         };
         self.evict_cache_entries(&invalidated);
@@ -112,43 +132,52 @@ impl Backend {
                 return;
             }
         };
+        let document = Arc::new(document);
 
         let scope = self.file_scope_of(&uri);
         let mut ws_changed: Vec<ObservedKey> = Vec::new();
         let mut loose_changed: Vec<ObservedKey> = Vec::new();
-        // A config change can move a file between scopes; drop every stale copy first.
-        {
-            let mut workspace = self.workspace_index.lock();
-            ws_changed.extend(remove_document_all_spellings(&mut workspace, &uri));
-        }
-        {
-            let mut base = self.base_scripts_index.lock();
-            let _ = remove_document_all_spellings(&mut base, &uri);
-        }
-        {
-            let mut loose = self.loose_index.lock();
-            loose_changed.extend(remove_document_all_spellings(&mut loose, &uri));
-        }
+        self.publish_compilation(|builder| {
+            // A config change can move a file between scopes; drop every stale copy first.
+            ws_changed.extend(remove_document_all_spellings(
+                builder.workspace_index_mut(),
+                &uri,
+            ));
+            let _ = remove_document_all_spellings(builder.base_scripts_index_mut(), &uri);
+            loose_changed.extend(remove_document_all_spellings(
+                builder.loose_index_mut(),
+                &uri,
+            ));
 
-        match scope {
-            FileScope::AdditionalBase => {
-                let mut base = self.base_scripts_index.lock();
-                let _ = base.update_document(uri.as_str(), &document);
+            match scope {
+                FileScope::AdditionalBase => {
+                    let _ = builder
+                        .base_scripts_index_mut()
+                        .update_document(uri.as_str(), document.as_ref());
+                }
+                FileScope::OutOfScope | FileScope::SingleFile => {
+                    loose_changed.extend(
+                        builder
+                            .loose_index_mut()
+                            .update_document(uri.as_str(), document.as_ref()),
+                    );
+                }
+                _ => {
+                    ws_changed.extend(
+                        builder
+                            .workspace_index_mut()
+                            .update_document(uri.as_str(), document.as_ref()),
+                    );
+                }
             }
-            FileScope::OutOfScope | FileScope::SingleFile => {
-                let mut loose = self.loose_index.lock();
-                loose_changed.extend(loose.update_document(uri.as_str(), &document));
-            }
-            _ => {
-                let mut workspace = self.workspace_index.lock();
-                ws_changed.extend(workspace.update_document(uri.as_str(), &document));
-            }
-        }
+            builder
+                .documents_mut()
+                .insert(uri.clone(), document.clone());
+        });
 
         let mut invalidated = self.invalidated_workspace(&ws_changed);
         invalidated.extend(self.invalidated_loose(&loose_changed));
         self.evict_cache_entries(&invalidated);
-        self.documents.lock().insert(uri.clone(), document);
         self.spawn_diagnostics_state_changed();
     }
 
@@ -161,10 +190,10 @@ impl Backend {
     }
 
     pub(crate) fn resolve_at(&self, uri: &Url, position: Position) -> Option<Definition> {
-        let documents = self.documents.lock();
-        let document = documents.get(uri)?;
-        let handles = self.db_handles_for(uri);
+        let snap = self.snapshot();
+        let document = snap.documents.get(uri)?.clone();
+        let handles = self.db_handles_for_with_snapshot(uri, &snap);
         let db = handles.db();
-        resolve_definition(uri.as_str(), document, &db, source_position(position))
+        resolve_definition(uri.as_str(), &document, &db, source_position(position))
     }
 }

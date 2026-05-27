@@ -40,8 +40,8 @@ async fn deleting_a_file_removes_it_from_the_index() {
     index_dir(&backend, temp.path()).await;
     assert!(
         backend
+            .snapshot()
             .workspace_documents
-            .lock()
             .contains_key(url.as_str()),
         "file must be indexed before deletion can be exercised",
     );
@@ -50,8 +50,8 @@ async fn deleting_a_file_removes_it_from_the_index() {
 
     assert!(
         !backend
+            .snapshot()
             .workspace_documents
-            .lock()
             .contains_key(url.as_str()),
         "a deleted file must be dropped from the workspace index",
     );
@@ -71,7 +71,8 @@ async fn renaming_a_file_moves_it_in_the_index() {
     std::fs::rename(&old_path, &new_path).expect("rename on disk");
     backend._did_change_watched_files(rename_params(&old_url, &new_url));
 
-    let docs = backend.workspace_documents.lock();
+    let snap = backend.snapshot();
+    let docs = &snap.workspace_documents;
     assert!(
         !docs.contains_key(old_url.as_str()),
         "the old name must be dropped after a rename",
@@ -96,8 +97,8 @@ async fn repeated_delete_is_idempotent() {
 
     assert!(
         !backend
+            .snapshot()
             .workspace_documents
-            .lock()
             .contains_key(url.as_str()),
         "a duplicated delete (OS watcher + fileOperations) must stay a harmless no-op",
     );
@@ -116,7 +117,7 @@ async fn deleting_an_open_file_keeps_the_editor_buffer() {
     backend._did_change_watched_files(delete_params(&url));
 
     assert!(
-        backend.documents.lock().contains_key(&url),
+        backend.snapshot().documents.contains_key(&url),
         "a file-operation event must not evict a file that is open in the editor",
     );
 }
@@ -137,7 +138,7 @@ async fn renaming_an_open_file_keeps_the_editor_buffer() {
     backend._did_change_watched_files(rename_params(&old_url, &new_url));
 
     assert!(
-        backend.documents.lock().contains_key(&old_url),
+        backend.snapshot().documents.contains_key(&old_url),
         "renaming an open file must not evict its editor buffer",
     );
 }

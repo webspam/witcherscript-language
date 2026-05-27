@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use lsp_types::Url;
 use tracing::warn;
@@ -122,7 +123,7 @@ pub(crate) fn remove_document_all_spellings(
 // A closed file reverts to disk content, re-keyed from the open spelling to canonical.
 pub(super) fn reindex_into(
     index: &mut WorkspaceIndex,
-    docs: &mut HashMap<String, ParsedDocument>,
+    docs: &mut HashMap<String, Arc<ParsedDocument>>,
     client_uri: &str,
     canonical: &str,
     parsed: Option<ParsedDocument>,
@@ -134,7 +135,7 @@ pub(super) fn reindex_into(
     match parsed {
         Some(document) => {
             changed.extend(index.update_document(canonical, &document));
-            docs.insert(canonical.to_string(), document);
+            docs.insert(canonical.to_string(), Arc::new(document));
         }
         None => {
             changed.extend(index.remove_document(canonical));

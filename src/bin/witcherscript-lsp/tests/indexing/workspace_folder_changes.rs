@@ -36,8 +36,8 @@ async fn adding_a_folder_indexes_its_scripts() {
 
     assert!(
         backend
+            .snapshot()
             .workspace_documents
-            .lock()
             .contains_key(script_url.as_str()),
         "a script in a newly added workspace folder must be indexed",
     );
@@ -56,8 +56,8 @@ async fn removing_a_folder_drops_its_scripts() {
         .await;
     assert!(
         backend
+            .snapshot()
             .workspace_documents
-            .lock()
             .contains_key(script_url.as_str()),
         "folder must be indexed before removal can be exercised",
     );
@@ -67,8 +67,8 @@ async fn removing_a_folder_drops_its_scripts() {
         .await;
     assert!(
         !backend
+            .snapshot()
             .workspace_documents
-            .lock()
             .contains_key(script_url.as_str()),
         "a script in a removed workspace folder must be dropped from the index",
     );
