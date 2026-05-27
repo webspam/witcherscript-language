@@ -213,6 +213,7 @@ impl Backend {
     pub(crate) async fn _initialized(&self, _: InitializedParams) {
         let started_at = Instant::now();
         trace!(op = "initialized", at = %wall_clock_us(), "start");
+        self.spawn_edit_writer();
         self.fetch_config().await;
         self.index_workspace().await;
         self.refresh_manifest_legacy_dirs();

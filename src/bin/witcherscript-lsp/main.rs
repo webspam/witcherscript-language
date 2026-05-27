@@ -6,6 +6,7 @@ mod config;
 mod convert;
 mod cst_cache;
 mod diagnostics_publish;
+mod edit_queue;
 mod file_scope;
 mod file_scope_status;
 mod indexing;

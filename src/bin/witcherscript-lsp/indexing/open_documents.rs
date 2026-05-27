@@ -197,20 +197,44 @@ impl Backend {
         };
         let document = Arc::new(document);
 
-        let scope = self.file_scope_of(&uri);
+        let publish_at = Instant::now();
+        self.publish_open_document_indices(&uri, &document);
+        let publish_us = publish_at.elapsed().as_micros();
+        self.spawn_diagnostics_state_changed();
+        let version = self
+            .diagnostic_version
+            .load(std::sync::atomic::Ordering::Acquire);
+        trace!(
+            op = "update_open_document",
+            uri = %uri,
+            bytes,
+            version,
+            had_prior_tree,
+            parse_us,
+            publish_us,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
+    }
+
+    pub(crate) fn publish_open_document_indices(
+        &self,
+        uri: &Url,
+        document: &Arc<witcherscript_language::document::ParsedDocument>,
+    ) {
+        let scope = self.file_scope_of(uri);
         let mut ws_changed: Vec<ObservedKey> = Vec::new();
         let mut loose_changed: Vec<ObservedKey> = Vec::new();
-        let publish_at = Instant::now();
         self.publish_compilation(|builder| {
-            // A config change can move a file between scopes; drop every stale copy first.
             ws_changed.extend(remove_document_all_spellings(
                 builder.workspace_index_mut(),
-                &uri,
+                uri,
             ));
-            let _ = remove_document_all_spellings(builder.base_scripts_index_mut(), &uri);
+            let _ = remove_document_all_spellings(builder.base_scripts_index_mut(), uri);
             loose_changed.extend(remove_document_all_spellings(
                 builder.loose_index_mut(),
-                &uri,
+                uri,
             ));
 
             match scope {
@@ -238,30 +262,9 @@ impl Backend {
                 .documents_mut()
                 .insert(uri.clone(), document.clone());
         });
-
-        let publish_us = publish_at.elapsed().as_micros();
         let mut invalidated = self.invalidated_workspace(&ws_changed);
         invalidated.extend(self.invalidated_loose(&loose_changed));
-        let evict_at = Instant::now();
         self.evict_cache_entries(&invalidated);
-        let evict_us = evict_at.elapsed().as_micros();
-        self.spawn_diagnostics_state_changed();
-        let version = self
-            .diagnostic_version
-            .load(std::sync::atomic::Ordering::Acquire);
-        trace!(
-            op = "update_open_document",
-            uri = %uri,
-            bytes,
-            version,
-            had_prior_tree,
-            parse_us,
-            publish_us,
-            evict_us,
-            elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
-            "complete",
-        );
     }
 
     pub(crate) fn evict_cache_entries(&self, uris: &HashSet<String>) {

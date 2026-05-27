@@ -34,6 +34,7 @@ use witcherscript_language::script_env::ScriptEnvironment;
 use crate::compilation::{Compilation, CompilationBuilder};
 use crate::completion_cache::MergedCompletionCache;
 use crate::config::Config;
+use crate::edit_queue::PendingEdit;
 use crate::file_scope::{classify_file_scope, FileScope};
 use crate::file_scope_status::FileScopeStatusParams;
 use crate::legacy_status::LegacyScriptStatusParams;
@@ -109,6 +110,9 @@ pub(crate) struct Backend {
     pub(crate) diagnostic_version: Arc<AtomicU64>,
     pub(crate) client_supports_pull_diagnostics: Arc<AtomicBool>,
     pub(crate) refresh_pending: Arc<AtomicBool>,
+    pub(crate) pending_edits: Arc<Mutex<HashMap<Url, PendingEdit>>>,
+    pub(crate) edit_notify: Arc<tokio::sync::Notify>,
+    pub(crate) edit_writer_spawned: Arc<AtomicBool>,
     // Held only so tests can await the most recent spawned publish; production never awaits this.
     pub(crate) last_publish_task: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
@@ -196,6 +200,9 @@ impl Backend {
             diagnostic_version: Arc::new(AtomicU64::new(0)),
             client_supports_pull_diagnostics: Arc::new(AtomicBool::new(false)),
             refresh_pending: Arc::new(AtomicBool::new(false)),
+            pending_edits: Arc::new(Mutex::new(HashMap::new())),
+            edit_notify: Arc::new(tokio::sync::Notify::new()),
+            edit_writer_spawned: Arc::new(AtomicBool::new(false)),
             last_publish_task: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
@@ -446,6 +453,38 @@ impl Backend {
         self.request_workspace_diagnostic_refresh();
         let version = self.diagnostic_version.fetch_add(1, Ordering::AcqRel) + 1;
         self.publish_open_diagnostics(version);
+    }
+
+    // Edit queue already bumped diagnostic_version at enqueue; don't bump again.
+    pub(crate) fn spawn_diagnostics_at_current_version(&self) {
+        self.request_workspace_diagnostic_refresh();
+        let version = self.diagnostic_version.load(Ordering::Acquire);
+        if tokio::runtime::Handle::try_current().is_err() {
+            self.publish_open_diagnostics(version);
+            return;
+        }
+        let backend = self.clone();
+        let handle = tokio::spawn(async move {
+            let started_at = std::time::Instant::now();
+            debug!(
+                op = "publish_diagnostics_task",
+                version,
+                at = %wall_clock_us(),
+                "start",
+            );
+            let _ = tokio::task::spawn_blocking(move || backend.publish_open_diagnostics(version))
+                .await;
+            debug!(
+                op = "publish_diagnostics_task",
+                version,
+                elapsed_us = started_at.elapsed().as_micros(),
+                at = %wall_clock_us(),
+                "complete",
+            );
+        });
+        if let Ok(mut slot) = self.last_publish_task.try_lock() {
+            *slot = Some(handle);
+        }
     }
 
     // Spawn entry for sync notification handlers (did_change/did_open/did_close/did_change_watched_files):

@@ -12,6 +12,7 @@ use witcherscript_language::line_index::LineIndex;
 
 use crate::backend::Backend;
 use crate::convert::{source_position, source_range};
+use crate::edit_queue::PendingEdit;
 use crate::logging::wall_clock_us;
 
 fn uri_within_any(uri: &str, dirs: &[PathBuf]) -> bool {
@@ -62,13 +63,9 @@ impl Backend {
         }
         let started_at = Instant::now();
         trace!(op = "did_change", uri = %uri, at = %wall_clock_us(), "start");
-        let prior = self
-            .snapshot()
-            .documents
-            .get(&uri)
-            .map(|d| (d.source.clone(), d.line_index.clone(), d.tree.clone()));
 
-        let Some((mut source, mut line_index, mut prior_tree)) = prior else {
+        let Some((mut source, mut line_index, mut prior_tree)) = self.latest_edit_state(&uri)
+        else {
             error!(uri = %uri, "did_change before did_open");
             return;
         };
@@ -96,12 +93,19 @@ impl Backend {
             }
         }
 
-        let prior = if prior_tree_valid {
-            Some(prior_tree)
+        if prior_tree_valid {
+            self.enqueue_edit(
+                uri.clone(),
+                PendingEdit {
+                    source,
+                    line_index,
+                    tree: prior_tree,
+                },
+            );
         } else {
-            None
-        };
-        self.update_open_document_with_prior(uri.clone(), source, prior);
+            // Full-document replace: prior tree is invalid; bypass the queue and re-parse from scratch.
+            self.update_open_document(uri.clone(), source);
+        }
         trace!(
             op = "did_change",
             uri = %uri,
