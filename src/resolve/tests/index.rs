@@ -1,6 +1,6 @@
 use super::make_doc;
 use crate::symbols::{AccessLevel, SymbolKind};
-use crate::test_support::TestDb;
+use crate::test_support::{script_env, TestDb};
 
 #[test]
 fn all_top_level_yields_top_level_symbols_across_documents() {
@@ -334,7 +334,7 @@ fn completion_catalog_rebuilds_on_top_level_change() {
 fn merged_global_completions_matches_lsp_cache_globals_shape() {
     let t =
         crate::test_support::TestDb::new("function Caller() {\n  $0\n}\n").with_builtins_index();
-    let env = super::make_env("theGame", "CR4Game");
+    let env = script_env("theGame", "CR4Game");
     let db = t.db().with_script_env(&env);
     let globals = crate::resolve::merged_global_completions(&db);
     let names: std::collections::HashSet<&str> =

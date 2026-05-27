@@ -4,10 +4,9 @@ use super::super::{
     completion_members, expression_completions, merged_global_completions, statement_completions,
     type_completions, StatementCompletions,
 };
-use super::make_env;
 use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
-use crate::test_support::{def_names, TestDb};
+use crate::test_support::{def_names, script_env, TestDb};
 
 #[derive(Clone, Copy)]
 enum Bucket {
@@ -180,7 +179,7 @@ fn enum_members_appear_in_globals_with_correct_kind() {
 #[test]
 fn script_env_globals_appear_in_statement_completions() {
     let t = TestDb::new("function Caller() {\n  $0\n}\n");
-    let env = make_env("theGame", "CR4Game");
+    let env = script_env("theGame", "CR4Game");
     let db = t.db().with_script_env(&env);
     let (uri, pos) = t.cursor();
     let r = statement_completions(&uri, t.doc_for(&uri), &db, pos);
@@ -200,7 +199,7 @@ fn script_env_globals_appear_in_statement_completions() {
 #[test]
 fn script_env_globals_appear_in_expression_completions() {
     let t = TestDb::new("function Caller() : int {\n  return $0\n}\n");
-    let env = make_env("theGame", "CR4Game");
+    let env = script_env("theGame", "CR4Game");
     let db = t.db().with_script_env(&env);
     let (uri, pos) = t.cursor();
     let r = expression_completions(&uri, t.doc_for(&uri), &db, pos)

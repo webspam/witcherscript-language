@@ -5,6 +5,8 @@ pub use fixture::{Fixture, FixtureFile};
 use crate::document::{parse_document, ParsedDocument};
 use crate::line_index::{SourcePosition, SourceRange};
 use crate::resolve::{Definition, SymbolDb, WorkspaceIndex};
+use crate::script_env::{ScriptEnvironment, ScriptGlobal};
+use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
 pub struct TestDb {
     pub docs: Vec<(String, ParsedDocument)>,
@@ -101,6 +103,45 @@ pub fn assert_names_contain(actual: &[&str], expected: &[&str]) {
             "expected name {name:?} in {actual:?}"
         );
     }
+}
+
+pub fn script_env(name: &str, type_name: &str) -> ScriptEnvironment {
+    let start = SourcePosition {
+        line: 1,
+        character: 0,
+    };
+    let end = SourcePosition {
+        line: 1,
+        character: name.len() as u32,
+    };
+    let range = SourceRange { start, end };
+    ScriptEnvironment::new(vec![ScriptGlobal {
+        name: name.to_string(),
+        type_name: type_name.to_string(),
+        ini_uri: "file:///redscripts.ini".to_string(),
+        symbol: Symbol {
+            id: SymbolId(0),
+            name: name.to_string(),
+            kind: SymbolKind::Variable,
+            range,
+            selection_range: range,
+            byte_range: 0..name.len(),
+            selection_byte_range: 0..name.len(),
+            container: None,
+            container_name: None,
+            type_annotation: Some(type_name.to_string()),
+            signature: None,
+            base_class: None,
+            owner_class: None,
+            flavour: None,
+            annotations: Vec::new(),
+            access: AccessLevel::Public,
+            is_optional: false,
+            is_out: false,
+            is_state_machine: false,
+            is_abstract: false,
+        },
+    }])
 }
 
 #[track_caller]

@@ -25,7 +25,7 @@ pub const TOKEN_TYPES: &[&str] = &[
                   // type-annotation idents are resolved and classified by their actual symbol kind.
 ];
 
-pub const TOKEN_MODIFIERS: &[&str] = &["declaration"];
+pub const TOKEN_MODIFIERS: &[&str] = &["declaration", "defaultLibrary"];
 
 const TT_CLASS: u32 = 0;
 const TT_ENUM: u32 = 1;
@@ -41,11 +41,14 @@ const TT_NUMBER: u32 = 10;
 const TT_DECORATOR: u32 = 12;
 const TT_MODIFIER: u32 = 13;
 
+const MOD_DEFAULT_LIBRARY: u32 = 1 << 1;
+
 struct RawToken {
     line: u32,
     start_char: u32,
     length: u32,
     token_type: u32,
+    token_modifiers: u32,
 }
 
 pub fn collect_semantic_tokens(uri: &str, document: &ParsedDocument, db: &SymbolDb) -> Vec<u32> {
@@ -62,7 +65,7 @@ pub fn collect_semantic_tokens(uri: &str, document: &ParsedDocument, db: &Symbol
     encode(&tokens)
 }
 
-type ClassifyCache = HashMap<(String, Option<SymbolId>), Option<u32>>;
+type ClassifyCache = HashMap<(String, Option<SymbolId>), Option<(u32, u32)>>;
 
 fn collect(
     node: Node,
@@ -72,7 +75,7 @@ fn collect(
     cache: &mut ClassifyCache,
     out: &mut Vec<RawToken>,
 ) {
-    if let Some(token_type) = classify(node, uri, document, db, cache) {
+    if let Some((token_type, token_modifiers)) = classify(node, uri, document, db, cache) {
         let range = document.line_index.byte_range_to_range(
             &document.source,
             node.start_byte(),
@@ -84,6 +87,7 @@ fn collect(
                 start_char: range.start.character,
                 length: range.end.character - range.start.character,
                 token_type,
+                token_modifiers,
             });
         }
     } else if node.is_named() {
@@ -100,18 +104,18 @@ fn classify(
     document: &ParsedDocument,
     db: &SymbolDb,
     cache: &mut ClassifyCache,
-) -> Option<u32> {
+) -> Option<(u32, u32)> {
     match node.kind() {
         "ident" => classify_ident(node, uri, document, db, cache),
-        "annotation_ident" => Some(TT_DECORATOR),
-        "comment" => Some(TT_COMMENT),
-        "literal_name" => Some(TT_ENUM_MEMBER),
-        "literal_string" => Some(TT_STRING),
-        "literal_int" | "literal_float" | "literal_hex" => Some(TT_NUMBER),
-        "specifier" | "func_flavour" | "autobind_single" => Some(TT_MODIFIER),
+        "annotation_ident" => Some((TT_DECORATOR, 0)),
+        "comment" => Some((TT_COMMENT, 0)),
+        "literal_name" => Some((TT_ENUM_MEMBER, 0)),
+        "literal_string" => Some((TT_STRING, 0)),
+        "literal_int" | "literal_float" | "literal_hex" => Some((TT_NUMBER, 0)),
+        "specifier" | "func_flavour" | "autobind_single" => Some((TT_MODIFIER, 0)),
         _ => {
             if !node.is_named() {
-                classify_anonymous_keyword(node.kind())
+                classify_anonymous_keyword(node.kind()).map(|t| (t, 0))
             } else {
                 None
             }
@@ -125,23 +129,23 @@ fn classify_ident(
     document: &ParsedDocument,
     db: &SymbolDb,
     cache: &mut ClassifyCache,
-) -> Option<u32> {
+) -> Option<(u32, u32)> {
     let parent = node.parent()?;
     match parent.kind() {
-        "class_decl" | "struct_decl" | "state_decl" => Some(TT_CLASS),
-        "enum_decl" => Some(TT_ENUM),
-        "enum_decl_variant" => Some(TT_ENUM_MEMBER),
-        "func_decl" | "event_decl" => Some(TT_FUNCTION),
-        "func_param_group" => Some(TT_PARAMETER),
-        "member_var_decl" | "autobind_decl" => Some(TT_PROPERTY),
-        "local_var_decl_stmt" => Some(TT_VARIABLE),
+        "class_decl" | "struct_decl" | "state_decl" => Some((TT_CLASS, 0)),
+        "enum_decl" => Some((TT_ENUM, 0)),
+        "enum_decl_variant" => Some((TT_ENUM_MEMBER, 0)),
+        "func_decl" | "event_decl" => Some((TT_FUNCTION, 0)),
+        "func_param_group" => Some((TT_PARAMETER, 0)),
+        "member_var_decl" | "autobind_decl" => Some((TT_PROPERTY, 0)),
+        "local_var_decl_stmt" => Some((TT_VARIABLE, 0)),
         _ => {
             if let Some(t) = classify_locally(node, document) {
-                return Some(t);
+                return Some((t, 0));
             }
             if is_member_access_rhs(node, parent) {
                 return classify_definition_at_ident(uri, document, db, node)
-                    .map(|def| symbol_kind_to_token_type(def.symbol.kind));
+                    .map(|def| (symbol_kind_to_token_type(def.symbol.kind), 0));
             }
             let name = node.utf8_text(document.source.as_bytes()).ok()?;
             let type_kinds = [SymbolKind::Class, SymbolKind::Struct, SymbolKind::State];
@@ -154,7 +158,7 @@ fn classify_ident(
                 return *cached;
             }
             let result = classify_definition_at_ident(uri, document, db, node)
-                .map(|def| symbol_kind_to_token_type(def.symbol.kind));
+                .map(|def| script_global_override(db, name, &def));
             cache.insert(key, result);
             result
         }
@@ -213,6 +217,32 @@ fn classify_locally(node: Node, document: &ParsedDocument) -> Option<u32> {
         .map(|sym| symbol_kind_to_token_type(sym.kind))
 }
 
+// redscripts.ini globals redirect to their class for Go-To-Def; for tokens, recolour
+// the redirected class (or the synthetic INI Variable) as variable+defaultLibrary so
+// `thePlayer` doesn't paint as a type. Workspace shadows win normally.
+fn script_global_override(
+    db: &SymbolDb,
+    name: &str,
+    def: &crate::resolve::Definition,
+) -> (u32, u32) {
+    let kind = def.symbol.kind;
+    let Some(global_type) = db.script_global_type(name) else {
+        return (symbol_kind_to_token_type(kind), 0);
+    };
+    let matches_global = match kind {
+        SymbolKind::Variable => true,
+        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State => {
+            def.symbol.name == global_type
+        }
+        _ => false,
+    };
+    if matches_global {
+        (TT_VARIABLE, MOD_DEFAULT_LIBRARY)
+    } else {
+        (symbol_kind_to_token_type(kind), 0)
+    }
+}
+
 fn symbol_kind_to_token_type(kind: SymbolKind) -> u32 {
     match kind {
         SymbolKind::Class | SymbolKind::Struct | SymbolKind::State => TT_CLASS,
@@ -255,7 +285,7 @@ fn encode(tokens: &[RawToken]) -> Vec<u32> {
         encoded.push(delta_start);
         encoded.push(token.length);
         encoded.push(token.token_type);
-        encoded.push(0); // no modifiers
+        encoded.push(token.token_modifiers);
         prev_line = token.line;
         prev_start = token.start_char;
     }

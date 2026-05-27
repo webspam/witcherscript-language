@@ -363,6 +363,66 @@ fn inherited_member_reference_resolves_via_workspace() {
 }
 
 #[test]
+fn script_global_classifies_as_variable_with_default_library_modifier() {
+    let env = crate::test_support::script_env("thePlayer", "CR4Player");
+    let t = crate::test_support::TestDb::new(concat!(
+        "//- /semtok_test.ws\n",
+        "function Test() {\n thePlayer;\n}\n",
+    ))
+    .with_base_doc("file:///r4player.ws", "class CR4Player {}\n");
+    let db = t.db().with_script_env(&env);
+
+    let document = t.doc_for(TEST_URI);
+    let tokens = decode_tokens(&collect_semantic_tokens(TEST_URI, document, &db));
+    let player = tokens
+        .iter()
+        .find(|t| t.delta_line == 1)
+        .expect("expected a token on the body line");
+    assert_eq!(
+        player.token_type,
+        TT_VARIABLE,
+        "thePlayer should colour as variable, not class; got {}",
+        player.token_type_name(),
+    );
+    assert_ne!(
+        player.token_modifiers & super::MOD_DEFAULT_LIBRARY,
+        0,
+        "thePlayer should carry the defaultLibrary modifier bit; got {:#b}",
+        player.token_modifiers,
+    );
+}
+
+#[test]
+fn workspace_class_shadowing_script_global_still_colours_as_class() {
+    let env = crate::test_support::script_env("thePlayer", "CR4Player");
+    let t = crate::test_support::TestDb::new(concat!(
+        "//- /shadow.ws\n",
+        "class thePlayer {}\n",
+        "//- /semtok_test.ws\n",
+        "function Test() {\n thePlayer;\n}\n",
+    ));
+    let db = t.db().with_script_env(&env);
+
+    let document = t.doc_for(TEST_URI);
+    let tokens = decode_tokens(&collect_semantic_tokens(TEST_URI, document, &db));
+    let player = tokens
+        .iter()
+        .find(|t| t.delta_line == 1)
+        .expect("expected a token on the body line");
+    assert_eq!(
+        player.token_type,
+        TT_CLASS,
+        "workspace class named thePlayer must win over the ini global, got {}",
+        player.token_type_name(),
+    );
+    assert_eq!(
+        player.token_modifiers, 0,
+        "shadowing class should carry no modifiers, got {:#b}",
+        player.token_modifiers,
+    );
+}
+
+#[test]
 fn primitive_type_annotation_does_not_get_a_class_token() {
     let source = "function F() { var x : int; }\n";
     let empty = WorkspaceIndex::default();

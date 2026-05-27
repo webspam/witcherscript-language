@@ -4,7 +4,7 @@ use super::collect_unknown_symbol_diagnostics;
 use crate::diagnostics::collect_cst_diagnostics_for_document;
 use crate::document::parse_document;
 use crate::resolve::{SymbolDb, WorkspaceIndex};
-use crate::test_support::TestDb;
+use crate::test_support::{script_env, TestDb};
 
 #[test]
 fn parallel_run_is_deterministic() {
@@ -409,47 +409,6 @@ fn array_generic_produces_noise() {
 fn no_noise_inside_error_subtree() {
     let t = TestDb::new("function F() { x +=== bogus = ; }\n");
     let _ = collect_unknown_symbol_diagnostics(&t.search_docs(), &t.db());
-}
-
-fn script_env(name: &str, type_name: &str) -> crate::script_env::ScriptEnvironment {
-    use crate::line_index::{SourcePosition, SourceRange};
-    use crate::script_env::ScriptGlobal;
-    use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
-    let pos = SourcePosition {
-        line: 0,
-        character: 0,
-    };
-    let range = SourceRange {
-        start: pos,
-        end: pos,
-    };
-    crate::script_env::ScriptEnvironment::new(vec![ScriptGlobal {
-        name: name.to_string(),
-        type_name: type_name.to_string(),
-        ini_uri: "file:///redscripts.ini".to_string(),
-        symbol: Symbol {
-            id: SymbolId(0),
-            name: name.to_string(),
-            kind: SymbolKind::Variable,
-            range,
-            selection_range: range,
-            byte_range: 0..0,
-            selection_byte_range: 0..0,
-            container: None,
-            container_name: None,
-            type_annotation: Some(type_name.to_string()),
-            signature: None,
-            base_class: None,
-            owner_class: None,
-            flavour: None,
-            annotations: Vec::new(),
-            access: AccessLevel::Public,
-            is_optional: false,
-            is_out: false,
-            is_state_machine: false,
-            is_abstract: false,
-        },
-    }])
 }
 
 #[test]
