@@ -32,11 +32,11 @@ impl WorkspaceIndex {
     }
 
     pub fn find_state_in_owner(&self, owner: &str, name: &str) -> Option<Definition> {
-        self.states_by_owner.get(owner)?.get(name).cloned()
+        self.states_by_owner.get(owner)?.get(name)?.last().cloned()
     }
 
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
-        self.enum_member_by_name.get(name).cloned()
+        self.enum_member_by_name.get(name)?.last().cloned()
     }
 
     pub fn all_enum_members(&self) -> Vec<Definition> {
@@ -76,6 +76,7 @@ impl WorkspaceIndex {
         self.member_by_type
             .get(container_name)
             .and_then(|members| members.get(name))
+            .and_then(|defs| defs.last())
             .or_else(|| {
                 self.annotated_members_by_type
                     .get(container_name)
@@ -95,7 +96,7 @@ impl WorkspaceIndex {
             .member_by_type
             .get(container_name)
             .into_iter()
-            .flat_map(|m| m.values().cloned());
+            .flat_map(|m| m.values().filter_map(|v| v.last().cloned()));
         let annotated = self
             .annotated_members_by_type
             .get(container_name)
@@ -116,7 +117,10 @@ impl WorkspaceIndex {
     }
 
     pub fn superclass_of(&self, class_name: &str) -> Option<String> {
-        self.superclass_by_name.get(class_name).cloned()
+        self.superclass_by_name
+            .get(class_name)?
+            .last()
+            .map(|(_, base)| base.clone())
     }
 
     pub fn parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<String> {
