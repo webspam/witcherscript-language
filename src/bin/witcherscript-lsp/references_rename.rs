@@ -1,18 +1,20 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_lsp::{ErrorCode, ResponseError};
 use lsp_types::{
     Location, PrepareRenameResponse, ReferenceParams, RenameParams, TextDocumentPositionParams,
     TextEdit, Url, WorkspaceEdit,
 };
-use tracing::info;
+use tracing::{info, trace};
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::resolve::{find_references, resolve_definition};
 
 use crate::backend::Backend;
 use crate::convert::{lsp_range, source_position};
+use crate::logging::wall_clock_us;
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
@@ -74,147 +76,183 @@ impl Backend {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
         let include_declaration = params.context.include_declaration;
+        let started_at = Instant::now();
+        trace!(op = "references", uri = %uri, at = %wall_clock_us(), "start");
+        let result = 'body: {
+            let snap = self.snapshot();
+            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+                break 'body Ok(None);
+            };
+            let document = document_arc.as_ref();
+            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
+            let db = handles.db();
 
-        let snap = self.snapshot();
-        let Some(document_arc) = snap.documents.get(&uri).cloned() else {
-            return Ok(None);
-        };
-        let document = document_arc.as_ref();
-        let handles = self.db_handles_for_with_snapshot(&uri, &snap);
-        let db = handles.db();
+            let ws_kb = handles.workspace().doc_idents_bytes() / 1024;
+            let base_kb = handles.base().doc_idents_bytes() / 1024;
+            info!(
+                ws_kb,
+                base_kb,
+                total_kb = ws_kb + base_kb,
+                "ident index memory"
+            );
 
-        let ws_kb = handles.workspace().doc_idents_bytes() / 1024;
-        let base_kb = handles.base().doc_idents_bytes() / 1024;
-        info!(
-            ws_kb,
-            base_kb,
-            total_kb = ws_kb + base_kb,
-            "ident index memory"
-        );
+            let Some(definition) =
+                resolve_definition(uri.as_str(), document, &db, source_position(position))
+            else {
+                break 'body Ok(Some(Vec::new()));
+            };
 
-        let Some(definition) =
-            resolve_definition(uri.as_str(), document, &db, source_position(position))
-        else {
-            return Ok(Some(Vec::new()));
-        };
+            let loose_uris = self.loose_open_uris(&snap.documents);
+            let target_is_loose = loose_uris.contains(&uri);
 
-        let loose_uris = self.loose_open_uris(&snap.documents);
-        let target_is_loose = loose_uris.contains(&uri);
+            let merged = merge_documents(
+                &snap.base_scripts_documents,
+                &snap.workspace_documents,
+                &snap.documents,
+                &loose_uris,
+                target_is_loose,
+            );
 
-        let merged = merge_documents(
-            &snap.base_scripts_documents,
-            &snap.workspace_documents,
-            &snap.documents,
-            &loose_uris,
-            target_is_loose,
-        );
+            let definition_document = merged.get(&definition.uri).copied().unwrap_or(document);
 
-        let definition_document = merged.get(&definition.uri).copied().unwrap_or(document);
+            let search_docs: Vec<(&str, &ParsedDocument)> = merged
+                .iter()
+                .map(|(uri, doc)| (uri.as_str(), *doc))
+                .collect();
 
-        let search_docs: Vec<(&str, &ParsedDocument)> = merged
-            .iter()
-            .map(|(uri, doc)| (uri.as_str(), *doc))
-            .collect();
+            let refs = find_references(
+                &definition,
+                definition_document,
+                &search_docs,
+                &db,
+                include_declaration,
+            );
 
-        let refs = find_references(
-            &definition,
-            definition_document,
-            &search_docs,
-            &db,
-            include_declaration,
-        );
-
-        let locations: Vec<Location> = refs
-            .into_iter()
-            .filter_map(|(ref_uri, range)| {
-                Url::parse(&ref_uri).ok().map(|url| Location {
-                    uri: url,
-                    range: lsp_range(range),
+            let locations: Vec<Location> = refs
+                .into_iter()
+                .filter_map(|(ref_uri, range)| {
+                    Url::parse(&ref_uri).ok().map(|url| Location {
+                        uri: url,
+                        range: lsp_range(range),
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        Ok(Some(locations))
+            Ok(Some(locations))
+        };
+        trace!(
+            op = "references",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
+        result
     }
 
     pub(crate) async fn _prepare_rename(
         &self,
         params: TextDocumentPositionParams,
     ) -> Result<Option<PrepareRenameResponse>> {
-        let Some(definition) = self.resolve_at(&params.text_document.uri, params.position) else {
-            return Ok(None);
+        let uri = params.text_document.uri.clone();
+        let started_at = Instant::now();
+        trace!(op = "prepare_rename", uri = %uri, at = %wall_clock_us(), "start");
+        let result = 'body: {
+            let Some(definition) = self.resolve_at(&uri, params.position) else {
+                break 'body Ok(None);
+            };
+
+            let snap = self.snapshot();
+            if snap.base_scripts_documents.contains_key(&definition.uri) {
+                break 'body Err(ResponseError::new(
+                    ErrorCode::INVALID_REQUEST,
+                    "Cannot rename a symbol declared in a base script (read-only)",
+                ));
+            }
+            if builtin_source(&definition.uri).is_some() {
+                break 'body Err(ResponseError::new(
+                    ErrorCode::INVALID_REQUEST,
+                    "Cannot rename a built-in symbol",
+                ));
+            }
+
+            Ok(Some(PrepareRenameResponse::DefaultBehavior {
+                default_behavior: true,
+            }))
         };
-
-        let snap = self.snapshot();
-        if snap.base_scripts_documents.contains_key(&definition.uri) {
-            return Err(ResponseError::new(
-                ErrorCode::INVALID_REQUEST,
-                "Cannot rename a symbol declared in a base script (read-only)",
-            ));
-        }
-        if builtin_source(&definition.uri).is_some() {
-            return Err(ResponseError::new(
-                ErrorCode::INVALID_REQUEST,
-                "Cannot rename a built-in symbol",
-            ));
-        }
-
-        Ok(Some(PrepareRenameResponse::DefaultBehavior {
-            default_behavior: true,
-        }))
+        trace!(
+            op = "prepare_rename",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
+        result
     }
 
     pub(crate) async fn _rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri;
         let new_name = params.new_name;
+        let started_at = Instant::now();
+        trace!(op = "rename", uri = %uri, at = %wall_clock_us(), "start");
+        let result = 'body: {
+            let Some(definition) = self.resolve_at(&uri, params.text_document_position.position)
+            else {
+                break 'body Ok(None);
+            };
 
-        let Some(definition) = self.resolve_at(&uri, params.text_document_position.position) else {
-            return Ok(None);
+            let snap = self.snapshot();
+            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
+
+            if snap.base_scripts_documents.contains_key(&definition.uri) {
+                break 'body Err(ResponseError::new(
+                    ErrorCode::INVALID_REQUEST,
+                    "Cannot rename a symbol declared in a base script (read-only)",
+                ));
+            }
+            if builtin_source(&definition.uri).is_some() {
+                break 'body Err(ResponseError::new(
+                    ErrorCode::INVALID_REQUEST,
+                    "Cannot rename a built-in symbol",
+                ));
+            }
+
+            let db = handles.db();
+
+            let loose_uris = self.loose_open_uris(&snap.documents);
+            let merged = merge_documents(
+                &snap.base_scripts_documents,
+                &snap.workspace_documents,
+                &snap.documents,
+                &loose_uris,
+                loose_uris.contains(&uri),
+            );
+
+            let Some(definition_document) = merged.get(&definition.uri).copied() else {
+                break 'body Ok(None);
+            };
+
+            let search_docs: Vec<(&str, &ParsedDocument)> = merged
+                .iter()
+                .map(|(uri, doc)| (uri.as_str(), *doc))
+                .collect();
+
+            let refs = find_references(&definition, definition_document, &search_docs, &db, true);
+
+            let changes = rename_changes(&refs, &new_name, &snap.base_scripts_documents);
+
+            Ok(Some(WorkspaceEdit {
+                changes: Some(changes),
+                ..WorkspaceEdit::default()
+            }))
         };
-
-        let snap = self.snapshot();
-        let handles = self.db_handles_for_with_snapshot(&uri, &snap);
-
-        if snap.base_scripts_documents.contains_key(&definition.uri) {
-            return Err(ResponseError::new(
-                ErrorCode::INVALID_REQUEST,
-                "Cannot rename a symbol declared in a base script (read-only)",
-            ));
-        }
-        if builtin_source(&definition.uri).is_some() {
-            return Err(ResponseError::new(
-                ErrorCode::INVALID_REQUEST,
-                "Cannot rename a built-in symbol",
-            ));
-        }
-
-        let db = handles.db();
-
-        let loose_uris = self.loose_open_uris(&snap.documents);
-        let merged = merge_documents(
-            &snap.base_scripts_documents,
-            &snap.workspace_documents,
-            &snap.documents,
-            &loose_uris,
-            loose_uris.contains(&uri),
+        trace!(
+            op = "rename",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
         );
-
-        let Some(definition_document) = merged.get(&definition.uri).copied() else {
-            return Ok(None);
-        };
-
-        let search_docs: Vec<(&str, &ParsedDocument)> = merged
-            .iter()
-            .map(|(uri, doc)| (uri.as_str(), *doc))
-            .collect();
-
-        let refs = find_references(&definition, definition_document, &search_docs, &db, true);
-
-        let changes = rename_changes(&refs, &new_name, &snap.base_scripts_documents);
-
-        Ok(Some(WorkspaceEdit {
-            changes: Some(changes),
-            ..WorkspaceEdit::default()
-        }))
+        result
     }
 }

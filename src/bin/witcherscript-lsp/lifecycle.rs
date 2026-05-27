@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_lsp::ResponseError;
 use lsp_types::{
@@ -15,13 +16,13 @@ use lsp_types::{
     WorkspaceFileOperationsServerCapabilities, WorkspaceFoldersServerCapabilities,
     WorkspaceServerCapabilities,
 };
-use tracing::info;
+use tracing::{info, trace};
 use witcherscript_language::semantic_tokens::{TOKEN_MODIFIERS, TOKEN_TYPES};
 
 use crate::backend::Backend;
 use crate::config::DiagnosticsScope;
 use crate::convert::workspace_roots;
-use crate::logging::{level_from_str, level_to_u8};
+use crate::logging::{level_from_str, level_to_u8, wall_clock_us};
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
@@ -48,6 +49,8 @@ fn ws_file_operations_capabilities() -> WorkspaceFileOperationsServerCapabilitie
 
 impl Backend {
     pub(crate) async fn _initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        let started_at = Instant::now();
+        trace!(op = "initialize", at = %wall_clock_us(), "start");
         // Capture base scripts path from initializationOptions if provided.
         // workspace/configuration is pulled after initialized(), but this ensures
         // we have a value even before that round-trip completes.
@@ -127,7 +130,7 @@ impl Backend {
         info!(roots = ?roots, game_dir = ?game_dir, supports_pull, "LSP initialize");
         *self.workspace_roots.lock() = roots;
 
-        Ok(InitializeResult {
+        let result = Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::INCREMENTAL,
@@ -197,11 +200,19 @@ impl Backend {
                 ..ServerCapabilities::default()
             },
             ..InitializeResult::default()
-        })
+        });
+        trace!(
+            op = "initialize",
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
+        result
     }
 
     pub(crate) async fn _initialized(&self, _: InitializedParams) {
-        tracing::trace!("initialized: fetching config and indexing");
+        let started_at = Instant::now();
+        trace!(op = "initialized", at = %wall_clock_us(), "start");
         self.fetch_config().await;
         self.index_workspace().await;
         self.refresh_manifest_legacy_dirs();
@@ -209,31 +220,46 @@ impl Backend {
         self.index_base_scripts().await;
         self.initial_index_done.store(true, Ordering::Release);
         self.diagnostics_state_changed();
+        trace!(
+            op = "initialized",
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
     }
 
     pub(crate) async fn _did_change_configuration(&self, _: DidChangeConfigurationParams) {
+        let started_at = Instant::now();
+        trace!(op = "did_change_configuration", at = %wall_clock_us(), "start");
         let initial_done = self.initial_index_done.load(Ordering::Acquire);
         let change = self.fetch_config().await;
         if !initial_done {
-            tracing::trace!("did_change_configuration: startup echo, skipping re-index");
+            trace!(
+                op = "did_change_configuration",
+                elapsed_us = started_at.elapsed().as_micros(),
+                at = %wall_clock_us(),
+                reason = "startup_echo",
+                "complete",
+            );
             return;
         }
         if change.needs_reindex {
-            tracing::trace!("did_change_configuration: index-relevant config changed, re-indexing");
             self.index_workspace().await;
             self.refresh_manifest_legacy_dirs();
             self.index_base_scripts().await;
             self.reindex_open_documents();
             self.diagnostics_state_changed();
-        } else {
-            tracing::trace!(
-                "did_change_configuration: no index-relevant config change, skipping re-index"
-            );
         }
         if change.diagnostics_changed {
-            tracing::trace!("did_change_configuration: diagnostics setting changed, applying");
             self.reconcile_published_diagnostics();
         }
         self.publish_file_scope_status();
+        trace!(
+            op = "did_change_configuration",
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            reindexed = change.needs_reindex,
+            "complete",
+        );
     }
 }

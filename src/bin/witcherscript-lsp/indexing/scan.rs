@@ -53,7 +53,7 @@ impl Backend {
         }
         let exclude_globs = self.files_exclude.lock().clone();
 
-        info!(roots = ?roots, "indexing workspace");
+        info!(op = "index_workspace", roots = ?roots, at = %crate::logging::wall_clock_us(), "start");
         let start = Instant::now();
 
         let join_result = tokio::task::spawn_blocking(move || {
@@ -131,16 +131,19 @@ impl Backend {
         });
 
         info!(
+            op = "index_workspace",
             indexed,
             file_count,
             elapsed_ms = start.elapsed().as_millis(),
-            "workspace indexed"
+            at = %crate::logging::wall_clock_us(),
+            "complete"
         );
 
         self.diagnostics_state_changed();
     }
 
     pub(crate) async fn index_base_scripts(&self) {
+        info!(op = "index_base_scripts", at = %crate::logging::wall_clock_us(), "start");
         let game_dir_opt = self.base_scripts_path.lock().clone();
         let extras = self.additional_script_dirs.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
@@ -157,6 +160,12 @@ impl Backend {
             self.diagnostics_state_changed();
             self.publish_legacy_script_status();
             self.publish_file_scope_status();
+            info!(
+                op = "index_base_scripts",
+                reason = "no_paths_configured",
+                at = %crate::logging::wall_clock_us(),
+                "complete",
+            );
             return;
         }
 
@@ -238,6 +247,8 @@ impl Backend {
                 }
                 let elapsed_ms = seg_start.elapsed().as_millis();
                 info!(
+                    op = "index_base_scripts",
+                    segment = "base",
                     label,
                     path = %root.display(),
                     indexed = count,
@@ -271,6 +282,8 @@ impl Backend {
                 let count = parsed.len();
                 let elapsed_ms = seg_start.elapsed().as_millis();
                 info!(
+                    op = "index_base_scripts",
+                    segment = "legacy",
                     label = "legacyScriptDirectory",
                     path = %dir.display(),
                     indexed = count,
@@ -337,13 +350,15 @@ impl Backend {
 
         let elapsed_ms = total_start.elapsed().as_millis();
         info!(
+            op = "index_base_scripts",
             segments = base_segments_count,
             indexed = base_total,
             legacy_indexed = legacy_total,
             base_replaced_by_legacy = matched_count,
             elapsed_ms,
             elapsed_secs = format!("{:.1}", elapsed_ms as f32 / 1000.0),
-            "base scripts indexed"
+            at = %crate::logging::wall_clock_us(),
+            "complete"
         );
 
         self.diagnostics_state_changed();

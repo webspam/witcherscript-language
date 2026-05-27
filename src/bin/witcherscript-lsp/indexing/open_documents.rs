@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Instant;
 
 use lsp_types::{Position, Url};
-use tracing::error;
+use tracing::{debug, error, trace};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::files::{canonical_uri, read_script_file};
 use witcherscript_language::resolve::{resolve_definition, Definition, ObservedKey};
@@ -10,17 +11,25 @@ use witcherscript_language::resolve::{resolve_definition, Definition, ObservedKe
 use crate::backend::Backend;
 use crate::convert::source_position;
 use crate::file_scope::{classify_file_scope, FileScope};
+use crate::logging::wall_clock_us;
 
 use super::helpers::{reindex_into, remove_document_all_spellings};
 
 impl Backend {
     // A workspace-folder or config change reroutes open docs now, not on next keystroke.
-    #[tracing::instrument(skip(self), level = "debug")]
     pub(crate) fn reindex_open_documents(&self) {
         let snap = self.snapshot();
         if snap.documents.is_empty() {
             return;
         }
+        let started_at = Instant::now();
+        let docs = snap.documents.len();
+        debug!(
+            op = "reindex_open_documents",
+            docs,
+            at = %wall_clock_us(),
+            "start",
+        );
         let roots = self.workspace_roots.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
         let game_dir = self.base_scripts_path.lock().clone();
@@ -92,10 +101,24 @@ impl Backend {
         invalidated.extend(self.invalidated_workspace(&ws_changed));
         invalidated.extend(self.invalidated_loose(&loose_changed));
         self.evict_cache_entries(&invalidated);
+        debug!(
+            op = "reindex_open_documents",
+            docs,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
     }
 
     // Closing a non-loose file reverts it from buffer to on-disk content in the workspace/base index.
     pub(crate) fn reindex_closed_file(&self, uri: &Url) {
+        let started_at = Instant::now();
+        debug!(
+            op = "reindex_closed_file",
+            uri = %uri,
+            at = %wall_clock_us(),
+            "start",
+        );
         let canonical = canonical_uri(uri).unwrap_or_else(|| uri.to_string());
         let is_base = self.is_base_script_uri(uri);
         let parsed = uri
@@ -120,11 +143,26 @@ impl Backend {
             self.invalidated_workspace(&changed)
         };
         self.evict_cache_entries(&invalidated);
+        debug!(
+            op = "reindex_closed_file",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
     }
 
-    #[tracing::instrument(skip(self, text), fields(uri = %uri, bytes = text.len()), level = "debug")]
     pub(crate) fn update_open_document(&self, uri: Url, text: String) {
-        let parsed = tracing::debug_span!("parse_document").in_scope(|| parse_document(text));
+        let started_at = Instant::now();
+        let bytes = text.len();
+        trace!(
+            op = "update_open_document",
+            uri = %uri,
+            bytes,
+            at = %wall_clock_us(),
+            "start",
+        );
+        let parsed = parse_document(text);
         let document = match parsed {
             Ok(document) => document,
             Err(err) => {
@@ -179,6 +217,18 @@ impl Backend {
         invalidated.extend(self.invalidated_loose(&loose_changed));
         self.evict_cache_entries(&invalidated);
         self.spawn_diagnostics_state_changed();
+        let version = self
+            .diagnostic_version
+            .load(std::sync::atomic::Ordering::Acquire);
+        trace!(
+            op = "update_open_document",
+            uri = %uri,
+            bytes,
+            version,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
     }
 
     pub(crate) fn evict_cache_entries(&self, uris: &HashSet<String>) {

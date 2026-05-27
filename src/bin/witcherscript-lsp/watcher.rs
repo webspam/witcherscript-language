@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use lsp_types::request::RegisterCapability;
 use lsp_types::{
@@ -13,6 +14,7 @@ use witcherscript_language::files::{
 };
 
 use crate::backend::Backend;
+use crate::logging::wall_clock_us;
 use crate::project_manifest::MANIFEST_FILENAME;
 
 fn event_is_manifest(event: &FileEvent) -> bool {
@@ -100,6 +102,14 @@ impl Backend {
     }
 
     pub(crate) fn apply_watched_file_events(&self, events: Vec<FileEvent>) {
+        let started_at = Instant::now();
+        let event_count = events.len();
+        debug!(
+            op = "apply_watched_file_events",
+            events = event_count,
+            at = %wall_clock_us(),
+            "start",
+        );
         let open_canonical: HashSet<String> = self
             .snapshot()
             .documents
@@ -217,15 +227,29 @@ impl Backend {
         }
 
         if manifest_set_changed {
-            trace!("manifest dir set changed; spawning index_base_scripts");
             let backend = self.clone();
             crate::spawn_logged("manifest-set-changed reindex", async move {
+                let task_started = Instant::now();
+                trace!(op = "manifest_reindex", at = %wall_clock_us(), "start");
                 backend.index_base_scripts().await;
+                trace!(
+                    op = "manifest_reindex",
+                    elapsed_us = task_started.elapsed().as_micros(),
+                    at = %wall_clock_us(),
+                    "complete",
+                );
             });
         }
 
         if had_updates || had_removals || legacy_map_refresh || manifest_set_changed {
             self.spawn_diagnostics_state_changed();
         }
+        debug!(
+            op = "apply_watched_file_events",
+            events = event_count,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
     }
 }

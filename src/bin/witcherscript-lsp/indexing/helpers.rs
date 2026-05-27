@@ -91,7 +91,6 @@ pub(crate) fn mod_shared_imports_dir(game_dir: &Path) -> Option<PathBuf> {
     msi.is_dir().then_some(msi)
 }
 
-#[tracing::instrument(skip(index, document), fields(uri = %uri), level = "debug")]
 pub(crate) fn index_open_document(
     index: &mut WorkspaceIndex,
     uri: &Url,

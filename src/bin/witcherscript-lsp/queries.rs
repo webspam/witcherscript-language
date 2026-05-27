@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use async_lsp::ResponseError;
 use lsp_types::{
     CodeActionParams, CodeActionResponse, DocumentDiagnosticParams, DocumentDiagnosticReport,
@@ -8,6 +10,7 @@ use lsp_types::{
     SemanticTokens, SemanticTokensParams, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
     TextEdit, UnchangedDocumentDiagnosticReport, Url,
 };
+use tracing::trace;
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::formatter::format_document;
 use witcherscript_language::resolve::{
@@ -20,6 +23,7 @@ use crate::convert::{
     base_script_conflict_code_actions, document_symbols, hover_markdown, lsp_range,
     signature_help_response, source_position,
 };
+use crate::logging::wall_clock_us;
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
@@ -29,48 +33,70 @@ impl Backend {
         params: DocumentDiagnosticParams,
     ) -> Result<DocumentDiagnosticReportResult> {
         let uri = params.text_document.uri.clone();
-        let (items, result_id) = {
-            let snap = self.snapshot();
-            let Some(document) = snap.documents.get(&uri).cloned() else {
-                return Ok(DocumentDiagnosticReportResult::Report(
-                    DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+        let started_at = Instant::now();
+        trace!(op = "document_diagnostic", uri = %uri, at = %wall_clock_us(), "start");
+        let result = 'body: {
+            let (items, result_id) = {
+                let snap = self.snapshot();
+                let Some(document) = snap.documents.get(&uri).cloned() else {
+                    break 'body Ok(DocumentDiagnosticReportResult::Report(
+                        DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+                            related_documents: None,
+                            full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                                result_id: None,
+                                items: Vec::new(),
+                            },
+                        }),
+                    ));
+                };
+                self.compute_diagnostics_for_uri(&uri, document.as_ref())
+            };
+            if params.previous_result_id.as_deref() == Some(result_id.as_str()) {
+                break 'body Ok(DocumentDiagnosticReportResult::Report(
+                    DocumentDiagnosticReport::Unchanged(RelatedUnchangedDocumentDiagnosticReport {
                         related_documents: None,
-                        full_document_diagnostic_report: FullDocumentDiagnosticReport {
-                            result_id: None,
-                            items: Vec::new(),
+                        unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport {
+                            result_id,
                         },
                     }),
                 ));
-            };
-            self.compute_diagnostics_for_uri(&uri, document.as_ref())
-        };
-        if params.previous_result_id.as_deref() == Some(result_id.as_str()) {
-            return Ok(DocumentDiagnosticReportResult::Report(
-                DocumentDiagnosticReport::Unchanged(RelatedUnchangedDocumentDiagnosticReport {
+            }
+            Ok(DocumentDiagnosticReportResult::Report(
+                DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
                     related_documents: None,
-                    unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport {
-                        result_id,
+                    full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                        result_id: Some(result_id),
+                        items,
                     },
                 }),
-            ));
-        }
-        Ok(DocumentDiagnosticReportResult::Report(
-            DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
-                related_documents: None,
-                full_document_diagnostic_report: FullDocumentDiagnosticReport {
-                    result_id: Some(result_id),
-                    items,
-                },
-            }),
-        ))
+            ))
+        };
+        trace!(
+            op = "document_diagnostic",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
+        result
     }
 
     pub(crate) async fn _code_action(
         &self,
         params: CodeActionParams,
     ) -> Result<Option<CodeActionResponse>> {
+        let uri = params.text_document.uri.clone();
+        let started_at = Instant::now();
+        trace!(op = "code_action", uri = %uri, at = %wall_clock_us(), "start");
         let roots = self.workspace_roots.lock().clone();
         let actions = base_script_conflict_code_actions(&params.context.diagnostics, &roots);
+        trace!(
+            op = "code_action",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
         Ok((!actions.is_empty()).then_some(actions))
     }
 
@@ -80,56 +106,80 @@ impl Backend {
     ) -> Result<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let snap = self.snapshot();
-        let Some(document_arc) = snap.documents.get(&uri).cloned() else {
-            return Ok(None);
-        };
-        let document = document_arc.as_ref();
-        let handles = self.db_handles_for_with_snapshot(&uri, &snap);
-        let db = handles.db();
-        let definitions =
-            resolve_all_definitions(uri.as_str(), document, &db, source_position(position));
+        let started_at = Instant::now();
+        trace!(op = "definition", uri = %uri, at = %wall_clock_us(), "start");
+        let result = 'body: {
+            let snap = self.snapshot();
+            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+                break 'body Ok(None);
+            };
+            let document = document_arc.as_ref();
+            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
+            let db = handles.db();
+            let definitions =
+                resolve_all_definitions(uri.as_str(), document, &db, source_position(position));
 
-        let locations: Vec<Location> = definitions
-            .into_iter()
-            .filter_map(|definition| {
-                Url::parse(&definition.uri).ok().map(|target_uri| Location {
-                    uri: target_uri,
-                    range: lsp_range(definition.symbol.selection_range),
+            let locations: Vec<Location> = definitions
+                .into_iter()
+                .filter_map(|definition| {
+                    Url::parse(&definition.uri).ok().map(|target_uri| Location {
+                        uri: target_uri,
+                        range: lsp_range(definition.symbol.selection_range),
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        match locations.as_slice() {
-            [] => Ok(None),
-            [single] => Ok(Some(GotoDefinitionResponse::Scalar(single.clone()))),
-            _ => Ok(Some(GotoDefinitionResponse::Array(locations))),
-        }
+            match locations.as_slice() {
+                [] => Ok(None),
+                [single] => Ok(Some(GotoDefinitionResponse::Scalar(single.clone()))),
+                _ => Ok(Some(GotoDefinitionResponse::Array(locations))),
+            }
+        };
+        trace!(
+            op = "definition",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
+        result
     }
 
     pub(crate) async fn _hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let snap = self.snapshot();
-        let Some(document_arc) = snap.documents.get(&uri).cloned() else {
-            return Ok(None);
-        };
-        let document = document_arc.as_ref();
-        let handles = self.db_handles_for_with_snapshot(&uri, &snap);
-        let db = handles.db();
-        let Some(definition) =
-            resolve_definition(uri.as_str(), document, &db, source_position(position))
-        else {
-            return Ok(None);
-        };
+        let started_at = Instant::now();
+        trace!(op = "hover", uri = %uri, at = %wall_clock_us(), "start");
+        let result = 'body: {
+            let snap = self.snapshot();
+            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+                break 'body Ok(None);
+            };
+            let document = document_arc.as_ref();
+            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
+            let db = handles.db();
+            let Some(definition) =
+                resolve_definition(uri.as_str(), document, &db, source_position(position))
+            else {
+                break 'body Ok(None);
+            };
 
-        Ok(Some(Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: hover_markdown(&definition),
-            }),
-            range: Some(lsp_range(definition.symbol.selection_range)),
-        }))
+            Ok(Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: hover_markdown(&definition),
+                }),
+                range: Some(lsp_range(definition.symbol.selection_range)),
+            }))
+        };
+        trace!(
+            op = "hover",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
+        result
     }
 
     pub(crate) async fn _signature_help(
@@ -138,39 +188,64 @@ impl Backend {
     ) -> Result<Option<SignatureHelp>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let snap = self.snapshot();
-        let Some(document_arc) = snap.documents.get(&uri).cloned() else {
-            return Ok(None);
-        };
-        let document = document_arc.as_ref();
-        let handles = self.db_handles_for_with_snapshot(&uri, &snap);
-        let db = handles.db();
-        let compact_colon = self.config.load().formatter_compact_colon;
+        let started_at = Instant::now();
+        trace!(op = "signature_help", uri = %uri, at = %wall_clock_us(), "start");
+        let result = 'body: {
+            let snap = self.snapshot();
+            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+                break 'body Ok(None);
+            };
+            let document = document_arc.as_ref();
+            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
+            let db = handles.db();
+            let compact_colon = self.config.load().formatter_compact_colon;
 
-        Ok(signature_help(
-            uri.as_str(),
-            document,
-            &db,
-            source_position(position),
-            compact_colon,
-        )
-        .map(signature_help_response))
+            Ok(signature_help(
+                uri.as_str(),
+                document,
+                &db,
+                source_position(position),
+                compact_colon,
+            )
+            .map(signature_help_response))
+        };
+        trace!(
+            op = "signature_help",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
+        result
     }
 
     pub(crate) async fn _document_symbol(
         &self,
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
-        let snap = self.snapshot();
-        let Some(document) = snap.documents.get(&params.text_document.uri).cloned() else {
-            return Ok(None);
-        };
+        let uri = params.text_document.uri.clone();
+        let started_at = Instant::now();
+        trace!(op = "document_symbol", uri = %uri, at = %wall_clock_us(), "start");
+        let result = 'body: {
+            let snap = self.snapshot();
+            let Some(document) = snap.documents.get(&uri).cloned() else {
+                break 'body Ok(None);
+            };
 
-        Ok(Some(DocumentSymbolResponse::Nested(document_symbols(
-            &document.symbols,
-            None,
-            params.text_document.uri.as_str(),
-        ))))
+            Ok(Some(DocumentSymbolResponse::Nested(document_symbols(
+                &document.symbols,
+                None,
+                uri.as_str(),
+            ))))
+        };
+        trace!(
+            op = "document_symbol",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
+        result
     }
 
     pub(crate) async fn _semantic_tokens_full(
@@ -178,28 +253,40 @@ impl Backend {
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
-        let snap = self.snapshot();
-        let Some(document_arc) = snap.documents.get(&uri).cloned() else {
-            return Ok(None);
+        let started_at = Instant::now();
+        trace!(op = "semantic_tokens_full", uri = %uri, at = %wall_clock_us(), "start");
+        let result = 'body: {
+            let snap = self.snapshot();
+            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+                break 'body Ok(None);
+            };
+            let document = document_arc.as_ref();
+            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
+            let db = handles.db();
+            let data = collect_semantic_tokens(uri.as_str(), document, &db);
+            let tokens: Vec<SemanticToken> = data
+                .chunks_exact(5)
+                .map(|c| SemanticToken {
+                    delta_line: c[0],
+                    delta_start: c[1],
+                    length: c[2],
+                    token_type: c[3],
+                    token_modifiers_bitset: c[4],
+                })
+                .collect();
+            Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
+                result_id: None,
+                data: tokens,
+            })))
         };
-        let document = document_arc.as_ref();
-        let handles = self.db_handles_for_with_snapshot(&uri, &snap);
-        let db = handles.db();
-        let data = collect_semantic_tokens(uri.as_str(), document, &db);
-        let tokens: Vec<SemanticToken> = data
-            .chunks_exact(5)
-            .map(|c| SemanticToken {
-                delta_line: c[0],
-                delta_start: c[1],
-                length: c[2],
-                token_type: c[3],
-                token_modifiers_bitset: c[4],
-            })
-            .collect();
-        Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
-            result_id: None,
-            data: tokens,
-        })))
+        trace!(
+            op = "semantic_tokens_full",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
+        );
+        result
     }
 
     pub(crate) async fn _formatting(
@@ -210,43 +297,55 @@ impl Backend {
         if builtin_source(uri.as_str()).is_some() {
             return Ok(None);
         }
-        let tab_size = params.options.tab_size;
-        let use_tabs = !params.options.insert_spaces;
+        let started_at = Instant::now();
+        trace!(op = "formatting", uri = %uri, at = %wall_clock_us(), "start");
+        let result = 'body: {
+            let tab_size = params.options.tab_size;
+            let use_tabs = !params.options.insert_spaces;
 
-        let snap = self.snapshot();
-        let Some(document_arc) = snap.documents.get(&uri).cloned() else {
-            return Ok(None);
+            let snap = self.snapshot();
+            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+                break 'body Ok(None);
+            };
+            let document = document_arc.as_ref();
+
+            let cfg = self.config.load();
+            let line_limit = cfg.formatter_line_limit;
+            let compact_colon = cfg.formatter_compact_colon;
+            let align_member_colons = cfg.formatter_align_member_colons;
+
+            let formatted = format_document(
+                document.tree.root_node(),
+                &document.source,
+                tab_size,
+                use_tabs,
+                line_limit,
+                compact_colon,
+                align_member_colons,
+            );
+
+            if formatted == document.source {
+                break 'body Ok(Some(Vec::new()));
+            }
+
+            let full_range = lsp_range(document.line_index.byte_range_to_range(
+                &document.source,
+                0,
+                document.source.len(),
+            ));
+
+            Ok(Some(vec![TextEdit {
+                range: full_range,
+                new_text: formatted,
+            }]))
         };
-        let document = document_arc.as_ref();
-
-        let cfg = self.config.load();
-        let line_limit = cfg.formatter_line_limit;
-        let compact_colon = cfg.formatter_compact_colon;
-        let align_member_colons = cfg.formatter_align_member_colons;
-
-        let formatted = format_document(
-            document.tree.root_node(),
-            &document.source,
-            tab_size,
-            use_tabs,
-            line_limit,
-            compact_colon,
-            align_member_colons,
+        trace!(
+            op = "formatting",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            at = %wall_clock_us(),
+            "complete",
         );
-
-        if formatted == document.source {
-            return Ok(Some(Vec::new()));
-        }
-
-        let full_range = lsp_range(document.line_index.byte_range_to_range(
-            &document.source,
-            0,
-            document.source.len(),
-        ));
-
-        Ok(Some(vec![TextEdit {
-            range: full_range,
-            new_text: formatted,
-        }]))
+        result
     }
 }
