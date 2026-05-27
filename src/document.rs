@@ -66,13 +66,31 @@ pub fn parse_document_with_prior(
     prior_tree: Option<&Tree>,
 ) -> Result<ParsedDocument, ParseError> {
     let source = source.into();
+    let ts_at = std::time::Instant::now();
     let tree = parser
         .parse(&source, prior_tree)
         .ok_or(ParseError::NoTree)?;
+    let ts_us = ts_at.elapsed().as_micros();
     let root = tree.root_node();
+    let li_at = std::time::Instant::now();
     let line_index = LineIndex::new(&source);
+    let li_us = li_at.elapsed().as_micros();
+    let diag_at = std::time::Instant::now();
     let diagnostics = collect_diagnostics(root, &source);
+    let diag_us = diag_at.elapsed().as_micros();
+    let sym_at = std::time::Instant::now();
     let symbols = extract_symbols(root, &source, &line_index);
+    let sym_us = sym_at.elapsed().as_micros();
+    tracing::trace!(
+        op = "parse_document",
+        bytes = source.len(),
+        incremental = prior_tree.is_some(),
+        ts_us,
+        li_us,
+        diag_us,
+        sym_us,
+        "phases",
+    );
 
     Ok(ParsedDocument {
         source,
