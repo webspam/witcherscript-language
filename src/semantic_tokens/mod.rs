@@ -148,11 +148,6 @@ fn classify_ident(
                     .map(|def| (symbol_kind_to_token_type(def.symbol.kind), 0));
             }
             let name = node.utf8_text(document.source.as_bytes()).ok()?;
-            // redscripts.ini globals resolve to their declared class for Go-To-Def, but
-            // they are values, not types — colour as variable+defaultLibrary instead.
-            if db.script_global_type(name).is_some() {
-                return Some((TT_VARIABLE, MOD_DEFAULT_LIBRARY));
-            }
             let type_kinds = [SymbolKind::Class, SymbolKind::Struct, SymbolKind::State];
             let class_id = document
                 .symbols
@@ -163,7 +158,7 @@ fn classify_ident(
                 return *cached;
             }
             let result = classify_definition_at_ident(uri, document, db, node)
-                .map(|def| (symbol_kind_to_token_type(def.symbol.kind), 0));
+                .map(|def| script_global_override(db, name, &def));
             cache.insert(key, result);
             result
         }
@@ -220,6 +215,28 @@ fn classify_locally(node: Node, document: &ParsedDocument) -> Option<u32> {
         .symbols
         .top_level_by_name(name)
         .map(|sym| symbol_kind_to_token_type(sym.kind))
+}
+
+// redscripts.ini globals redirect to their class for Go-To-Def; for tokens, recolour
+// the redirected class (or the synthetic INI Variable) as variable+defaultLibrary so
+// `thePlayer` doesn't paint as a type. Workspace shadows win normally.
+fn script_global_override(
+    db: &SymbolDb,
+    name: &str,
+    def: &crate::resolve::Definition,
+) -> (u32, u32) {
+    let kind = def.symbol.kind;
+    if kind == SymbolKind::Variable {
+        return (TT_VARIABLE, MOD_DEFAULT_LIBRARY);
+    }
+    let is_type = matches!(
+        kind,
+        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
+    );
+    if is_type && db.script_global_type(name).as_deref() == Some(def.symbol.name.as_str()) {
+        return (TT_VARIABLE, MOD_DEFAULT_LIBRARY);
+    }
+    (symbol_kind_to_token_type(kind), 0)
 }
 
 fn symbol_kind_to_token_type(kind: SymbolKind) -> u32 {

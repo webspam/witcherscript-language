@@ -74,8 +74,7 @@ All reference-site `ident` nodes fall through to the `_` arm in `classify_ident`
 
 1. Calls `classify_locally()` (local variables/parameters of enclosing function, then members of enclosing class/struct/state, then top-level symbols in the current document).
 2. If the ident is the RHS of a `member_access_expr` (i.e. after the `.`), calls `classify_definition_at_ident()` directly, which dispatches to `resolve_member_access()` to infer the receiver type and look up the member.
-3. Otherwise, if the name matches a `redscripts.ini` script global (`db.script_global_type(name).is_some()`), emits `variable` (5) with the `defaultLibrary` modifier bit set. Go-To-Def for the same name still jumps to the global's declared class via `find_script_global`; semantic tokens just refuse to colour `thePlayer` as a class.
-4. Otherwise, calls `classify_definition_at_ident()` which searches locals, type members, document top-level, then the workspace db (`find_top_level`, `find_enum_member`, `find_script_global`).
+3. Otherwise, calls `classify_definition_at_ident()` which searches locals, type members, document top-level, then the workspace db (`find_top_level`, `find_enum_member`, `find_script_global`). If the resolved definition is the class a script global redirects to (Go-To-Def jumps to `CR4Player` for `thePlayer`), or the synthetic INI Variable when that class is not loaded, the token is recoloured as `variable` (5) with the `defaultLibrary` modifier so `thePlayer` doesn't paint as a type. Workspace symbols that shadow the global name win normally and are not overridden.
 
 If nothing resolves, no token is emitted for the identifier.
 
