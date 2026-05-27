@@ -3,9 +3,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use lsp_types::Url;
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 use tree_sitter::{Parser, Tree};
-use witcherscript_language::document::{parse_document_with_prior, ParsedDocument};
+use witcherscript_language::document::{
+    allocate_parse_version, parse_document_with_prior, ParsedDocument,
+};
 use witcherscript_language::line_index::LineIndex;
 
 use crate::backend::Backend;
@@ -15,6 +17,7 @@ pub(crate) struct PendingEdit {
     pub source: String,
     pub line_index: LineIndex,
     pub tree: Tree,
+    pub target_parse_version: u64,
 }
 
 impl Backend {
@@ -34,15 +37,31 @@ impl Backend {
             .map(|doc| (doc.source.clone(), doc.line_index.clone(), doc.tree.clone()))
     }
 
-    pub(crate) fn enqueue_edit(&self, uri: Url, edit: PendingEdit) {
+    pub(crate) fn enqueue_edit(&self, uri: Url, source: String, line_index: LineIndex, tree: Tree) {
+        let target_parse_version = allocate_parse_version();
+        self.pending_target_versions
+            .lock()
+            .insert(uri.clone(), target_parse_version);
+        let edit = PendingEdit {
+            source,
+            line_index,
+            tree,
+            target_parse_version,
+        };
         if !self.edit_writer_spawned.load(Ordering::Acquire) {
+            trace!(op = "enqueue_edit", uri = %uri, path = "sync", target_parse_version, "enter");
             self.process_pending_edit(uri, edit);
             self.spawn_diagnostics_state_changed();
             return;
         }
-        self.pending_edits.lock().insert(uri, edit);
-        self.diagnostic_version.fetch_add(1, Ordering::AcqRel);
+        self.pending_edits.lock().insert(uri.clone(), edit);
+        let version = self.diagnostic_version.fetch_add(1, Ordering::AcqRel) + 1;
+        trace!(op = "enqueue_edit", uri = %uri, path = "async", version, target_parse_version, "queued");
         self.edit_notify.notify_one();
+    }
+
+    pub(crate) fn pending_target_for(&self, uri: &Url) -> Option<u64> {
+        self.pending_target_versions.lock().get(uri).copied()
     }
 
     pub(crate) fn spawn_edit_writer(&self) {
@@ -81,6 +100,7 @@ impl Backend {
     pub(crate) fn process_pending_edit(&self, uri: Url, edit: PendingEdit) {
         let started_at = Instant::now();
         let bytes = edit.source.len();
+        trace!(op = "process_pending_edit", uri = %uri, bytes, "start");
         let parse_at = Instant::now();
         let mut parser = Parser::new();
         if let Err(err) = parser.set_language(&tree_sitter_witcherscript::language()) {
@@ -89,18 +109,22 @@ impl Backend {
         }
         let parsed = parse_document_with_prior(&mut parser, edit.source, Some(&edit.tree));
         let parse_us = parse_at.elapsed().as_micros();
-        let document = match parsed {
+        let mut document = match parsed {
             Ok(document) => document,
             Err(err) => {
                 error!(uri = %uri, error = %err, "failed to parse document");
                 return;
             }
         };
+        document.parse_version = edit.target_parse_version;
+        let parse_version = document.parse_version;
         let document: Arc<ParsedDocument> = Arc::new(document);
 
         let publish_at = Instant::now();
+        trace!(op = "process_pending_edit", uri = %uri, parse_version, "publishing");
         self.publish_open_document_indices(&uri, &document);
         let publish_us = publish_at.elapsed().as_micros();
+        trace!(op = "process_pending_edit", uri = %uri, parse_version, "published");
 
         debug!(
             op = "process_pending_edit",

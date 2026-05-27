@@ -12,7 +12,6 @@ use witcherscript_language::line_index::LineIndex;
 
 use crate::backend::Backend;
 use crate::convert::{source_position, source_range};
-use crate::edit_queue::PendingEdit;
 
 fn uri_within_any(uri: &str, dirs: &[PathBuf]) -> bool {
     let Some(path) = Url::parse(uri).ok().and_then(|u| u.to_file_path().ok()) else {
@@ -92,14 +91,7 @@ impl Backend {
         }
 
         if prior_tree_valid {
-            self.enqueue_edit(
-                uri.clone(),
-                PendingEdit {
-                    source,
-                    line_index,
-                    tree: prior_tree,
-                },
-            );
+            self.enqueue_edit(uri.clone(), source, line_index, prior_tree);
         } else {
             // Full-document replace: prior tree is invalid; bypass the queue and re-parse from scratch.
             self.update_open_document(uri.clone(), source);
@@ -138,6 +130,7 @@ impl Backend {
             self.reindex_closed_file(&uri);
             self.refresh_legacy_override_maps_if_legacy_uri(&uri);
         }
+        self.pending_target_versions.lock().remove(&uri);
         self.spawn_diagnostics_state_changed();
         self.publish_file_scope_status();
         self.sent_file_scope_status.lock().remove(&uri);

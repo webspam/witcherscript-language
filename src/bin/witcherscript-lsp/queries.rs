@@ -50,6 +50,13 @@ impl Backend {
                         }),
                     ));
                 };
+                let target = self.pending_target_for(&uri).unwrap_or(0);
+                if target > document.parse_version {
+                    break 'body Err(ResponseError::new(
+                        ErrorCode::CONTENT_MODIFIED,
+                        "document edited while computing diagnostics",
+                    ));
+                }
                 self.compute_diagnostics_for_uri(&uri, document.as_ref(), version)
             };
             let Some((items, result_id)) = computed else {
@@ -262,6 +269,13 @@ impl Backend {
                 break 'body Ok(None);
             };
             let document = document_arc.as_ref();
+            let target = self.pending_target_for(&uri).unwrap_or(0);
+            if target > document.parse_version {
+                break 'body Err(ResponseError::new(
+                    ErrorCode::CONTENT_MODIFIED,
+                    "document edited while computing semantic tokens",
+                ));
+            }
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
             let db = handles.db();
             let version = self.diagnostic_version.load(Ordering::Acquire);

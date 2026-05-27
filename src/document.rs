@@ -14,6 +14,10 @@ fn next_parse_version() -> u64 {
     PARSE_VERSION.fetch_add(1, Ordering::Relaxed)
 }
 
+pub fn allocate_parse_version() -> u64 {
+    next_parse_version()
+}
+
 #[derive(Debug)]
 pub struct ParsedDocument {
     pub source: String,
