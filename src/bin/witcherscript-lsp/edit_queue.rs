@@ -39,9 +39,6 @@ impl Backend {
 
     pub(crate) fn enqueue_edit(&self, uri: Url, source: String, line_index: LineIndex, tree: Tree) {
         let target_parse_version = allocate_parse_version();
-        self.pending_target_versions
-            .lock()
-            .insert(uri.clone(), target_parse_version);
         let edit = PendingEdit {
             source,
             line_index,
@@ -61,7 +58,10 @@ impl Backend {
     }
 
     pub(crate) fn pending_target_for(&self, uri: &Url) -> Option<u64> {
-        self.pending_target_versions.lock().get(uri).copied()
+        self.pending_edits
+            .lock()
+            .get(uri)
+            .map(|e| e.target_parse_version)
     }
 
     pub(crate) fn spawn_edit_writer(&self) {

@@ -130,7 +130,6 @@ impl Backend {
             self.reindex_closed_file(&uri);
             self.refresh_legacy_override_maps_if_legacy_uri(&uri);
         }
-        self.pending_target_versions.lock().remove(&uri);
         self.spawn_diagnostics_state_changed();
         self.publish_file_scope_status();
         self.sent_file_scope_status.lock().remove(&uri);

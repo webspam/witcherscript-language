@@ -110,7 +110,6 @@ pub(crate) struct Backend {
     pub(crate) client_supports_pull_diagnostics: Arc<AtomicBool>,
     pub(crate) refresh_pending: Arc<AtomicBool>,
     pub(crate) pending_edits: Arc<Mutex<HashMap<Url, PendingEdit>>>,
-    pub(crate) pending_target_versions: Arc<Mutex<HashMap<Url, u64>>>,
     pub(crate) edit_notify: Arc<tokio::sync::Notify>,
     pub(crate) edit_writer_spawned: Arc<AtomicBool>,
     // Held only so tests can await the most recent spawned publish; production never awaits this.
@@ -201,7 +200,6 @@ impl Backend {
             client_supports_pull_diagnostics: Arc::new(AtomicBool::new(false)),
             refresh_pending: Arc::new(AtomicBool::new(false)),
             pending_edits: Arc::new(Mutex::new(HashMap::new())),
-            pending_target_versions: Arc::new(Mutex::new(HashMap::new())),
             edit_notify: Arc::new(tokio::sync::Notify::new()),
             edit_writer_spawned: Arc::new(AtomicBool::new(false)),
             last_publish_task: Arc::new(tokio::sync::Mutex::new(None)),
