@@ -78,23 +78,44 @@ impl Backend {
         loop {
             self.edit_notify.notified().await;
             loop {
-                let batch: Vec<(Url, PendingEdit)> = {
-                    let mut pending = self.pending_edits.lock();
-                    pending.drain().collect()
+                let uris: Vec<Url> = {
+                    let pending = self.pending_edits.lock();
+                    pending.keys().cloned().collect()
                 };
-                if batch.is_empty() {
+                if uris.is_empty() {
                     break;
                 }
                 let backend = self.clone();
                 let _ = tokio::task::spawn_blocking(move || {
-                    for (uri, edit) in batch {
-                        backend.process_pending_edit(uri, edit);
+                    for uri in uris {
+                        // Keep the entry until publish so a racing did_change sees it via latest_edit_state.
+                        let Some(edit) = backend.clone_pending_for(&uri) else {
+                            continue;
+                        };
+                        let processed_target = edit.target_parse_version;
+                        backend.process_pending_edit(uri.clone(), edit);
+                        let mut pending = backend.pending_edits.lock();
+                        if let Some(current) = pending.get(&uri) {
+                            if current.target_parse_version == processed_target {
+                                pending.remove(&uri);
+                            }
+                        }
                     }
                 })
                 .await;
                 self.spawn_diagnostics_at_current_version();
             }
         }
+    }
+
+    pub(crate) fn clone_pending_for(&self, uri: &Url) -> Option<PendingEdit> {
+        let pending = self.pending_edits.lock();
+        pending.get(uri).map(|e| PendingEdit {
+            source: e.source.clone(),
+            line_index: e.line_index.clone(),
+            tree: e.tree.clone(),
+            target_parse_version: e.target_parse_version,
+        })
     }
 
     pub(crate) fn process_pending_edit(&self, uri: Url, edit: PendingEdit) {

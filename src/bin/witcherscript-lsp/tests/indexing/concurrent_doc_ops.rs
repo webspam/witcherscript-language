@@ -244,6 +244,36 @@ fn document_diagnostic_params(uri: &Url) -> DocumentDiagnosticParams {
 }
 
 #[test]
+fn did_change_chains_against_in_flight_edit_after_worker_takes_clone() {
+    let backend = make_backend();
+    backend.edit_writer_spawned.store(true, Ordering::Release);
+
+    let uri: Url = "file:///in_flight_chain.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "abc"));
+    backend._did_change(change_params(&uri, 2, (0, 3), (0, 3), "DE"));
+
+    let in_flight = backend
+        .clone_pending_for(&uri)
+        .expect("pending entry present after did_change");
+    assert_eq!(in_flight.source, "abcDE");
+    assert!(
+        backend.pending_edits.lock().contains_key(&uri),
+        "cloning for the worker must not drain the entry; otherwise did_change races against a stale snapshot"
+    );
+
+    backend._did_change(change_params(&uri, 3, (0, 5), (0, 5), "x"));
+
+    let pending = backend.pending_edits.lock();
+    let chained = pending
+        .get(&uri)
+        .expect("pending entry still present after the second did_change");
+    assert_eq!(
+        chained.source, "abcDEx",
+        "the second did_change must chain onto the in-flight edit, not the stale snapshot",
+    );
+}
+
+#[test]
 fn semantic_tokens_full_bails_when_pending_edit_outranks_snapshot() {
     let backend = make_backend();
     backend.edit_writer_spawned.store(true, Ordering::Release);
