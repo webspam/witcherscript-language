@@ -1,8 +1,8 @@
 use rstest::rstest;
 
 use super::{
-    collect_semantic_tokens, decode_tokens, SemanticTokenView, TT_CLASS, TT_ENUM, TT_ENUM_MEMBER,
-    TT_FUNCTION, TT_PARAMETER, TT_PROPERTY, TT_VARIABLE,
+    collect_semantic_tokens, collect_semantic_tokens_cancellable, decode_tokens, SemanticTokenView,
+    TT_CLASS, TT_ENUM, TT_ENUM_MEMBER, TT_FUNCTION, TT_PARAMETER, TT_PROPERTY, TT_VARIABLE,
 };
 use crate::document::parse_document;
 use crate::resolve::{SymbolDb, WorkspaceIndex};
@@ -419,6 +419,29 @@ fn workspace_class_shadowing_script_global_still_colours_as_class() {
         player.token_modifiers, 0,
         "shadowing class should carry no modifiers, got {:#b}",
         player.token_modifiers,
+    );
+}
+
+#[test]
+fn cancellable_walk_returns_none_when_should_continue_is_false() {
+    let source = "class A {} class B {} class C {}\n";
+    let document = parse_document(source).expect("parse");
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&empty, &empty);
+    let result = collect_semantic_tokens_cancellable(TEST_URI, &document, &db, &|| false);
+    assert!(result.is_none(), "cancelled walk should return None");
+}
+
+#[test]
+fn cancellable_walk_returns_some_when_should_continue_is_true() {
+    let source = "class A {}\n";
+    let document = parse_document(source).expect("parse");
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&empty, &empty);
+    let result = collect_semantic_tokens_cancellable(TEST_URI, &document, &db, &|| true);
+    assert!(
+        result.is_some_and(|tokens| !tokens.is_empty()),
+        "non-cancelled walk should return tokens"
     );
 }
 

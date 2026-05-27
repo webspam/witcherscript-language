@@ -1,6 +1,7 @@
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use async_lsp::ResponseError;
+use async_lsp::{ErrorCode, ResponseError};
 use lsp_types::{
     CodeActionParams, CodeActionResponse, DocumentDiagnosticParams, DocumentDiagnosticReport,
     DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentSymbolParams,
@@ -16,7 +17,7 @@ use witcherscript_language::formatter::format_document;
 use witcherscript_language::resolve::{
     resolve_all_definitions, resolve_definition, signature_help,
 };
-use witcherscript_language::semantic_tokens::collect_semantic_tokens;
+use witcherscript_language::semantic_tokens::collect_semantic_tokens_cancellable;
 
 use crate::backend::Backend;
 use crate::convert::{
@@ -35,8 +36,9 @@ impl Backend {
         let uri = params.text_document.uri.clone();
         let started_at = Instant::now();
         trace!(op = "document_diagnostic", uri = %uri, at = %wall_clock_us(), "start");
+        let version = self.diagnostic_version.load(Ordering::Acquire);
         let result = 'body: {
-            let (items, result_id) = {
+            let computed = {
                 let snap = self.snapshot();
                 let Some(document) = snap.documents.get(&uri).cloned() else {
                     break 'body Ok(DocumentDiagnosticReportResult::Report(
@@ -49,7 +51,13 @@ impl Backend {
                         }),
                     ));
                 };
-                self.compute_diagnostics_for_uri(&uri, document.as_ref())
+                self.compute_diagnostics_for_uri(&uri, document.as_ref(), version)
+            };
+            let Some((items, result_id)) = computed else {
+                break 'body Err(ResponseError::new(
+                    ErrorCode::CONTENT_MODIFIED,
+                    "document changed while computing diagnostics",
+                ));
             };
             if params.previous_result_id.as_deref() == Some(result_id.as_str()) {
                 break 'body Ok(DocumentDiagnosticReportResult::Report(
@@ -263,7 +271,17 @@ impl Backend {
             let document = document_arc.as_ref();
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
             let db = handles.db();
-            let data = collect_semantic_tokens(uri.as_str(), document, &db);
+            let version = self.diagnostic_version.load(Ordering::Acquire);
+            let diagnostic_version = self.diagnostic_version.clone();
+            let should_continue = || diagnostic_version.load(Ordering::Acquire) == version;
+            let Some(data) =
+                collect_semantic_tokens_cancellable(uri.as_str(), document, &db, &should_continue)
+            else {
+                break 'body Err(ResponseError::new(
+                    ErrorCode::CONTENT_MODIFIED,
+                    "document changed while computing semantic tokens",
+                ));
+            };
             let tokens: Vec<SemanticToken> = data
                 .chunks_exact(5)
                 .map(|c| SemanticToken {

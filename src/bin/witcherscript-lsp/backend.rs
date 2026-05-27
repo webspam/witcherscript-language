@@ -108,6 +108,7 @@ pub(crate) struct Backend {
     pub(crate) legacy_db_generation: Arc<AtomicU64>,
     pub(crate) diagnostic_version: Arc<AtomicU64>,
     pub(crate) client_supports_pull_diagnostics: Arc<AtomicBool>,
+    pub(crate) refresh_pending: Arc<AtomicBool>,
     // Held only so tests can await the most recent spawned publish; production never awaits this.
     pub(crate) last_publish_task: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
@@ -194,6 +195,7 @@ impl Backend {
             legacy_db_generation: Arc::new(AtomicU64::new(0)),
             diagnostic_version: Arc::new(AtomicU64::new(0)),
             client_supports_pull_diagnostics: Arc::new(AtomicBool::new(false)),
+            refresh_pending: Arc::new(AtomicBool::new(false)),
             last_publish_task: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
@@ -407,6 +409,7 @@ impl Backend {
     }
 
     // Pull clients drive their own cadence; this tells them their cached diagnostics are stale.
+    // Coalesced through a 50ms window: a burst of edits produces one refresh, not one per edit.
     pub(crate) fn request_workspace_diagnostic_refresh(&self) {
         if !self
             .client_supports_pull_diagnostics
@@ -417,11 +420,17 @@ impl Backend {
         if tokio::runtime::Handle::try_current().is_err() {
             return;
         }
+        if self.refresh_pending.swap(true, Ordering::AcqRel) {
+            return;
+        }
         let client = self.client.clone();
+        let pending = self.refresh_pending.clone();
         crate::spawn_logged("workspace/diagnostic/refresh", async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             let started_at = std::time::Instant::now();
             trace!(op = "workspace_diagnostic_refresh", at = %wall_clock_us(), "start");
             let _ = client.request::<WorkspaceDiagnosticRefresh>(()).await;
+            pending.store(false, Ordering::Release);
             trace!(
                 op = "workspace_diagnostic_refresh",
                 elapsed_us = started_at.elapsed().as_micros(),

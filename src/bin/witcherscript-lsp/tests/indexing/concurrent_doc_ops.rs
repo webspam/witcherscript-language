@@ -187,3 +187,38 @@ fn publish_open_diagnostics_bails_when_version_advanced() {
         "a stale-version publish must not overwrite the already-recorded diagnostics",
     );
 }
+
+#[test]
+fn compute_diagnostics_for_uri_bails_when_version_advanced() {
+    let backend = {
+        let (_main_loop, client) =
+            async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
+        let config = Arc::new(ArcSwap::from_pointee(Config {
+            diagnostics_scope: DiagnosticsScope::Workspace,
+            ..Config::default()
+        }));
+        let backend = Backend::new(client, config);
+        backend.initial_index_done.store(true, Ordering::Release);
+        backend
+    };
+    let uri: Url = "file:///stale_pull.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "class CPull {}\n"));
+
+    let snap = backend.snapshot();
+    let document = snap
+        .documents
+        .get(&uri)
+        .expect("document present after open")
+        .clone();
+
+    let stale_version = backend.diagnostic_version.load(Ordering::Acquire);
+    backend
+        .diagnostic_version
+        .store(stale_version + 100, Ordering::Release);
+
+    let result = backend.compute_diagnostics_for_uri(&uri, document.as_ref(), stale_version);
+    assert!(
+        result.is_none(),
+        "pull compute must bail when the caller's version is already stale"
+    );
+}

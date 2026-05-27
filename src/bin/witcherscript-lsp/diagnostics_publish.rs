@@ -246,7 +246,8 @@ impl Backend {
         &self,
         uri: &Url,
         document: &witcherscript_language::document::ParsedDocument,
-    ) -> (Vec<Diagnostic>, String) {
+        version: u64,
+    ) -> Option<(Vec<Diagnostic>, String)> {
         let started_at = Instant::now();
         debug!(
             op = "compute_diagnostics_for_uri",
@@ -262,16 +263,31 @@ impl Backend {
         let base = &snap.base_scripts_index;
         let env = &snap.script_env;
         let mut cache = self.cst_diag_cache.lock();
+        if self.diagnostic_version.load(Ordering::Acquire) != version {
+            return None;
+        }
         let suppressed = &snap.suppressed_base_uris;
         let filtered = snap.filtered_base_catalogs.as_deref();
 
         let mut dup = collect_duplicate_symbol_diagnostics(workspace);
+        if self.diagnostic_version.load(Ordering::Acquire) != version {
+            return None;
+        }
         dup.extend(collect_duplicate_symbol_diagnostics(loose));
         let mut shadow = collect_shadowing_diagnostics(workspace, env);
+        if self.diagnostic_version.load(Ordering::Acquire) != version {
+            return None;
+        }
         shadow.extend(collect_shadowing_diagnostics(loose, env));
         let mut dup_local = collect_duplicate_local_diagnostics(workspace);
+        if self.diagnostic_version.load(Ordering::Acquire) != version {
+            return None;
+        }
         dup_local.extend(collect_duplicate_local_diagnostics(loose));
         let base_conflict = collect_base_script_conflict_diagnostics(workspace, base, &legacy_dirs);
+        if self.diagnostic_version.load(Ordering::Acquire) != version {
+            return None;
+        }
 
         let mut loose_uri_strs: HashSet<String> = HashSet::new();
         if is_loose {
@@ -302,14 +318,19 @@ impl Backend {
         > = std::collections::HashMap::new();
         diag_docs.insert(uri.to_string(), document);
 
+        let diagnostic_version = self.diagnostic_version.clone();
+        let should_continue = move || diagnostic_version.load(Ordering::Acquire) == version;
         let cst = cst_diagnostics_with_cache(
             &diag_docs,
             &ws_db,
             Some((&loose_db, &loose_uri_strs)),
             fingerprint,
             &mut cache,
-            &|| true,
+            &should_continue,
         );
+        if cst.cancelled {
+            return None;
+        }
 
         let key = uri.to_string();
         let mut diagnostics = lsp_diagnostics(document);
@@ -350,7 +371,7 @@ impl Backend {
             at = %wall_clock_us(),
             "complete",
         );
-        (diagnostics, result_id)
+        Some((diagnostics, result_id))
     }
 
     fn publish_syntactic_only(&self) {
