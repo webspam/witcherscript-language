@@ -4,7 +4,7 @@ use lsp_types::{Position, Url};
 use tracing::error;
 use witcherscript_language::document::parse_document;
 use witcherscript_language::files::{canonical_uri, read_script_file};
-use witcherscript_language::resolve::{resolve_definition, Definition};
+use witcherscript_language::resolve::{resolve_definition, Definition, ObservedKey};
 
 use crate::backend::Backend;
 use crate::convert::source_position;
@@ -42,6 +42,8 @@ impl Backend {
             })
             .collect();
 
+        let mut ws_changed: Vec<ObservedKey> = Vec::new();
+        let mut loose_changed: Vec<ObservedKey> = Vec::new();
         let mut invalidated: HashSet<String> = HashSet::new();
         {
             let mut workspace = self.workspace_index.lock();
@@ -51,19 +53,26 @@ impl Backend {
                 let Some(document) = documents.get(uri) else {
                     continue;
                 };
-                invalidated.extend(remove_document_all_spellings(&mut workspace, uri));
-                invalidated.extend(remove_document_all_spellings(&mut loose, uri));
-                invalidated.extend(remove_document_all_spellings(&mut base, uri));
-                let target: &mut witcherscript_language::resolve::WorkspaceIndex = match scope {
-                    FileScope::AdditionalBase => &mut base,
-                    FileScope::OutOfScope | FileScope::SingleFile => &mut loose,
-                    _ => &mut workspace,
-                };
-                invalidated.extend(target.update_document(uri.as_str(), document));
+                ws_changed.extend(remove_document_all_spellings(&mut workspace, uri));
+                loose_changed.extend(remove_document_all_spellings(&mut loose, uri));
+                let _ = remove_document_all_spellings(&mut base, uri);
+                match scope {
+                    FileScope::AdditionalBase => {
+                        let _ = base.update_document(uri.as_str(), document);
+                    }
+                    FileScope::OutOfScope | FileScope::SingleFile => {
+                        loose_changed.extend(loose.update_document(uri.as_str(), document));
+                    }
+                    _ => {
+                        ws_changed.extend(workspace.update_document(uri.as_str(), document));
+                    }
+                }
                 invalidated.insert(uri.to_string());
             }
         }
         drop(documents);
+        invalidated.extend(self.invalidated_workspace(&ws_changed));
+        invalidated.extend(self.invalidated_loose(&loose_changed));
         self.evict_cache_entries(&invalidated);
     }
 
@@ -80,11 +89,15 @@ impl Backend {
         let invalidated = if is_base {
             let mut index = self.base_scripts_index.lock();
             let mut docs = self.base_scripts_documents.lock();
-            reindex_into(&mut index, &mut docs, uri.as_str(), &canonical, parsed)
+            let _ = reindex_into(&mut index, &mut docs, uri.as_str(), &canonical, parsed);
+            HashSet::new()
         } else {
-            let mut index = self.workspace_index.lock();
-            let mut docs = self.workspace_documents.lock();
-            reindex_into(&mut index, &mut docs, uri.as_str(), &canonical, parsed)
+            let changed = {
+                let mut index = self.workspace_index.lock();
+                let mut docs = self.workspace_documents.lock();
+                reindex_into(&mut index, &mut docs, uri.as_str(), &canonical, parsed)
+            };
+            self.invalidated_workspace(&changed)
         };
         self.evict_cache_entries(&invalidated);
     }
@@ -101,27 +114,39 @@ impl Backend {
         };
 
         let scope = self.file_scope_of(&uri);
-        let mut invalidated = HashSet::new();
+        let mut ws_changed: Vec<ObservedKey> = Vec::new();
+        let mut loose_changed: Vec<ObservedKey> = Vec::new();
         // A config change can move a file between scopes; drop every stale copy first.
-        for index in [
-            &self.workspace_index,
-            &self.base_scripts_index,
-            &self.loose_index,
-        ] {
-            let mut index = index.lock();
-            invalidated.extend(remove_document_all_spellings(&mut index, &uri));
-        }
-
-        let target = match scope {
-            FileScope::AdditionalBase => &self.base_scripts_index,
-            FileScope::OutOfScope | FileScope::SingleFile => &self.loose_index,
-            _ => &self.workspace_index,
-        };
         {
-            let mut index = target.lock();
-            invalidated.extend(index.update_document(uri.as_str(), &document));
+            let mut workspace = self.workspace_index.lock();
+            ws_changed.extend(remove_document_all_spellings(&mut workspace, &uri));
+        }
+        {
+            let mut base = self.base_scripts_index.lock();
+            let _ = remove_document_all_spellings(&mut base, &uri);
+        }
+        {
+            let mut loose = self.loose_index.lock();
+            loose_changed.extend(remove_document_all_spellings(&mut loose, &uri));
         }
 
+        match scope {
+            FileScope::AdditionalBase => {
+                let mut base = self.base_scripts_index.lock();
+                let _ = base.update_document(uri.as_str(), &document);
+            }
+            FileScope::OutOfScope | FileScope::SingleFile => {
+                let mut loose = self.loose_index.lock();
+                loose_changed.extend(loose.update_document(uri.as_str(), &document));
+            }
+            _ => {
+                let mut workspace = self.workspace_index.lock();
+                ws_changed.extend(workspace.update_document(uri.as_str(), &document));
+            }
+        }
+
+        let mut invalidated = self.invalidated_workspace(&ws_changed);
+        invalidated.extend(self.invalidated_loose(&loose_changed));
         self.evict_cache_entries(&invalidated);
         self.documents.lock().insert(uri.clone(), document);
         self.spawn_diagnostics_state_changed();

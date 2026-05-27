@@ -136,12 +136,15 @@ impl Backend {
         }
     }
 
-    fn remove_legacy_workspace_document(&self, canonical: &str) -> HashSet<String> {
+    fn remove_legacy_workspace_document(
+        &self,
+        canonical: &str,
+    ) -> Vec<witcherscript_language::resolve::ObservedKey> {
         let mut index = self.workspace_index.lock();
         let mut docs = self.workspace_documents.lock();
-        let invalidated = index.remove_document(canonical);
+        let changed = index.remove_document(canonical);
         docs.remove(canonical);
-        invalidated
+        changed
     }
 
     pub(crate) fn prune_stale_legacy_workspace_files(&self, current: &HashSet<String>) {
@@ -168,10 +171,11 @@ impl Backend {
         if stale.is_empty() {
             return;
         }
-        let mut invalidated = HashSet::new();
+        let mut ws_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
         for uri in stale {
-            invalidated.extend(self.remove_legacy_workspace_document(&uri));
+            ws_changed.extend(self.remove_legacy_workspace_document(&uri));
         }
+        let invalidated = self.invalidated_workspace(&ws_changed);
         self.evict_cache_entries(&invalidated);
     }
 
@@ -184,7 +188,7 @@ impl Backend {
             documents.keys().filter_map(canonical_uri).collect()
         };
         let mut current = HashSet::new();
-        let mut invalidated = HashSet::new();
+        let mut ws_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
         {
             let mut ws_idx = self.workspace_index.lock();
             let mut ws_docs = self.workspace_documents.lock();
@@ -194,11 +198,12 @@ impl Backend {
                 if open_canonical.contains(&uri) {
                     continue;
                 }
-                invalidated.extend(ws_idx.update_document(uri.as_str(), &document));
+                ws_changed.extend(ws_idx.update_document(uri.as_str(), &document));
                 ws_docs.insert(uri, document);
             }
             ws_idx.end_bulk_catalog_update();
         }
+        let invalidated = self.invalidated_workspace(&ws_changed);
         self.prune_stale_legacy_workspace_files(&current);
         invalidated
     }

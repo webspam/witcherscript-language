@@ -149,6 +149,7 @@ fn closed_docs_evicted_from_cache() {
 #[test]
 fn editing_unobserved_doc_does_not_invalidate_dependents() {
     let mut idx = WorkspaceIndex::default();
+    let mut subscriptions = witcherscript_language::resolve::SubscriptionRegistry::default();
     let helper_uri = "file:///helper.ws";
     let user_uri = "file:///user.ws";
     let helper = make_doc("function Log() {}\n");
@@ -167,12 +168,13 @@ fn editing_unobserved_doc_does_not_invalidate_dependents() {
         cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true)
     };
     for (uri, obs) in warm.new_subscriptions {
-        idx.register_subscription(&uri, obs);
+        subscriptions.register(&uri, obs);
     }
     assert_eq!(warm.stats.misses, 2);
 
     let fresh_helper = make_doc("function Log() {} function Trace() {}\n");
-    let invalidated = idx.update_document(helper_uri, &fresh_helper);
+    let changed = idx.update_document(helper_uri, &fresh_helper);
+    let invalidated = subscriptions.subscribers_of(&changed);
     documents.insert(helper_uri.to_string(), &fresh_helper);
     cache.retain(|u, _| !invalidated.contains(u.as_str()));
 

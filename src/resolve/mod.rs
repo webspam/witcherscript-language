@@ -11,6 +11,7 @@ mod name_context;
 mod references;
 mod shadowed_base;
 mod signature;
+mod subscription_registry;
 mod symbol_db;
 mod workspace_index;
 
@@ -37,6 +38,7 @@ pub use inference::infer_expr_type_memo;
 pub use name_context::{classify_ident_context, NameContext};
 pub use references::find_references;
 pub use signature::{hover_text, signature_help, SignatureHelpInfo};
+pub use subscription_registry::SubscriptionRegistry;
 pub use symbol_db::{FilteredBaseCatalogs, SymbolDb};
 pub use workspace_index::{ObservedKey, WorkspaceIndex};
 

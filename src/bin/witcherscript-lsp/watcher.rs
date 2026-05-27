@@ -154,23 +154,24 @@ impl Backend {
 
         let had_updates = !updates.is_empty();
         let had_removals = !removals.is_empty();
-        let mut invalidated = HashSet::new();
         if had_updates || had_removals {
+            let mut ws_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
             {
                 let mut index = self.workspace_index.lock();
                 let mut docs = self.workspace_documents.lock();
                 let mut known = self.workspace_known_files.lock();
                 for (canonical, document) in updates {
-                    invalidated.extend(index.update_document(canonical.as_str(), &document));
+                    ws_changed.extend(index.update_document(canonical.as_str(), &document));
                     known.insert(canonical.clone());
                     docs.insert(canonical, document);
                 }
                 for canonical in &removals {
-                    invalidated.extend(index.remove_document(canonical));
+                    ws_changed.extend(index.remove_document(canonical));
                     known.remove(canonical);
                     docs.remove(canonical);
                 }
             }
+            let invalidated = self.invalidated_workspace(&ws_changed);
             self.evict_cache_entries(&invalidated);
         }
 

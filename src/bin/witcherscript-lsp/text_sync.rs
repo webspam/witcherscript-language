@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 use lsp_types::{
@@ -90,10 +89,11 @@ impl Backend {
         self.documents.lock().remove(&uri);
         if scope.is_loose() {
             // A loose file is a transient compilation member: closing it drops it from the index entirely.
-            let invalidated = {
+            let changed = {
                 let mut index = self.loose_index.lock();
                 crate::indexing::remove_document_all_spellings(&mut index, &uri)
             };
+            let invalidated = self.invalidated_loose(&changed);
             self.evict_cache_entries(&invalidated);
         } else {
             self.reindex_closed_file(&uri);
@@ -137,7 +137,7 @@ impl Backend {
 
         // index_workspace only adds files; a removed folder's scripts must be dropped here.
         if !removed.is_empty() {
-            let invalidated = {
+            let ws_changed = {
                 let mut index = self.workspace_index.lock();
                 let mut docs = self.workspace_documents.lock();
                 let stale: Vec<String> = docs
@@ -145,13 +145,14 @@ impl Backend {
                     .filter(|uri| uri_within_any(uri, &removed))
                     .cloned()
                     .collect();
-                let mut invalidated: HashSet<String> = HashSet::new();
+                let mut changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
                 for uri in stale {
-                    invalidated.extend(index.remove_document(&uri));
+                    changed.extend(index.remove_document(&uri));
                     docs.remove(&uri);
                 }
-                invalidated
+                changed
             };
+            let invalidated = self.invalidated_workspace(&ws_changed);
             self.evict_cache_entries(&invalidated);
         }
 

@@ -24,7 +24,9 @@ use tracing::trace;
 use witcherscript_language::builtins::{builtin_source, load_builtins_index};
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
-use witcherscript_language::resolve::{FilteredBaseCatalogs, SymbolDb, WorkspaceIndex};
+use witcherscript_language::resolve::{
+    FilteredBaseCatalogs, ObservedKey, SubscriptionRegistry, SymbolDb, WorkspaceIndex,
+};
 use witcherscript_language::script_env::ScriptEnvironment;
 
 use crate::completion_cache::MergedCompletionCache;
@@ -94,6 +96,10 @@ pub(crate) struct Backend {
     pub(crate) workspace_known_files: Arc<Mutex<HashSet<String>>>,
     pub(crate) loose_index: Arc<Mutex<WorkspaceIndex>>,
     pub(crate) builtins_index: Arc<WorkspaceIndex>,
+    // Subscribers are bookkeeping for CST-cache invalidation; lifted out of WorkspaceIndex so the
+    // index itself is read-only from the publisher's point of view.
+    pub(crate) workspace_subscriptions: Arc<Mutex<SubscriptionRegistry>>,
+    pub(crate) loose_subscriptions: Arc<Mutex<SubscriptionRegistry>>,
     pub(crate) script_env: Arc<Mutex<ScriptEnvironment>>,
     pub(crate) cst_diag_cache: Arc<Mutex<HashMap<String, crate::cst_cache::CstCacheEntry>>>,
     pub(crate) merged_completion_cache_workspace: Arc<Mutex<Option<MergedCompletionCache>>>,
@@ -179,6 +185,8 @@ impl Backend {
             workspace_known_files: Arc::new(Mutex::new(HashSet::new())),
             loose_index: Arc::new(Mutex::new(WorkspaceIndex::default())),
             builtins_index: Arc::new(load_builtins_index()),
+            workspace_subscriptions: Arc::new(Mutex::new(SubscriptionRegistry::default())),
+            loose_subscriptions: Arc::new(Mutex::new(SubscriptionRegistry::default())),
             script_env: Arc::new(Mutex::new(ScriptEnvironment::default())),
             cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
             merged_completion_cache_workspace: Arc::new(Mutex::new(None)),
@@ -189,6 +197,14 @@ impl Backend {
             client_supports_pull_diagnostics: Arc::new(AtomicBool::new(false)),
             last_publish_task: Arc::new(tokio::sync::Mutex::new(None)),
         }
+    }
+
+    pub(crate) fn invalidated_workspace(&self, keys: &[ObservedKey]) -> HashSet<String> {
+        self.workspace_subscriptions.lock().subscribers_of(keys)
+    }
+
+    pub(crate) fn invalidated_loose(&self, keys: &[ObservedKey]) -> HashSet<String> {
+        self.loose_subscriptions.lock().subscribers_of(keys)
     }
 
     pub(crate) fn db_fingerprint(

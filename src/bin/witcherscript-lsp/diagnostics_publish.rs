@@ -53,8 +53,8 @@ impl Backend {
         let loose_uris = self.loose_open_uris(&documents);
 
         let (to_publish, cst_stats): (Vec<(Url, Vec<Diagnostic>)>, _) = {
-            let mut workspace = self.workspace_index.lock();
-            let mut loose = self.loose_index.lock();
+            let workspace = self.workspace_index.lock();
+            let loose = self.loose_index.lock();
             let base = self.base_scripts_index.lock();
             let env = self.script_env.lock();
             let mut cache = self.cst_diag_cache.lock();
@@ -136,11 +136,15 @@ impl Backend {
                 return;
             }
             let cst_stats = cst.stats;
-            for (uri, observations) in cst.new_subscriptions {
-                if loose_uri_strs.contains(&uri) {
-                    loose.register_subscription(&uri, observations);
-                } else {
-                    workspace.register_subscription(&uri, observations);
+            {
+                let mut loose_subs = self.loose_subscriptions.lock();
+                let mut workspace_subs = self.workspace_subscriptions.lock();
+                for (uri, observations) in cst.new_subscriptions {
+                    if loose_uri_strs.contains(&uri) {
+                        loose_subs.register(&uri, observations);
+                    } else {
+                        workspace_subs.register(&uri, observations);
+                    }
                 }
             }
 
