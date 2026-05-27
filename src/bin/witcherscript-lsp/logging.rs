@@ -106,15 +106,6 @@ fn utc_timestamp() -> String {
     format!("{h:02}:{m:02}:{s:02}.{:03}", now.subsec_millis())
 }
 
-pub(crate) fn wall_clock_us() -> String {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
-    let (h, m, s) = ((secs / 3600) % 24, (secs / 60) % 60, secs % 60);
-    format!("{h:02}:{m:02}:{s:02}.{:06}", now.subsec_micros())
-}
-
 #[derive(Default)]
 struct EventVisitor {
     message: String,

@@ -14,7 +14,6 @@ use witcherscript_language::resolve::{find_references, resolve_definition};
 
 use crate::backend::Backend;
 use crate::convert::{lsp_range, source_position};
-use crate::logging::wall_clock_us;
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
@@ -77,7 +76,7 @@ impl Backend {
         let position = params.text_document_position.position;
         let include_declaration = params.context.include_declaration;
         let started_at = Instant::now();
-        trace!(op = "references", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "references", uri = %uri, "start");
         let result = 'body: {
             let snap = self.snapshot();
             let Some(document_arc) = snap.documents.get(&uri).cloned() else {
@@ -144,7 +143,6 @@ impl Backend {
             op = "references",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         result
@@ -156,7 +154,7 @@ impl Backend {
     ) -> Result<Option<PrepareRenameResponse>> {
         let uri = params.text_document.uri.clone();
         let started_at = Instant::now();
-        trace!(op = "prepare_rename", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "prepare_rename", uri = %uri, "start");
         let result = 'body: {
             let Some(definition) = self.resolve_at(&uri, params.position) else {
                 break 'body Ok(None);
@@ -184,7 +182,6 @@ impl Backend {
             op = "prepare_rename",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         result
@@ -194,7 +191,7 @@ impl Backend {
         let uri = params.text_document_position.text_document.uri;
         let new_name = params.new_name;
         let started_at = Instant::now();
-        trace!(op = "rename", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "rename", uri = %uri, "start");
         let result = 'body: {
             let Some(definition) = self.resolve_at(&uri, params.text_document_position.position)
             else {
@@ -250,7 +247,6 @@ impl Backend {
             op = "rename",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         result

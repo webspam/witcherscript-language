@@ -65,11 +65,7 @@ pub(crate) struct ConfigChange {
 impl Backend {
     pub(crate) async fn fetch_config(&self) -> ConfigChange {
         let started_at = std::time::Instant::now();
-        tracing::debug!(
-            op = "fetch_config",
-            at = %crate::logging::wall_clock_us(),
-            "start",
-        );
+        tracing::debug!(op = "fetch_config", "start",);
         let prev_base_scripts_path = self.base_scripts_path.lock().clone();
         let prev_files_exclude = self.files_exclude.lock().clone();
         let prev_additional = self.additional_script_dirs.lock().clone();
@@ -131,7 +127,6 @@ impl Backend {
             tracing::debug!(
                 op = "fetch_config",
                 elapsed_us = started_at.elapsed().as_micros(),
-                at = %crate::logging::wall_clock_us(),
                 reason = "request_failed",
                 "complete",
             );
@@ -289,7 +284,6 @@ impl Backend {
         tracing::debug!(
             op = "fetch_config",
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %crate::logging::wall_clock_us(),
             needs_reindex = change.needs_reindex,
             diagnostics_changed = change.diagnostics_changed,
             "complete",

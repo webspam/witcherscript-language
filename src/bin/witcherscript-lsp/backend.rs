@@ -22,7 +22,6 @@ use parking_lot::Mutex;
 use serde_json::{json, Value};
 use tracing::{debug, trace};
 
-use crate::logging::wall_clock_us;
 use witcherscript_language::builtins::{builtin_source, load_builtins_index};
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
@@ -336,7 +335,7 @@ impl Backend {
 
     pub(crate) fn rebuild_filtered_base_catalogs(&self) {
         let started_at = std::time::Instant::now();
-        debug!(op = "rebuild_filtered_base_catalogs", at = %wall_clock_us(), "start");
+        debug!(op = "rebuild_filtered_base_catalogs", "start");
         self.publish_compilation(|builder| {
             let suppressed = builder.base.suppressed_base_uris.clone();
             let base_index = builder.base.base_scripts_index.clone();
@@ -353,7 +352,6 @@ impl Backend {
         debug!(
             op = "rebuild_filtered_base_catalogs",
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
     }
@@ -367,7 +365,6 @@ impl Backend {
         debug!(
             op = "merged_completion_cache",
             uri = %uri,
-            at = %wall_clock_us(),
             "start",
         );
         let workspace_surface = handles.workspace().surface_hash();
@@ -390,7 +387,6 @@ impl Backend {
                     uri = %uri,
                     cache_hit = true,
                     elapsed_us = started_at.elapsed().as_micros(),
-                    at = %wall_clock_us(),
                     "complete",
                 );
                 return cached;
@@ -409,7 +405,6 @@ impl Backend {
             uri = %uri,
             cache_hit = false,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         fresh
@@ -435,13 +430,12 @@ impl Backend {
         crate::spawn_logged("workspace/diagnostic/refresh", async move {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             let started_at = std::time::Instant::now();
-            trace!(op = "workspace_diagnostic_refresh", at = %wall_clock_us(), "start");
+            trace!(op = "workspace_diagnostic_refresh", "start");
             let _ = client.request::<WorkspaceDiagnosticRefresh>(()).await;
             pending.store(false, Ordering::Release);
             trace!(
                 op = "workspace_diagnostic_refresh",
                 elapsed_us = started_at.elapsed().as_micros(),
-                at = %wall_clock_us(),
                 "complete",
             );
         });
@@ -466,19 +460,13 @@ impl Backend {
         let backend = self.clone();
         let handle = tokio::spawn(async move {
             let started_at = std::time::Instant::now();
-            debug!(
-                op = "publish_diagnostics_task",
-                version,
-                at = %wall_clock_us(),
-                "start",
-            );
+            debug!(op = "publish_diagnostics_task", version, "start",);
             let _ = tokio::task::spawn_blocking(move || backend.publish_open_diagnostics(version))
                 .await;
             debug!(
                 op = "publish_diagnostics_task",
                 version,
                 elapsed_us = started_at.elapsed().as_micros(),
-                at = %wall_clock_us(),
                 "complete",
             );
         });
@@ -500,19 +488,13 @@ impl Backend {
         let backend = self.clone();
         let handle = tokio::spawn(async move {
             let started_at = std::time::Instant::now();
-            debug!(
-                op = "publish_diagnostics_task",
-                version,
-                at = %wall_clock_us(),
-                "start",
-            );
+            debug!(op = "publish_diagnostics_task", version, "start",);
             let _ = tokio::task::spawn_blocking(move || backend.publish_open_diagnostics(version))
                 .await;
             debug!(
                 op = "publish_diagnostics_task",
                 version,
                 elapsed_us = started_at.elapsed().as_micros(),
-                at = %wall_clock_us(),
                 "complete",
             );
         });
@@ -533,13 +515,12 @@ impl Backend {
     pub(crate) async fn handle_builtin_source(&self, params: Value) -> Result<Value> {
         let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("");
         let started_at = std::time::Instant::now();
-        trace!(op = "builtin_source", uri, at = %wall_clock_us(), "start");
+        trace!(op = "builtin_source", uri, "start");
         let result = builtin_source_response(uri);
         trace!(
             op = "builtin_source",
             uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         result

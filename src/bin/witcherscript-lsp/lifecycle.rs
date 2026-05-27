@@ -22,7 +22,7 @@ use witcherscript_language::semantic_tokens::{TOKEN_MODIFIERS, TOKEN_TYPES};
 use crate::backend::Backend;
 use crate::config::DiagnosticsScope;
 use crate::convert::workspace_roots;
-use crate::logging::{level_from_str, level_to_u8, wall_clock_us};
+use crate::logging::{level_from_str, level_to_u8};
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
@@ -50,7 +50,7 @@ fn ws_file_operations_capabilities() -> WorkspaceFileOperationsServerCapabilitie
 impl Backend {
     pub(crate) async fn _initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         let started_at = Instant::now();
-        trace!(op = "initialize", at = %wall_clock_us(), "start");
+        trace!(op = "initialize", "start");
         // Capture base scripts path from initializationOptions if provided.
         // workspace/configuration is pulled after initialized(), but this ensures
         // we have a value even before that round-trip completes.
@@ -204,7 +204,6 @@ impl Backend {
         trace!(
             op = "initialize",
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         result
@@ -212,7 +211,7 @@ impl Backend {
 
     pub(crate) async fn _initialized(&self, _: InitializedParams) {
         let started_at = Instant::now();
-        trace!(op = "initialized", at = %wall_clock_us(), "start");
+        trace!(op = "initialized", "start");
         self.spawn_edit_writer();
         self.fetch_config().await;
         self.index_workspace().await;
@@ -224,21 +223,19 @@ impl Backend {
         trace!(
             op = "initialized",
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
     }
 
     pub(crate) async fn _did_change_configuration(&self, _: DidChangeConfigurationParams) {
         let started_at = Instant::now();
-        trace!(op = "did_change_configuration", at = %wall_clock_us(), "start");
+        trace!(op = "did_change_configuration", "start");
         let initial_done = self.initial_index_done.load(Ordering::Acquire);
         let change = self.fetch_config().await;
         if !initial_done {
             trace!(
                 op = "did_change_configuration",
                 elapsed_us = started_at.elapsed().as_micros(),
-                at = %wall_clock_us(),
                 reason = "startup_echo",
                 "complete",
             );
@@ -258,7 +255,6 @@ impl Backend {
         trace!(
             op = "did_change_configuration",
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             reindexed = change.needs_reindex,
             "complete",
         );

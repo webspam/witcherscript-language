@@ -9,7 +9,6 @@ use witcherscript_language::document::{parse_document_with_prior, ParsedDocument
 use witcherscript_language::line_index::LineIndex;
 
 use crate::backend::Backend;
-use crate::logging::wall_clock_us;
 
 #[derive(Debug)]
 pub(crate) struct PendingEdit {
@@ -110,7 +109,6 @@ impl Backend {
             parse_us,
             publish_us,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
     }

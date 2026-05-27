@@ -13,7 +13,6 @@ use witcherscript_language::line_index::LineIndex;
 use crate::backend::Backend;
 use crate::convert::{source_position, source_range};
 use crate::edit_queue::PendingEdit;
-use crate::logging::wall_clock_us;
 
 fn uri_within_any(uri: &str, dirs: &[PathBuf]) -> bool {
     let Some(path) = Url::parse(uri).ok().and_then(|u| u.to_file_path().ok()) else {
@@ -32,7 +31,7 @@ impl Backend {
             return;
         }
         let started_at = Instant::now();
-        trace!(op = "did_open", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "did_open", uri = %uri, "start");
         // The client drops a file's status on close; force a fresh push.
         self.sent_legacy_status.lock().remove(&uri);
         self.sent_file_scope_status.lock().remove(&uri);
@@ -48,7 +47,6 @@ impl Backend {
             op = "did_open",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
     }
@@ -62,7 +60,7 @@ impl Backend {
             return;
         }
         let started_at = Instant::now();
-        trace!(op = "did_change", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "did_change", uri = %uri, "start");
 
         let Some((mut source, mut line_index, mut prior_tree)) = self.latest_edit_state(&uri)
         else {
@@ -110,7 +108,6 @@ impl Backend {
             op = "did_change",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
     }
@@ -121,7 +118,7 @@ impl Backend {
             return;
         }
         let started_at = Instant::now();
-        trace!(op = "did_close", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "did_close", uri = %uri, "start");
         let scope = self.file_scope_of(&uri);
         let mut loose_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
         self.publish_compilation(|builder| {
@@ -148,7 +145,6 @@ impl Backend {
             op = "did_close",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
     }
@@ -156,18 +152,12 @@ impl Backend {
     pub(crate) fn _did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
         let started_at = Instant::now();
         let count = params.changes.len();
-        trace!(
-            op = "did_change_watched_files",
-            count,
-            at = %wall_clock_us(),
-            "start",
-        );
+        trace!(op = "did_change_watched_files", count, "start",);
         self.apply_watched_file_events(params.changes);
         trace!(
             op = "did_change_watched_files",
             count,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
     }
@@ -181,7 +171,6 @@ impl Backend {
             op = "did_change_workspace_folders",
             added = params.event.added.len(),
             removed = params.event.removed.len(),
-            at = %wall_clock_us(),
             "start",
         );
         let removed: Vec<PathBuf> = params
@@ -241,7 +230,6 @@ impl Backend {
         trace!(
             op = "did_change_workspace_folders",
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
     }

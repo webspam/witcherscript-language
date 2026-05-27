@@ -24,7 +24,6 @@ use crate::convert::{
     base_script_conflict_code_actions, document_symbols, hover_markdown, lsp_range,
     signature_help_response, source_position,
 };
-use crate::logging::wall_clock_us;
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
@@ -35,7 +34,7 @@ impl Backend {
     ) -> Result<DocumentDiagnosticReportResult> {
         let uri = params.text_document.uri.clone();
         let started_at = Instant::now();
-        trace!(op = "document_diagnostic", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "document_diagnostic", uri = %uri, "start");
         let version = self.diagnostic_version.load(Ordering::Acquire);
         let result = 'body: {
             let computed = {
@@ -83,7 +82,6 @@ impl Backend {
             op = "document_diagnostic",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         result
@@ -95,14 +93,13 @@ impl Backend {
     ) -> Result<Option<CodeActionResponse>> {
         let uri = params.text_document.uri.clone();
         let started_at = Instant::now();
-        trace!(op = "code_action", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "code_action", uri = %uri, "start");
         let roots = self.workspace_roots.lock().clone();
         let actions = base_script_conflict_code_actions(&params.context.diagnostics, &roots);
         trace!(
             op = "code_action",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         Ok((!actions.is_empty()).then_some(actions))
@@ -115,7 +112,7 @@ impl Backend {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         let started_at = Instant::now();
-        trace!(op = "definition", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "definition", uri = %uri, "start");
         let result = 'body: {
             let snap = self.snapshot();
             let Some(document_arc) = snap.documents.get(&uri).cloned() else {
@@ -147,7 +144,6 @@ impl Backend {
             op = "definition",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         result
@@ -157,7 +153,7 @@ impl Backend {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         let started_at = Instant::now();
-        trace!(op = "hover", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "hover", uri = %uri, "start");
         let result = 'body: {
             let snap = self.snapshot();
             let Some(document_arc) = snap.documents.get(&uri).cloned() else {
@@ -184,7 +180,6 @@ impl Backend {
             op = "hover",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         result
@@ -197,7 +192,7 @@ impl Backend {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         let started_at = Instant::now();
-        trace!(op = "signature_help", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "signature_help", uri = %uri, "start");
         let result = 'body: {
             let snap = self.snapshot();
             let Some(document_arc) = snap.documents.get(&uri).cloned() else {
@@ -221,7 +216,6 @@ impl Backend {
             op = "signature_help",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         result
@@ -233,7 +227,7 @@ impl Backend {
     ) -> Result<Option<DocumentSymbolResponse>> {
         let uri = params.text_document.uri.clone();
         let started_at = Instant::now();
-        trace!(op = "document_symbol", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "document_symbol", uri = %uri, "start");
         let result = 'body: {
             let snap = self.snapshot();
             let Some(document) = snap.documents.get(&uri).cloned() else {
@@ -250,7 +244,6 @@ impl Backend {
             op = "document_symbol",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         result
@@ -262,7 +255,7 @@ impl Backend {
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
         let started_at = Instant::now();
-        trace!(op = "semantic_tokens_full", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "semantic_tokens_full", uri = %uri, "start");
         let result = 'body: {
             let snap = self.snapshot();
             let Some(document_arc) = snap.documents.get(&uri).cloned() else {
@@ -301,7 +294,6 @@ impl Backend {
             op = "semantic_tokens_full",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         result
@@ -316,7 +308,7 @@ impl Backend {
             return Ok(None);
         }
         let started_at = Instant::now();
-        trace!(op = "formatting", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "formatting", uri = %uri, "start");
         let result = 'body: {
             let tab_size = params.options.tab_size;
             let use_tabs = !params.options.insert_spaces;
@@ -361,7 +353,6 @@ impl Backend {
             op = "formatting",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         result

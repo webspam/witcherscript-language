@@ -53,7 +53,7 @@ impl Backend {
         }
         let exclude_globs = self.files_exclude.lock().clone();
 
-        info!(op = "index_workspace", roots = ?roots, at = %crate::logging::wall_clock_us(), "start");
+        info!(op = "index_workspace", roots = ?roots, "start");
         let start = Instant::now();
 
         let join_result = tokio::task::spawn_blocking(move || {
@@ -135,7 +135,6 @@ impl Backend {
             indexed,
             file_count,
             elapsed_ms = start.elapsed().as_millis(),
-            at = %crate::logging::wall_clock_us(),
             "complete"
         );
 
@@ -143,7 +142,7 @@ impl Backend {
     }
 
     pub(crate) async fn index_base_scripts(&self) {
-        info!(op = "index_base_scripts", at = %crate::logging::wall_clock_us(), "start");
+        info!(op = "index_base_scripts", "start");
         let game_dir_opt = self.base_scripts_path.lock().clone();
         let extras = self.additional_script_dirs.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
@@ -163,7 +162,6 @@ impl Backend {
             info!(
                 op = "index_base_scripts",
                 reason = "no_paths_configured",
-                at = %crate::logging::wall_clock_us(),
                 "complete",
             );
             return;
@@ -357,7 +355,6 @@ impl Backend {
             base_replaced_by_legacy = matched_count,
             elapsed_ms,
             elapsed_secs = format!("{:.1}", elapsed_ms as f32 / 1000.0),
-            at = %crate::logging::wall_clock_us(),
             "complete"
         );
 

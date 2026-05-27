@@ -20,7 +20,6 @@ use crate::convert::{
     keyword_snippet_item, lsp_range, script_body_item, source_position, source_range,
     this_super_item, type_completion_item, wrap_method_snippet,
 };
-use crate::logging::wall_clock_us;
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
@@ -32,7 +31,7 @@ impl Backend {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
         let started_at = Instant::now();
-        trace!(op = "completion", uri = %uri, at = %wall_clock_us(), "start");
+        trace!(op = "completion", uri = %uri, "start");
         let result: Result<Option<CompletionResponse>> = 'body: {
             let snap = self.snapshot();
             let Some(document_arc) = snap.documents.get(&uri).cloned() else {
@@ -291,7 +290,6 @@ impl Backend {
             op = "completion",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         result

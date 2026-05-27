@@ -13,7 +13,6 @@ use lsp_types::notification::PublishDiagnostics;
 use lsp_types::{Diagnostic, PublishDiagnosticsParams, Url};
 use tracing::debug;
 
-use crate::logging::wall_clock_us;
 use witcherscript_language::diagnostics::{
     collect_base_script_conflict_diagnostics, collect_duplicate_local_diagnostics,
     collect_duplicate_symbol_diagnostics, collect_shadowing_diagnostics, WorkspaceDiagnostic,
@@ -47,12 +46,7 @@ impl Backend {
         }
 
         let started_at = Instant::now();
-        debug!(
-            op = "publish_open_diagnostics",
-            version,
-            at = %wall_clock_us(),
-            "start",
-        );
+        debug!(op = "publish_open_diagnostics", version, "start",);
 
         let whole_workspace = matches!(cfg.diagnostics_scope, DiagnosticsScope::Workspace);
 
@@ -234,7 +228,6 @@ impl Backend {
             cst_cache_misses = cst_stats.misses,
             cst_cache_wait_us,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
     }
@@ -252,7 +245,6 @@ impl Backend {
         debug!(
             op = "compute_diagnostics_for_uri",
             uri = %uri,
-            at = %wall_clock_us(),
             "start",
         );
         let is_loose = self.file_scope_of(uri).is_loose();
@@ -368,7 +360,6 @@ impl Backend {
             uri = %uri,
             diagnostics = diagnostics.len(),
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
         Some((diagnostics, result_id))
@@ -376,7 +367,7 @@ impl Backend {
 
     fn publish_syntactic_only(&self) {
         let started_at = Instant::now();
-        debug!(op = "publish_syntactic_only", at = %wall_clock_us(), "start");
+        debug!(op = "publish_syntactic_only", "start");
         let to_publish: Vec<(Url, Vec<Diagnostic>)> = {
             let documents = self.snapshot().documents.clone();
             let mut published = self.published_diagnostics.lock();
@@ -409,7 +400,6 @@ impl Backend {
             op = "publish_syntactic_only",
             republished,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
     }
@@ -481,7 +471,7 @@ impl Backend {
 
     pub(crate) fn reconcile_published_diagnostics(&self) {
         let started_at = Instant::now();
-        debug!(op = "reconcile_published_diagnostics", at = %wall_clock_us(), "start");
+        debug!(op = "reconcile_published_diagnostics", "start");
         if !matches!(self.config.load().diagnostics_scope, DiagnosticsScope::None) {
             // Caller is already on a tokio task (config-change handler); skip the spawn so
             // tests that observe the published map directly after this call see the result.
@@ -491,7 +481,6 @@ impl Backend {
             debug!(
                 op = "reconcile_published_diagnostics",
                 elapsed_us = started_at.elapsed().as_micros(),
-                at = %wall_clock_us(),
                 action = "republished",
                 "complete",
             );
@@ -517,7 +506,6 @@ impl Backend {
             op = "reconcile_published_diagnostics",
             retracted,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             action = "retracted_all",
             "complete",
         );

@@ -12,7 +12,6 @@ use witcherscript_language::resolve::{resolve_definition, Definition, ObservedKe
 use crate::backend::Backend;
 use crate::convert::source_position;
 use crate::file_scope::{classify_file_scope, FileScope};
-use crate::logging::wall_clock_us;
 
 use super::helpers::{reindex_into, remove_document_all_spellings};
 
@@ -25,12 +24,7 @@ impl Backend {
         }
         let started_at = Instant::now();
         let docs = snap.documents.len();
-        debug!(
-            op = "reindex_open_documents",
-            docs,
-            at = %wall_clock_us(),
-            "start",
-        );
+        debug!(op = "reindex_open_documents", docs, "start",);
         let roots = self.workspace_roots.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
         let game_dir = self.base_scripts_path.lock().clone();
@@ -106,7 +100,6 @@ impl Backend {
             op = "reindex_open_documents",
             docs,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
     }
@@ -117,7 +110,6 @@ impl Backend {
         debug!(
             op = "reindex_closed_file",
             uri = %uri,
-            at = %wall_clock_us(),
             "start",
         );
         let canonical = canonical_uri(uri).unwrap_or_else(|| uri.to_string());
@@ -148,7 +140,6 @@ impl Backend {
             op = "reindex_closed_file",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
     }
@@ -170,7 +161,6 @@ impl Backend {
             op = "update_open_document",
             uri = %uri,
             bytes,
-            at = %wall_clock_us(),
             "start",
         );
         let parse_at = Instant::now();
@@ -213,7 +203,6 @@ impl Backend {
             parse_us,
             publish_us,
             elapsed_us = started_at.elapsed().as_micros(),
-            at = %wall_clock_us(),
             "complete",
         );
     }
