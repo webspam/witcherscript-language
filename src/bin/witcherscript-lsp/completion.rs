@@ -11,7 +11,7 @@ use witcherscript_language::resolve::{
     default_or_hint_member_completions, expression_completions, extends_completions,
     new_lifetime_completions, new_type_completions, script_body_completions,
     state_owner_completions, statement_completions, type_completions_arc,
-    AfterWrapMethodCompletions, BUILTIN_TYPE_COMPLETIONS,
+    AfterWrapMethodCompletions, Definition, SymbolDb, BUILTIN_TYPE_COMPLETIONS,
 };
 
 use crate::backend::Backend;
@@ -22,6 +22,13 @@ use crate::convert::{
 };
 
 type Result<T> = std::result::Result<T, ResponseError>;
+
+fn sorted_completion_item(db: &SymbolDb, def: &Definition, tier: u8) -> CompletionItem {
+    let params = db.parameters_of(&def.uri, def.symbol.id);
+    let mut item = completion_item(def, &params);
+    item.sort_text = Some(format!("{}_{}", tier, def.symbol.name));
+    item
+}
 
 impl Backend {
     pub(crate) async fn _completion(
@@ -46,12 +53,7 @@ impl Backend {
             let member_items: Vec<CompletionItem> =
                 completion_members(uri.as_str(), document, &db, pos)
                     .iter()
-                    .map(|(tier, def)| {
-                        let params = db.parameters_of(&def.uri, def.symbol.id);
-                        let mut item = completion_item(def, &params);
-                        item.sort_text = Some(format!("{}_{}", tier, def.symbol.name));
-                        item
-                    })
+                    .map(|(tier, def)| sorted_completion_item(&db, def, *tier))
                     .collect();
             if !member_items.is_empty() {
                 break 'body Ok(Some(CompletionResponse::Array(member_items)));
@@ -61,12 +63,7 @@ impl Backend {
             if !default_or_hint.is_empty() {
                 let items: Vec<CompletionItem> = default_or_hint
                     .iter()
-                    .map(|def| {
-                        let params = db.parameters_of(&def.uri, def.symbol.id);
-                        let mut item = completion_item(def, &params);
-                        item.sort_text = Some(format!("0_{}", def.symbol.name));
-                        item
-                    })
+                    .map(|def| sorted_completion_item(&db, def, 0))
                     .collect();
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }
@@ -176,12 +173,7 @@ impl Backend {
             if !new_lifetime.is_empty() {
                 let items: Vec<CompletionItem> = new_lifetime
                     .iter()
-                    .map(|def| {
-                        let params = db.parameters_of(&def.uri, def.symbol.id);
-                        let mut item = completion_item(def, &params);
-                        item.sort_text = Some(format!("0_{}", def.symbol.name));
-                        item
-                    })
+                    .map(|def| sorted_completion_item(&db, def, 0))
                     .collect();
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }
@@ -229,22 +221,13 @@ impl Backend {
                     items.push(keyword_snippet_item("continue", "continue;"));
                 }
                 for def in &stmt.locals {
-                    let params = db.parameters_of(&def.uri, def.symbol.id);
-                    let mut item = completion_item(def, &params);
-                    item.sort_text = Some(format!("0_{}", def.symbol.name));
-                    items.push(item);
+                    items.push(sorted_completion_item(&db, def, 0));
                 }
                 for def in &stmt.members {
-                    let params = db.parameters_of(&def.uri, def.symbol.id);
-                    let mut item = completion_item(def, &params);
-                    item.sort_text = Some(format!("1_{}", def.symbol.name));
-                    items.push(item);
+                    items.push(sorted_completion_item(&db, def, 1));
                 }
                 for def in stmt_globals {
-                    let params = db.parameters_of(&def.uri, def.symbol.id);
-                    let mut item = completion_item(def, &params);
-                    item.sort_text = Some(format!("2_{}", def.symbol.name));
-                    items.push(item);
+                    items.push(sorted_completion_item(&db, def, 2));
                 }
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }
@@ -264,22 +247,13 @@ impl Backend {
                 items.push(keyword_snippet_item("true", "true"));
                 items.push(keyword_snippet_item("false", "false"));
                 for def in &expr.locals {
-                    let params = db.parameters_of(&def.uri, def.symbol.id);
-                    let mut item = completion_item(def, &params);
-                    item.sort_text = Some(format!("0_{}", def.symbol.name));
-                    items.push(item);
+                    items.push(sorted_completion_item(&db, def, 0));
                 }
                 for def in &expr.members {
-                    let params = db.parameters_of(&def.uri, def.symbol.id);
-                    let mut item = completion_item(def, &params);
-                    item.sort_text = Some(format!("0_{}", def.symbol.name));
-                    items.push(item);
+                    items.push(sorted_completion_item(&db, def, 0));
                 }
                 for def in expr_globals {
-                    let params = db.parameters_of(&def.uri, def.symbol.id);
-                    let mut item = completion_item(def, &params);
-                    item.sort_text = Some(format!("2_{}", def.symbol.name));
-                    items.push(item);
+                    items.push(sorted_completion_item(&db, def, 2));
                 }
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }
