@@ -246,9 +246,8 @@ impl Backend {
             self.refresh_manifest_legacy_dirs();
             self.index_base_scripts().await;
             self.reindex_open_documents();
-            self.notify_diagnostics_changed();
         }
-        if change.diagnostics_changed {
+        if change.needs_reindex || change.diagnostics_changed {
             self.notify_diagnostics_changed();
         }
         self.publish_file_scope_status();
