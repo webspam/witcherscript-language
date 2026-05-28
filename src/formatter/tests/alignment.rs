@@ -103,7 +103,7 @@ fn single_same_line_default_is_not_padded() {
         AnnotationPlacement::SameLine,
     );
     assert!(
-        output.contains("private const var RESET_TIME : float; default RESET_TIME = 0.750;"),
+        output.contains("private const var RESET_TIME : float;  default RESET_TIME = 0.750;"),
         "got:\n{output}"
     );
 }
@@ -177,8 +177,8 @@ fn annotated_field_excluded_from_default_alignment_run() {
         .find(|l| l.contains("default someLongName = 3"))
         .expect("someLongName line");
     assert!(
-        !x.contains("  default x"),
-        "annotated field should not be padded, got:\n{output}"
+        !x.contains("var x            :"),
+        "annotated field should not get colon padding, got:\n{output}"
     );
     assert_eq!(
         default_keyword_col(aa, "aa"),
@@ -225,7 +225,7 @@ fn preserve_split_default_skips_default_alignment() {
 }
 
 #[test]
-fn aligns_same_line_defaults_when_vars_separated_by_default_nodes() {
+fn aligns_colons_and_defaults_on_same_line_pairs() {
     let output = fmt_aligned_with_default_placement(
         "class C {\n    \
          var x : int; default x = 1;\n    \
@@ -233,8 +233,8 @@ fn aligns_same_line_defaults_when_vars_separated_by_default_nodes() {
         AnnotationPlacement::SameLine,
     );
     assert!(
-        output.contains("var x : int;") && !output.contains("var x            : int;"),
-        "interleaved default nodes break colon-align runs, got:\n{output}"
+        output.contains("var x            : int;"),
+        "colons should align, got:\n{output}"
     );
     let lines: Vec<&str> = output.lines().collect();
     let x = lines
@@ -248,7 +248,13 @@ fn aligns_same_line_defaults_when_vars_separated_by_default_nodes() {
     assert_eq!(
         default_keyword_col(x, "x"),
         default_keyword_col(long, "someLongName"),
-        "default keywords should still align, got:\n{output}"
+        "default keywords should align, got:\n{output}"
+    );
+    let x_semi = x.find(";").expect("semicolon");
+    let x_default = default_keyword_col(x, "x");
+    assert!(
+        x_default - x_semi >= 3,
+        "at least two spaces between `;` and `default`, got:\n{output}"
     );
 }
 
@@ -262,7 +268,10 @@ fn aligns_three_same_line_default_pairs() {
         AnnotationPlacement::SameLine,
     );
     let lines: Vec<&str> = output.lines().collect();
-    let a = lines.iter().find(|l| l.contains("default a = 1")).expect("a line");
+    let a = lines
+        .iter()
+        .find(|l| l.contains("default a = 1"))
+        .expect("a line");
     let bb = lines
         .iter()
         .find(|l| l.contains("default bb = 2"))

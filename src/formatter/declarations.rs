@@ -140,11 +140,46 @@ impl<'a> Formatter<'a> {
                     self.emit(" ");
                 }
             } else {
-                self.emit(" ");
+                self.emit("  ");
             }
             self.format_children(default_val);
         }
         self.nl();
+    }
+
+    fn member_var_suffix_from_colon_width(&self, node: Node) -> usize {
+        let children = child_nodes(node);
+        let Some(colon_idx) = children.iter().position(|c| c.kind() == ":") else {
+            return 0;
+        };
+        let mut width = 0;
+        let mut prev: Option<Node> = None;
+        for child in &children[colon_idx..] {
+            if child.is_missing() || child.kind() == "annotation" {
+                continue;
+            }
+            if let Some(p) = prev {
+                if self.gap_between(p, *child, node.kind()) {
+                    width += 1;
+                }
+            }
+            width += self.render_node(*child).len();
+            prev = Some(*child);
+        }
+        width
+    }
+
+    fn member_var_line_width_to_semicolon(
+        &self,
+        node: Node,
+        colon_align_col: Option<usize>,
+    ) -> usize {
+        let indent_width = self.level * self.indent_unit.len();
+        let suffix = self.member_var_suffix_from_colon_width(node);
+        match colon_align_col {
+            None => self.member_var_decl_width(node),
+            Some(col) => col.saturating_sub(indent_width) + suffix,
+        }
     }
 
     fn member_var_decl_width(&self, node: Node) -> usize {
@@ -197,33 +232,47 @@ impl<'a> Formatter<'a> {
             return targets;
         }
         let indent_width = self.level * self.indent_unit.len();
-        let mut i = 0;
-        while i < members.len() {
-            if !is_alignable_field(members[i]) {
-                i += 1;
-                continue;
-            }
-            let mut j = i;
-            while j + 1 < members.len()
-                && is_alignable_field(members[j + 1])
-                && members[j + 1]
-                    .start_position()
-                    .row
-                    .saturating_sub(members[j].end_position().row)
-                    <= 1
-            {
-                j += 1;
-            }
-            if j > i {
-                let width = (i..=j)
-                    .map(|k| self.member_var_pre_colon_width(members[k]))
-                    .max()
-                    .unwrap_or(0);
-                for target in targets.iter_mut().take(j + 1).skip(i) {
-                    *target = Some(indent_width + width);
+        let mut idx = 0;
+        while idx < members.len() {
+            if self.is_mergeable_default_pair(members, idx) {
+                let run_end = self.same_line_default_pair_run_end(members, idx);
+                let pair_count = (run_end - idx) / 2;
+                if pair_count >= 2 {
+                    let width = (0..pair_count)
+                        .map(|k| self.member_var_pre_colon_width(members[idx + k * 2]))
+                        .max()
+                        .unwrap_or(0);
+                    let col = indent_width + width;
+                    for k in 0..pair_count {
+                        targets[idx + k * 2] = Some(col);
+                    }
                 }
+                idx = run_end;
+            } else if is_alignable_field(members[idx]) {
+                let mut j = idx;
+                while j + 1 < members.len()
+                    && is_alignable_field(members[j + 1])
+                    && members[j + 1]
+                        .start_position()
+                        .row
+                        .saturating_sub(members[j].end_position().row)
+                        <= 1
+                {
+                    j += 1;
+                }
+                if j > idx {
+                    let width = (idx..=j)
+                        .map(|k| self.member_var_pre_colon_width(members[k]))
+                        .max()
+                        .unwrap_or(0);
+                    for target in targets.iter_mut().take(j + 1).skip(idx) {
+                        *target = Some(indent_width + width);
+                    }
+                }
+                idx = j + 1;
+            } else {
+                idx += 1;
             }
-            i = j + 1;
         }
         targets
     }
@@ -255,7 +304,12 @@ impl<'a> Formatter<'a> {
         next_var
     }
 
-    fn member_default_align_targets(&self, members: &[Node]) -> Vec<Option<usize>> {
+    fn member_default_align_targets(
+        &self,
+        members: &[Node],
+        colon_targets: &[Option<usize>],
+    ) -> Vec<Option<usize>> {
+        const MIN_GAP_BEFORE_DEFAULT: usize = 2;
         let mut targets = vec![None; members.len()];
         if !self.align_member_colons {
             return targets;
@@ -271,10 +325,16 @@ impl<'a> Formatter<'a> {
             let pair_count = (run_end - idx) / 2;
             if pair_count >= 2 {
                 let width = (0..pair_count)
-                    .map(|k| self.member_var_decl_width(members[idx + k * 2]))
+                    .map(|k| {
+                        let var_idx = idx + k * 2;
+                        self.member_var_line_width_to_semicolon(
+                            members[var_idx],
+                            colon_targets[var_idx],
+                        )
+                    })
                     .max()
                     .unwrap_or(0);
-                let col = indent_width + width + 1;
+                let col = indent_width + width + MIN_GAP_BEFORE_DEFAULT;
                 for k in 0..pair_count {
                     targets[idx + k * 2] = Some(col);
                 }
@@ -458,7 +518,7 @@ impl<'a> Formatter<'a> {
         self.level += 1;
 
         let colon_targets = self.member_colon_targets(&members);
-        let default_targets = self.member_default_align_targets(&members);
+        let default_targets = self.member_default_align_targets(&members, &colon_targets);
         let open_row = node.start_position().row;
         let mut prev_end_row: Option<usize> = None;
         let mut prev_was_comment = false;

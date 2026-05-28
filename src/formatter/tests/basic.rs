@@ -95,7 +95,7 @@ fn idempotent_on_valid_fixture() {
 fn preserve_default_placement() {
     let same = fmt("class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }");
     assert!(
-        same.contains("private const var RESET_TIME : float; default RESET_TIME = 0.750;"),
+        same.contains("private const var RESET_TIME : float;  default RESET_TIME = 0.750;"),
         "got:\n{same}"
     );
 
@@ -117,7 +117,7 @@ fn same_line_default_placement() {
     for input in cases {
         let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);
         assert!(
-            output.contains("private const var RESET_TIME : float; default RESET_TIME = 0.750;"),
+            output.contains("private const var RESET_TIME : float;  default RESET_TIME = 0.750;"),
             "input:\n{input}\ngot:\n{output}"
         );
     }
