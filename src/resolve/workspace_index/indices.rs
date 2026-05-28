@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
 
@@ -7,9 +8,13 @@ use super::super::annotation_target_class;
 use super::super::ast::is_type_like;
 use super::{Definition, WorkspaceIndex};
 
-fn retain_and_prune<K, V>(map: &mut HashMap<K, Vec<V>>, key: &K, mut keep: impl FnMut(&V) -> bool)
-where
-    K: Hash + Eq,
+fn retain_and_prune<K, V, Q>(
+    map: &mut HashMap<K, Vec<V>>,
+    key: &Q,
+    mut keep: impl FnMut(&V) -> bool,
+) where
+    K: Hash + Eq + Borrow<Q>,
+    Q: Hash + Eq + ?Sized,
 {
     let Some(entries) = map.get_mut(key) else {
         return;
@@ -17,6 +22,25 @@ where
     entries.retain(|v| keep(v));
     if entries.is_empty() {
         map.remove(key);
+    }
+}
+
+fn retain_and_prune_nested<K1, K2, V, Q1>(
+    map: &mut HashMap<K1, HashMap<K2, Vec<V>>>,
+    outer_key: &Q1,
+    inner_key: &K2,
+    keep: impl FnMut(&V) -> bool,
+) where
+    K1: Hash + Eq + Borrow<Q1>,
+    K2: Hash + Eq,
+    Q1: Hash + Eq + ?Sized,
+{
+    let Some(inner) = map.get_mut(outer_key) else {
+        return;
+    };
+    retain_and_prune(inner, inner_key, keep);
+    if inner.is_empty() {
+        map.remove(outer_key);
     }
 }
 
@@ -33,31 +57,23 @@ impl WorkspaceIndex {
                 }
                 if sym.kind == SymbolKind::State {
                     if let Some(owner) = &sym.owner_class {
-                        if let Some(by_name) = self.states_by_owner.get_mut(owner) {
-                            retain_and_prune(by_name, &sym.name, |d| d.uri != uri);
-                            if by_name.is_empty() {
-                                self.states_by_owner.remove(owner);
-                            }
-                        }
+                        retain_and_prune_nested(&mut self.states_by_owner, owner, &sym.name, |d| {
+                            d.uri != uri
+                        });
                     }
                 }
                 if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field) {
                     if let Some(target) = annotation_target_class(&sym) {
-                        if let Some(by_name) = self.annotated_members_by_type.get_mut(target) {
-                            retain_and_prune(by_name, &sym.name, |d| d.uri != uri);
-                            if by_name.is_empty() {
-                                self.annotated_members_by_type.remove(target);
-                            }
-                        }
+                        retain_and_prune_nested(
+                            &mut self.annotated_members_by_type,
+                            target,
+                            &sym.name,
+                            |d| d.uri != uri,
+                        );
                     }
                 }
             } else if let Some(cn) = &sym.container_name {
-                if let Some(by_name) = self.member_by_type.get_mut(cn) {
-                    retain_and_prune(by_name, &sym.name, |d| d.uri != uri);
-                    if by_name.is_empty() {
-                        self.member_by_type.remove(cn);
-                    }
-                }
+                retain_and_prune_nested(&mut self.member_by_type, cn, &sym.name, |d| d.uri != uri);
                 if sym.kind == SymbolKind::EnumMember {
                     retain_and_prune(&mut self.enum_member_by_name, &sym.name, |d| d.uri != uri);
                 }
