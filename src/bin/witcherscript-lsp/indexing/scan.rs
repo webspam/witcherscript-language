@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -8,7 +7,7 @@ use lsp_types::Url;
 use rayon::prelude::*;
 use tracing::{debug, error, info, warn};
 use witcherscript_language::document::{parse_document, ParsedDocument};
-use witcherscript_language::files::{canonical_uri, collect_witcherscript_files, read_script_file};
+use witcherscript_language::files::{canonical_uri, collect_witcherscript_files, read_text_file};
 use witcherscript_language::resolve::WorkspaceIndex;
 use witcherscript_language::script_env::parse_script_environment;
 
@@ -21,7 +20,7 @@ fn parse_script_files(files: &[PathBuf], label: &str) -> Vec<(String, ParsedDocu
     files
         .par_iter()
         .filter_map(|path| {
-            let source = read_script_file(path)
+            let source = read_text_file(path)
                 .map_err(|e| warn!(path = %path.display(), label, error = %e, "failed to read script"))
                 .ok()?;
             let document = parse_document(source)
@@ -90,8 +89,8 @@ impl Backend {
             let parsed: Vec<(String, ParsedDocument)> = files
                 .iter()
                 .filter_map(|path| {
-                    let source = fs::read_to_string(path)
-                        .map_err(|_| warn!(path = %path.display(), "failed to read workspace file"))
+                    let source = read_text_file(path)
+                        .map_err(|e| warn!(path = %path.display(), error = %e, "failed to read workspace file"))
                         .ok()?;
                     let document = parse_document(source)
                         .map_err(

@@ -1,4 +1,4 @@
-use witcherscript_language::files::read_script_file;
+use witcherscript_language::files::read_text_file;
 
 fn encode_utf16le(s: &str) -> Vec<u8> {
     let mut bytes = vec![0xFF, 0xFE]; // BOM
@@ -26,7 +26,7 @@ fn write_temp(name: &str, bytes: &[u8]) -> std::path::PathBuf {
 fn reads_utf8_script_file() {
     let path = write_temp("ws_test_utf8.ws", b"class CExample {}\n");
     assert_eq!(
-        read_script_file(&path).expect("should read"),
+        read_text_file(&path).expect("should read"),
         "class CExample {}\n"
     );
 }
@@ -36,7 +36,7 @@ fn reads_utf16le_script_file() {
     let bytes = encode_utf16le("class CExample {}\n");
     let path = write_temp("ws_test_utf16le.ws", &bytes);
     assert_eq!(
-        read_script_file(&path).expect("should read"),
+        read_text_file(&path).expect("should read"),
         "class CExample {}\n"
     );
 }
@@ -46,7 +46,7 @@ fn reads_utf16be_script_file() {
     let bytes = encode_utf16be("class CExample {}\n");
     let path = write_temp("ws_test_utf16be.ws", &bytes);
     assert_eq!(
-        read_script_file(&path).expect("should read"),
+        read_text_file(&path).expect("should read"),
         "class CExample {}\n"
     );
 }
@@ -54,5 +54,5 @@ fn reads_utf16be_script_file() {
 #[test]
 fn returns_error_for_invalid_utf8() {
     let path = write_temp("ws_test_bad.ws", &[0x80, 0x81, 0x82]);
-    assert!(read_script_file(&path).is_err());
+    assert!(read_text_file(&path).is_err());
 }

@@ -6,7 +6,7 @@ use lsp_types::{Position, Url};
 use tracing::{debug, error, trace, warn};
 use tree_sitter::{Parser, Tree};
 use witcherscript_language::document::{parse_document, parse_document_with_prior};
-use witcherscript_language::files::{canonical_uri, read_script_file};
+use witcherscript_language::files::{canonical_uri, read_text_file};
 use witcherscript_language::resolve::{resolve_definition, Definition, ObservedKey};
 
 use crate::backend::Backend;
@@ -127,7 +127,7 @@ impl Backend {
         let canonical = canonical_uri(uri).unwrap_or_else(|| uri.to_string());
         let is_base = self.is_base_script_uri(uri);
         let parsed = match uri.to_file_path() {
-            Ok(path) => match read_script_file(&path) {
+            Ok(path) => match read_text_file(&path) {
                 Ok(text) => parse_document(text)
                     .map_err(|e| warn!(uri = %uri, error = %e, "failed to parse closed file"))
                     .ok(),

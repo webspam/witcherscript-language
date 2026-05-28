@@ -1,12 +1,11 @@
 use std::error::Error;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::Parser as ClapParser;
 use tree_sitter::Parser as TreeSitterParser;
 use witcherscript_language::diagnostics::format_tree;
 use witcherscript_language::document::parse_document_with_parser;
-use witcherscript_language::files::collect_witcherscript_files;
+use witcherscript_language::files::{collect_witcherscript_files, read_text_file};
 
 #[derive(Debug, ClapParser)]
 #[command(author, version, about)]
@@ -80,7 +79,7 @@ fn parse_file(
     dump_tree: bool,
     max_diagnostics: usize,
 ) -> Result<FileResult, Box<dyn Error>> {
-    let source = fs::read_to_string(path)?;
+    let source = read_text_file(path)?;
     let document = parse_document_with_parser(parser, source)?;
     let root = document.tree.root_node();
 
