@@ -12,7 +12,7 @@ use witcherscript_language::line_index::LineIndex;
 
 use crate::backend::Backend;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct PendingEdit {
     pub source: String,
     pub line_index: LineIndex,
@@ -109,13 +109,7 @@ impl Backend {
     }
 
     pub(crate) fn clone_pending_for(&self, uri: &Url) -> Option<PendingEdit> {
-        let pending = self.pending_edits.lock();
-        pending.get(uri).map(|e| PendingEdit {
-            source: e.source.clone(),
-            line_index: e.line_index.clone(),
-            tree: e.tree.clone(),
-            target_parse_version: e.target_parse_version,
-        })
+        self.pending_edits.lock().get(uri).cloned()
     }
 
     pub(crate) fn process_pending_edit(&self, uri: Url, edit: PendingEdit) {
