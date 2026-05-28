@@ -7,7 +7,7 @@ use lsp_types::{
     Location, PrepareRenameResponse, ReferenceParams, RenameParams, TextDocumentPositionParams,
     TextEdit, Url, WorkspaceEdit,
 };
-use tracing::{info, trace};
+use tracing::{debug, trace};
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::resolve::{find_references, resolve_definition};
@@ -88,7 +88,7 @@ impl Backend {
 
             let ws_kb = handles.workspace().doc_idents_bytes() / 1024;
             let base_kb = handles.base().doc_idents_bytes() / 1024;
-            info!(
+            debug!(
                 ws_kb,
                 base_kb,
                 total_kb = ws_kb + base_kb,
