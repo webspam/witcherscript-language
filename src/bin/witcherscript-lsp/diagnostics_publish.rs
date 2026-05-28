@@ -15,7 +15,7 @@ use lsp_types::{
     WorkspaceDiagnosticReport, WorkspaceDocumentDiagnosticReport,
     WorkspaceFullDocumentDiagnosticReport, WorkspaceUnchangedDocumentDiagnosticReport,
 };
-use tracing::debug;
+use tracing::{debug, trace};
 
 use witcherscript_language::diagnostics::{
     collect_base_script_conflict_diagnostics, collect_duplicate_local_diagnostics,
@@ -42,22 +42,22 @@ fn collect_workspace_diagnostics(
     legacy_dirs: &[PathBuf],
     should_continue: &dyn Fn() -> bool,
 ) -> Option<DiagnosticsBundle> {
-    let mut dup = tracing::debug_span!("dup_symbols")
+    let mut dup = tracing::trace_span!("dup_symbols")
         .in_scope(|| collect_duplicate_symbol_diagnostics(workspace));
     if !should_continue() {
         return None;
     }
-    let mut shadow = tracing::debug_span!("shadowing")
+    let mut shadow = tracing::trace_span!("shadowing")
         .in_scope(|| collect_shadowing_diagnostics(workspace, env));
     if !should_continue() {
         return None;
     }
-    let mut dup_local = tracing::debug_span!("dup_locals")
+    let mut dup_local = tracing::trace_span!("dup_locals")
         .in_scope(|| collect_duplicate_local_diagnostics(workspace));
     if !should_continue() {
         return None;
     }
-    let base_conflict = tracing::debug_span!("base_script_conflict")
+    let base_conflict = tracing::trace_span!("base_script_conflict")
         .in_scope(|| collect_base_script_conflict_diagnostics(workspace, base, legacy_dirs));
     if !should_continue() {
         return None;
@@ -283,7 +283,7 @@ impl Backend {
         version: u64,
     ) -> Option<WorkspaceDiagnosticReport> {
         let started_at = Instant::now();
-        debug!(op = "compute_workspace_diagnostic_report", version, "start");
+        trace!(op = "compute_workspace_diagnostic_report", version, "start");
 
         let cfg = self.config.load();
         if matches!(cfg.diagnostics_scope, DiagnosticsScope::None) {
