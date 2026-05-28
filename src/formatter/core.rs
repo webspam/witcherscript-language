@@ -122,6 +122,14 @@ impl<'a> Formatter<'a> {
         if parent_kind == "cast_expr" && bk == ")" {
             return false;
         }
+        if parent_kind == "unary_op_expr"
+            && matches!(
+                bk,
+                "unary_op_not" | "unary_op_neg" | "unary_op_bitnot" | "unary_op_plus"
+            )
+        {
+            return false;
+        }
         if ak == "func_params" {
             return false;
         }

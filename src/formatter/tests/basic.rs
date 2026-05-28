@@ -68,6 +68,25 @@ fn local_var_init_with_ident_value_preserved() {
 }
 
 #[test]
+fn unary_not_has_no_space_before_operand() {
+    let cases = [
+        "function F() { if (!thePlayer) return; }",
+        "function F() { if (! thePlayer) return; }",
+        "function F() { if (  ! thePlayer) return; }",
+        "function F() { if (!thePlayer  ) return; }",
+        "function F() { if (  !   thePlayer  ) return; }",
+        "function F() { if (\n!thePlayer\n) return; }",
+    ];
+    for input in cases {
+        let output = fmt(input);
+        assert!(
+            output.contains("if (!thePlayer)"),
+            "unary `!` should have no space before its operand, got:\n{output}"
+        );
+    }
+}
+
+#[test]
 fn cast_has_no_space_between_paren_and_value() {
     let cases = [
         "function F() { var x : SomeType; x = (SomeType)      someVar; }",
