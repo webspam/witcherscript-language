@@ -171,6 +171,64 @@ async fn workspace_mode_close_keeps_the_file_in_the_workspace_report() {
 }
 
 #[tokio::test]
+async fn workspace_pull_explicitly_clears_files_that_left_the_diagnosed_set() {
+    let temp = LocalTempDir::new("ws_scope_clear_on_leave");
+    let path = write_script(temp.path(), "Bad.ws", "class CBad {\n");
+    let url = Url::from_file_path(&path).expect("path -> url");
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+
+    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let initial = backend
+        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .expect("initial workspace pull must not bail");
+    let prior_result_id = initial
+        .items
+        .iter()
+        .find_map(|item| match item {
+            WorkspaceDocumentDiagnosticReport::Full(full) if full.uri == url => {
+                full.full_document_diagnostic_report.result_id.clone()
+            }
+            _ => None,
+        })
+        .expect("initial pull must return Full with a result_id for the broken file");
+
+    let mut cfg = (**backend.config.load()).clone();
+    cfg.diagnostics_scope = DiagnosticsScope::OpenFiles;
+    backend.config.store(Arc::new(cfg));
+    backend.notify_diagnostics_changed();
+
+    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let mut previous = HashMap::new();
+    previous.insert(url.to_string(), prior_result_id);
+    let cleared = backend
+        .compute_workspace_diagnostic_report(previous, version)
+        .expect("workspace pull after scope narrow must not bail");
+    let entry = cleared
+        .items
+        .iter()
+        .find(|item| match item {
+            WorkspaceDocumentDiagnosticReport::Full(full) => full.uri == url,
+            WorkspaceDocumentDiagnosticReport::Unchanged(u) => u.uri == url,
+        })
+        .expect(
+            "file that left the diagnosed set must appear as an explicit clear, not be omitted",
+        );
+    match entry {
+        WorkspaceDocumentDiagnosticReport::Full(full) => {
+            assert!(
+                full.full_document_diagnostic_report.items.is_empty(),
+                "clearing entry must carry empty items, got {full:?}",
+            );
+        }
+        WorkspaceDocumentDiagnosticReport::Unchanged(_) => {
+            panic!("a URI that left the diagnosed set must not return Unchanged")
+        }
+    }
+}
+
+#[tokio::test]
 async fn switching_scope_retracts_then_restores_unopened_diagnostics() {
     let temp = LocalTempDir::new("ws_scope_switch_retracts_restores");
     let path = write_script(temp.path(), "Bad.ws", "class CBad {\n");

@@ -323,6 +323,7 @@ impl Backend {
         let base_surface = base.surface_hash();
         let env_version = env.version();
         let mut items: Vec<WorkspaceDocumentDiagnosticReport> = Vec::with_capacity(diag_docs.len());
+        let mut emitted: HashSet<String> = HashSet::with_capacity(diag_docs.len());
         for (diag_key, document) in diag_docs.iter() {
             let Some(publish_uri) = publish_url(diag_key) else {
                 continue;
@@ -334,6 +335,7 @@ impl Backend {
                 env_version,
                 fingerprint.legacy_db_generation,
             );
+            emitted.insert(publish_uri.to_string());
             if previous.get(diag_key) == Some(&result_id) {
                 items.push(WorkspaceDocumentDiagnosticReport::Unchanged(
                     WorkspaceUnchangedDocumentDiagnosticReport {
@@ -355,6 +357,26 @@ impl Backend {
                     full_document_diagnostic_report: FullDocumentDiagnosticReport {
                         result_id: Some(result_id),
                         items: diagnostics,
+                    },
+                },
+            ));
+        }
+
+        // Clients treat omission as "no change", so a file that left the diagnosed set needs an explicit empty Full.
+        for prev_uri in previous.keys() {
+            if emitted.contains(prev_uri) {
+                continue;
+            }
+            let Ok(parsed) = Url::parse(prev_uri) else {
+                continue;
+            };
+            items.push(WorkspaceDocumentDiagnosticReport::Full(
+                WorkspaceFullDocumentDiagnosticReport {
+                    uri: parsed,
+                    version: None,
+                    full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                        result_id: None,
+                        items: Vec::new(),
                     },
                 },
             ));
