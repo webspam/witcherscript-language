@@ -137,14 +137,14 @@ pub(crate) fn run_rules_on_document(
         false,
     );
     for ((elapsed, visits), rule) in rule_times.iter().zip(rules.iter()) {
-        tracing::debug!(
+        tracing::trace!(
             rule = rule.name(),
             visits = visits,
             elapsed_us = elapsed.as_micros() as u64,
             "cst rule timing"
         );
     }
-    tracing::debug!(
+    tracing::trace!(
         top_level = telemetry.top_level_lookups,
         member = telemetry.member_lookups,
         enum_member = telemetry.enum_member_lookups,

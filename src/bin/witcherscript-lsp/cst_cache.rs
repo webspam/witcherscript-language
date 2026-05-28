@@ -67,7 +67,7 @@ pub(crate) fn cst_diagnostics_with_cache(
             };
             let recording_db = doc_db.with_observer(&observations);
             let d =
-                tracing::debug_span!("cst_doc", uri = uri.as_str(), bytes = document.source.len())
+                tracing::trace_span!("cst_doc", uri = uri.as_str(), bytes = document.source.len())
                     .in_scope(|| {
                         collect_cst_diagnostics_for_document(uri.as_str(), document, &recording_db)
                     });
