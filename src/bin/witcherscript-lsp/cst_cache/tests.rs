@@ -15,19 +15,34 @@ fn fp() -> DbFingerprint {
     }
 }
 
-#[test]
-fn unchanged_docs_hit_cache_on_second_call() {
+fn two_doc_fixture(src_a: &str, src_b: &str) -> (WorkspaceIndex, ParsedDocument, ParsedDocument) {
+    let doc_a = make_doc(src_a);
+    let doc_b = make_doc(src_b);
     let mut idx = WorkspaceIndex::default();
-    let doc_a = make_doc("class A { function F() {} function T() { var a : A; a.F(); } }\n");
-    let doc_b = make_doc("class B { function G() {} function T() { var b : B; b.G(); } }\n");
     idx.update_document("file:///a.ws", &doc_a);
     idx.update_document("file:///b.ws", &doc_b);
+    (idx, doc_a, doc_b)
+}
+
+fn docs_map<'a>(
+    a: &'a ParsedDocument,
+    b: &'a ParsedDocument,
+) -> HashMap<String, &'a ParsedDocument> {
+    let mut documents = HashMap::new();
+    documents.insert("file:///a.ws".to_string(), a);
+    documents.insert("file:///b.ws".to_string(), b);
+    documents
+}
+
+#[test]
+fn unchanged_docs_hit_cache_on_second_call() {
+    let (idx, doc_a, doc_b) = two_doc_fixture(
+        "class A { function F() {} function T() { var a : A; a.F(); } }\n",
+        "class B { function G() {} function T() { var b : B; b.G(); } }\n",
+    );
     let base = WorkspaceIndex::default();
     let db = SymbolDb::new(&idx, &base);
-
-    let mut documents: HashMap<String, &ParsedDocument> = HashMap::new();
-    documents.insert("file:///a.ws".to_string(), &doc_a);
-    documents.insert("file:///b.ws".to_string(), &doc_b);
+    let documents = docs_map(&doc_a, &doc_b);
 
     let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
     let r1 = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
@@ -41,16 +56,9 @@ fn unchanged_docs_hit_cache_on_second_call() {
 
 #[test]
 fn text_only_edit_to_doc_keeps_others_hot() {
-    let mut idx = WorkspaceIndex::default();
-    let doc_a = make_doc("class A {}\n");
-    let doc_b = make_doc("class B {}\n");
-    idx.update_document("file:///a.ws", &doc_a);
-    idx.update_document("file:///b.ws", &doc_b);
+    let (mut idx, doc_a, doc_b) = two_doc_fixture("class A {}\n", "class B {}\n");
     let base = WorkspaceIndex::default();
-
-    let mut documents: HashMap<String, &ParsedDocument> = HashMap::new();
-    documents.insert("file:///a.ws".to_string(), &doc_a);
-    documents.insert("file:///b.ws".to_string(), &doc_b);
+    let mut documents = docs_map(&doc_a, &doc_b);
 
     let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
     {
@@ -73,17 +81,10 @@ fn text_only_edit_to_doc_keeps_others_hot() {
 
 #[test]
 fn edited_doc_misses_others_hit() {
-    let mut idx = WorkspaceIndex::default();
-    let doc_a = make_doc("class A {}\n");
-    let doc_b = make_doc("class B {}\n");
-    idx.update_document("file:///a.ws", &doc_a);
-    idx.update_document("file:///b.ws", &doc_b);
+    let (idx, doc_a, doc_b) = two_doc_fixture("class A {}\n", "class B {}\n");
     let base = WorkspaceIndex::default();
     let db = SymbolDb::new(&idx, &base);
-
-    let mut documents: HashMap<String, &ParsedDocument> = HashMap::new();
-    documents.insert("file:///a.ws".to_string(), &doc_a);
-    documents.insert("file:///b.ws".to_string(), &doc_b);
+    let mut documents = docs_map(&doc_a, &doc_b);
 
     let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
     let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
@@ -98,17 +99,10 @@ fn edited_doc_misses_others_hit() {
 
 #[test]
 fn fingerprint_change_invalidates_all() {
-    let mut idx = WorkspaceIndex::default();
-    let doc_a = make_doc("class A {}\n");
-    let doc_b = make_doc("class B {}\n");
-    idx.update_document("file:///a.ws", &doc_a);
-    idx.update_document("file:///b.ws", &doc_b);
+    let (idx, doc_a, doc_b) = two_doc_fixture("class A {}\n", "class B {}\n");
     let base = WorkspaceIndex::default();
     let db = SymbolDb::new(&idx, &base);
-
-    let mut documents: HashMap<String, &ParsedDocument> = HashMap::new();
-    documents.insert("file:///a.ws".to_string(), &doc_a);
-    documents.insert("file:///b.ws".to_string(), &doc_b);
+    let documents = docs_map(&doc_a, &doc_b);
 
     let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
     let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
@@ -125,17 +119,10 @@ fn fingerprint_change_invalidates_all() {
 
 #[test]
 fn closed_docs_evicted_from_cache() {
-    let mut idx = WorkspaceIndex::default();
-    let doc_a = make_doc("class A {}\n");
-    let doc_b = make_doc("class B {}\n");
-    idx.update_document("file:///a.ws", &doc_a);
-    idx.update_document("file:///b.ws", &doc_b);
+    let (idx, doc_a, doc_b) = two_doc_fixture("class A {}\n", "class B {}\n");
     let base = WorkspaceIndex::default();
     let db = SymbolDb::new(&idx, &base);
-
-    let mut documents: HashMap<String, &ParsedDocument> = HashMap::new();
-    documents.insert("file:///a.ws".to_string(), &doc_a);
-    documents.insert("file:///b.ws".to_string(), &doc_b);
+    let mut documents = docs_map(&doc_a, &doc_b);
 
     let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
     let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
