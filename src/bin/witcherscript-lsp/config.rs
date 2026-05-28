@@ -8,6 +8,18 @@ use tracing::{info, trace, warn};
 use crate::backend::Backend;
 use crate::logging::{level_from_str, level_to_u8, DEFAULT_LOG_LEVEL};
 
+fn parse_path_array(value: Option<Value>) -> Vec<std::path::PathBuf> {
+    let Some(Value::Array(arr)) = value else {
+        return Vec::new();
+    };
+    arr.into_iter()
+        .filter_map(|v| match v {
+            Value::String(s) if !s.is_empty() => Some(std::path::PathBuf::from(s)),
+            _ => None,
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DiagnosticsScope {
     Workspace,
@@ -180,40 +192,12 @@ impl Backend {
                 .collect();
             *self.files_exclude.lock() = globs;
         }
-        match iter.next() {
-            Some(Value::Array(arr)) => {
-                let dirs: Vec<std::path::PathBuf> = arr
-                    .into_iter()
-                    .filter_map(|v| match v {
-                        Value::String(s) if !s.is_empty() => Some(std::path::PathBuf::from(s)),
-                        _ => None,
-                    })
-                    .collect();
-                *self.additional_script_dirs.lock() = dirs;
-            }
-            _ => {
-                self.additional_script_dirs.lock().clear();
-            }
-        }
+        *self.additional_script_dirs.lock() = parse_path_array(iter.next());
         next_cfg.auto_load_mod_shared_imports = match iter.next() {
             Some(Value::Bool(b)) => b,
             _ => true,
         };
-        match iter.next() {
-            Some(Value::Array(arr)) => {
-                let dirs: Vec<std::path::PathBuf> = arr
-                    .into_iter()
-                    .filter_map(|v| match v {
-                        Value::String(s) if !s.is_empty() => Some(std::path::PathBuf::from(s)),
-                        _ => None,
-                    })
-                    .collect();
-                *self.legacy_script_dirs.lock() = dirs;
-            }
-            _ => {
-                self.legacy_script_dirs.lock().clear();
-            }
-        }
+        *self.legacy_script_dirs.lock() = parse_path_array(iter.next());
         next_cfg.auto_detect_project_manifests = match iter.next() {
             Some(Value::Bool(b)) => b,
             _ => true,
