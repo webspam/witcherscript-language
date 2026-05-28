@@ -124,8 +124,12 @@ pub(super) fn is_alignable_field(node: Node) -> bool {
         return false;
     }
     let mut c = node.walk();
-    let has_comment = node.children(&mut c).any(|n| n.kind() == "comment");
-    !has_comment
+    for child in node.children(&mut c) {
+        if child.kind() == "comment" || child.kind() == "annotation" {
+            return false;
+        }
+    }
+    true
 }
 
 pub(super) fn is_bodiless_callable(node: Node) -> bool {

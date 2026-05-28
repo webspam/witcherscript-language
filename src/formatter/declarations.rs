@@ -67,16 +67,6 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    fn colon_alignable_field(&self, node: Node) -> bool {
-        if !is_alignable_field(node) {
-            return false;
-        }
-        let Some(ann) = self.child_of_kind(node, "annotation") else {
-            return true;
-        };
-        self.is_add_field_annotation(ann) && self.add_field_on_same_line(node, ann)
-    }
-
     fn emit_add_field_annotation(&mut self, node: Node, ann: Node) -> bool {
         let same_line = self.add_field_on_same_line(node, ann);
         let ann_text = self.render_node(ann);
@@ -130,11 +120,6 @@ impl<'a> Formatter<'a> {
             width += self.render_node(*child).len();
             prev = Some(*child);
         }
-        if let Some(ann) = self.child_of_kind(node, "annotation") {
-            if self.is_add_field_annotation(ann) && self.add_field_on_same_line(node, ann) {
-                width += self.render_node(ann).len() + 1;
-            }
-        }
         width
     }
 
@@ -149,13 +134,13 @@ impl<'a> Formatter<'a> {
         let indent_width = self.level * self.indent_unit.len();
         let mut i = 0;
         while i < members.len() {
-            if !self.colon_alignable_field(members[i]) {
+            if !is_alignable_field(members[i]) {
                 i += 1;
                 continue;
             }
             let mut j = i;
             while j + 1 < members.len()
-                && self.colon_alignable_field(members[j + 1])
+                && is_alignable_field(members[j + 1])
                 && members[j + 1]
                     .start_position()
                     .row
