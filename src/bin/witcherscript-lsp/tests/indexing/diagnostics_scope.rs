@@ -220,6 +220,53 @@ async fn workspace_mode_close_keeps_the_file_in_the_workspace_report() {
 }
 
 #[tokio::test]
+async fn workspace_pull_returns_unchanged_for_open_file_when_client_echoes_emitted_result_id() {
+    let temp = LocalTempDir::new("ws_scope_unchanged_open_roundtrip");
+    let path = write_script(temp.path(), "Bad.ws", "class CBad {\n");
+    let url = Url::from_file_path(&path).expect("path -> url");
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+    backend.update_open_document(url.clone(), "class CBad {\n".to_string());
+
+    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let initial = backend
+        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .expect("initial workspace pull must not bail");
+    let (emitted_uri, emitted_result_id) = initial
+        .items
+        .iter()
+        .find_map(|item| match item {
+            WorkspaceDocumentDiagnosticReport::Full(full) if full.uri == url => Some((
+                full.uri.clone(),
+                full.full_document_diagnostic_report.result_id.clone(),
+            )),
+            _ => None,
+        })
+        .expect("initial pull must include the open broken file as Full");
+    let emitted_result_id = emitted_result_id.expect("Full report must carry a result_id");
+
+    let mut previous = HashMap::new();
+    previous.insert(emitted_uri.to_string(), emitted_result_id);
+    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let second = backend
+        .compute_workspace_diagnostic_report(previous, version)
+        .expect("second workspace pull must not bail");
+    let entry = second
+        .items
+        .iter()
+        .find(|item| match item {
+            WorkspaceDocumentDiagnosticReport::Full(full) => full.uri == url,
+            WorkspaceDocumentDiagnosticReport::Unchanged(unchanged) => unchanged.uri == url,
+        })
+        .expect("open file must appear in the second workspace report");
+    assert!(
+        matches!(entry, WorkspaceDocumentDiagnosticReport::Unchanged(_)),
+        "client echoing back the URI we emitted must yield Unchanged, got {entry:?}",
+    );
+}
+
+#[tokio::test]
 async fn workspace_pull_explicitly_clears_files_that_left_the_diagnosed_set() {
     let temp = LocalTempDir::new("ws_scope_clear_on_leave");
     let path = write_script(temp.path(), "Bad.ws", "class CBad {\n");

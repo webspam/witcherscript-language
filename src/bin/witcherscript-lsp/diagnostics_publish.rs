@@ -330,8 +330,9 @@ impl Backend {
                 compute.env_version,
                 compute.fingerprint.legacy_db_generation,
             );
-            emitted.insert(publish_uri.to_string());
-            if previous.get(diag_key) == Some(&result_id) {
+            let publish_key = publish_uri.to_string();
+            emitted.insert(publish_key.clone());
+            if previous.get(&publish_key) == Some(&result_id) {
                 items.push(WorkspaceDocumentDiagnosticReport::Unchanged(
                     WorkspaceUnchangedDocumentDiagnosticReport {
                         uri: publish_uri,
