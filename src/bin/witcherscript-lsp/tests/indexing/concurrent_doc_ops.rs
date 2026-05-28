@@ -25,6 +25,18 @@ fn make_backend() -> Backend {
     Backend::new(client, config)
 }
 
+fn make_workspace_backend() -> Backend {
+    let (_main_loop, client) =
+        async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
+    let config = Arc::new(ArcSwap::from_pointee(Config {
+        diagnostics_scope: DiagnosticsScope::Workspace,
+        ..Config::default()
+    }));
+    let backend = Backend::new(client, config);
+    backend.initial_index_done.store(true, Ordering::Release);
+    backend
+}
+
 fn open_params(uri: &Url, text: &str) -> DidOpenTextDocumentParams {
     DidOpenTextDocumentParams {
         text_document: TextDocumentItem {
@@ -154,17 +166,7 @@ fn semantic_tokens_after_did_change_sees_new_source() {
 // so a stale spawned task can't overwrite a newer one's result.
 #[test]
 fn publish_open_diagnostics_bails_when_version_advanced() {
-    let backend = {
-        let (_main_loop, client) =
-            async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-        let config = Arc::new(ArcSwap::from_pointee(Config {
-            diagnostics_scope: DiagnosticsScope::Workspace,
-            ..Config::default()
-        }));
-        let backend = Backend::new(client, config);
-        backend.initial_index_done.store(true, Ordering::Release);
-        backend
-    };
+    let backend = make_workspace_backend();
     let uri: Url = "file:///stale.ws".parse().unwrap();
     backend._did_open(open_params(&uri, "class CBroken {\n"));
 
@@ -192,17 +194,7 @@ fn publish_open_diagnostics_bails_when_version_advanced() {
 
 #[test]
 fn compute_diagnostics_for_uri_bails_when_version_advanced() {
-    let backend = {
-        let (_main_loop, client) =
-            async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-        let config = Arc::new(ArcSwap::from_pointee(Config {
-            diagnostics_scope: DiagnosticsScope::Workspace,
-            ..Config::default()
-        }));
-        let backend = Backend::new(client, config);
-        backend.initial_index_done.store(true, Ordering::Release);
-        backend
-    };
+    let backend = make_workspace_backend();
     let uri: Url = "file:///stale_pull.ws".parse().unwrap();
     backend._did_open(open_params(&uri, "class CPull {}\n"));
 
@@ -330,17 +322,7 @@ fn semantic_tokens_full_unrelated_uri_unaffected_by_pending_edit_elsewhere() {
 
 #[test]
 fn document_diagnostic_bails_when_pending_edit_outranks_snapshot() {
-    let backend = {
-        let (_main_loop, client) =
-            async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-        let config = Arc::new(ArcSwap::from_pointee(Config {
-            diagnostics_scope: DiagnosticsScope::Workspace,
-            ..Config::default()
-        }));
-        let backend = Backend::new(client, config);
-        backend.initial_index_done.store(true, Ordering::Release);
-        backend
-    };
+    let backend = make_workspace_backend();
     backend.edit_writer_spawned.store(true, Ordering::Release);
 
     let uri: Url = "file:///stale_diag.ws".parse().unwrap();
@@ -361,17 +343,7 @@ fn document_diagnostic_bails_when_pending_edit_outranks_snapshot() {
 
 #[test]
 fn document_diagnostic_unrelated_uri_unaffected_by_pending_edit_elsewhere() {
-    let backend = {
-        let (_main_loop, client) =
-            async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-        let config = Arc::new(ArcSwap::from_pointee(Config {
-            diagnostics_scope: DiagnosticsScope::Workspace,
-            ..Config::default()
-        }));
-        let backend = Backend::new(client, config);
-        backend.initial_index_done.store(true, Ordering::Release);
-        backend
-    };
+    let backend = make_workspace_backend();
     backend.edit_writer_spawned.store(true, Ordering::Release);
 
     let main: Url = "file:///main_diag.ws".parse().unwrap();
