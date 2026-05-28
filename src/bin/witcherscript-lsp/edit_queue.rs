@@ -48,7 +48,7 @@ impl Backend {
         if !self.edit_writer_spawned.load(Ordering::Acquire) {
             trace!(op = "enqueue_edit", uri = %uri, path = "sync", target_parse_version, "enter");
             self.process_pending_edit(uri, edit);
-            self.spawn_diagnostics_state_changed();
+            self.notify_diagnostics_changed();
             return;
         }
         self.pending_edits.lock().insert(uri.clone(), edit);
@@ -103,7 +103,7 @@ impl Backend {
                     }
                 })
                 .await;
-                self.spawn_diagnostics_at_current_version();
+                self.request_workspace_diagnostic_refresh();
             }
         }
     }

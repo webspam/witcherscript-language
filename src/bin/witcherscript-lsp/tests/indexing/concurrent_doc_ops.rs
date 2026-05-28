@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -161,34 +162,21 @@ fn semantic_tokens_after_did_change_sees_new_source() {
     );
 }
 
-// Demonstrates the version-counter discard pattern: when diagnostic_version is bumped past
-// the version a publish was issued for, that publish bails before recording anything,
-// so a stale spawned task can't overwrite a newer one's result.
 #[test]
-fn publish_open_diagnostics_bails_when_version_advanced() {
+fn compute_workspace_diagnostic_report_bails_when_version_advanced() {
     let backend = make_workspace_backend();
     let uri: Url = "file:///stale.ws".parse().unwrap();
     backend._did_open(open_params(&uri, "class CBroken {\n"));
 
     let stale_version = backend.diagnostic_version.load(Ordering::Acquire);
     backend
-        .published_diagnostics
-        .lock()
-        .insert(uri.clone(), Vec::new());
-    backend
         .diagnostic_version
         .store(stale_version + 100, Ordering::Release);
 
-    backend.publish_open_diagnostics(stale_version);
-
-    assert_eq!(
-        backend
-            .published_diagnostics
-            .lock()
-            .get(&uri)
-            .map(|d| d.len()),
-        Some(0),
-        "a stale-version publish must not overwrite the already-recorded diagnostics",
+    let result = backend.compute_workspace_diagnostic_report(HashMap::new(), stale_version);
+    assert!(
+        result.is_none(),
+        "stale-version workspace pull must bail instead of returning a report",
     );
 }
 

@@ -10,8 +10,11 @@ use crate::cst_cache::cst_diagnostics_with_cache;
 use crate::file_scope::{classify_file_scope, FileScope};
 use crate::file_scope_status::{FileScopeStatusNotification, FileScopeStatusParams};
 use crate::legacy_status::{LegacyScriptStatusNotification, LegacyScriptStatusParams};
-use lsp_types::notification::PublishDiagnostics;
-use lsp_types::{Diagnostic, PublishDiagnosticsParams, Url};
+use lsp_types::{
+    Diagnostic, FullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport, Url,
+    WorkspaceDiagnosticReport, WorkspaceDocumentDiagnosticReport,
+    WorkspaceFullDocumentDiagnosticReport, WorkspaceUnchangedDocumentDiagnosticReport,
+};
 use tracing::debug;
 
 use witcherscript_language::diagnostics::{
@@ -102,6 +105,19 @@ fn assemble_diagnostics_for_key(
     diagnostics
 }
 
+fn result_id_for(
+    parse_version: u64,
+    workspace_surface: u64,
+    base_surface: u64,
+    env_version: u64,
+    legacy_db_generation: u64,
+) -> String {
+    format!(
+        "{}-{:x}-{:x}-{:x}-{:x}",
+        parse_version, workspace_surface, base_surface, env_version, legacy_db_generation,
+    )
+}
+
 // A file is published under its canonical URI so its key is stable whether or not it is open.
 pub(crate) fn publish_url(diag_key: &str) -> Option<Url> {
     let parsed = Url::parse(diag_key).ok()?;
@@ -112,182 +128,6 @@ pub(crate) fn publish_url(diag_key: &str) -> Option<Url> {
 }
 
 impl Backend {
-    fn send_publish_diagnostics(&self, uri: Url, diagnostics: Vec<Diagnostic>) {
-        // notify failure means the client disconnected; nothing to recover.
-        let _ = self
-            .client
-            .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
-                uri,
-                diagnostics,
-                version: None,
-            });
-    }
-
-    pub(crate) fn publish_open_diagnostics(&self, version: u64) {
-        let cfg = self.config.load();
-        if matches!(cfg.diagnostics_scope, DiagnosticsScope::None) {
-            return;
-        }
-
-        if !self.initial_index_done.load(Ordering::Acquire) {
-            self.publish_syntactic_only();
-            return;
-        }
-
-        if self.diagnostic_version.load(Ordering::Acquire) != version {
-            return;
-        }
-
-        let started_at = Instant::now();
-        debug!(op = "publish_open_diagnostics", version, "start",);
-
-        let whole_workspace = matches!(cfg.diagnostics_scope, DiagnosticsScope::Workspace);
-
-        let snap = self.snapshot();
-        let legacy_dirs = self.effective_legacy_dirs();
-        let loose_uris = self.loose_open_uris(&snap.documents);
-
-        let cache_wait_start = Instant::now();
-        let cst_cache_wait_us;
-
-        let (to_publish, cst_stats): (Vec<(Url, Vec<Diagnostic>)>, _) = {
-            let workspace = &snap.workspace_index;
-            let loose = &snap.loose_index;
-            let base = &snap.base_scripts_index;
-            let env = &snap.script_env;
-            let mut cache = self.cst_diag_cache.lock();
-            cst_cache_wait_us = cache_wait_start.elapsed().as_micros();
-
-            if self.diagnostic_version.load(Ordering::Acquire) != version {
-                return;
-            }
-
-            let diag_docs = diagnostics_document_set(
-                &snap.workspace_documents,
-                &snap.documents,
-                whole_workspace,
-            );
-
-            let version_check = || self.diagnostic_version.load(Ordering::Acquire) == version;
-            let Some(bundle) = collect_workspace_diagnostics(
-                workspace,
-                loose,
-                base,
-                env,
-                &legacy_dirs,
-                &version_check,
-            ) else {
-                return;
-            };
-            if !version_check() {
-                return;
-            }
-
-            let fingerprint = self.db_fingerprint(base, env);
-            let loose_uri_strs: HashSet<String> =
-                loose_uris.iter().map(|u| u.to_string()).collect();
-            let suppressed = &snap.suppressed_base_uris;
-            let filtered = snap.filtered_base_catalogs.as_deref();
-            let cst = {
-                let ws_db = build_symbol_db(
-                    workspace,
-                    base,
-                    env,
-                    self.builtins_index.as_ref(),
-                    suppressed,
-                    filtered,
-                );
-                let loose_db = build_symbol_db(
-                    loose,
-                    base,
-                    env,
-                    self.builtins_index.as_ref(),
-                    suppressed,
-                    filtered,
-                );
-                let diagnostic_version = self.diagnostic_version.clone();
-                let should_continue = move || diagnostic_version.load(Ordering::Acquire) == version;
-                tracing::debug_span!("cst_diagnostics", docs = diag_docs.len()).in_scope(|| {
-                    cst_diagnostics_with_cache(
-                        &diag_docs,
-                        &ws_db,
-                        Some((&loose_db, &loose_uri_strs)),
-                        fingerprint,
-                        &mut cache,
-                        &should_continue,
-                    )
-                })
-            };
-            if cst.cancelled {
-                return;
-            }
-            let cst_stats = cst.stats;
-            {
-                let mut loose_subs = self.loose_subscriptions.lock();
-                let mut workspace_subs = self.workspace_subscriptions.lock();
-                for (uri, observations) in cst.new_subscriptions {
-                    if loose_uri_strs.contains(&uri) {
-                        loose_subs.register(&uri, observations);
-                    } else {
-                        workspace_subs.register(&uri, observations);
-                    }
-                }
-            }
-
-            if self.diagnostic_version.load(Ordering::Acquire) != version {
-                return;
-            }
-
-            let mut published = self.published_diagnostics.lock();
-            let mut current: HashSet<Url> = HashSet::new();
-            let mut list: Vec<(Url, Vec<Diagnostic>)> = Vec::new();
-            for (diag_key, document) in diag_docs.iter() {
-                let diagnostics =
-                    assemble_diagnostics_for_key(diag_key.as_str(), &bundle, &cst.by_uri, document);
-                let Some(publish_uri) = publish_url(diag_key) else {
-                    continue;
-                };
-                current.insert(publish_uri.clone());
-                if published.get(&publish_uri) == Some(&diagnostics) {
-                    continue;
-                }
-                published.insert(publish_uri.clone(), diagnostics.clone());
-                list.push((publish_uri, diagnostics));
-            }
-
-            // A file that left the diagnosed set (closed, deleted, or scope narrowed) has its diagnostics retracted.
-            let stale: Vec<Url> = published
-                .keys()
-                .filter(|uri| !current.contains(*uri))
-                .cloned()
-                .collect();
-            for uri in stale {
-                published.remove(&uri);
-                list.push((uri, Vec::new()));
-            }
-            (list, cst_stats)
-        };
-
-        let republished = to_publish.len();
-        for (uri, diagnostics) in to_publish {
-            self.send_publish_diagnostics(uri, diagnostics);
-        }
-
-        debug!(
-            op = "publish_open_diagnostics",
-            version,
-            republished,
-            cst_cache_hits = cst_stats.hits,
-            cst_cache_misses = cst_stats.misses,
-            cst_cache_wait_us,
-            elapsed_us = started_at.elapsed().as_micros(),
-            "complete",
-        );
-    }
-
-    // Pull diagnostics path: compute the current diagnostic vector + a fingerprint result_id
-    // for one URI. The result_id changes whenever any input that could affect this file's
-    // diagnostics changes (its own parse, workspace surface, base surface, env, legacy generation).
     pub(crate) fn compute_diagnostics_for_uri(
         &self,
         uri: &Url,
@@ -371,8 +211,7 @@ impl Backend {
         let diagnostics =
             assemble_diagnostics_for_key(key.as_str(), &bundle, &cst.by_uri, document);
 
-        let result_id = format!(
-            "{}-{:x}-{:x}-{:x}-{:x}",
+        let result_id = result_id_for(
             document.parse_version,
             workspace.surface_hash(),
             base.surface_hash(),
@@ -389,37 +228,148 @@ impl Backend {
         Some((diagnostics, result_id))
     }
 
-    fn publish_syntactic_only(&self) {
+    pub(crate) fn compute_workspace_diagnostic_report(
+        &self,
+        previous: HashMap<String, String>,
+        version: u64,
+    ) -> Option<WorkspaceDiagnosticReport> {
         let started_at = Instant::now();
-        debug!(op = "publish_syntactic_only", "start");
-        let to_publish: Vec<(Url, Vec<Diagnostic>)> = {
-            let documents = self.snapshot().documents.clone();
-            let mut published = self.published_diagnostics.lock();
-            let mut list = Vec::new();
-            for (uri, document) in documents.iter() {
-                let diagnostics = lsp_diagnostics(document.as_ref());
-                let Some(publish_uri) = publish_url(uri.as_str()) else {
-                    continue;
-                };
-                if published.get(&publish_uri) == Some(&diagnostics) {
-                    continue;
-                }
-                published.insert(publish_uri.clone(), diagnostics.clone());
-                list.push((publish_uri, diagnostics));
-            }
-            list
-        };
+        debug!(op = "compute_workspace_diagnostic_report", version, "start");
 
-        let republished = to_publish.len();
-        for (uri, diagnostics) in to_publish {
-            self.send_publish_diagnostics(uri, diagnostics);
+        let cfg = self.config.load();
+        if matches!(cfg.diagnostics_scope, DiagnosticsScope::None) {
+            return Some(WorkspaceDiagnosticReport { items: Vec::new() });
         }
+        let whole_workspace = matches!(cfg.diagnostics_scope, DiagnosticsScope::Workspace);
+
+        let snap = self.snapshot();
+        let legacy_dirs = self.effective_legacy_dirs();
+        let loose_uris = self.loose_open_uris(&snap.documents);
+        let workspace = &snap.workspace_index;
+        let loose = &snap.loose_index;
+        let base = &snap.base_scripts_index;
+        let env = &snap.script_env;
+        let suppressed = &snap.suppressed_base_uris;
+        let filtered = snap.filtered_base_catalogs.as_deref();
+
+        let mut cache = self.cst_diag_cache.lock();
+        if self.diagnostic_version.load(Ordering::Acquire) != version {
+            return None;
+        }
+
+        let diag_docs =
+            diagnostics_document_set(&snap.workspace_documents, &snap.documents, whole_workspace);
+
+        let version_check = || self.diagnostic_version.load(Ordering::Acquire) == version;
+        let bundle = collect_workspace_diagnostics(
+            workspace,
+            loose,
+            base,
+            env,
+            &legacy_dirs,
+            &version_check,
+        )?;
+        if !version_check() {
+            return None;
+        }
+
+        let fingerprint = self.db_fingerprint(base, env);
+        let loose_uri_strs: HashSet<String> = loose_uris.iter().map(|u| u.to_string()).collect();
+        let ws_db = build_symbol_db(
+            workspace,
+            base,
+            env,
+            self.builtins_index.as_ref(),
+            suppressed,
+            filtered,
+        );
+        let loose_db = build_symbol_db(
+            loose,
+            base,
+            env,
+            self.builtins_index.as_ref(),
+            suppressed,
+            filtered,
+        );
+
+        let diagnostic_version = self.diagnostic_version.clone();
+        let should_continue = move || diagnostic_version.load(Ordering::Acquire) == version;
+        let cst = cst_diagnostics_with_cache(
+            &diag_docs,
+            &ws_db,
+            Some((&loose_db, &loose_uri_strs)),
+            fingerprint,
+            &mut cache,
+            &should_continue,
+        );
+        if cst.cancelled {
+            return None;
+        }
+        let cst_stats = cst.stats;
+
+        {
+            let mut loose_subs = self.loose_subscriptions.lock();
+            let mut workspace_subs = self.workspace_subscriptions.lock();
+            for (uri, observations) in cst.new_subscriptions {
+                if loose_uri_strs.contains(&uri) {
+                    loose_subs.register(&uri, observations);
+                } else {
+                    workspace_subs.register(&uri, observations);
+                }
+            }
+        }
+
+        let workspace_surface = workspace.surface_hash();
+        let base_surface = base.surface_hash();
+        let env_version = env.version();
+        let mut items: Vec<WorkspaceDocumentDiagnosticReport> = Vec::with_capacity(diag_docs.len());
+        for (diag_key, document) in diag_docs.iter() {
+            let Some(publish_uri) = publish_url(diag_key) else {
+                continue;
+            };
+            let result_id = result_id_for(
+                document.parse_version,
+                workspace_surface,
+                base_surface,
+                env_version,
+                fingerprint.legacy_db_generation,
+            );
+            if previous.get(diag_key) == Some(&result_id) {
+                items.push(WorkspaceDocumentDiagnosticReport::Unchanged(
+                    WorkspaceUnchangedDocumentDiagnosticReport {
+                        uri: publish_uri,
+                        version: None,
+                        unchanged_document_diagnostic_report: UnchangedDocumentDiagnosticReport {
+                            result_id,
+                        },
+                    },
+                ));
+                continue;
+            }
+            let diagnostics =
+                assemble_diagnostics_for_key(diag_key.as_str(), &bundle, &cst.by_uri, document);
+            items.push(WorkspaceDocumentDiagnosticReport::Full(
+                WorkspaceFullDocumentDiagnosticReport {
+                    uri: publish_uri,
+                    version: None,
+                    full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                        result_id: Some(result_id),
+                        items: diagnostics,
+                    },
+                },
+            ));
+        }
+
         debug!(
-            op = "publish_syntactic_only",
-            republished,
+            op = "compute_workspace_diagnostic_report",
+            version,
+            items = items.len(),
+            cst_cache_hits = cst_stats.hits,
+            cst_cache_misses = cst_stats.misses,
             elapsed_us = started_at.elapsed().as_micros(),
             "complete",
         );
+        Some(WorkspaceDiagnosticReport { items })
     }
 
     pub(crate) fn publish_legacy_script_status(&self) {
@@ -487,42 +437,6 @@ impl Backend {
             // notify failure means the client disconnected; nothing to recover.
             let _ = self.client.notify::<FileScopeStatusNotification>(params);
         }
-    }
-
-    pub(crate) fn reconcile_published_diagnostics(&self) {
-        let started_at = Instant::now();
-        debug!(op = "reconcile_published_diagnostics", "start");
-        if !matches!(self.config.load().diagnostics_scope, DiagnosticsScope::None) {
-            // Caller is already on a tokio task (config-change handler); skip the spawn so
-            // tests that observe the published map directly after this call see the result.
-            self.request_workspace_diagnostic_refresh();
-            let version = self.diagnostic_version.fetch_add(1, Ordering::AcqRel) + 1;
-            self.publish_open_diagnostics(version);
-            debug!(
-                op = "reconcile_published_diagnostics",
-                elapsed_us = started_at.elapsed().as_micros(),
-                action = "republished",
-                "complete",
-            );
-            return;
-        }
-        let uris: Vec<Url> = {
-            let mut published = self.published_diagnostics.lock();
-            let keys: Vec<Url> = published.keys().cloned().collect();
-            published.clear();
-            keys
-        };
-        let retracted = uris.len();
-        for uri in uris {
-            self.send_publish_diagnostics(uri, Vec::new());
-        }
-        debug!(
-            op = "reconcile_published_diagnostics",
-            retracted,
-            elapsed_us = started_at.elapsed().as_micros(),
-            action = "retracted_all",
-            "complete",
-        );
     }
 }
 

@@ -193,7 +193,7 @@ impl Backend {
                     DiagnosticOptions {
                         identifier: Some("witcherscript".to_string()),
                         inter_file_dependencies: true,
-                        workspace_diagnostics: false,
+                        workspace_diagnostics: true,
                         work_done_progress_options: WorkDoneProgressOptions::default(),
                     },
                 )),
@@ -219,7 +219,7 @@ impl Backend {
         self.register_file_watchers().await;
         self.index_base_scripts().await;
         self.initial_index_done.store(true, Ordering::Release);
-        self.diagnostics_state_changed();
+        self.notify_diagnostics_changed();
         trace!(
             op = "initialized",
             elapsed_us = started_at.elapsed().as_micros(),
@@ -246,10 +246,10 @@ impl Backend {
             self.refresh_manifest_legacy_dirs();
             self.index_base_scripts().await;
             self.reindex_open_documents();
-            self.diagnostics_state_changed();
+            self.notify_diagnostics_changed();
         }
         if change.diagnostics_changed {
-            self.reconcile_published_diagnostics();
+            self.notify_diagnostics_changed();
         }
         self.publish_file_scope_status();
         trace!(

@@ -3,13 +3,15 @@ use std::time::Instant;
 
 use async_lsp::{ErrorCode, ResponseError};
 use lsp_types::{
-    CodeActionParams, CodeActionResponse, DocumentDiagnosticParams, DocumentDiagnosticReport,
-    DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentSymbolParams,
-    DocumentSymbolResponse, FullDocumentDiagnosticReport, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, MarkupContent, MarkupKind,
+    CodeActionParams, CodeActionResponse, DiagnosticServerCancellationData,
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+    DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse,
+    FullDocumentDiagnosticReport, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    HoverContents, HoverParams, Location, MarkupContent, MarkupKind,
     RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, SemanticToken,
     SemanticTokens, SemanticTokensParams, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
-    TextEdit, UnchangedDocumentDiagnosticReport, Url,
+    TextEdit, UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams,
+    WorkspaceDiagnosticReportResult,
 };
 use tracing::trace;
 use witcherscript_language::builtins::builtin_source;
@@ -88,6 +90,37 @@ impl Backend {
         trace!(
             op = "document_diagnostic",
             uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
+        result
+    }
+
+    pub(crate) async fn _workspace_diagnostic(
+        &self,
+        params: WorkspaceDiagnosticParams,
+    ) -> Result<WorkspaceDiagnosticReportResult> {
+        let started_at = Instant::now();
+        trace!(op = "workspace_diagnostic", "start");
+        let version = self.diagnostic_version.load(Ordering::Acquire);
+        let previous = params
+            .previous_result_ids
+            .into_iter()
+            .map(|p| (p.uri.to_string(), p.value))
+            .collect();
+        let result = match self.compute_workspace_diagnostic_report(previous, version) {
+            Some(report) => Ok(WorkspaceDiagnosticReportResult::Report(report)),
+            None => Err(ResponseError::new_with_data(
+                ErrorCode::SERVER_CANCELLED,
+                "workspace state changed while computing diagnostics",
+                serde_json::to_value(DiagnosticServerCancellationData {
+                    retrigger_request: true,
+                })
+                .expect("DiagnosticServerCancellationData serializes"),
+            )),
+        };
+        trace!(
+            op = "workspace_diagnostic",
             elapsed_us = started_at.elapsed().as_micros(),
             "complete",
         );

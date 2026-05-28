@@ -10,14 +10,15 @@ use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
 use futures::future::BoxFuture;
 use lsp_types::request::WorkspaceDiagnosticRefresh;
 use lsp_types::{
-    CodeActionParams, CodeActionResponse, CompletionParams, CompletionResponse, Diagnostic,
+    CodeActionParams, CodeActionResponse, CompletionParams, CompletionResponse,
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
     DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentSymbolParams,
     DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams,
     InitializeParams, InitializeResult, InitializedParams, Location, PrepareRenameResponse,
     ReferenceParams, RenameParams, SemanticTokensParams, SemanticTokensResult, SignatureHelp,
-    SignatureHelpParams, TextDocumentPositionParams, TextEdit, Url, WorkspaceEdit,
+    SignatureHelpParams, TextDocumentPositionParams, TextEdit, Url, WorkspaceDiagnosticParams,
+    WorkspaceDiagnosticReportResult, WorkspaceEdit,
 };
 use parking_lot::Mutex;
 use serde_json::{json, Value};
@@ -87,7 +88,6 @@ pub(crate) struct Backend {
     // Writers serialize through this; the writer never blocks readers because mutation happens
     // on a shadow Compilation that is then atomically swapped into `compilation`.
     pub(crate) writer_lock: Arc<Mutex<()>>,
-    pub(crate) published_diagnostics: Arc<Mutex<HashMap<Url, Vec<Diagnostic>>>>,
     pub(crate) workspace_roots: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) files_exclude: Arc<Mutex<Vec<String>>>,
     pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
@@ -115,8 +115,6 @@ pub(crate) struct Backend {
     pub(crate) pending_edits: Arc<Mutex<HashMap<Url, PendingEdit>>>,
     pub(crate) edit_notify: Arc<tokio::sync::Notify>,
     pub(crate) edit_writer_spawned: Arc<AtomicBool>,
-    // Held only so tests can await the most recent spawned publish; production never awaits this.
-    pub(crate) last_publish_task: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 pub(super) fn build_symbol_db<'a>(
@@ -180,7 +178,6 @@ impl Backend {
             config,
             compilation: Arc::new(ArcSwap::from_pointee(Compilation::default())),
             writer_lock: Arc::new(Mutex::new(())),
-            published_diagnostics: Arc::new(Mutex::new(HashMap::new())),
             workspace_roots: Arc::new(Mutex::new(Vec::new())),
             files_exclude: Arc::new(Mutex::new(Vec::new())),
             base_scripts_path: Arc::new(Mutex::new(None)),
@@ -205,7 +202,6 @@ impl Backend {
             pending_edits: Arc::new(Mutex::new(HashMap::new())),
             edit_notify: Arc::new(tokio::sync::Notify::new()),
             edit_writer_spawned: Arc::new(AtomicBool::new(false)),
-            last_publish_task: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -444,60 +440,9 @@ impl Backend {
         });
     }
 
-    // Sync entry for async-handler callers (bulk indexing, config changes) that are already
-    // on a tokio task and benefit from the publish completing before they return.
-    pub(crate) fn diagnostics_state_changed(&self) {
+    pub(crate) fn notify_diagnostics_changed(&self) {
+        self.diagnostic_version.fetch_add(1, Ordering::AcqRel);
         self.request_workspace_diagnostic_refresh();
-        let version = self.diagnostic_version.fetch_add(1, Ordering::AcqRel) + 1;
-        self.publish_open_diagnostics(version);
-    }
-
-    // Edit queue already bumped diagnostic_version at enqueue; don't bump again.
-    pub(crate) fn spawn_diagnostics_at_current_version(&self) {
-        self.request_workspace_diagnostic_refresh();
-        let version = self.diagnostic_version.load(Ordering::Acquire);
-        self.spawn_publish_at_version(version);
-    }
-
-    // Spawn entry for sync notification handlers (did_change/did_open/did_close/did_change_watched_files):
-    // returns immediately so the LSP loop isn't blocked. Stale spawned tasks bail at version checkpoints.
-    // Falls back to inline when no tokio runtime is active (unit tests).
-    pub(crate) fn spawn_diagnostics_state_changed(&self) {
-        self.request_workspace_diagnostic_refresh();
-        let version = self.diagnostic_version.fetch_add(1, Ordering::AcqRel) + 1;
-        self.spawn_publish_at_version(version);
-    }
-
-    fn spawn_publish_at_version(&self, version: u64) {
-        if tokio::runtime::Handle::try_current().is_err() {
-            self.publish_open_diagnostics(version);
-            return;
-        }
-        let backend = self.clone();
-        let handle = tokio::spawn(async move {
-            let started_at = std::time::Instant::now();
-            debug!(op = "publish_diagnostics_task", version, "start",);
-            let _ = tokio::task::spawn_blocking(move || backend.publish_open_diagnostics(version))
-                .await;
-            debug!(
-                op = "publish_diagnostics_task",
-                version,
-                elapsed_us = started_at.elapsed().as_micros(),
-                "complete",
-            );
-        });
-        if let Ok(mut slot) = self.last_publish_task.try_lock() {
-            *slot = Some(handle);
-        }
-    }
-
-    // Test-only helper that awaits the most recent spawned publish so assertions can observe results.
-    #[cfg(test)]
-    pub(crate) async fn flush_pending_diagnostics(&self) {
-        let handle = self.last_publish_task.lock().await.take();
-        if let Some(h) = handle {
-            let _ = h.await;
-        }
     }
 
     pub(crate) async fn handle_builtin_source(&self, params: Value) -> Result<Value> {
@@ -664,5 +609,13 @@ impl LanguageServer for Backend {
     ) -> BoxFuture<'static, Result<DocumentDiagnosticReportResult>> {
         let backend = self.clone();
         Box::pin(async move { backend._document_diagnostic(params).await })
+    }
+
+    fn workspace_diagnostic(
+        &mut self,
+        params: WorkspaceDiagnosticParams,
+    ) -> BoxFuture<'static, Result<WorkspaceDiagnosticReportResult>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._workspace_diagnostic(params).await })
     }
 }

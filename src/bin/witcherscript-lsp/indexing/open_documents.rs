@@ -212,7 +212,7 @@ impl Backend {
         let publish_at = Instant::now();
         self.publish_open_document_indices(&uri, &document);
         let publish_us = publish_at.elapsed().as_micros();
-        self.spawn_diagnostics_state_changed();
+        self.notify_diagnostics_changed();
         let version = self
             .diagnostic_version
             .load(std::sync::atomic::Ordering::Acquire);

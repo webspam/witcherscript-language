@@ -121,13 +121,15 @@ flags parameters or local variables that share a name within the same function s
 are exempt because those annotations intentionally redeclare parameters from the wrapped
 signature.
 
-The LSP computes workspace diagnostics across the whole index but only *publishes* them
-for open documents (`Backend::publish_open_diagnostics` in `diagnostics_publish.rs`), merged with the
-document's syntactic `ParseDiagnostic`s.
+The LSP computes workspace diagnostics across the whole index and serves them via pull
+(`textDocument/diagnostic` for a single URI, `workspace/diagnostic` for the whole set).
+`Backend::compute_diagnostics_for_uri` and `Backend::compute_workspace_diagnostic_report` in
+`diagnostics_publish.rs` are the two entry points; both merge the cross-file workspace
+diagnostics with the document's syntactic `ParseDiagnostic`s.
 
 ## LSP conversion
 
-All diagnostics are published as:
+All diagnostics are returned in pull reports as:
 - Severity: `ERROR` for most rules; `WARNING` for shadowing, the `ternary_cond_expr`
   `ParseDiagnostic`, and any rule that sets `Severity::Warning` on its `WorkspaceDiagnostic`
 - Code: the `kind` string
@@ -164,7 +166,7 @@ Used by the CLI's `--dump-tree` flag.
 
 1. Add a new submodule under `src/diagnostics/` returning `HashMap<uri, Vec<WorkspaceDiagnostic>>`.
 2. Re-export its entry point from `src/diagnostics/mod.rs`.
-3. Call it from `Backend::publish_open_diagnostics` in `src/bin/witcherscript-lsp/diagnostics_publish.rs`.
+3. Call it from `collect_workspace_diagnostics` in `src/bin/witcherscript-lsp/diagnostics_publish.rs` (the helper feeds both pull entry points).
 4. Add unit tests in the submodule's `#[cfg(test)]` block (fixtures cannot express cross-file rules).
 5. Document the rule in `README.md`.
 
@@ -179,8 +181,8 @@ document — e.g. unknown method/field access, type mismatch):
    `infer_expr_type_memo(ctx.uri, ctx.document, ctx.db, node, byte, ctx.type_memo)`
    for receiver-type inference so chained calls share work.
 4. Register the rule struct in `collect_cst_diagnostics_for_document` in
-   `src/diagnostics/mod.rs`. The LSP picks it up automatically — no edit to
-   `publish_open_diagnostics` needed.
+   `src/diagnostics/mod.rs`. The LSP picks it up automatically — no edit to the
+   pull handlers needed.
 5. The per-document cache in `src/bin/witcherscript-lsp/cst_cache.rs` already keys on
    `(parse_version, workspace_generation, base_generation, env_version)`, so rules
    registered in `collect_cst_diagnostics_for_document` re-run only when the document is
