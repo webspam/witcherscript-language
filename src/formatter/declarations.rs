@@ -59,7 +59,6 @@ impl<'a> Formatter<'a> {
         self.nl();
     }
 
-    /// Emit `@addField` and return whether the field continues on the same line.
     fn emit_add_field_annotation(&mut self, node: Node, ann: Node) -> bool {
         let same_line = match self.annotation_placement {
             super::AnnotationPlacement::SameLine => true,
