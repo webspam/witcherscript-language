@@ -52,12 +52,12 @@ pub(crate) fn cst_diagnostics_with_cache(
             cancelled = true;
             break;
         }
-        let reuse = cache.get(uri).is_some_and(|e| {
+        let cached = cache.get(uri).filter(|e| {
             e.parse_version == document.parse_version && e.db_fingerprint == fingerprint
         });
-        let diagnostics = if reuse {
+        let diagnostics = if let Some(entry) = cached {
             stats.hits += 1;
-            cache.get(uri).unwrap().diagnostics.clone()
+            entry.diagnostics.clone()
         } else {
             stats.misses += 1;
             let observations = Mutex::new(ObservationSet::default());
