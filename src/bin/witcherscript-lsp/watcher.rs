@@ -84,7 +84,10 @@ impl Backend {
         let registration = Registration {
             id: "witcherscript-ws-files".to_string(),
             method: "workspace/didChangeWatchedFiles".to_string(),
-            register_options: serde_json::to_value(options).ok(),
+            register_options: Some(
+                serde_json::to_value(options)
+                    .expect("static registration options are always serializable"),
+            ),
         };
         if let Err(err) = self
             .client
