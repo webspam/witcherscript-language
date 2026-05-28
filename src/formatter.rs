@@ -8,6 +8,43 @@ mod statements;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnnotationPlacement {
+    Preserve,
+    OwnLine,
+    SameLine,
+}
+
+impl AnnotationPlacement {
+    pub fn from_setting(value: &str) -> Self {
+        match value {
+            "ownLine" => Self::OwnLine,
+            "sameLine" => Self::SameLine,
+            _ => Self::Preserve,
+        }
+    }
+}
+
+impl std::fmt::Display for AnnotationPlacement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Preserve => write!(f, "preserve"),
+            Self::OwnLine => write!(f, "ownLine"),
+            Self::SameLine => write!(f, "sameLine"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FormatOptions {
+    pub tab_size: u32,
+    pub use_tabs: bool,
+    pub line_limit: u32,
+    pub compact_colon: bool,
+    pub align_member_colons: bool,
+    pub annotation_placement: AnnotationPlacement,
+}
+
 fn render_expr(node: Node, source: &str) -> String {
     Formatter {
         source,
@@ -18,6 +55,7 @@ fn render_expr(node: Node, source: &str) -> String {
         line_limit: usize::MAX,
         compact_colon: false,
         align_member_colons: false,
+        annotation_placement: AnnotationPlacement::Preserve,
         colon_align_col: None,
     }
     .render_node(node)
@@ -141,24 +179,17 @@ pub fn render_callable_signature(node: Node, source: &str) -> Option<String> {
         line_limit: usize::MAX,
         compact_colon: true,
         align_member_colons: false,
+        annotation_placement: AnnotationPlacement::Preserve,
         colon_align_col: None,
     };
     f.render_sig(node)
 }
 
-pub fn format_document(
-    root: Node,
-    source: &str,
-    tab_size: u32,
-    use_tabs: bool,
-    line_limit: u32,
-    compact_colon: bool,
-    align_member_colons: bool,
-) -> String {
-    let indent_unit = if use_tabs {
+pub fn format_document(root: Node, source: &str, options: FormatOptions) -> String {
+    let indent_unit = if options.use_tabs {
         "\t".to_string()
     } else {
-        " ".repeat(tab_size as usize)
+        " ".repeat(options.tab_size as usize)
     };
     let mut f = Formatter {
         source,
@@ -166,9 +197,10 @@ pub fn format_document(
         level: 0,
         out: String::with_capacity(source.len()),
         suppress_next_indent: false,
-        line_limit: line_limit as usize,
-        compact_colon,
-        align_member_colons,
+        line_limit: options.line_limit as usize,
+        compact_colon: options.compact_colon,
+        align_member_colons: options.align_member_colons,
+        annotation_placement: options.annotation_placement,
         colon_align_col: None,
     };
     f.format_node(root);
@@ -190,5 +222,6 @@ struct Formatter<'a> {
     line_limit: usize,
     compact_colon: bool,
     align_member_colons: bool,
+    annotation_placement: AnnotationPlacement,
     colon_align_col: Option<usize>,
 }
