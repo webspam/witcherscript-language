@@ -41,6 +41,7 @@ arc-swap = "1.9.1"
 parking_lot = "0.12"
 serde = { version = "1", features = ["derive"] }
 toml = { version = "0.8", default-features = false, features = ["parse"] }
+encoding_rs = "0.8"
 
 [dev-dependencies]
 tokio = { version = "1.48.0", features = ["io-util", "process", "time"] }
