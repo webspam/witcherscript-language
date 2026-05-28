@@ -119,6 +119,9 @@ impl<'a> Formatter<'a> {
         if matches!(bk, "(" | "[" | "<") {
             return false;
         }
+        if parent_kind == "cast_expr" && bk == ")" {
+            return false;
+        }
         if ak == "func_params" {
             return false;
         }
