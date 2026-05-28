@@ -63,6 +63,7 @@ impl Backend {
             }
             let base = builder.base_scripts_index_mut();
             for (uri, _) in &scopes {
+                // Base scripts have no editor subscribers, so the returned keys go unused.
                 let _ = remove_document_all_spellings(base, uri);
             }
             for (uri, scope) in &scopes {
@@ -220,6 +221,7 @@ impl Backend {
                 builder.workspace_index_mut(),
                 uri,
             ));
+            // Base scripts have no editor subscribers, so the returned keys go unused.
             let _ = remove_document_all_spellings(builder.base_scripts_index_mut(), uri);
             loose_changed.extend(remove_document_all_spellings(
                 builder.loose_index_mut(),

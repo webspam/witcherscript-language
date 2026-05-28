@@ -19,7 +19,6 @@ pub(crate) struct Compilation {
     pub(crate) base_scripts_documents: Arc<HashMap<String, Arc<ParsedDocument>>>,
 }
 
-// Clone-on-write helper: only fields actually touched get cloned and re-Arc'd.
 pub(crate) struct CompilationBuilder {
     pub(crate) base: Arc<Compilation>,
     workspace_index: Option<WorkspaceIndex>,
@@ -66,7 +65,7 @@ impl CompilationBuilder {
             .get_or_insert_with(|| (**base).clone())
     }
 
-    pub(crate) fn replace_base_scripts_index(&mut self, idx: WorkspaceIndex) {
+    pub(crate) fn set_base_scripts_index(&mut self, idx: WorkspaceIndex) {
         self.base_scripts_index = Some(idx);
     }
 
@@ -130,7 +129,7 @@ impl CompilationBuilder {
         (index, docs)
     }
 
-    pub(crate) fn replace_base_scripts_documents(
+    pub(crate) fn set_base_scripts_documents(
         &mut self,
         docs: HashMap<String, Arc<ParsedDocument>>,
     ) {

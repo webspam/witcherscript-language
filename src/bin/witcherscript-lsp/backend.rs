@@ -3,6 +3,7 @@ use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use arc_swap::ArcSwap;
 use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
@@ -39,6 +40,8 @@ use crate::file_scope_status::FileScopeStatusParams;
 use crate::legacy_status::LegacyScriptStatusParams;
 
 type Result<T> = std::result::Result<T, ResponseError>;
+
+const REFRESH_COALESCE_WINDOW: Duration = Duration::from_millis(50);
 
 // The diagnosed set excludes read-only base scripts, so it cannot reuse merge_documents.
 pub(crate) fn diagnostics_document_set<'a>(
@@ -411,7 +414,7 @@ impl Backend {
     }
 
     // Pull clients drive their own cadence; this tells them their cached diagnostics are stale.
-    // Coalesced through a 50ms window: a burst of edits produces one refresh, not one per edit.
+    // Coalesced so a burst of edits produces one refresh, not one per edit.
     pub(crate) fn request_workspace_diagnostic_refresh(&self) {
         if !self
             .client_supports_pull_diagnostics
@@ -428,7 +431,7 @@ impl Backend {
         let client = self.client.clone();
         let pending = self.refresh_pending.clone();
         crate::spawn_logged("workspace/diagnostic/refresh", async move {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            tokio::time::sleep(REFRESH_COALESCE_WINDOW).await;
             let started_at = std::time::Instant::now();
             trace!(op = "workspace_diagnostic_refresh", "start");
             let _ = client.request::<WorkspaceDiagnosticRefresh>(()).await;
@@ -453,26 +456,7 @@ impl Backend {
     pub(crate) fn spawn_diagnostics_at_current_version(&self) {
         self.request_workspace_diagnostic_refresh();
         let version = self.diagnostic_version.load(Ordering::Acquire);
-        if tokio::runtime::Handle::try_current().is_err() {
-            self.publish_open_diagnostics(version);
-            return;
-        }
-        let backend = self.clone();
-        let handle = tokio::spawn(async move {
-            let started_at = std::time::Instant::now();
-            debug!(op = "publish_diagnostics_task", version, "start",);
-            let _ = tokio::task::spawn_blocking(move || backend.publish_open_diagnostics(version))
-                .await;
-            debug!(
-                op = "publish_diagnostics_task",
-                version,
-                elapsed_us = started_at.elapsed().as_micros(),
-                "complete",
-            );
-        });
-        if let Ok(mut slot) = self.last_publish_task.try_lock() {
-            *slot = Some(handle);
-        }
+        self.spawn_publish_at_version(version);
     }
 
     // Spawn entry for sync notification handlers (did_change/did_open/did_close/did_change_watched_files):
@@ -481,6 +465,10 @@ impl Backend {
     pub(crate) fn spawn_diagnostics_state_changed(&self) {
         self.request_workspace_diagnostic_refresh();
         let version = self.diagnostic_version.fetch_add(1, Ordering::AcqRel) + 1;
+        self.spawn_publish_at_version(version);
+    }
+
+    fn spawn_publish_at_version(&self, version: u64) {
         if tokio::runtime::Handle::try_current().is_err() {
             self.publish_open_diagnostics(version);
             return;

@@ -1,8 +1,24 @@
+use std::collections::HashMap;
+use std::hash::Hash;
+
 use crate::symbols::{Symbol, SymbolKind};
 
 use super::super::annotation_target_class;
 use super::super::ast::is_type_like;
 use super::{Definition, WorkspaceIndex};
+
+fn retain_and_prune<K, V>(map: &mut HashMap<K, Vec<V>>, key: &K, mut keep: impl FnMut(&V) -> bool)
+where
+    K: Hash + Eq,
+{
+    let Some(entries) = map.get_mut(key) else {
+        return;
+    };
+    entries.retain(|v| keep(v));
+    if entries.is_empty() {
+        map.remove(key);
+    }
+}
 
 impl WorkspaceIndex {
     pub(super) fn remove_from_indices(&mut self, uri: &str) {
@@ -11,29 +27,14 @@ impl WorkspaceIndex {
         };
         for sym in old_symbols.clone() {
             if sym.container.is_none() {
-                if let Some(defs) = self.top_level_by_name.get_mut(&sym.name) {
-                    defs.retain(|d| d.uri != uri);
-                    if defs.is_empty() {
-                        self.top_level_by_name.remove(&sym.name);
-                    }
-                }
+                retain_and_prune(&mut self.top_level_by_name, &sym.name, |d| d.uri != uri);
                 if is_type_like(sym.kind) {
-                    if let Some(entries) = self.superclass_by_name.get_mut(&sym.name) {
-                        entries.retain(|(u, _)| u != uri);
-                        if entries.is_empty() {
-                            self.superclass_by_name.remove(&sym.name);
-                        }
-                    }
+                    retain_and_prune(&mut self.superclass_by_name, &sym.name, |(u, _)| u != uri);
                 }
                 if sym.kind == SymbolKind::State {
                     if let Some(owner) = &sym.owner_class {
                         if let Some(by_name) = self.states_by_owner.get_mut(owner) {
-                            if let Some(defs) = by_name.get_mut(&sym.name) {
-                                defs.retain(|d| d.uri != uri);
-                                if defs.is_empty() {
-                                    by_name.remove(&sym.name);
-                                }
-                            }
+                            retain_and_prune(by_name, &sym.name, |d| d.uri != uri);
                             if by_name.is_empty() {
                                 self.states_by_owner.remove(owner);
                             }
@@ -43,12 +44,7 @@ impl WorkspaceIndex {
                 if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field) {
                     if let Some(target) = annotation_target_class(&sym) {
                         if let Some(by_name) = self.annotated_members_by_type.get_mut(target) {
-                            if let Some(defs) = by_name.get_mut(&sym.name) {
-                                defs.retain(|d| d.uri != uri);
-                                if defs.is_empty() {
-                                    by_name.remove(&sym.name);
-                                }
-                            }
+                            retain_and_prune(by_name, &sym.name, |d| d.uri != uri);
                             if by_name.is_empty() {
                                 self.annotated_members_by_type.remove(target);
                             }
@@ -57,23 +53,13 @@ impl WorkspaceIndex {
                 }
             } else if let Some(cn) = &sym.container_name {
                 if let Some(by_name) = self.member_by_type.get_mut(cn) {
-                    if let Some(defs) = by_name.get_mut(&sym.name) {
-                        defs.retain(|d| d.uri != uri);
-                        if defs.is_empty() {
-                            by_name.remove(&sym.name);
-                        }
-                    }
+                    retain_and_prune(by_name, &sym.name, |d| d.uri != uri);
                     if by_name.is_empty() {
                         self.member_by_type.remove(cn);
                     }
                 }
                 if sym.kind == SymbolKind::EnumMember {
-                    if let Some(defs) = self.enum_member_by_name.get_mut(&sym.name) {
-                        defs.retain(|d| d.uri != uri);
-                        if defs.is_empty() {
-                            self.enum_member_by_name.remove(&sym.name);
-                        }
-                    }
+                    retain_and_prune(&mut self.enum_member_by_name, &sym.name, |d| d.uri != uri);
                 }
             }
         }
