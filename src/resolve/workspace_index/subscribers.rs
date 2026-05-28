@@ -36,26 +36,31 @@ fn outward_key_for(s: &Symbol) -> ObservedKey {
     }
 }
 
-fn outward_symbol_hash(s: &Symbol) -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut h = DefaultHasher::new();
-    s.name.hash(&mut h);
-    (s.kind as u8).hash(&mut h);
-    s.container_name.hash(&mut h);
-    s.type_annotation.hash(&mut h);
-    s.signature.hash(&mut h);
-    s.base_class.hash(&mut h);
-    s.owner_class.hash(&mut h);
-    s.flavour.hash(&mut h);
+fn hash_symbol_fields<H: std::hash::Hasher>(s: &Symbol, h: &mut H) {
+    use std::hash::Hash;
+    s.name.hash(h);
+    (s.kind as u8).hash(h);
+    s.container_name.hash(h);
+    s.type_annotation.hash(h);
+    s.signature.hash(h);
+    s.base_class.hash(h);
+    s.owner_class.hash(h);
+    s.flavour.hash(h);
     h.write_usize(s.annotations.len());
     for a in &s.annotations {
-        a.name.hash(&mut h);
-        a.argument.hash(&mut h);
+        a.name.hash(h);
+        a.argument.hash(h);
     }
-    (s.access as u8).hash(&mut h);
-    s.is_optional.hash(&mut h);
-    s.is_out.hash(&mut h);
+    (s.access as u8).hash(h);
+    s.is_optional.hash(h);
+    s.is_out.hash(h);
+}
+
+fn outward_symbol_hash(s: &Symbol) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hasher;
+    let mut h = DefaultHasher::new();
+    hash_symbol_fields(s, &mut h);
     h.finish()
 }
 
@@ -97,22 +102,7 @@ pub(super) fn doc_surface_hash(uri: &str, symbols: &[Symbol]) -> u64 {
         .filter(|s| !matches!(s.kind, SymbolKind::Variable | SymbolKind::Parameter));
     h.write_usize(externally_visible.clone().count());
     for s in externally_visible {
-        s.name.hash(&mut h);
-        (s.kind as u8).hash(&mut h);
-        s.container_name.hash(&mut h);
-        s.type_annotation.hash(&mut h);
-        s.signature.hash(&mut h);
-        s.base_class.hash(&mut h);
-        s.owner_class.hash(&mut h);
-        s.flavour.hash(&mut h);
-        h.write_usize(s.annotations.len());
-        for a in &s.annotations {
-            a.name.hash(&mut h);
-            a.argument.hash(&mut h);
-        }
-        (s.access as u8).hash(&mut h);
-        s.is_optional.hash(&mut h);
-        s.is_out.hash(&mut h);
+        hash_symbol_fields(s, &mut h);
     }
     h.finish()
 }

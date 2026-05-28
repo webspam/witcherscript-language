@@ -13,6 +13,7 @@ use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::resolve::{find_references, resolve_definition};
 
 use crate::backend::Backend;
+use crate::compilation::Compilation;
 use crate::convert::{lsp_range, source_position};
 
 type Result<T> = std::result::Result<T, ResponseError>;
@@ -67,6 +68,31 @@ pub(crate) fn rename_changes(
     changes
 }
 
+fn ensure_rename_target_writable(definition_uri: &str, snap: &Compilation) -> Result<()> {
+    if snap.base_scripts_documents.contains_key(definition_uri) {
+        return Err(ResponseError::new(
+            ErrorCode::INVALID_REQUEST,
+            "Cannot rename a symbol declared in a base script (read-only)",
+        ));
+    }
+    if builtin_source(definition_uri).is_some() {
+        return Err(ResponseError::new(
+            ErrorCode::INVALID_REQUEST,
+            "Cannot rename a built-in symbol",
+        ));
+    }
+    Ok(())
+}
+
+fn search_docs_from<'a>(
+    merged: &'a HashMap<String, &'a ParsedDocument>,
+) -> Vec<(&'a str, &'a ParsedDocument)> {
+    merged
+        .iter()
+        .map(|(uri, doc)| (uri.as_str(), *doc))
+        .collect()
+}
+
 impl Backend {
     pub(crate) async fn _references(
         &self,
@@ -114,10 +140,7 @@ impl Backend {
 
             let definition_document = merged.get(&definition.uri).copied().unwrap_or(document);
 
-            let search_docs: Vec<(&str, &ParsedDocument)> = merged
-                .iter()
-                .map(|(uri, doc)| (uri.as_str(), *doc))
-                .collect();
+            let search_docs = search_docs_from(&merged);
 
             let refs = find_references(
                 &definition,
@@ -161,17 +184,8 @@ impl Backend {
             };
 
             let snap = self.snapshot();
-            if snap.base_scripts_documents.contains_key(&definition.uri) {
-                break 'body Err(ResponseError::new(
-                    ErrorCode::INVALID_REQUEST,
-                    "Cannot rename a symbol declared in a base script (read-only)",
-                ));
-            }
-            if builtin_source(&definition.uri).is_some() {
-                break 'body Err(ResponseError::new(
-                    ErrorCode::INVALID_REQUEST,
-                    "Cannot rename a built-in symbol",
-                ));
+            if let Err(e) = ensure_rename_target_writable(&definition.uri, &snap) {
+                break 'body Err(e);
             }
 
             Ok(Some(PrepareRenameResponse::DefaultBehavior {
@@ -201,17 +215,8 @@ impl Backend {
             let snap = self.snapshot();
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
 
-            if snap.base_scripts_documents.contains_key(&definition.uri) {
-                break 'body Err(ResponseError::new(
-                    ErrorCode::INVALID_REQUEST,
-                    "Cannot rename a symbol declared in a base script (read-only)",
-                ));
-            }
-            if builtin_source(&definition.uri).is_some() {
-                break 'body Err(ResponseError::new(
-                    ErrorCode::INVALID_REQUEST,
-                    "Cannot rename a built-in symbol",
-                ));
+            if let Err(e) = ensure_rename_target_writable(&definition.uri, &snap) {
+                break 'body Err(e);
             }
 
             let db = handles.db();
@@ -229,10 +234,7 @@ impl Backend {
                 break 'body Ok(None);
             };
 
-            let search_docs: Vec<(&str, &ParsedDocument)> = merged
-                .iter()
-                .map(|(uri, doc)| (uri.as_str(), *doc))
-                .collect();
+            let search_docs = search_docs_from(&merged);
 
             let refs = find_references(&definition, definition_document, &search_docs, &db, true);
 

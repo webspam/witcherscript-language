@@ -17,6 +17,24 @@ use crate::file_scope::FileScope;
 
 use super::helpers::{build_index_segments, index_open_document, legacy_base_replacements};
 
+fn parse_script_files(files: &[PathBuf], label: &str) -> Vec<(String, ParsedDocument)> {
+    files
+        .par_iter()
+        .filter_map(|path| {
+            let source = read_script_file(path)
+                .map_err(|e| warn!(path = %path.display(), label, error = %e, "failed to read script"))
+                .ok()?;
+            let document = parse_document(source)
+                .map_err(|e| warn!(path = %path.display(), label, error = %e, "failed to parse script"))
+                .ok()?;
+            let uri = Url::from_file_path(path)
+                .map_err(|_| warn!(path = %path.display(), label, "failed to convert script path to URI"))
+                .ok()?;
+            Some((uri.to_string(), document))
+        })
+        .collect()
+}
+
 impl Backend {
     pub(crate) fn is_base_script_uri(&self, uri: &Url) -> bool {
         matches!(self.file_scope_of(uri), FileScope::AdditionalBase)
@@ -220,21 +238,7 @@ impl Backend {
                     warn!(label, path = %root.display(), "failed to collect script files");
                     continue;
                 };
-                let parsed: Vec<(String, ParsedDocument)> = files
-                    .par_iter()
-                    .filter_map(|path| {
-                        let source = read_script_file(path)
-                            .map_err(|e| warn!(path = %path.display(), error = %e, "failed to read base script"))
-                            .ok()?;
-                        let document = parse_document(source)
-                            .map_err(|e| warn!(path = %path.display(), error = %e, "failed to parse base script"))
-                            .ok()?;
-                        let uri = Url::from_file_path(path)
-                            .map_err(|_| warn!(path = %path.display(), "failed to convert base script path to URI"))
-                            .ok()?;
-                        Some((uri.to_string(), document))
-                    })
-                    .collect();
+                let parsed = parse_script_files(&files, "base");
 
                 let count = parsed.len();
                 base_total += count;
@@ -261,21 +265,7 @@ impl Backend {
                     warn!(path = %dir.display(), "failed to collect legacy script files");
                     continue;
                 };
-                let parsed: Vec<(String, ParsedDocument)> = files
-                    .par_iter()
-                    .filter_map(|path| {
-                        let source = read_script_file(path)
-                            .map_err(|e| warn!(path = %path.display(), error = %e, "failed to read legacy script"))
-                            .ok()?;
-                        let document = parse_document(source)
-                            .map_err(|e| warn!(path = %path.display(), error = %e, "failed to parse legacy script"))
-                            .ok()?;
-                        let uri = Url::from_file_path(path)
-                            .map_err(|_| warn!(path = %path.display(), "failed to convert legacy script path to URI"))
-                            .ok()?;
-                        Some((uri.to_string(), document))
-                    })
-                    .collect();
+                let parsed = parse_script_files(&files, "legacy");
                 let count = parsed.len();
                 let elapsed_ms = seg_start.elapsed().as_millis();
                 info!(

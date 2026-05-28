@@ -15,22 +15,13 @@ impl SubscriptionRegistry {
     pub fn register(&mut self, subscriber_uri: &str, observations: ObservationSet) {
         self.unregister(subscriber_uri);
         for name in &observations.top_level {
-            self.top_level
-                .entry(name.clone())
-                .or_default()
-                .insert(subscriber_uri.to_string());
+            bucket_insert(&mut self.top_level, name.clone(), subscriber_uri);
         }
         for key in &observations.members {
-            self.members
-                .entry(key.clone())
-                .or_default()
-                .insert(subscriber_uri.to_string());
+            bucket_insert(&mut self.members, key.clone(), subscriber_uri);
         }
         for name in &observations.enum_members {
-            self.enum_members
-                .entry(name.clone())
-                .or_default()
-                .insert(subscriber_uri.to_string());
+            bucket_insert(&mut self.enum_members, name.clone(), subscriber_uri);
         }
         self.keys_by_subscriber
             .insert(subscriber_uri.to_string(), observations);
@@ -41,28 +32,13 @@ impl SubscriptionRegistry {
             return;
         };
         for name in prev.top_level {
-            if let Some(set) = self.top_level.get_mut(&name) {
-                set.remove(subscriber_uri);
-                if set.is_empty() {
-                    self.top_level.remove(&name);
-                }
-            }
+            bucket_remove(&mut self.top_level, &name, subscriber_uri);
         }
         for key in prev.members {
-            if let Some(set) = self.members.get_mut(&key) {
-                set.remove(subscriber_uri);
-                if set.is_empty() {
-                    self.members.remove(&key);
-                }
-            }
+            bucket_remove(&mut self.members, &key, subscriber_uri);
         }
         for name in prev.enum_members {
-            if let Some(set) = self.enum_members.get_mut(&name) {
-                set.remove(subscriber_uri);
-                if set.is_empty() {
-                    self.enum_members.remove(&name);
-                }
-            }
+            bucket_remove(&mut self.enum_members, &name, subscriber_uri);
         }
     }
 
@@ -81,5 +57,30 @@ impl SubscriptionRegistry {
             }
         }
         out
+    }
+}
+
+fn bucket_insert<K: Eq + std::hash::Hash>(
+    bucket: &mut HashMap<K, HashSet<String>>,
+    key: K,
+    subscriber_uri: &str,
+) {
+    bucket
+        .entry(key)
+        .or_default()
+        .insert(subscriber_uri.to_string());
+}
+
+fn bucket_remove<K: Eq + std::hash::Hash>(
+    bucket: &mut HashMap<K, HashSet<String>>,
+    key: &K,
+    subscriber_uri: &str,
+) {
+    let Some(set) = bucket.get_mut(key) else {
+        return;
+    };
+    set.remove(subscriber_uri);
+    if set.is_empty() {
+        bucket.remove(key);
     }
 }
