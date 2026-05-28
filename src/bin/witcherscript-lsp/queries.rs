@@ -28,6 +28,7 @@ use crate::convert::{
     base_script_conflict_code_actions, document_symbols, hover_markdown, lsp_range,
     signature_help_response, source_position,
 };
+use crate::diagnostics_publish::publish_url;
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
@@ -121,7 +122,12 @@ impl Backend {
         let previous = params
             .previous_result_ids
             .into_iter()
-            .map(|p| (p.uri.to_string(), p.value))
+            .map(|p| {
+                let key = publish_url(p.uri.as_str())
+                    .map(|u| u.to_string())
+                    .unwrap_or_else(|| p.uri.to_string());
+                (key, p.value)
+            })
             .collect();
         let result = match self.compute_workspace_diagnostic_report(previous, version) {
             Some(report) => Ok(WorkspaceDiagnosticReportResult::Report(report)),
