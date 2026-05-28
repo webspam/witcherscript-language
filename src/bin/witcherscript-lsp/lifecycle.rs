@@ -17,6 +17,7 @@ use lsp_types::{
     WorkspaceServerCapabilities,
 };
 use tracing::{info, trace};
+use witcherscript_language::formatter::AnnotationPlacement;
 use witcherscript_language::semantic_tokens::{TOKEN_MODIFIERS, TOKEN_TYPES};
 
 use crate::backend::Backend;
@@ -111,6 +112,13 @@ impl Backend {
                 }
                 if let Some(align) = formatter.get("alignMemberColons").and_then(|v| v.as_bool()) {
                     cfg.formatter_align_member_colons = align;
+                }
+                if let Some(placement) = formatter
+                    .get("annotationPlacement")
+                    .and_then(|v| v.as_str())
+                {
+                    cfg.formatter_annotation_placement =
+                        AnnotationPlacement::from_setting(placement);
                 }
             }
             self.config.store(Arc::new(cfg));

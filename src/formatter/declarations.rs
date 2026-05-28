@@ -35,18 +35,62 @@ impl<'a> Formatter<'a> {
 
     // ---- Declarations ----
 
+    fn annotation_same_line_in_source(&self, node: Node, ann: Node) -> bool {
+        let ann_row = ann.end_position().row;
+        let mut c = node.walk();
+        for child in node.children(&mut c) {
+            if child.is_missing() || child.kind() == "annotation" {
+                continue;
+            }
+            return child.start_position().row == ann_row;
+        }
+        false
+    }
+
+    fn is_add_field_annotation(&self, ann: Node) -> bool {
+        self.child_of_kind(ann, "annotation_ident")
+            .is_some_and(|ident| self.text(ident).trim_start_matches('@') == "addField")
+    }
+
     fn emit_annotation(&mut self, ann: Node) {
-        let t = self.text(ann).to_string();
+        let ann_text = self.render_node(ann);
         self.emit_indent();
-        self.emit(&t);
+        self.emit(&ann_text);
         self.nl();
     }
 
-    pub(super) fn format_member_var_decl(&mut self, node: Node, colon_align_col: Option<usize>) {
-        if let Some(ann) = self.child_of_kind(node, "annotation") {
-            self.emit_annotation(ann);
-        }
+    fn emit_add_field_annotation(&mut self, node: Node, ann: Node) -> bool {
+        let same_line = match self.annotation_placement {
+            super::AnnotationPlacement::SameLine => true,
+            super::AnnotationPlacement::OwnLine => false,
+            super::AnnotationPlacement::Preserve => self.annotation_same_line_in_source(node, ann),
+        };
+        let ann_text = self.render_node(ann);
         self.emit_indent();
+        self.emit(&ann_text);
+        if same_line {
+            self.emit(" ");
+            true
+        } else {
+            self.nl();
+            false
+        }
+    }
+
+    pub(super) fn format_member_var_decl(&mut self, node: Node, colon_align_col: Option<usize>) {
+        let same_line = if let Some(ann) = self.child_of_kind(node, "annotation") {
+            if self.is_add_field_annotation(ann) {
+                self.emit_add_field_annotation(node, ann)
+            } else {
+                self.emit_annotation(ann);
+                false
+            }
+        } else {
+            false
+        };
+        if !same_line {
+            self.emit_indent();
+        }
         self.colon_align_col = colon_align_col;
         self.format_children(node);
         self.colon_align_col = None;

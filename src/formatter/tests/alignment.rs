@@ -64,3 +64,18 @@ fn alignment_accounts_for_specifiers_and_name_lists() {
         "got:\n{output}"
     );
 }
+
+#[test]
+fn annotated_field_excluded_from_colon_alignment_run() {
+    let output = fmt_aligned(
+        "class C {\n    @addField(CClass)\n    public var x : int;\n    public var someLongName : string;\n}",
+    );
+    assert!(
+        output.contains("    public var x : int;"),
+        "annotated field should not be padded, got:\n{output}"
+    );
+    assert!(
+        output.contains("    public var someLongName : string;"),
+        "got:\n{output}"
+    );
+}

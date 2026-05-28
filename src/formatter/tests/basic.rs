@@ -1,4 +1,4 @@
-use super::fmt;
+use super::{fmt, fmt_with_annotation_placement, AnnotationPlacement};
 
 #[test]
 fn error_recovery_formats_valid_stmts_around_invalid() {
@@ -26,17 +26,61 @@ fn formats_simple_function() {
 
 #[test]
 fn add_field_annotation_stays_on_own_line() {
-    let output = fmt("@addField(CR4Player) var foo : int;");
+    let output = fmt_with_annotation_placement(
+        "@addField(CR4Player) var foo : int;",
+        AnnotationPlacement::OwnLine,
+    );
     assert_eq!(output, "@addField(CR4Player)\nvar foo : int;\n");
 }
 
 #[test]
+fn preserve_annotation_line_break() {
+    let same = fmt("@addField(CClass) public var someField : bool;");
+    assert_eq!(same, "@addField(CClass) public var someField : bool;\n");
+
+    let messy = fmt("@addField(  CClass  )   public   var   someField   :  bool  ;");
+    assert_eq!(messy, "@addField(CClass) public var someField : bool;\n");
+
+    let split = fmt("@addField(CClass)\npublic var someField : bool;");
+    assert_eq!(split, "@addField(CClass)\npublic var someField : bool;\n");
+}
+
+#[test]
+fn same_line_annotation_placement() {
+    let cases = [
+        "@addField(CClass) public var someField : bool;",
+        "@addField(  CClass  )   public   var   someField   :  bool  ;",
+        "@addField(CClass)\npublic var someField : bool;",
+    ];
+    for input in cases {
+        let output = fmt_with_annotation_placement(input, AnnotationPlacement::SameLine);
+        assert_eq!(
+            output, "@addField(CClass) public var someField : bool;\n",
+            "input:\n{input}"
+        );
+    }
+}
+
+#[test]
 fn annotation_sits_directly_above_declaration() {
-    let field = fmt("@addField(CR4Player)\n\n\nvar foo : int;");
+    let field = fmt_with_annotation_placement(
+        "@addField(CR4Player)\n\n\nvar foo : int;",
+        AnnotationPlacement::OwnLine,
+    );
     assert_eq!(field, "@addField(CR4Player)\nvar foo : int;\n");
 
     let method = fmt("@addMethod(CR4Player)\n\n\nfunction Foo() {}");
     assert_eq!(method, "@addMethod(CR4Player)\nfunction Foo() {}\n");
+}
+
+#[test]
+fn add_method_annotation_ignores_placement_setting() {
+    let input = "@addMethod(CR4Player) function Foo() {}";
+    assert_eq!(
+        fmt_with_annotation_placement(input, AnnotationPlacement::SameLine),
+        "@addMethod(CR4Player)\nfunction Foo() {}\n"
+    );
+    assert_eq!(fmt(input), "@addMethod(CR4Player)\nfunction Foo() {}\n");
 }
 
 #[test]

@@ -9,54 +9,56 @@ mod comments;
 mod line_breaking;
 mod structures;
 
-pub(super) fn fmt(source: &str) -> String {
+use super::{AnnotationPlacement, FormatOptions};
+
+fn fmt_options(source: &str, options: FormatOptions) -> String {
     let doc = parse_document(source).expect("should parse");
-    super::format_document(
-        doc.tree.root_node(),
-        &doc.source,
-        4,
-        false,
-        100,
-        false,
-        false,
-    )
+    super::format_document(doc.tree.root_node(), &doc.source, options)
+}
+
+pub(super) fn fmt(source: &str) -> String {
+    fmt_options(source, FormatOptions::default())
 }
 
 pub(super) fn fmt_compact_colon(source: &str) -> String {
-    let doc = parse_document(source).expect("should parse");
-    super::format_document(
-        doc.tree.root_node(),
-        &doc.source,
-        4,
-        false,
-        100,
-        true,
-        false,
+    fmt_options(
+        source,
+        FormatOptions {
+            compact_colon: true,
+            ..Default::default()
+        },
     )
 }
 
 pub(super) fn fmt_aligned(source: &str) -> String {
-    let doc = parse_document(source).expect("should parse");
-    super::format_document(
-        doc.tree.root_node(),
-        &doc.source,
-        4,
-        false,
-        100,
-        false,
-        true,
+    fmt_options(
+        source,
+        FormatOptions {
+            align_member_colons: true,
+            ..Default::default()
+        },
+    )
+}
+
+pub(super) fn fmt_with_annotation_placement(
+    source: &str,
+    placement: AnnotationPlacement,
+) -> String {
+    fmt_options(
+        source,
+        FormatOptions {
+            annotation_placement: placement,
+            ..Default::default()
+        },
     )
 }
 
 pub(super) fn fmt_limit(source: &str, line_limit: u32) -> String {
-    let doc = parse_document(source).expect("should parse");
-    super::format_document(
-        doc.tree.root_node(),
-        &doc.source,
-        4,
-        false,
-        line_limit,
-        false,
-        false,
+    fmt_options(
+        source,
+        FormatOptions {
+            line_limit,
+            ..Default::default()
+        },
     )
 }

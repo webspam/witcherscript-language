@@ -7,6 +7,7 @@ use tracing::{info, trace, warn};
 
 use crate::backend::Backend;
 use crate::logging::{level_from_str, level_to_u8, DEFAULT_LOG_LEVEL};
+use witcherscript_language::formatter::AnnotationPlacement;
 
 fn parse_path_array(value: Option<Value>) -> Vec<std::path::PathBuf> {
     let Some(Value::Array(arr)) = value else {
@@ -46,6 +47,7 @@ pub(crate) struct Config {
     pub(crate) formatter_line_limit: u32,
     pub(crate) formatter_compact_colon: bool,
     pub(crate) formatter_align_member_colons: bool,
+    pub(crate) formatter_annotation_placement: AnnotationPlacement,
 }
 
 impl Default for Config {
@@ -58,6 +60,7 @@ impl Default for Config {
             formatter_line_limit: 100,
             formatter_compact_colon: false,
             formatter_align_member_colons: false,
+            formatter_annotation_placement: AnnotationPlacement::Preserve,
         }
     }
 }
@@ -104,6 +107,10 @@ impl Backend {
             ConfigurationItem {
                 scope_uri: None,
                 section: Some("witcherscript.formatter.alignMemberColons".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.formatter.annotationPlacement".to_string()),
             },
             ConfigurationItem {
                 scope_uri: None,
@@ -182,6 +189,14 @@ impl Backend {
                 "formatter.alignMemberColons",
                 prev_cfg.formatter_align_member_colons,
                 next_cfg.formatter_align_member_colons,
+            );
+        }
+        if let Some(Value::String(placement)) = iter.next() {
+            next_cfg.formatter_annotation_placement = AnnotationPlacement::from_setting(&placement);
+            log_setting_change(
+                "formatter.annotationPlacement",
+                prev_cfg.formatter_annotation_placement,
+                next_cfg.formatter_annotation_placement,
             );
         }
         if let Some(Value::Object(map)) = iter.next() {

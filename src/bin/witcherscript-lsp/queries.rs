@@ -17,7 +17,7 @@ use lsp_types::{
 use crate::config::DiagnosticsScope;
 use tracing::trace;
 use witcherscript_language::builtins::builtin_source;
-use witcherscript_language::formatter::format_document;
+use witcherscript_language::formatter::{format_document, FormatOptions};
 use witcherscript_language::resolve::{
     resolve_all_definitions, resolve_definition, signature_help,
 };
@@ -391,15 +391,19 @@ impl Backend {
             let line_limit = cfg.formatter_line_limit;
             let compact_colon = cfg.formatter_compact_colon;
             let align_member_colons = cfg.formatter_align_member_colons;
+            let annotation_placement = cfg.formatter_annotation_placement;
 
             let formatted = format_document(
                 document.tree.root_node(),
                 &document.source,
-                tab_size,
-                use_tabs,
-                line_limit,
-                compact_colon,
-                align_member_colons,
+                FormatOptions {
+                    tab_size,
+                    use_tabs,
+                    line_limit,
+                    compact_colon,
+                    align_member_colons,
+                    annotation_placement,
+                },
             );
 
             if formatted == document.source {
