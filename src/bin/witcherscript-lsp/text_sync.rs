@@ -1,11 +1,11 @@
-use std::collections::HashSet;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use lsp_types::{
     DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, Url,
 };
-use tracing::error;
+use tracing::{error, trace};
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::document::apply_content_change;
 use witcherscript_language::line_index::LineIndex;
@@ -29,6 +29,8 @@ impl Backend {
         if self.is_uri_excluded(&uri) {
             return;
         }
+        let started_at = Instant::now();
+        trace!(op = "did_open", uri = %uri, "start");
         // The client drops a file's status on close; force a fresh push.
         self.sent_legacy_status.lock().remove(&uri);
         self.sent_file_scope_status.lock().remove(&uri);
@@ -36,13 +38,18 @@ impl Backend {
         self.update_open_document(uri.clone(), params.text_document.text);
         if uri_within_any(uri.as_str(), &legacy_dirs) {
             self.refresh_legacy_override_maps();
-            self.publish_open_diagnostics();
+            self.spawn_diagnostics_state_changed();
         }
         self.publish_legacy_script_status();
         self.publish_file_scope_status();
+        trace!(
+            op = "did_open",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
     }
 
-    #[tracing::instrument(skip_all, fields(uri = %params.text_document.uri), level = "debug")]
     pub(crate) fn _did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
         if builtin_source(uri.as_str()).is_some() {
@@ -51,23 +58,28 @@ impl Backend {
         if self.is_uri_excluded(&uri) {
             return;
         }
-        let prior = self
-            .documents
-            .lock()
-            .get(&uri)
-            .map(|d| (d.source.clone(), d.line_index.clone()));
+        let started_at = Instant::now();
+        trace!(op = "did_change", uri = %uri, "start");
 
-        let Some((mut source, mut line_index)) = prior else {
+        let Some((mut source, mut line_index, mut prior_tree)) = self.latest_edit_state(&uri)
+        else {
             error!(uri = %uri, "did_change before did_open");
             return;
         };
 
+        let mut prior_tree_valid = true;
         for change in params.content_changes {
             let range = change
                 .range
                 .map(|r| source_range(source_position(r.start), source_position(r.end)));
             match apply_content_change(&source, &line_index, range, &change.text) {
-                Some(next) => {
+                Some((next, edit)) => {
+                    match edit {
+                        Some(edit) if prior_tree_valid => prior_tree.edit(&edit),
+                        // A None edit means full-document replace; drop the prior tree.
+                        None => prior_tree_valid = false,
+                        _ => {}
+                    }
                     line_index = LineIndex::new(&next);
                     source = next;
                 }
@@ -78,7 +90,18 @@ impl Backend {
             }
         }
 
-        self.update_open_document(uri, source);
+        if prior_tree_valid {
+            self.enqueue_edit(uri.clone(), source, line_index, prior_tree);
+        } else {
+            // Full-document replace: prior tree is invalid; bypass the queue and re-parse from scratch.
+            self.update_open_document(uri.clone(), source);
+        }
+        trace!(
+            op = "did_change",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
     }
 
     pub(crate) fn _did_close(&self, params: DidCloseTextDocumentParams) {
@@ -86,32 +109,62 @@ impl Backend {
         if builtin_source(uri.as_str()).is_some() {
             return;
         }
+        let started_at = Instant::now();
+        trace!(op = "did_close", uri = %uri, "start");
         let scope = self.file_scope_of(&uri);
-        self.documents.lock().remove(&uri);
+        let mut loose_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
+        self.publish_compilation(|builder| {
+            builder.documents_mut().remove(&uri);
+            if scope.is_loose() {
+                loose_changed.extend(crate::indexing::remove_document_all_spellings(
+                    builder.loose_index_mut(),
+                    &uri,
+                ));
+            }
+        });
         if scope.is_loose() {
             // A loose file is a transient compilation member: closing it drops it from the index entirely.
-            let invalidated = {
-                let mut index = self.loose_index.lock();
-                crate::indexing::remove_document_all_spellings(&mut index, &uri)
-            };
+            let invalidated = self.invalidated_loose(&loose_changed);
             self.evict_cache_entries(&invalidated);
         } else {
             self.reindex_closed_file(&uri);
             self.refresh_legacy_override_maps_if_legacy_uri(&uri);
         }
-        self.publish_open_diagnostics();
+        self.spawn_diagnostics_state_changed();
         self.publish_file_scope_status();
         self.sent_file_scope_status.lock().remove(&uri);
+        trace!(
+            op = "did_close",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
     }
 
     pub(crate) fn _did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        let started_at = Instant::now();
+        let count = params.changes.len();
+        trace!(op = "did_change_watched_files", count, "start",);
         self.apply_watched_file_events(params.changes);
+        trace!(
+            op = "did_change_watched_files",
+            count,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
     }
 
     pub(crate) async fn _did_change_workspace_folders(
         &self,
         params: DidChangeWorkspaceFoldersParams,
     ) {
+        let started_at = Instant::now();
+        trace!(
+            op = "did_change_workspace_folders",
+            added = params.event.added.len(),
+            removed = params.event.removed.len(),
+            "start",
+        );
         let removed: Vec<PathBuf> = params
             .event
             .removed
@@ -137,21 +190,25 @@ impl Backend {
 
         // index_workspace only adds files; a removed folder's scripts must be dropped here.
         if !removed.is_empty() {
-            let invalidated = {
-                let mut index = self.workspace_index.lock();
-                let mut docs = self.workspace_documents.lock();
-                let stale: Vec<String> = docs
+            let mut ws_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
+            self.publish_compilation(|builder| {
+                let stale: Vec<String> = builder
+                    .base
+                    .workspace_documents
                     .keys()
                     .filter(|uri| uri_within_any(uri, &removed))
                     .cloned()
                     .collect();
-                let mut invalidated: HashSet<String> = HashSet::new();
-                for uri in stale {
-                    invalidated.extend(index.remove_document(&uri));
-                    docs.remove(&uri);
+                let docs = builder.workspace_documents_mut();
+                for uri in &stale {
+                    docs.remove(uri);
                 }
-                invalidated
-            };
+                let index = builder.workspace_index_mut();
+                for uri in &stale {
+                    ws_changed.extend(index.remove_document(uri));
+                }
+            });
+            let invalidated = self.invalidated_workspace(&ws_changed);
             self.evict_cache_entries(&invalidated);
         }
 
@@ -160,7 +217,12 @@ impl Backend {
             self.index_base_scripts().await;
         }
         self.reindex_open_documents();
-        self.publish_open_diagnostics();
+        self.diagnostics_state_changed();
         self.publish_file_scope_status();
+        trace!(
+            op = "did_change_workspace_folders",
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
     }
 }

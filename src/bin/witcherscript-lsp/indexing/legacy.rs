@@ -112,8 +112,8 @@ impl Backend {
         if legacy_dirs.is_empty() {
             return Vec::new();
         }
-        self.workspace_index
-            .lock()
+        self.snapshot()
+            .workspace_index
             .documents()
             .map(|(uri, _)| uri.to_string())
             .filter(|uri| Self::uri_under_legacy_dirs(uri, &legacy_dirs))
@@ -121,10 +121,17 @@ impl Backend {
     }
 
     pub(crate) fn refresh_legacy_override_maps(&self) {
-        let base_uris: Vec<String> = self.base_scripts_documents.lock().keys().cloned().collect();
+        let base_uris: Vec<String> = self
+            .snapshot()
+            .base_scripts_documents
+            .keys()
+            .cloned()
+            .collect();
         let legacy_uris = self.legacy_uris_in_workspace_index();
         let (suppressed, replacements) = legacy_base_replacements(&base_uris, &legacy_uris);
-        *self.suppressed_base_uris.lock() = suppressed;
+        self.publish_compilation(|builder| {
+            builder.set_suppressed_base_uris(suppressed);
+        });
         *self.legacy_replacements.lock() = replacements;
         self.rebuild_filtered_base_catalogs();
     }
@@ -136,26 +143,16 @@ impl Backend {
         }
     }
 
-    fn remove_legacy_workspace_document(&self, canonical: &str) -> HashSet<String> {
-        let mut index = self.workspace_index.lock();
-        let mut docs = self.workspace_documents.lock();
-        let invalidated = index.remove_document(canonical);
-        docs.remove(canonical);
-        invalidated
-    }
-
     pub(crate) fn prune_stale_legacy_workspace_files(&self, current: &HashSet<String>) {
         let legacy_dirs = self.effective_legacy_dirs();
         if legacy_dirs.is_empty() {
             return;
         }
-        let open_canonical: HashSet<String> = {
-            let documents = self.documents.lock();
-            documents.keys().filter_map(canonical_uri).collect()
-        };
-        let stale: Vec<String> = self
+        let snap = self.snapshot();
+        let open_canonical: HashSet<String> =
+            snap.documents.keys().filter_map(canonical_uri).collect();
+        let stale: Vec<String> = snap
             .workspace_documents
-            .lock()
             .keys()
             .filter(|uri| {
                 if current.contains(*uri) || open_canonical.contains(*uri) {
@@ -168,10 +165,18 @@ impl Backend {
         if stale.is_empty() {
             return;
         }
-        let mut invalidated = HashSet::new();
-        for uri in stale {
-            invalidated.extend(self.remove_legacy_workspace_document(&uri));
-        }
+        let mut ws_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
+        self.publish_compilation(|builder| {
+            let docs = builder.workspace_documents_mut();
+            for uri in &stale {
+                docs.remove(uri);
+            }
+            let index = builder.workspace_index_mut();
+            for uri in &stale {
+                ws_changed.extend(index.remove_document(uri));
+            }
+        });
+        let invalidated = self.invalidated_workspace(&ws_changed);
         self.evict_cache_entries(&invalidated);
     }
 
@@ -179,26 +184,38 @@ impl Backend {
         &self,
         parsed: Vec<(String, ParsedDocument)>,
     ) -> HashSet<String> {
-        let open_canonical: HashSet<String> = {
-            let documents = self.documents.lock();
-            documents.keys().filter_map(canonical_uri).collect()
-        };
+        let open_canonical: HashSet<String> = self
+            .snapshot()
+            .documents
+            .keys()
+            .filter_map(canonical_uri)
+            .collect();
         let mut current = HashSet::new();
-        let mut invalidated = HashSet::new();
-        {
-            let mut ws_idx = self.workspace_index.lock();
-            let mut ws_docs = self.workspace_documents.lock();
-            ws_idx.begin_bulk_catalog_update();
-            for (uri, document) in parsed {
+        let filtered: Vec<(String, std::sync::Arc<ParsedDocument>)> = parsed
+            .into_iter()
+            .filter_map(|(uri, doc)| {
                 current.insert(uri.clone());
                 if open_canonical.contains(&uri) {
-                    continue;
+                    None
+                } else {
+                    Some((uri, std::sync::Arc::new(doc)))
                 }
-                invalidated.extend(ws_idx.update_document(uri.as_str(), &document));
-                ws_docs.insert(uri, document);
+            })
+            .collect();
+        let mut ws_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
+        self.publish_compilation(|builder| {
+            let index = builder.workspace_index_mut();
+            index.begin_bulk_catalog_update();
+            for (uri, document) in &filtered {
+                ws_changed.extend(index.update_document(uri.as_str(), document.as_ref()));
             }
-            ws_idx.end_bulk_catalog_update();
-        }
+            index.end_bulk_catalog_update();
+            let docs = builder.workspace_documents_mut();
+            for (uri, document) in filtered {
+                docs.insert(uri, document);
+            }
+        });
+        let invalidated = self.invalidated_workspace(&ws_changed);
         self.prune_stale_legacy_workspace_files(&current);
         invalidated
     }

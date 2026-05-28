@@ -1,10 +1,13 @@
 use std::collections::HashSet;
+use std::sync::Arc;
+use std::time::Instant;
 
 use lsp_types::{Position, Url};
-use tracing::error;
-use witcherscript_language::document::parse_document;
+use tracing::{debug, error, trace};
+use tree_sitter::{Parser, Tree};
+use witcherscript_language::document::{parse_document, parse_document_with_prior};
 use witcherscript_language::files::{canonical_uri, read_script_file};
-use witcherscript_language::resolve::{resolve_definition, Definition};
+use witcherscript_language::resolve::{resolve_definition, Definition, ObservedKey};
 
 use crate::backend::Backend;
 use crate::convert::source_position;
@@ -14,18 +17,21 @@ use super::helpers::{reindex_into, remove_document_all_spellings};
 
 impl Backend {
     // A workspace-folder or config change reroutes open docs now, not on next keystroke.
-    #[tracing::instrument(skip(self), level = "debug")]
     pub(crate) fn reindex_open_documents(&self) {
-        let documents = self.documents.lock();
-        if documents.is_empty() {
+        let snap = self.snapshot();
+        if snap.documents.is_empty() {
             return;
         }
+        let started_at = Instant::now();
+        let docs = snap.documents.len();
+        debug!(op = "reindex_open_documents", docs, "start",);
         let roots = self.workspace_roots.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
         let game_dir = self.base_scripts_path.lock().clone();
         let additional = self.additional_script_dirs.lock().clone();
         let replacements = self.legacy_replacements.lock().clone();
-        let scopes: Vec<(Url, FileScope)> = documents
+        let scopes: Vec<(Url, FileScope)> = snap
+            .documents
             .keys()
             .map(|uri| {
                 (
@@ -42,33 +48,70 @@ impl Backend {
             })
             .collect();
 
+        let mut ws_changed: Vec<ObservedKey> = Vec::new();
+        let mut loose_changed: Vec<ObservedKey> = Vec::new();
         let mut invalidated: HashSet<String> = HashSet::new();
-        {
-            let mut workspace = self.workspace_index.lock();
-            let mut loose = self.loose_index.lock();
-            let mut base = self.base_scripts_index.lock();
+        self.publish_compilation(|builder| {
+            let docs = builder.base.documents.clone();
+            let workspace = builder.workspace_index_mut();
+            for (uri, _) in &scopes {
+                ws_changed.extend(remove_document_all_spellings(workspace, uri));
+            }
+            let loose = builder.loose_index_mut();
+            for (uri, _) in &scopes {
+                loose_changed.extend(remove_document_all_spellings(loose, uri));
+            }
+            let base = builder.base_scripts_index_mut();
+            for (uri, _) in &scopes {
+                let _ = remove_document_all_spellings(base, uri);
+            }
             for (uri, scope) in &scopes {
-                let Some(document) = documents.get(uri) else {
+                let Some(document) = docs.get(uri) else {
                     continue;
                 };
-                invalidated.extend(remove_document_all_spellings(&mut workspace, uri));
-                invalidated.extend(remove_document_all_spellings(&mut loose, uri));
-                invalidated.extend(remove_document_all_spellings(&mut base, uri));
-                let target: &mut witcherscript_language::resolve::WorkspaceIndex = match scope {
-                    FileScope::AdditionalBase => &mut base,
-                    FileScope::OutOfScope | FileScope::SingleFile => &mut loose,
-                    _ => &mut workspace,
-                };
-                invalidated.extend(target.update_document(uri.as_str(), document));
+                match scope {
+                    FileScope::AdditionalBase => {
+                        let _ = builder
+                            .base_scripts_index_mut()
+                            .update_document(uri.as_str(), document.as_ref());
+                    }
+                    FileScope::OutOfScope | FileScope::SingleFile => {
+                        loose_changed.extend(
+                            builder
+                                .loose_index_mut()
+                                .update_document(uri.as_str(), document.as_ref()),
+                        );
+                    }
+                    _ => {
+                        ws_changed.extend(
+                            builder
+                                .workspace_index_mut()
+                                .update_document(uri.as_str(), document.as_ref()),
+                        );
+                    }
+                }
                 invalidated.insert(uri.to_string());
             }
-        }
-        drop(documents);
+        });
+        invalidated.extend(self.invalidated_workspace(&ws_changed));
+        invalidated.extend(self.invalidated_loose(&loose_changed));
         self.evict_cache_entries(&invalidated);
+        debug!(
+            op = "reindex_open_documents",
+            docs,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
     }
 
     // Closing a non-loose file reverts it from buffer to on-disk content in the workspace/base index.
     pub(crate) fn reindex_closed_file(&self, uri: &Url) {
+        let started_at = Instant::now();
+        debug!(
+            op = "reindex_closed_file",
+            uri = %uri,
+            "start",
+        );
         let canonical = canonical_uri(uri).unwrap_or_else(|| uri.to_string());
         let is_base = self.is_base_script_uri(uri);
         let parsed = uri
@@ -77,21 +120,64 @@ impl Backend {
             .and_then(|path| read_script_file(&path).ok())
             .and_then(|text| parse_document(text).ok());
 
+        let mut changed: Vec<ObservedKey> = Vec::new();
+        self.publish_compilation(|builder| {
+            if is_base {
+                let (index, docs) = builder.base_scripts_index_and_docs_mut();
+                let _ = reindex_into(index, docs, uri.as_str(), &canonical, parsed);
+            } else {
+                let (index, docs) = builder.workspace_index_and_docs_mut();
+                changed.extend(reindex_into(index, docs, uri.as_str(), &canonical, parsed));
+            }
+        });
         let invalidated = if is_base {
-            let mut index = self.base_scripts_index.lock();
-            let mut docs = self.base_scripts_documents.lock();
-            reindex_into(&mut index, &mut docs, uri.as_str(), &canonical, parsed)
+            HashSet::new()
         } else {
-            let mut index = self.workspace_index.lock();
-            let mut docs = self.workspace_documents.lock();
-            reindex_into(&mut index, &mut docs, uri.as_str(), &canonical, parsed)
+            self.invalidated_workspace(&changed)
         };
         self.evict_cache_entries(&invalidated);
+        debug!(
+            op = "reindex_closed_file",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
     }
 
-    #[tracing::instrument(skip(self, text), fields(uri = %uri, bytes = text.len()), level = "debug")]
     pub(crate) fn update_open_document(&self, uri: Url, text: String) {
-        let parsed = tracing::debug_span!("parse_document").in_scope(|| parse_document(text));
+        self.update_open_document_with_prior(uri, text, None);
+    }
+
+    pub(crate) fn update_open_document_with_prior(
+        &self,
+        uri: Url,
+        text: String,
+        prior_tree: Option<Tree>,
+    ) {
+        let started_at = Instant::now();
+        let bytes = text.len();
+        let had_prior_tree = prior_tree.is_some();
+        trace!(
+            op = "update_open_document",
+            uri = %uri,
+            bytes,
+            "start",
+        );
+        let parse_at = Instant::now();
+        let parsed = match prior_tree {
+            Some(tree) => {
+                let mut parser = Parser::new();
+                match parser.set_language(&tree_sitter_witcherscript::language()) {
+                    Ok(()) => parse_document_with_prior(&mut parser, text, Some(&tree)),
+                    Err(err) => {
+                        error!(uri = %uri, error = %err, "failed to load WitcherScript grammar");
+                        return;
+                    }
+                }
+            }
+            None => parse_document(text),
+        };
+        let parse_us = parse_at.elapsed().as_micros();
         let document = match parsed {
             Ok(document) => document,
             Err(err) => {
@@ -99,32 +185,75 @@ impl Backend {
                 return;
             }
         };
+        let document = Arc::new(document);
 
-        let scope = self.file_scope_of(&uri);
-        let mut invalidated = HashSet::new();
-        // A config change can move a file between scopes; drop every stale copy first.
-        for index in [
-            &self.workspace_index,
-            &self.base_scripts_index,
-            &self.loose_index,
-        ] {
-            let mut index = index.lock();
-            invalidated.extend(remove_document_all_spellings(&mut index, &uri));
-        }
+        let publish_at = Instant::now();
+        self.publish_open_document_indices(&uri, &document);
+        let publish_us = publish_at.elapsed().as_micros();
+        self.spawn_diagnostics_state_changed();
+        let version = self
+            .diagnostic_version
+            .load(std::sync::atomic::Ordering::Acquire);
+        trace!(
+            op = "update_open_document",
+            uri = %uri,
+            bytes,
+            version,
+            had_prior_tree,
+            parse_us,
+            publish_us,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
+    }
 
-        let target = match scope {
-            FileScope::AdditionalBase => &self.base_scripts_index,
-            FileScope::OutOfScope | FileScope::SingleFile => &self.loose_index,
-            _ => &self.workspace_index,
-        };
-        {
-            let mut index = target.lock();
-            invalidated.extend(index.update_document(uri.as_str(), &document));
-        }
+    pub(crate) fn publish_open_document_indices(
+        &self,
+        uri: &Url,
+        document: &Arc<witcherscript_language::document::ParsedDocument>,
+    ) {
+        let scope = self.file_scope_of(uri);
+        let mut ws_changed: Vec<ObservedKey> = Vec::new();
+        let mut loose_changed: Vec<ObservedKey> = Vec::new();
+        self.publish_compilation(|builder| {
+            ws_changed.extend(remove_document_all_spellings(
+                builder.workspace_index_mut(),
+                uri,
+            ));
+            let _ = remove_document_all_spellings(builder.base_scripts_index_mut(), uri);
+            loose_changed.extend(remove_document_all_spellings(
+                builder.loose_index_mut(),
+                uri,
+            ));
 
+            match scope {
+                FileScope::AdditionalBase => {
+                    let _ = builder
+                        .base_scripts_index_mut()
+                        .update_document(uri.as_str(), document.as_ref());
+                }
+                FileScope::OutOfScope | FileScope::SingleFile => {
+                    loose_changed.extend(
+                        builder
+                            .loose_index_mut()
+                            .update_document(uri.as_str(), document.as_ref()),
+                    );
+                }
+                _ => {
+                    ws_changed.extend(
+                        builder
+                            .workspace_index_mut()
+                            .update_document(uri.as_str(), document.as_ref()),
+                    );
+                }
+            }
+            builder
+                .documents_mut()
+                .insert(uri.clone(), document.clone());
+        });
+        let mut invalidated = self.invalidated_workspace(&ws_changed);
+        invalidated.extend(self.invalidated_loose(&loose_changed));
         self.evict_cache_entries(&invalidated);
-        self.documents.lock().insert(uri.clone(), document);
-        self.publish_open_diagnostics();
     }
 
     pub(crate) fn evict_cache_entries(&self, uris: &HashSet<String>) {
@@ -136,10 +265,10 @@ impl Backend {
     }
 
     pub(crate) fn resolve_at(&self, uri: &Url, position: Position) -> Option<Definition> {
-        let documents = self.documents.lock();
-        let document = documents.get(uri)?;
-        let handles = self.db_handles_for(uri);
+        let snap = self.snapshot();
+        let document = snap.documents.get(uri)?.clone();
+        let handles = self.db_handles_for_with_snapshot(uri, &snap);
         let db = handles.db();
-        resolve_definition(uri.as_str(), document, &db, source_position(position))
+        resolve_definition(uri.as_str(), &document, &db, source_position(position))
     }
 }

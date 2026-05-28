@@ -45,9 +45,12 @@ pub fn build_types(
 }
 
 pub fn build_enum_members(
-    enum_member_by_name: &std::collections::HashMap<String, Definition>,
+    enum_member_by_name: &std::collections::HashMap<String, Vec<Definition>>,
 ) -> Vec<Definition> {
-    enum_member_by_name.values().cloned().collect()
+    enum_member_by_name
+        .values()
+        .filter_map(|defs| defs.last().cloned())
+        .collect()
 }
 
 pub fn merge_ws_base(ws: Arc<[Definition]>, base: Arc<[Definition]>) -> Arc<[Definition]> {

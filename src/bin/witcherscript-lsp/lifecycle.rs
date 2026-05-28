@@ -1,20 +1,22 @@
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_lsp::ResponseError;
 use lsp_types::{
     CodeActionKind, CodeActionOptions, CodeActionProviderCapability, CompletionOptions,
-    DidChangeConfigurationParams, FileOperationFilter, FileOperationPattern,
-    FileOperationPatternKind, FileOperationRegistrationOptions, HoverProviderCapability,
-    InitializeParams, InitializeResult, InitializedParams, OneOf, RenameOptions,
-    SemanticTokenModifier, SemanticTokenType, SemanticTokensFullOptions, SemanticTokensLegend,
-    SemanticTokensOptions, SemanticTokensServerCapabilities, ServerCapabilities,
-    SignatureHelpOptions, TextDocumentSyncCapability, TextDocumentSyncKind,
-    WorkDoneProgressOptions, WorkspaceFileOperationsServerCapabilities,
-    WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
+    DiagnosticOptions, DiagnosticServerCapabilities, DidChangeConfigurationParams,
+    FileOperationFilter, FileOperationPattern, FileOperationPatternKind,
+    FileOperationRegistrationOptions, HoverProviderCapability, InitializeParams, InitializeResult,
+    InitializedParams, OneOf, RenameOptions, SemanticTokenModifier, SemanticTokenType,
+    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelpOptions,
+    TextDocumentSyncCapability, TextDocumentSyncKind, WorkDoneProgressOptions,
+    WorkspaceFileOperationsServerCapabilities, WorkspaceFoldersServerCapabilities,
+    WorkspaceServerCapabilities,
 };
-use tracing::info;
+use tracing::{info, trace};
 use witcherscript_language::semantic_tokens::{TOKEN_MODIFIERS, TOKEN_TYPES};
 
 use crate::backend::Backend;
@@ -47,6 +49,8 @@ fn ws_file_operations_capabilities() -> WorkspaceFileOperationsServerCapabilitie
 
 impl Backend {
     pub(crate) async fn _initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        let started_at = Instant::now();
+        trace!(op = "initialize", "start");
         // Capture base scripts path from initializationOptions if provided.
         // workspace/configuration is pulled after initialized(), but this ensures
         // we have a value even before that round-trip completes.
@@ -112,12 +116,21 @@ impl Backend {
             self.config.store(Arc::new(cfg));
         }
 
+        let supports_pull = params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|td| td.diagnostic.as_ref())
+            .is_some();
+        self.client_supports_pull_diagnostics
+            .store(supports_pull, Ordering::Release);
+
         let roots = workspace_roots(params);
         let game_dir = self.base_scripts_path.lock().clone();
-        info!(roots = ?roots, game_dir = ?game_dir, "LSP initialize");
+        info!(roots = ?roots, game_dir = ?game_dir, supports_pull, "LSP initialize");
         *self.workspace_roots.lock() = roots;
 
-        Ok(InitializeResult {
+        let result = Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::INCREMENTAL,
@@ -176,46 +189,74 @@ impl Backend {
                     }),
                     file_operations: Some(ws_file_operations_capabilities()),
                 }),
+                diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
+                    DiagnosticOptions {
+                        identifier: Some("witcherscript".to_string()),
+                        inter_file_dependencies: true,
+                        workspace_diagnostics: false,
+                        work_done_progress_options: WorkDoneProgressOptions::default(),
+                    },
+                )),
                 ..ServerCapabilities::default()
             },
             ..InitializeResult::default()
-        })
+        });
+        trace!(
+            op = "initialize",
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
+        result
     }
 
     pub(crate) async fn _initialized(&self, _: InitializedParams) {
-        tracing::trace!("initialized: fetching config and indexing");
+        let started_at = Instant::now();
+        trace!(op = "initialized", "start");
+        self.spawn_edit_writer();
         self.fetch_config().await;
         self.index_workspace().await;
         self.refresh_manifest_legacy_dirs();
         self.register_file_watchers().await;
         self.index_base_scripts().await;
         self.initial_index_done.store(true, Ordering::Release);
-        self.publish_open_diagnostics();
+        self.diagnostics_state_changed();
+        trace!(
+            op = "initialized",
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
     }
 
     pub(crate) async fn _did_change_configuration(&self, _: DidChangeConfigurationParams) {
+        let started_at = Instant::now();
+        trace!(op = "did_change_configuration", "start");
         let initial_done = self.initial_index_done.load(Ordering::Acquire);
         let change = self.fetch_config().await;
         if !initial_done {
-            tracing::trace!("did_change_configuration: startup echo, skipping re-index");
+            trace!(
+                op = "did_change_configuration",
+                elapsed_us = started_at.elapsed().as_micros(),
+                reason = "startup_echo",
+                "complete",
+            );
             return;
         }
         if change.needs_reindex {
-            tracing::trace!("did_change_configuration: index-relevant config changed, re-indexing");
             self.index_workspace().await;
             self.refresh_manifest_legacy_dirs();
             self.index_base_scripts().await;
             self.reindex_open_documents();
-            self.publish_open_diagnostics();
-        } else {
-            tracing::trace!(
-                "did_change_configuration: no index-relevant config change, skipping re-index"
-            );
+            self.diagnostics_state_changed();
         }
         if change.diagnostics_changed {
-            tracing::trace!("did_change_configuration: diagnostics setting changed, applying");
             self.reconcile_published_diagnostics();
         }
         self.publish_file_scope_status();
+        trace!(
+            op = "did_change_configuration",
+            elapsed_us = started_at.elapsed().as_micros(),
+            reindexed = change.needs_reindex,
+            "complete",
+        );
     }
 }

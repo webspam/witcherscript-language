@@ -35,20 +35,21 @@ async fn manifest_scripts_root_suppresses_a_base_script() {
 
     assert!(
         backend
+            .snapshot()
             .base_scripts_documents
-            .lock()
             .contains_key(base_url.as_str()),
         "the base script must stay in the base index for references"
     );
     assert!(
         backend
+            .snapshot()
             .suppressed_base_uris
-            .lock()
             .contains(base_url.as_str()),
         "manifest scripts_root override must suppress the base URI"
     );
 
-    let ws_docs = backend.workspace_documents.lock();
+    let snap = backend.snapshot();
+    let ws_docs = &snap.workspace_documents;
     assert!(
         ws_docs.contains_key(override_url.as_str()),
         "manifest override should land in workspace_documents; keys: {:?}",
@@ -93,15 +94,15 @@ async fn flag_off_skips_discovery_and_leaves_base_unsuppressed() {
     );
     assert!(
         backend
+            .snapshot()
             .base_scripts_documents
-            .lock()
             .contains_key(base_url.as_str()),
         "base script must remain present when discovery is disabled"
     );
     assert!(
         !backend
+            .snapshot()
             .suppressed_base_uris
-            .lock()
             .contains(base_url.as_str()),
         "base script must not be suppressed when discovery is disabled"
     );

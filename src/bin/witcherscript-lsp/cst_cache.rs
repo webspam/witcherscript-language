@@ -31,6 +31,7 @@ pub(crate) struct CstDiagnosticsResult {
     pub by_uri: HashMap<String, Vec<WorkspaceDiagnostic>>,
     pub stats: CstCacheStats,
     pub new_subscriptions: Vec<(String, ObservationSet)>,
+    pub cancelled: bool,
 }
 
 pub(crate) fn cst_diagnostics_with_cache(
@@ -39,12 +40,18 @@ pub(crate) fn cst_diagnostics_with_cache(
     loose: Option<(&SymbolDb, &HashSet<String>)>,
     fingerprint: DbFingerprint,
     cache: &mut HashMap<String, CstCacheEntry>,
+    should_continue: &dyn Fn() -> bool,
 ) -> CstDiagnosticsResult {
     let mut out: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
     let mut stats = CstCacheStats::default();
     let mut new_subscriptions: Vec<(String, ObservationSet)> = Vec::new();
+    let mut cancelled = false;
 
     for (uri, document) in documents.iter() {
+        if !should_continue() {
+            cancelled = true;
+            break;
+        }
         let reuse = cache.get(uri).is_some_and(|e| {
             e.parse_version == document.parse_version && e.db_fingerprint == fingerprint
         });
@@ -80,12 +87,15 @@ pub(crate) fn cst_diagnostics_with_cache(
         }
     }
 
-    cache.retain(|uri, _| documents.contains_key(uri));
+    if !cancelled {
+        cache.retain(|uri, _| documents.contains_key(uri));
+    }
 
     CstDiagnosticsResult {
         by_uri: out,
         stats,
         new_subscriptions,
+        cancelled,
     }
 }
 

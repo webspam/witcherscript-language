@@ -52,17 +52,28 @@ struct RawToken {
 }
 
 pub fn collect_semantic_tokens(uri: &str, document: &ParsedDocument, db: &SymbolDb) -> Vec<u32> {
+    collect_semantic_tokens_cancellable(uri, document, db, &|| true)
+        .expect("should_continue=|| true cannot cancel")
+}
+
+// Cancellation is checked between top-level decls; one decl runs to completion before bailing.
+pub fn collect_semantic_tokens_cancellable(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    should_continue: &dyn Fn() -> bool,
+) -> Option<Vec<u32>> {
     let mut tokens: Vec<RawToken> = Vec::new();
     let mut cache: ClassifyCache = HashMap::new();
-    collect(
-        document.tree.root_node(),
-        uri,
-        document,
-        db,
-        &mut cache,
-        &mut tokens,
-    );
-    encode(&tokens)
+    let root = document.tree.root_node();
+    let mut cursor = root.walk();
+    for child in root.children(&mut cursor) {
+        if !should_continue() {
+            return None;
+        }
+        collect(child, uri, document, db, &mut cache, &mut tokens);
+    }
+    Some(encode(&tokens))
 }
 
 type ClassifyCache = HashMap<(String, Option<SymbolId>), Option<(u32, u32)>>;

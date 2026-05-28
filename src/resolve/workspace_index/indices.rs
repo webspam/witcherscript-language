@@ -18,43 +18,24 @@ impl WorkspaceIndex {
                     }
                 }
                 if is_type_like(sym.kind) {
-                    self.superclass_by_name.remove(&sym.name);
-                    let base = self
-                        .find_replacement_def(uri, |s| {
-                            s.container.is_none() && is_type_like(s.kind) && s.name == sym.name
-                        })
-                        .and_then(|def| def.symbol.base_class);
-                    if let Some(base) = base {
-                        self.superclass_by_name.insert(sym.name.clone(), base);
+                    if let Some(entries) = self.superclass_by_name.get_mut(&sym.name) {
+                        entries.retain(|(u, _)| u != uri);
+                        if entries.is_empty() {
+                            self.superclass_by_name.remove(&sym.name);
+                        }
                     }
                 }
                 if sym.kind == SymbolKind::State {
                     if let Some(owner) = &sym.owner_class {
                         if let Some(by_name) = self.states_by_owner.get_mut(owner) {
-                            let owns = by_name
-                                .get(&sym.name)
-                                .map(|d| d.uri == uri)
-                                .unwrap_or(false);
-                            if owns {
-                                by_name.remove(&sym.name);
-                                let replacement = self.find_replacement_def(uri, |s| {
-                                    s.kind == SymbolKind::State
-                                        && s.name == sym.name
-                                        && s.owner_class.as_deref() == Some(owner.as_str())
-                                });
-                                if let Some(def) = replacement {
-                                    self.states_by_owner
-                                        .entry(owner.clone())
-                                        .or_default()
-                                        .insert(sym.name.clone(), def);
-                                } else if self
-                                    .states_by_owner
-                                    .get(owner)
-                                    .map(|m| m.is_empty())
-                                    .unwrap_or(false)
-                                {
-                                    self.states_by_owner.remove(owner);
+                            if let Some(defs) = by_name.get_mut(&sym.name) {
+                                defs.retain(|d| d.uri != uri);
+                                if defs.is_empty() {
+                                    by_name.remove(&sym.name);
                                 }
+                            }
+                            if by_name.is_empty() {
+                                self.states_by_owner.remove(owner);
                             }
                         }
                     }
@@ -75,56 +56,27 @@ impl WorkspaceIndex {
                     }
                 }
             } else if let Some(cn) = &sym.container_name {
-                let owns_member = self
-                    .member_by_type
-                    .get(cn)
-                    .and_then(|m| m.get(&sym.name))
-                    .map(|d| d.uri == uri)
-                    .unwrap_or(false);
-                if owns_member {
-                    let replacement = self.find_replacement_def(uri, |s| {
-                        s.container_name.as_deref() == Some(cn.as_str()) && s.name == sym.name
-                    });
-                    let members = self.member_by_type.entry(cn.clone()).or_default();
-                    members.remove(&sym.name);
-                    if let Some(def) = replacement {
-                        members.insert(sym.name.clone(), def);
+                if let Some(by_name) = self.member_by_type.get_mut(cn) {
+                    if let Some(defs) = by_name.get_mut(&sym.name) {
+                        defs.retain(|d| d.uri != uri);
+                        if defs.is_empty() {
+                            by_name.remove(&sym.name);
+                        }
                     }
-                    if members.is_empty() {
+                    if by_name.is_empty() {
                         self.member_by_type.remove(cn);
                     }
                 }
-                if sym.kind == SymbolKind::EnumMember
-                    && self
-                        .enum_member_by_name
-                        .get(&sym.name)
-                        .map(|d| d.uri == uri)
-                        .unwrap_or(false)
-                {
-                    self.enum_member_by_name.remove(&sym.name);
-                    if let Some(def) = self.find_replacement_def(uri, |s| {
-                        s.kind == SymbolKind::EnumMember && s.name == sym.name
-                    }) {
-                        self.enum_member_by_name.insert(sym.name.clone(), def);
+                if sym.kind == SymbolKind::EnumMember {
+                    if let Some(defs) = self.enum_member_by_name.get_mut(&sym.name) {
+                        defs.retain(|d| d.uri != uri);
+                        if defs.is_empty() {
+                            self.enum_member_by_name.remove(&sym.name);
+                        }
                     }
                 }
             }
         }
-    }
-
-    fn find_replacement_def<F>(&self, exclude_uri: &str, predicate: F) -> Option<Definition>
-    where
-        F: Fn(&Symbol) -> bool,
-    {
-        self.documents
-            .iter()
-            .filter(|(other_uri, _)| other_uri.as_str() != exclude_uri)
-            .find_map(|(other_uri, syms)| {
-                syms.iter().find(|s| predicate(s)).map(|s| Definition {
-                    uri: other_uri.clone(),
-                    symbol: s.clone(),
-                })
-            })
     }
 
     pub(super) fn insert_into_indices(&mut self, uri: &str, symbols: &[Symbol]) {
@@ -140,7 +92,9 @@ impl WorkspaceIndex {
                 if is_type_like(sym.kind) {
                     if let Some(superclass) = &sym.base_class {
                         self.superclass_by_name
-                            .insert(sym.name.clone(), superclass.clone());
+                            .entry(sym.name.clone())
+                            .or_default()
+                            .push((uri.to_string(), superclass.clone()));
                     }
                 }
                 if sym.kind == SymbolKind::State {
@@ -148,13 +102,12 @@ impl WorkspaceIndex {
                         self.states_by_owner
                             .entry(owner.clone())
                             .or_default()
-                            .insert(
-                                sym.name.clone(),
-                                Definition {
-                                    uri: uri.to_string(),
-                                    symbol: sym.clone(),
-                                },
-                            );
+                            .entry(sym.name.clone())
+                            .or_default()
+                            .push(Definition {
+                                uri: uri.to_string(),
+                                symbol: sym.clone(),
+                            });
                     }
                 }
                 if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field) {
@@ -171,21 +124,23 @@ impl WorkspaceIndex {
                     }
                 }
             } else if let Some(cn) = &sym.container_name {
-                self.member_by_type.entry(cn.clone()).or_default().insert(
-                    sym.name.clone(),
-                    Definition {
+                self.member_by_type
+                    .entry(cn.clone())
+                    .or_default()
+                    .entry(sym.name.clone())
+                    .or_default()
+                    .push(Definition {
                         uri: uri.to_string(),
                         symbol: sym.clone(),
-                    },
-                );
+                    });
                 if sym.kind == SymbolKind::EnumMember {
-                    self.enum_member_by_name.insert(
-                        sym.name.clone(),
-                        Definition {
+                    self.enum_member_by_name
+                        .entry(sym.name.clone())
+                        .or_default()
+                        .push(Definition {
                             uri: uri.to_string(),
                             symbol: sym.clone(),
-                        },
-                    );
+                        });
                 }
             }
         }

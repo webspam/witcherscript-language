@@ -9,13 +9,13 @@
 | `lifecycle.rs` | `_initialize` (advertises `ServerCapabilities`), `_initialized` (kicks off the startup index), `_did_change_configuration`. |
 | `text_sync.rs` | `_did_open`, `_did_change`, `_did_close`, `_did_change_watched_files`, `_did_change_workspace_folders` — owns the editor-open document lifecycle and the loose-file index. |
 | `completion.rs` | `_completion` — runs member / type / statement / class-body / annotation / wrap-method dispatch in order. |
-| `queries.rs` | Read-only request handlers: `_hover`, `_goto_definition`, `_references` entry, `_document_symbol`, `_signature_help`, `_semantic_tokens_full`, `_formatting`, `_code_action`, `_handle_builtin_source`. |
+| `queries.rs` | Read-only request handlers: `_hover`, `_goto_definition`, `_references` entry, `_document_symbol`, `_signature_help`, `_semantic_tokens_full`, `_formatting`, `_code_action`, `_document_diagnostic`, `_handle_builtin_source`. |
 | `references_rename.rs` | `_references`, `_prepare_rename`, `_rename` + the `merge_documents` helper that builds the cross-doc search set (open shadows workspace shadows base; loose target sees only loose+base). |
 | `convert/` | LSP↔internal conversion — `positions.rs` (ranges), `diagnostics.rs`, `completions.rs`, `symbols.rs` (document outline, hover), `file_ops.rs` (`workspace_roots`, watched-file bridging). |
 | `cst_cache.rs` | Per-document parse-tree cache with invalidation hooks. |
 | `indexing/` | Workspace + base-script indexing — `helpers.rs` (segments, legacy pairing), `open_documents.rs`, `legacy.rs` (manifest dirs, overrides), `scan.rs` (bulk workspace/base index). |
 | `config.rs` | `fetch_config`, `DiagnosticsScope`, `ConfigChange` plumbing for `workspace/configuration`. |
-| `diagnostics_publish.rs` | `publish_open_diagnostics` (whole-workspace or open-files scope), `publish_syntactic_only`, `reconcile_published_diagnostics`; `publish_legacy_script_status` — `witcherscript/legacyScriptStatus` push. |
+| `diagnostics_publish.rs` | `publish_open_diagnostics` (whole-workspace or open-files scope; takes a `version` and bails at checkpoints when a newer edit superseded it), `compute_diagnostics_for_uri` (pull-handler single-doc compute), `publish_syntactic_only`, `reconcile_published_diagnostics`; `publish_legacy_script_status` — `witcherscript/legacyScriptStatus` push. |
 | `file_scope.rs` | `FileScope` enum + `classify_file_scope` — routes a URI to workspace / loose / base / legacy. |
 | `file_scope_status.rs` | `FileScopeStatusParams` — the `witcherscript/fileScopeStatus` notification payload. |
 | `watcher.rs` | `register_file_watchers`, `apply_watched_file_events`, `classify_watched_event` — file-watcher integration. |
@@ -55,7 +55,8 @@ struct Backend {
     script_env: Arc<Mutex<ScriptEnvironment>>,                               // INI-loaded globals
     cst_diag_cache: Arc<Mutex<HashMap<Url, cst_cache::CstCacheEntry>>>,      // cached CST diagnostics per document
     initial_index_done: Arc<AtomicBool>,                                     // set true once the startup index completes
-    doc_ops_tx: mpsc::UnboundedSender<DocOp>,                                // sends document ops to the background worker
+    diagnostic_version: Arc<AtomicU64>,                                      // bumped on every diagnostics_state_changed() — stale spawned passes self-cancel by comparing this
+    client_supports_pull_diagnostics: Arc<AtomicBool>,                       // captured from initialize; gates whether workspace/diagnostic/refresh is sent
 }
 ```
 
@@ -106,6 +107,7 @@ When you add a map keyed by a document URI, or compare two URIs to decide whethe
 | Document symbol | Nested outline (excludes Variable/Parameter kinds) |
 | Semantic tokens full | Whole-document token array |
 | Workspace folders | Multi-root support |
+| Pull diagnostics | `textDocument/diagnostic` (LSP 3.17) with `result_id` for "unchanged" replies; `workspace/diagnostic/refresh` is pushed when workspace state changes |
 
 ## Document lifecycle
 
@@ -118,14 +120,15 @@ update_open_document(uri, text)
     parse_document(text) → ParsedDocument
     workspace_index.update_document(uri, &doc)
     documents.insert(uri, doc)
-    client.publish_diagnostics(lsp_diagnostics(&doc))
+    diagnostics_state_changed()                // bumps diagnostic_version; spawns publish task;
+                                               // (and pings pull clients via workspace/diagnostic/refresh)
 
 Editor closes file
     ↓
 did_close()
     documents.remove(uri)                      // drop the editor buffer
     reindex_closed_file(uri)                   // revert the index to on-disk content
-    publish_open_diagnostics()                 // workspace scope keeps it; openFiles scope retracts it
+    diagnostics_state_changed()                // workspace scope keeps it; openFiles scope retracts it
 ```
 
 ## Diagnostics scope
@@ -136,6 +139,16 @@ did_close()
 - `OpenFiles` — only editor-open files are diagnosed; symbols are still indexed project-wide.
 
 `diagnostics_document_set` builds the diagnosed document set: `workspace_documents` (workspace scope only) plus open buffers, with open buffers winning. Files are published under their canonical URI so the key is stable across open/close. `publish_open_diagnostics` retracts the diagnostics of any file that left the set.
+
+## Diagnostic delivery and version-counter discard
+
+There are two delivery paths and one common compute function:
+
+- **Push (`publishDiagnostics`)** — `diagnostics_state_changed()` bumps `diagnostic_version` and spawns `publish_open_diagnostics(version)` onto a blocking tokio task. The notification handler returns immediately. The spawned task checks `diagnostic_version` at every checkpoint (before each cross-file pass, before and during the CST loop, before sending notifications); if a newer edit has bumped the counter, the stale task bails out. `cst_diagnostics_with_cache` takes a `should_continue` closure so it can also abandon midway through the per-document loop.
+- **Pull (`textDocument/diagnostic`)** — clients that advertise the capability (VS Code does) drive cadence themselves. `_document_diagnostic` calls `compute_diagnostics_for_uri(uri, document)` which acquires the same locks, runs the same cross-file passes, runs CST for just that URI, and returns `(items, result_id)`. The `result_id` is a stable hash of `(parse_version, workspace.surface_hash, base.surface_hash, env.version, legacy_db_generation)` — if the client sends back a matching `previous_result_id`, the server replies with `Unchanged`.
+- **Refresh** — `request_workspace_diagnostic_refresh()` sends `workspace/diagnostic/refresh` when the workspace's diagnostic state changes; pull clients use this to retrigger their own pull. `diagnostics_state_changed()` fires both refresh and push spawn so the same call site serves both client types.
+
+If the client did not advertise the pull capability, the refresh request is skipped and only the push path runs. The pull handler is unaffected; computing diagnostics for one URI is cheap relative to publishing all of them.
 
 ## Legacy script status notification
 

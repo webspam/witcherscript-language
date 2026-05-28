@@ -38,16 +38,16 @@ async fn loose_file_lands_in_loose_index_not_workspace() {
 
     assert!(
         backend
+            .snapshot()
             .loose_index
-            .lock()
             .documents()
             .any(|(u, _)| u == loose_url.as_str()),
         "a file outside every workspace root must land in loose_index",
     );
     assert!(
         !backend
+            .snapshot()
             .workspace_index
-            .lock()
             .documents()
             .any(|(u, _)| u == loose_url.as_str()),
         "a loose file must not pollute workspace_index",
@@ -65,8 +65,8 @@ async fn single_file_lands_in_loose_index() {
 
     assert!(
         backend
+            .snapshot()
             .loose_index
-            .lock()
             .documents()
             .any(|(u, _)| u == url.as_str()),
         "with no workspace folder open, an opened file must land in loose_index",
@@ -85,14 +85,14 @@ async fn closing_a_loose_file_drops_it_from_loose_index_and_documents() {
 
     assert!(
         !backend
+            .snapshot()
             .loose_index
-            .lock()
             .documents()
             .any(|(u, _)| u == url.as_str()),
         "closing a loose file must drop it from loose_index",
     );
     assert!(
-        !backend.documents.lock().contains_key(&url),
+        !backend.snapshot().documents.contains_key(&url),
         "closing a loose file must drop it from the open documents map",
     );
 }
@@ -110,8 +110,8 @@ async fn closing_a_project_file_keeps_it_indexed() {
 
     assert!(
         backend
+            .snapshot()
             .workspace_index
-            .lock()
             .documents()
             .any(|(u, _)| u == url.as_str()),
         "closing an in-project file must leave it indexed",
@@ -128,8 +128,8 @@ async fn scope_change_between_open_and_change_does_not_leak() {
     backend.update_open_document(url.clone(), "class CFile {}\n".to_string());
     assert!(
         backend
+            .snapshot()
             .loose_index
-            .lock()
             .documents()
             .any(|(u, _)| u == url.as_str()),
         "the file should start in loose_index",
@@ -140,16 +140,16 @@ async fn scope_change_between_open_and_change_does_not_leak() {
 
     assert!(
         !backend
+            .snapshot()
             .loose_index
-            .lock()
             .documents()
             .any(|(u, _)| u == url.as_str()),
         "a stale loose_index entry must not survive the scope change",
     );
     assert!(
         backend
+            .snapshot()
             .workspace_index
-            .lock()
             .documents()
             .any(|(u, _)| u == url.as_str()),
         "the file must move into workspace_index once it becomes in-project",
@@ -216,14 +216,13 @@ async fn loose_and_project_file_with_same_class_do_not_conflict() {
     let loose_url = Url::from_file_path(&loose_path).unwrap();
     backend.update_open_document(loose_url.clone(), "class CSame {}\n".to_string());
 
-    let workspace = backend.workspace_index.lock();
-    let loose = backend.loose_index.lock();
+    let snap = backend.snapshot();
     assert!(
-        collect_duplicate_symbol_diagnostics(&workspace).is_empty(),
+        collect_duplicate_symbol_diagnostics(snap.workspace_index.as_ref()).is_empty(),
         "a loose file must not collide with an identically named project class",
     );
     assert!(
-        collect_duplicate_symbol_diagnostics(&loose).is_empty(),
+        collect_duplicate_symbol_diagnostics(snap.loose_index.as_ref()).is_empty(),
         "an isolated loose file must not be flagged against the project",
     );
 }
@@ -265,8 +264,8 @@ async fn adding_a_workspace_folder_reroutes_open_loose_files() {
     backend._did_open(open_params(&url, "class CFile {}\n"));
     assert!(
         backend
+            .snapshot()
             .loose_index
-            .lock()
             .documents()
             .any(|(u, _)| u == url.as_str()),
         "the file must start in loose_index (no workspace open yet)",
@@ -287,16 +286,16 @@ async fn adding_a_workspace_folder_reroutes_open_loose_files() {
 
     assert!(
         !backend
+            .snapshot()
             .loose_index
-            .lock()
             .documents()
             .any(|(u, _)| u == url.as_str()),
         "adding the containing folder must drop the file from loose_index immediately, not on next keystroke",
     );
     assert!(
         backend
+            .snapshot()
             .workspace_index
-            .lock()
             .documents()
             .any(|(u, _)| u == url.as_str()),
         "the file must land in workspace_index without an edit",

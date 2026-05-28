@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use lsp_types::request::RegisterCapability;
 use lsp_types::{
@@ -100,10 +101,19 @@ impl Backend {
     }
 
     pub(crate) fn apply_watched_file_events(&self, events: Vec<FileEvent>) {
-        let open_canonical: HashSet<String> = {
-            let documents = self.documents.lock();
-            documents.keys().filter_map(canonical_uri).collect()
-        };
+        let started_at = Instant::now();
+        let event_count = events.len();
+        debug!(
+            op = "apply_watched_file_events",
+            events = event_count,
+            "start",
+        );
+        let open_canonical: HashSet<String> = self
+            .snapshot()
+            .documents
+            .keys()
+            .filter_map(canonical_uri)
+            .collect();
         let filter = self.exclude_filter();
         let legacy_dirs = self.effective_legacy_dirs();
 
@@ -154,23 +164,38 @@ impl Backend {
 
         let had_updates = !updates.is_empty();
         let had_removals = !removals.is_empty();
-        let mut invalidated = HashSet::new();
         if had_updates || had_removals {
+            let updates_arc: Vec<(String, std::sync::Arc<_>)> = updates
+                .into_iter()
+                .map(|(uri, doc)| (uri, std::sync::Arc::new(doc)))
+                .collect();
+            let mut ws_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
             {
-                let mut index = self.workspace_index.lock();
-                let mut docs = self.workspace_documents.lock();
                 let mut known = self.workspace_known_files.lock();
-                for (canonical, document) in updates {
-                    invalidated.extend(index.update_document(canonical.as_str(), &document));
+                for (canonical, _) in &updates_arc {
                     known.insert(canonical.clone());
+                }
+                for canonical in &removals {
+                    known.remove(canonical);
+                }
+            }
+            self.publish_compilation(|builder| {
+                let index = builder.workspace_index_mut();
+                for (canonical, document) in &updates_arc {
+                    ws_changed.extend(index.update_document(canonical.as_str(), document.as_ref()));
+                }
+                for canonical in &removals {
+                    ws_changed.extend(index.remove_document(canonical));
+                }
+                let docs = builder.workspace_documents_mut();
+                for (canonical, document) in updates_arc {
                     docs.insert(canonical, document);
                 }
                 for canonical in &removals {
-                    invalidated.extend(index.remove_document(canonical));
-                    known.remove(canonical);
                     docs.remove(canonical);
                 }
-            }
+            });
+            let invalidated = self.invalidated_workspace(&ws_changed);
             self.evict_cache_entries(&invalidated);
         }
 
@@ -200,15 +225,27 @@ impl Backend {
         }
 
         if manifest_set_changed {
-            trace!("manifest dir set changed; spawning index_base_scripts");
             let backend = self.clone();
             crate::spawn_logged("manifest-set-changed reindex", async move {
+                let task_started = Instant::now();
+                trace!(op = "manifest_reindex", "start");
                 backend.index_base_scripts().await;
+                trace!(
+                    op = "manifest_reindex",
+                    elapsed_us = task_started.elapsed().as_micros(),
+                    "complete",
+                );
             });
         }
 
         if had_updates || had_removals || legacy_map_refresh || manifest_set_changed {
-            self.publish_open_diagnostics();
+            self.spawn_diagnostics_state_changed();
         }
+        debug!(
+            op = "apply_watched_file_events",
+            events = event_count,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
     }
 }

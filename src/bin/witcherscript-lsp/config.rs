@@ -64,6 +64,8 @@ pub(crate) struct ConfigChange {
 
 impl Backend {
     pub(crate) async fn fetch_config(&self) -> ConfigChange {
+        let started_at = std::time::Instant::now();
+        tracing::debug!(op = "fetch_config", "start",);
         let prev_base_scripts_path = self.base_scripts_path.lock().clone();
         let prev_files_exclude = self.files_exclude.lock().clone();
         let prev_additional = self.additional_script_dirs.lock().clone();
@@ -122,6 +124,12 @@ impl Backend {
             .await
         else {
             warn!("workspace/configuration request failed");
+            tracing::debug!(
+                op = "fetch_config",
+                elapsed_us = started_at.elapsed().as_micros(),
+                reason = "request_failed",
+                "complete",
+            );
             return ConfigChange::default();
         };
         let mut iter = values.into_iter();
@@ -264,7 +272,7 @@ impl Backend {
         if legacy_changed {
             trace!(setting = "legacyScriptDirectories", "setting changed");
         }
-        ConfigChange {
+        let change = ConfigChange {
             needs_reindex: base_scripts_changed
                 || files_exclude_changed
                 || additional_changed
@@ -272,7 +280,15 @@ impl Backend {
                 || auto_load_changed
                 || auto_detect_manifests_changed,
             diagnostics_changed,
-        }
+        };
+        tracing::debug!(
+            op = "fetch_config",
+            elapsed_us = started_at.elapsed().as_micros(),
+            needs_reindex = change.needs_reindex,
+            diagnostics_changed = change.diagnostics_changed,
+            "complete",
+        );
+        change
     }
 }
 

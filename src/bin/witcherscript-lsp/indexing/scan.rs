@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use lsp_types::Url;
@@ -23,23 +24,25 @@ impl Backend {
 
     // index_base_scripts rebuilds the base index from disk, dropping any open base script.
     fn merge_open_base_documents(&self) {
-        let open_uris: Vec<Url> = self.documents.lock().keys().cloned().collect();
-        let mut base_uris: Vec<Url> = Vec::new();
-        for uri in open_uris {
-            if self.is_base_script_uri(&uri) {
-                base_uris.push(uri);
-            }
-        }
+        let snap = self.snapshot();
+        let base_uris: Vec<Url> = snap
+            .documents
+            .keys()
+            .filter(|uri| self.is_base_script_uri(uri))
+            .cloned()
+            .collect();
         if base_uris.is_empty() {
             return;
         }
-        let documents = self.documents.lock();
-        let mut idx = self.base_scripts_index.lock();
-        for uri in base_uris {
-            if let Some(doc) = documents.get(&uri) {
-                index_open_document(&mut idx, &uri, doc);
+        let docs = snap.documents.clone();
+        self.publish_compilation(|builder| {
+            let idx = builder.base_scripts_index_mut();
+            for uri in &base_uris {
+                if let Some(doc) = docs.get(uri) {
+                    index_open_document(idx, uri, doc.as_ref());
+                }
             }
-        }
+        });
     }
 
     pub(crate) async fn index_workspace(&self) {
@@ -50,7 +53,7 @@ impl Backend {
         }
         let exclude_globs = self.files_exclude.lock().clone();
 
-        info!(roots = ?roots, "indexing workspace");
+        info!(op = "index_workspace", roots = ?roots, "start");
         let start = Instant::now();
 
         let join_result = tokio::task::spawn_blocking(move || {
@@ -101,62 +104,74 @@ impl Backend {
         *self.workspace_known_files.lock() = known_uris;
 
         // Skip files the editor has open; update_open_document keeps them indexed under the client spelling.
-        let open_canonical: HashSet<String> = {
-            let documents = self.documents.lock();
-            documents.keys().filter_map(canonical_uri).collect()
-        };
+        let open_canonical: HashSet<String> = self
+            .snapshot()
+            .documents
+            .keys()
+            .filter_map(canonical_uri)
+            .collect();
 
-        let mut indexed = 0;
-        {
-            let mut index = self.workspace_index.lock();
-            let mut docs = self.workspace_documents.lock();
+        let filtered: Vec<(String, Arc<ParsedDocument>)> = parsed
+            .into_iter()
+            .filter(|(uri, _)| !open_canonical.contains(uri))
+            .map(|(uri, doc)| (uri, Arc::new(doc)))
+            .collect();
+        let indexed = filtered.len();
+        self.publish_compilation(|builder| {
+            let index = builder.workspace_index_mut();
             index.begin_bulk_catalog_update();
-            for (uri, document) in parsed {
-                if open_canonical.contains(&uri) {
-                    continue;
-                }
-                index.update_document(uri.as_str(), &document);
-                docs.insert(uri, document);
-                indexed += 1;
+            for (uri, document) in &filtered {
+                index.update_document(uri.as_str(), document.as_ref());
             }
             index.end_bulk_catalog_update();
-        }
+            let docs = builder.workspace_documents_mut();
+            for (uri, document) in filtered {
+                docs.insert(uri, document);
+            }
+        });
 
         info!(
+            op = "index_workspace",
             indexed,
             file_count,
             elapsed_ms = start.elapsed().as_millis(),
-            "workspace indexed"
+            "complete"
         );
 
-        self.publish_open_diagnostics();
+        self.diagnostics_state_changed();
     }
 
     pub(crate) async fn index_base_scripts(&self) {
+        info!(op = "index_base_scripts", "start");
         let game_dir_opt = self.base_scripts_path.lock().clone();
         let extras = self.additional_script_dirs.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
 
         if game_dir_opt.is_none() && extras.is_empty() && legacy_dirs.is_empty() {
-            {
-                let mut idx = self.base_scripts_index.lock();
-                let mut docs = self.base_scripts_documents.lock();
-                *idx = WorkspaceIndex::default();
-                docs.clear();
-            }
+            self.publish_compilation(|builder| {
+                builder.replace_base_scripts_index(WorkspaceIndex::default());
+                builder.replace_base_scripts_documents(HashMap::new());
+                builder.set_suppressed_base_uris(HashSet::new());
+            });
             self.legacy_replacements.lock().clear();
-            self.suppressed_base_uris.lock().clear();
             self.rebuild_filtered_base_catalogs();
             self.prune_stale_legacy_workspace_files(&HashSet::new());
-            self.publish_open_diagnostics();
+            self.diagnostics_state_changed();
             self.publish_legacy_script_status();
             self.publish_file_scope_status();
+            info!(
+                op = "index_base_scripts",
+                reason = "no_paths_configured",
+                "complete",
+            );
             return;
         }
 
         if let Some(gd) = &game_dir_opt {
             if let Some(env) = parse_script_environment(&gd.join(r"bin\redscripts.ini")) {
-                *self.script_env.lock() = env;
+                self.publish_compilation(|builder| {
+                    *builder.script_env_mut() = env;
+                });
             }
         }
 
@@ -230,6 +245,8 @@ impl Backend {
                 }
                 let elapsed_ms = seg_start.elapsed().as_millis();
                 info!(
+                    op = "index_base_scripts",
+                    segment = "base",
                     label,
                     path = %root.display(),
                     indexed = count,
@@ -263,6 +280,8 @@ impl Backend {
                 let count = parsed.len();
                 let elapsed_ms = seg_start.elapsed().as_millis();
                 info!(
+                    op = "index_base_scripts",
+                    segment = "legacy",
                     label = "legacyScriptDirectory",
                     path = %dir.display(),
                     indexed = count,
@@ -311,14 +330,16 @@ impl Backend {
             }
         };
 
-        {
-            let mut idx = self.base_scripts_index.lock();
-            let mut docs = self.base_scripts_documents.lock();
-            *idx = base_new_index;
-            *docs = base_new_docs;
-        }
+        let base_new_docs_arc: HashMap<String, Arc<ParsedDocument>> = base_new_docs
+            .into_iter()
+            .map(|(uri, doc)| (uri, Arc::new(doc)))
+            .collect();
+        self.publish_compilation(|builder| {
+            builder.replace_base_scripts_index(base_new_index);
+            builder.replace_base_scripts_documents(base_new_docs_arc);
+            builder.set_suppressed_base_uris(suppressed_base);
+        });
         *self.legacy_replacements.lock() = legacy_replacements;
-        *self.suppressed_base_uris.lock() = suppressed_base;
         self.merge_open_base_documents();
         self.rebuild_filtered_base_catalogs();
 
@@ -327,16 +348,17 @@ impl Backend {
 
         let elapsed_ms = total_start.elapsed().as_millis();
         info!(
+            op = "index_base_scripts",
             segments = base_segments_count,
             indexed = base_total,
             legacy_indexed = legacy_total,
             base_replaced_by_legacy = matched_count,
             elapsed_ms,
             elapsed_secs = format!("{:.1}", elapsed_ms as f32 / 1000.0),
-            "base scripts indexed"
+            "complete"
         );
 
-        self.publish_open_diagnostics();
+        self.diagnostics_state_changed();
         self.publish_legacy_script_status();
         self.publish_file_scope_status();
     }

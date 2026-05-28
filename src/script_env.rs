@@ -12,7 +12,7 @@ fn next_script_env_version() -> u64 {
     SCRIPT_ENV_VERSION.fetch_add(1, Ordering::Relaxed)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ScriptGlobal {
     pub name: String,
     pub type_name: String,
@@ -20,7 +20,7 @@ pub struct ScriptGlobal {
     pub symbol: Symbol,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ScriptEnvironment {
     pub globals: Vec<ScriptGlobal>,
     version: u64,

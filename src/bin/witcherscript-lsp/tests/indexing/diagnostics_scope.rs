@@ -65,8 +65,8 @@ async fn open_files_mode_skips_unopened_files_but_still_indexes_symbols() {
     );
     assert!(
         backend
+            .snapshot()
             .workspace_index
-            .lock()
             .documents()
             .any(|(uri, _)| uri == url.as_str()),
         "open-files scope must still index the file's symbols project-wide",
@@ -83,19 +83,21 @@ async fn closing_a_file_drops_the_buffer_and_reverts_to_disk() {
     index_dir(&backend, temp.path()).await;
     backend.update_open_document(url.clone(), "class CGood {\n".to_string());
     assert!(
-        backend.documents.lock().contains_key(&url),
+        backend.snapshot().documents.contains_key(&url),
         "file must be open before the close can be exercised",
     );
 
     backend._did_close(close_params(&url));
 
     assert!(
-        !backend.documents.lock().contains_key(&url),
+        !backend.snapshot().documents.contains_key(&url),
         "closing a file must drop its editor buffer",
     );
-    let ws_docs = backend.workspace_documents.lock();
+    let snap = backend.snapshot();
     assert_eq!(
-        ws_docs.get(url.as_str()).map(|d| d.source.as_str()),
+        snap.workspace_documents
+            .get(url.as_str())
+            .map(|d| d.source.as_str()),
         Some("class CGood {}\n"),
         "a closed file must revert to its on-disk content, dropping unsaved edits",
     );
@@ -110,6 +112,7 @@ async fn open_files_mode_close_clears_the_files_diagnostics() {
     let backend = make_backend_with(DiagnosticsScope::OpenFiles);
     index_dir(&backend, temp.path()).await;
     backend.update_open_document(url.clone(), "class CGood {\n".to_string());
+    backend.flush_pending_diagnostics().await;
     assert!(
         backend
             .published_diagnostics
@@ -120,6 +123,7 @@ async fn open_files_mode_close_clears_the_files_diagnostics() {
     );
 
     backend._did_close(close_params(&url));
+    backend.flush_pending_diagnostics().await;
 
     assert!(
         !backend.published_diagnostics.lock().contains_key(&url),

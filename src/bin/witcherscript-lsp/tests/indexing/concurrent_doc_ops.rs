@@ -1,11 +1,14 @@
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use async_lsp::router::Router;
-use async_lsp::ClientSocket;
+use async_lsp::{ClientSocket, ErrorCode};
 use lsp_types::{
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, Position, Range,
-    TextDocumentContentChangeEvent, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
+    PartialResultParams, Position, Range, SemanticTokensParams, TextDocumentContentChangeEvent,
+    TextDocumentIdentifier, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
+    WorkDoneProgressParams,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens;
 
@@ -71,7 +74,8 @@ fn did_change_applies_incremental_edits() {
     backend._did_change(change_params(&uri, 2, (0, 3), (0, 3), "def"));
     backend._did_change(change_params(&uri, 3, (0, 5), (0, 6), ""));
 
-    let docs = backend.documents.lock();
+    let snap = backend.snapshot();
+    let docs = &snap.documents;
     assert_eq!(
         docs.get(&uri).map(|d| d.source.as_str()),
         Some("abcde"),
@@ -93,7 +97,8 @@ fn did_change_tracks_each_document_independently() {
     backend._did_change(change_params(&uri_a, 3, (0, 2), (0, 2), "X"));
     backend._did_change(change_params(&uri_b, 3, (0, 2), (0, 2), "Y"));
 
-    let docs = backend.documents.lock();
+    let snap = backend.snapshot();
+    let docs = &snap.documents;
     assert_eq!(
         docs.get(&uri_a).map(|d| d.source.as_str()),
         Some("aXX"),
@@ -124,18 +129,263 @@ fn semantic_tokens_after_did_change_sees_new_source() {
         "class CRenamed {}\n",
     ));
 
-    let documents = backend.documents.lock();
-    let document = documents.get(&uri).expect("document present after change");
+    let snap = backend.snapshot();
+    let document = snap
+        .documents
+        .get(&uri)
+        .expect("document present after change")
+        .clone();
     assert_eq!(
         document.source, "class CRenamed {}\n",
         "did_change must have applied before any read can observe `documents`",
     );
 
-    let handles = backend.db_handles_for(&uri);
+    let handles = backend.db_handles_for_with_snapshot(&uri, &snap);
     let db = handles.db();
-    let tokens = collect_semantic_tokens(uri.as_str(), document, &db);
+    let tokens = collect_semantic_tokens(uri.as_str(), document.as_ref(), &db);
     assert!(
         !tokens.is_empty(),
         "semantic tokens must be produced from the post-change source",
+    );
+}
+
+// Demonstrates the version-counter discard pattern: when diagnostic_version is bumped past
+// the version a publish was issued for, that publish bails before recording anything,
+// so a stale spawned task can't overwrite a newer one's result.
+#[test]
+fn publish_open_diagnostics_bails_when_version_advanced() {
+    let backend = {
+        let (_main_loop, client) =
+            async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
+        let config = Arc::new(ArcSwap::from_pointee(Config {
+            diagnostics_scope: DiagnosticsScope::Workspace,
+            ..Config::default()
+        }));
+        let backend = Backend::new(client, config);
+        backend.initial_index_done.store(true, Ordering::Release);
+        backend
+    };
+    let uri: Url = "file:///stale.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "class CBroken {\n"));
+
+    let stale_version = backend.diagnostic_version.load(Ordering::Acquire);
+    backend
+        .published_diagnostics
+        .lock()
+        .insert(uri.clone(), Vec::new());
+    backend
+        .diagnostic_version
+        .store(stale_version + 100, Ordering::Release);
+
+    backend.publish_open_diagnostics(stale_version);
+
+    assert_eq!(
+        backend
+            .published_diagnostics
+            .lock()
+            .get(&uri)
+            .map(|d| d.len()),
+        Some(0),
+        "a stale-version publish must not overwrite the already-recorded diagnostics",
+    );
+}
+
+#[test]
+fn compute_diagnostics_for_uri_bails_when_version_advanced() {
+    let backend = {
+        let (_main_loop, client) =
+            async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
+        let config = Arc::new(ArcSwap::from_pointee(Config {
+            diagnostics_scope: DiagnosticsScope::Workspace,
+            ..Config::default()
+        }));
+        let backend = Backend::new(client, config);
+        backend.initial_index_done.store(true, Ordering::Release);
+        backend
+    };
+    let uri: Url = "file:///stale_pull.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "class CPull {}\n"));
+
+    let snap = backend.snapshot();
+    let document = snap
+        .documents
+        .get(&uri)
+        .expect("document present after open")
+        .clone();
+
+    let stale_version = backend.diagnostic_version.load(Ordering::Acquire);
+    backend
+        .diagnostic_version
+        .store(stale_version + 100, Ordering::Release);
+
+    let result = backend.compute_diagnostics_for_uri(&uri, document.as_ref(), stale_version);
+    assert!(
+        result.is_none(),
+        "pull compute must bail when the caller's version is already stale"
+    );
+}
+
+fn semantic_tokens_params(uri: &Url) -> SemanticTokensParams {
+    SemanticTokensParams {
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+    }
+}
+
+fn document_diagnostic_params(uri: &Url) -> DocumentDiagnosticParams {
+    DocumentDiagnosticParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        identifier: None,
+        previous_result_id: None,
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    }
+}
+
+#[test]
+fn did_change_chains_against_in_flight_edit_after_worker_takes_clone() {
+    let backend = make_backend();
+    backend.edit_writer_spawned.store(true, Ordering::Release);
+
+    let uri: Url = "file:///in_flight_chain.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "abc"));
+    backend._did_change(change_params(&uri, 2, (0, 3), (0, 3), "DE"));
+
+    let in_flight = backend
+        .clone_pending_for(&uri)
+        .expect("pending entry present after did_change");
+    assert_eq!(in_flight.source, "abcDE");
+    assert!(
+        backend.pending_edits.lock().contains_key(&uri),
+        "cloning for the worker must not drain the entry; otherwise did_change races against a stale snapshot"
+    );
+
+    backend._did_change(change_params(&uri, 3, (0, 5), (0, 5), "x"));
+
+    let pending = backend.pending_edits.lock();
+    let chained = pending
+        .get(&uri)
+        .expect("pending entry still present after the second did_change");
+    assert_eq!(
+        chained.source, "abcDEx",
+        "the second did_change must chain onto the in-flight edit, not the stale snapshot",
+    );
+}
+
+#[test]
+fn semantic_tokens_full_bails_when_pending_edit_outranks_snapshot() {
+    let backend = make_backend();
+    backend.edit_writer_spawned.store(true, Ordering::Release);
+
+    let uri: Url = "file:///stale_snap.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "function Foo() {}\n"));
+    backend._did_change(change_params(&uri, 2, (0, 9), (0, 12), "Renamed"));
+
+    let snap = backend.snapshot();
+    let pre_doc = snap
+        .documents
+        .get(&uri)
+        .expect("document present after open");
+    assert_eq!(
+        pre_doc.source, "function Foo() {}\n",
+        "edit queue must not have published yet"
+    );
+    assert!(
+        backend.pending_target_for(&uri).unwrap() > pre_doc.parse_version,
+        "pending target must outrank the snapshot's parse_version"
+    );
+
+    let result =
+        futures::executor::block_on(backend._semantic_tokens_full(semantic_tokens_params(&uri)));
+    let Err(err) = result else {
+        panic!("expected CONTENT_MODIFIED, got Ok");
+    };
+    assert_eq!(
+        err.code,
+        ErrorCode::CONTENT_MODIFIED,
+        "stale snapshot must surface CONTENT_MODIFIED"
+    );
+}
+
+#[test]
+fn semantic_tokens_full_unrelated_uri_unaffected_by_pending_edit_elsewhere() {
+    let backend = make_backend();
+    backend.edit_writer_spawned.store(true, Ordering::Release);
+
+    let main: Url = "file:///main.ws".parse().unwrap();
+    let utils: Url = "file:///utils.ws".parse().unwrap();
+    backend._did_open(open_params(&main, "function Foo() {}\n"));
+    backend._did_open(open_params(&utils, "function Bar() {}\n"));
+
+    backend._did_change(change_params(&main, 2, (0, 9), (0, 12), "Renamed"));
+
+    let result =
+        futures::executor::block_on(backend._semantic_tokens_full(semantic_tokens_params(&utils)));
+    assert!(
+        matches!(result, Ok(Some(_))),
+        "an edit to main.ws must not CONTENT_MODIFIED a read on utils.ws",
+    );
+}
+
+#[test]
+fn document_diagnostic_bails_when_pending_edit_outranks_snapshot() {
+    let backend = {
+        let (_main_loop, client) =
+            async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
+        let config = Arc::new(ArcSwap::from_pointee(Config {
+            diagnostics_scope: DiagnosticsScope::Workspace,
+            ..Config::default()
+        }));
+        let backend = Backend::new(client, config);
+        backend.initial_index_done.store(true, Ordering::Release);
+        backend
+    };
+    backend.edit_writer_spawned.store(true, Ordering::Release);
+
+    let uri: Url = "file:///stale_diag.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "class CDiag {}\n"));
+    backend._did_change(change_params(&uri, 2, (0, 6), (0, 11), "CRenamed"));
+
+    let result =
+        futures::executor::block_on(backend._document_diagnostic(document_diagnostic_params(&uri)));
+    let Err(err) = result else {
+        panic!("expected CONTENT_MODIFIED, got Ok");
+    };
+    assert_eq!(
+        err.code,
+        ErrorCode::CONTENT_MODIFIED,
+        "stale snapshot must surface CONTENT_MODIFIED for diagnostics"
+    );
+}
+
+#[test]
+fn document_diagnostic_unrelated_uri_unaffected_by_pending_edit_elsewhere() {
+    let backend = {
+        let (_main_loop, client) =
+            async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
+        let config = Arc::new(ArcSwap::from_pointee(Config {
+            diagnostics_scope: DiagnosticsScope::Workspace,
+            ..Config::default()
+        }));
+        let backend = Backend::new(client, config);
+        backend.initial_index_done.store(true, Ordering::Release);
+        backend
+    };
+    backend.edit_writer_spawned.store(true, Ordering::Release);
+
+    let main: Url = "file:///main_diag.ws".parse().unwrap();
+    let utils: Url = "file:///utils_diag.ws".parse().unwrap();
+    backend._did_open(open_params(&main, "class CMain {}\n"));
+    backend._did_open(open_params(&utils, "class CUtils {}\n"));
+
+    backend._did_change(change_params(&main, 2, (0, 6), (0, 11), "CRenamed"));
+
+    let result = futures::executor::block_on(
+        backend._document_diagnostic(document_diagnostic_params(&utils)),
+    );
+    assert!(
+        result.is_ok(),
+        "an edit to main_diag.ws must not CONTENT_MODIFIED a diagnostic on utils_diag.ws",
     );
 }

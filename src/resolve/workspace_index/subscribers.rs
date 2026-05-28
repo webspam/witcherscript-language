@@ -1,36 +1,15 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
 use crate::symbols::{Symbol, SymbolKind};
 
-use super::WorkspaceIndex;
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ObservedKey {
     TopLevel(String),
     Member(String, String),
     EnumMember(String),
-}
-
-impl WorkspaceIndex {
-    pub(super) fn subscribers_of(&self, keys: &[ObservedKey]) -> HashSet<String> {
-        let mut out = HashSet::new();
-        for key in keys {
-            let bucket = match key {
-                ObservedKey::TopLevel(n) => self.top_level_subscribers.get(n),
-                ObservedKey::Member(c, n) => self.member_subscribers.get(&(c.clone(), n.clone())),
-                ObservedKey::EnumMember(n) => self.enum_member_subscribers.get(n),
-            };
-            if let Some(set) = bucket {
-                for uri in set {
-                    out.insert(uri.clone());
-                }
-            }
-        }
-        out
-    }
 }
 
 pub(super) fn outward_hash_map(symbols: &[Symbol]) -> HashMap<ObservedKey, u64> {

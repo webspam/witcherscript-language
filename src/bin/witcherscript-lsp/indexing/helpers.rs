@@ -1,12 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use lsp_types::Url;
 use tracing::warn;
 use witcherscript_language::diagnostics::{basename_of, relative_from_scripts};
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
-use witcherscript_language::resolve::WorkspaceIndex;
+use witcherscript_language::resolve::{ObservedKey, WorkspaceIndex};
 
 pub(super) fn path_to_canonical_uri(path: &Path) -> Option<String> {
     Url::from_file_path(path)
@@ -90,56 +91,55 @@ pub(crate) fn mod_shared_imports_dir(game_dir: &Path) -> Option<PathBuf> {
     msi.is_dir().then_some(msi)
 }
 
-#[tracing::instrument(skip(index, document), fields(uri = %uri), level = "debug")]
 pub(crate) fn index_open_document(
     index: &mut WorkspaceIndex,
     uri: &Url,
     document: &ParsedDocument,
-) -> HashSet<String> {
-    let mut invalidated = HashSet::new();
+) -> Vec<ObservedKey> {
+    let mut changed = Vec::new();
     if let Some(canonical) = canonical_uri(uri) {
         if canonical != uri.as_str() {
-            invalidated.extend(index.remove_document(&canonical));
+            changed.extend(index.remove_document(&canonical));
         }
     }
-    invalidated.extend(index.update_document(uri.as_str(), document));
-    invalidated
+    changed.extend(index.update_document(uri.as_str(), document));
+    changed
 }
 
 pub(crate) fn remove_document_all_spellings(
     index: &mut WorkspaceIndex,
     uri: &Url,
-) -> HashSet<String> {
-    let mut invalidated = index.remove_document(uri.as_str());
+) -> Vec<ObservedKey> {
+    let mut changed = index.remove_document(uri.as_str());
     if let Some(canonical) = canonical_uri(uri) {
         if canonical != uri.as_str() {
-            invalidated.extend(index.remove_document(&canonical));
+            changed.extend(index.remove_document(&canonical));
         }
     }
-    invalidated
+    changed
 }
 
 // A closed file reverts to disk content, re-keyed from the open spelling to canonical.
 pub(super) fn reindex_into(
     index: &mut WorkspaceIndex,
-    docs: &mut HashMap<String, ParsedDocument>,
+    docs: &mut HashMap<String, Arc<ParsedDocument>>,
     client_uri: &str,
     canonical: &str,
     parsed: Option<ParsedDocument>,
-) -> HashSet<String> {
-    let mut invalidated = HashSet::new();
+) -> Vec<ObservedKey> {
+    let mut changed = Vec::new();
     if client_uri != canonical {
-        invalidated.extend(index.remove_document(client_uri));
+        changed.extend(index.remove_document(client_uri));
     }
     match parsed {
         Some(document) => {
-            invalidated.extend(index.update_document(canonical, &document));
-            docs.insert(canonical.to_string(), document);
+            changed.extend(index.update_document(canonical, &document));
+            docs.insert(canonical.to_string(), Arc::new(document));
         }
         None => {
-            invalidated.extend(index.remove_document(canonical));
+            changed.extend(index.remove_document(canonical));
             docs.remove(canonical);
         }
     }
-    invalidated
+    changed
 }

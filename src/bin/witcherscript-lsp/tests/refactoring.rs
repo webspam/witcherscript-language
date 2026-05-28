@@ -60,8 +60,11 @@ fn rename_does_not_edit_base_scripts() {
         .expect("base should parse");
     let mut base_index = WorkspaceIndex::default();
     base_index.update_document("file:///base/player.ws", &base_doc);
-    let mut base_docs: HashMap<String, _> = HashMap::new();
-    base_docs.insert("file:///base/player.ws".to_string(), base_doc_owned);
+    let mut base_docs: HashMap<String, std::sync::Arc<_>> = HashMap::new();
+    base_docs.insert(
+        "file:///base/player.ws".to_string(),
+        std::sync::Arc::new(base_doc_owned),
+    );
 
     let mod_doc =
         parse_document("@addMethod(CR4Player)\nfunction IsCiri() {}\n").expect("mod should parse");

@@ -28,7 +28,8 @@ async fn matching_legacy_file_shadows_base_and_lands_in_workspace() {
 
     backend.index_base_scripts().await;
 
-    let base_docs = backend.base_scripts_documents.lock();
+    let snap = backend.snapshot();
+    let base_docs = &snap.base_scripts_documents;
     assert!(
         base_docs.contains_key(base_url.as_str()),
         "base script must stay in the base index for references; got keys {:?}",
@@ -36,13 +37,13 @@ async fn matching_legacy_file_shadows_base_and_lands_in_workspace() {
     );
     assert!(
         backend
+            .snapshot()
             .suppressed_base_uris
-            .lock()
             .contains(base_url.as_str()),
         "overridden base URI must be in suppressed_base_uris",
     );
 
-    let ws_docs = backend.workspace_documents.lock();
+    let ws_docs = &snap.workspace_documents;
     assert!(
         ws_docs.contains_key(legacy_url.as_str()),
         "legacy file should be in workspace_documents; got keys {:?}",
@@ -72,22 +73,22 @@ async fn mod_shared_imports_override_shadows_base_and_lands_in_workspace() {
 
     assert!(
         backend
+            .snapshot()
             .base_scripts_documents
-            .lock()
             .contains_key(base_url.as_str()),
         "a modSharedImports replacement must keep the base script in the base index"
     );
     assert!(
         backend
+            .snapshot()
             .suppressed_base_uris
-            .lock()
             .contains(base_url.as_str()),
         "a modSharedImports replacement must suppress the base URI in resolution",
     );
     assert!(
         backend
+            .snapshot()
             .workspace_documents
-            .lock()
             .contains_key(override_url.as_str()),
         "a modSharedImports replacement script must land in workspace_documents"
     );
@@ -120,15 +121,15 @@ async fn mod_shared_imports_skipped_when_auto_load_off() {
 
     assert!(
         backend
+            .snapshot()
             .base_scripts_documents
-            .lock()
             .contains_key(base_url.as_str()),
         "with auto-load off the base script must stay in the base index"
     );
     assert!(
         !backend
+            .snapshot()
             .workspace_documents
-            .lock()
             .contains_key(override_url.as_str()),
         "with auto-load off the modSharedImports script must not be indexed"
     );
@@ -154,8 +155,8 @@ async fn deleting_a_legacy_file_removes_it_from_the_workspace() {
     backend.index_base_scripts().await;
     assert!(
         backend
+            .snapshot()
             .workspace_documents
-            .lock()
             .contains_key(legacy_url.as_str()),
         "legacy file should be indexed into the workspace first"
     );
@@ -165,15 +166,15 @@ async fn deleting_a_legacy_file_removes_it_from_the_workspace() {
 
     assert!(
         !backend
+            .snapshot()
             .workspace_documents
-            .lock()
             .contains_key(legacy_url.as_str()),
         "a deleted legacy file must not linger in workspace_documents"
     );
     assert!(
         backend
+            .snapshot()
             .base_scripts_documents
-            .lock()
             .contains_key(base_url.as_str()),
         "the base script returns to the base index once nothing overrides it"
     );
@@ -198,13 +199,14 @@ async fn unmatched_legacy_file_still_lands_in_workspace() {
 
     backend.index_base_scripts().await;
 
-    let base_docs = backend.base_scripts_documents.lock();
+    let snap = backend.snapshot();
+    let base_docs = &snap.base_scripts_documents;
     assert!(
         base_docs.contains_key(base_url.as_str()),
         "unmatched legacy file must not remove the base script"
     );
 
-    let ws_docs = backend.workspace_documents.lock();
+    let ws_docs = &snap.workspace_documents;
     assert!(
         ws_docs.contains_key(legacy_url.as_str()),
         "annotated legacy file should be in workspace_documents"
@@ -229,10 +231,11 @@ async fn base_script_conflict_silent_on_matched_legacy_file() {
 
     backend.index_base_scripts().await;
 
-    let ws = backend.workspace_index.lock();
-    let base = backend.base_scripts_index.lock();
+    let snap = backend.snapshot();
+    let ws = snap.workspace_index.as_ref();
+    let base = snap.base_scripts_index.as_ref();
     let legacy_dirs = backend.legacy_script_dirs.lock().clone();
-    let diagnostics = collect_base_script_conflict_diagnostics(&ws, &base, &legacy_dirs);
+    let diagnostics = collect_base_script_conflict_diagnostics(ws, base, &legacy_dirs);
     assert!(
         diagnostics.is_empty(),
         "matched legacy file must not trigger base_script_conflict; got {diagnostics:?}",
@@ -258,16 +261,17 @@ async fn opening_an_overridden_base_script_keeps_it_out_of_the_workspace() {
 
     backend.update_open_document(base_url.clone(), "class CR4Player {}\n".to_string());
 
-    let ws = backend.workspace_index.lock();
-    let base = backend.base_scripts_index.lock();
+    let snap = backend.snapshot();
+    let ws = snap.workspace_index.as_ref();
+    let base = snap.base_scripts_index.as_ref();
     let legacy_dirs = backend.legacy_script_dirs.lock().clone();
 
     assert!(
-        collect_duplicate_symbol_diagnostics(&ws).is_empty(),
+        collect_duplicate_symbol_diagnostics(ws).is_empty(),
         "opening the overridden base script must not create a workspace duplicate",
     );
     assert!(
-        collect_base_script_conflict_diagnostics(&ws, &base, &legacy_dirs).is_empty(),
+        collect_base_script_conflict_diagnostics(ws, base, &legacy_dirs).is_empty(),
         "the legacy override must not be flagged once both files are loaded",
     );
     assert!(
@@ -296,7 +300,8 @@ async fn additional_script_dir_overlapping_legacy_logs_and_wins_as_legacy() {
 
     backend.index_base_scripts().await;
 
-    let base_docs = backend.base_scripts_documents.lock();
+    let snap = backend.snapshot();
+    let base_docs = &snap.base_scripts_documents;
     assert!(
         base_docs.contains_key(base_url.as_str()),
         "legacy semantics must shadow the base script, not remove it from the base index"
@@ -307,13 +312,13 @@ async fn additional_script_dir_overlapping_legacy_logs_and_wins_as_legacy() {
     );
     assert!(
         backend
+            .snapshot()
             .suppressed_base_uris
-            .lock()
             .contains(base_url.as_str()),
         "overlapping legacy dir must suppress the replaced base URI",
     );
 
-    let ws_docs = backend.workspace_documents.lock();
+    let ws_docs = &snap.workspace_documents;
     assert!(
         ws_docs.contains_key(legacy_url.as_str()),
         "legacy file must land in workspace_documents"
@@ -338,7 +343,7 @@ async fn watched_legacy_change_updates_workspace_incrementally() {
     *backend.legacy_script_dirs.lock() = vec![legacy_dir];
 
     backend.index_base_scripts().await;
-    let base_docs_before = backend.base_scripts_documents.lock().len();
+    let base_docs_before = backend.snapshot().base_scripts_documents.len();
 
     std::fs::write(&legacy_path, "class CR4Player {}\n// legacy edited\n")
         .expect("write legacy file");
@@ -348,20 +353,20 @@ async fn watched_legacy_change_updates_workspace_incrementally() {
     }]);
 
     assert_eq!(
-        backend.base_scripts_documents.lock().len(),
+        backend.snapshot().base_scripts_documents.len(),
         base_docs_before,
         "a legacy file watch must not rebuild the entire base index"
     );
     assert!(
         backend
+            .snapshot()
             .suppressed_base_uris
-            .lock()
             .contains(base_url.as_str()),
         "override pairing must remain after an incremental legacy watch",
     );
     let ws_source = backend
+        .snapshot()
         .workspace_documents
-        .lock()
         .get(legacy_url.as_str())
         .expect("legacy file in workspace")
         .source
