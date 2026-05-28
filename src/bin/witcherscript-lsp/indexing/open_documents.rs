@@ -10,10 +10,39 @@ use witcherscript_language::files::{canonical_uri, read_script_file};
 use witcherscript_language::resolve::{resolve_definition, Definition, ObservedKey};
 
 use crate::backend::Backend;
+use crate::compilation::CompilationBuilder;
 use crate::convert::source_position;
 use crate::file_scope::{classify_file_scope, FileScope};
 
 use super::helpers::{reindex_into, remove_document_all_spellings};
+
+fn route_document_to_index(
+    builder: &mut CompilationBuilder,
+    uri: &Url,
+    scope: &FileScope,
+    document: &witcherscript_language::document::ParsedDocument,
+) -> (Vec<ObservedKey>, Vec<ObservedKey>) {
+    match scope {
+        FileScope::AdditionalBase => {
+            let _ = builder
+                .base_scripts_index_mut()
+                .update_document(uri.as_str(), document);
+            (Vec::new(), Vec::new())
+        }
+        FileScope::OutOfScope | FileScope::SingleFile => {
+            let loose = builder
+                .loose_index_mut()
+                .update_document(uri.as_str(), document);
+            (Vec::new(), loose)
+        }
+        _ => {
+            let ws = builder
+                .workspace_index_mut()
+                .update_document(uri.as_str(), document);
+            (ws, Vec::new())
+        }
+    }
+}
 
 impl Backend {
     // A workspace-folder or config change reroutes open docs now, not on next keystroke.
@@ -70,27 +99,9 @@ impl Backend {
                 let Some(document) = docs.get(uri) else {
                     continue;
                 };
-                match scope {
-                    FileScope::AdditionalBase => {
-                        let _ = builder
-                            .base_scripts_index_mut()
-                            .update_document(uri.as_str(), document.as_ref());
-                    }
-                    FileScope::OutOfScope | FileScope::SingleFile => {
-                        loose_changed.extend(
-                            builder
-                                .loose_index_mut()
-                                .update_document(uri.as_str(), document.as_ref()),
-                        );
-                    }
-                    _ => {
-                        ws_changed.extend(
-                            builder
-                                .workspace_index_mut()
-                                .update_document(uri.as_str(), document.as_ref()),
-                        );
-                    }
-                }
+                let (ws, loose) = route_document_to_index(builder, uri, scope, document.as_ref());
+                ws_changed.extend(ws);
+                loose_changed.extend(loose);
                 invalidated.insert(uri.to_string());
             }
         });
@@ -228,27 +239,9 @@ impl Backend {
                 uri,
             ));
 
-            match scope {
-                FileScope::AdditionalBase => {
-                    let _ = builder
-                        .base_scripts_index_mut()
-                        .update_document(uri.as_str(), document.as_ref());
-                }
-                FileScope::OutOfScope | FileScope::SingleFile => {
-                    loose_changed.extend(
-                        builder
-                            .loose_index_mut()
-                            .update_document(uri.as_str(), document.as_ref()),
-                    );
-                }
-                _ => {
-                    ws_changed.extend(
-                        builder
-                            .workspace_index_mut()
-                            .update_document(uri.as_str(), document.as_ref()),
-                    );
-                }
-            }
+            let (ws, loose) = route_document_to_index(builder, uri, &scope, document.as_ref());
+            ws_changed.extend(ws);
+            loose_changed.extend(loose);
             builder
                 .documents_mut()
                 .insert(uri.clone(), document.clone());
