@@ -33,6 +33,14 @@ pub(crate) struct CompilationBuilder {
     base_scripts_documents: Option<HashMap<String, Arc<ParsedDocument>>>,
 }
 
+fn cow_clone_mut<'a, T: Clone>(slot: &'a mut Option<T>, base: &Arc<T>) -> &'a mut T {
+    slot.get_or_insert_with(|| (**base).clone())
+}
+
+fn resolve<T: Clone>(slot: Option<T>, base: &Arc<T>) -> Arc<T> {
+    slot.map(Arc::new).unwrap_or_else(|| base.clone())
+}
+
 impl CompilationBuilder {
     pub(crate) fn new(base: Arc<Compilation>) -> Self {
         Self {
@@ -50,19 +58,15 @@ impl CompilationBuilder {
     }
 
     pub(crate) fn workspace_index_mut(&mut self) -> &mut WorkspaceIndex {
-        let base = &self.base.workspace_index;
-        self.workspace_index.get_or_insert_with(|| (**base).clone())
+        cow_clone_mut(&mut self.workspace_index, &self.base.workspace_index)
     }
 
     pub(crate) fn loose_index_mut(&mut self) -> &mut WorkspaceIndex {
-        let base = &self.base.loose_index;
-        self.loose_index.get_or_insert_with(|| (**base).clone())
+        cow_clone_mut(&mut self.loose_index, &self.base.loose_index)
     }
 
     pub(crate) fn base_scripts_index_mut(&mut self) -> &mut WorkspaceIndex {
-        let base = &self.base.base_scripts_index;
-        self.base_scripts_index
-            .get_or_insert_with(|| (**base).clone())
+        cow_clone_mut(&mut self.base_scripts_index, &self.base.base_scripts_index)
     }
 
     pub(crate) fn set_base_scripts_index(&mut self, idx: WorkspaceIndex) {
@@ -70,8 +74,7 @@ impl CompilationBuilder {
     }
 
     pub(crate) fn script_env_mut(&mut self) -> &mut ScriptEnvironment {
-        let base = &self.base.script_env;
-        self.script_env.get_or_insert_with(|| (**base).clone())
+        cow_clone_mut(&mut self.script_env, &self.base.script_env)
     }
 
     pub(crate) fn set_suppressed_base_uris(&mut self, v: HashSet<String>) {
@@ -83,14 +86,14 @@ impl CompilationBuilder {
     }
 
     pub(crate) fn documents_mut(&mut self) -> &mut HashMap<Url, Arc<ParsedDocument>> {
-        let base = &self.base.documents;
-        self.documents.get_or_insert_with(|| (**base).clone())
+        cow_clone_mut(&mut self.documents, &self.base.documents)
     }
 
     pub(crate) fn workspace_documents_mut(&mut self) -> &mut HashMap<String, Arc<ParsedDocument>> {
-        let base = &self.base.workspace_documents;
-        self.workspace_documents
-            .get_or_insert_with(|| (**base).clone())
+        cow_clone_mut(
+            &mut self.workspace_documents,
+            &self.base.workspace_documents,
+        )
     }
 
     // Borrow both fields at once; Rust's method-call borrow checker cannot prove the
@@ -103,12 +106,8 @@ impl CompilationBuilder {
     ) {
         let ws_base = &self.base.workspace_index;
         let docs_base = &self.base.workspace_documents;
-        let index = self
-            .workspace_index
-            .get_or_insert_with(|| (**ws_base).clone());
-        let docs = self
-            .workspace_documents
-            .get_or_insert_with(|| (**docs_base).clone());
+        let index = cow_clone_mut(&mut self.workspace_index, ws_base);
+        let docs = cow_clone_mut(&mut self.workspace_documents, docs_base);
         (index, docs)
     }
 
@@ -120,12 +119,8 @@ impl CompilationBuilder {
     ) {
         let idx_base = &self.base.base_scripts_index;
         let docs_base = &self.base.base_scripts_documents;
-        let index = self
-            .base_scripts_index
-            .get_or_insert_with(|| (**idx_base).clone());
-        let docs = self
-            .base_scripts_documents
-            .get_or_insert_with(|| (**docs_base).clone());
+        let index = cow_clone_mut(&mut self.base_scripts_index, idx_base);
+        let docs = cow_clone_mut(&mut self.base_scripts_documents, docs_base);
         (index, docs)
     }
 
@@ -138,43 +133,25 @@ impl CompilationBuilder {
 
     pub(crate) fn finish(self) -> Compilation {
         Compilation {
-            workspace_index: self
-                .workspace_index
-                .map(Arc::new)
-                .unwrap_or_else(|| self.base.workspace_index.clone()),
-            loose_index: self
-                .loose_index
-                .map(Arc::new)
-                .unwrap_or_else(|| self.base.loose_index.clone()),
-            base_scripts_index: self
-                .base_scripts_index
-                .map(Arc::new)
-                .unwrap_or_else(|| self.base.base_scripts_index.clone()),
-            script_env: self
-                .script_env
-                .map(Arc::new)
-                .unwrap_or_else(|| self.base.script_env.clone()),
-            suppressed_base_uris: self
-                .suppressed_base_uris
-                .map(Arc::new)
-                .unwrap_or_else(|| self.base.suppressed_base_uris.clone()),
+            workspace_index: resolve(self.workspace_index, &self.base.workspace_index),
+            loose_index: resolve(self.loose_index, &self.base.loose_index),
+            base_scripts_index: resolve(self.base_scripts_index, &self.base.base_scripts_index),
+            script_env: resolve(self.script_env, &self.base.script_env),
+            suppressed_base_uris: resolve(
+                self.suppressed_base_uris,
+                &self.base.suppressed_base_uris,
+            ),
             filtered_base_catalogs: match self.filtered_base_catalogs {
                 Some(Some(cats)) => Some(Arc::new(cats)),
                 Some(None) => None,
                 None => self.base.filtered_base_catalogs.clone(),
             },
-            documents: self
-                .documents
-                .map(Arc::new)
-                .unwrap_or_else(|| self.base.documents.clone()),
-            workspace_documents: self
-                .workspace_documents
-                .map(Arc::new)
-                .unwrap_or_else(|| self.base.workspace_documents.clone()),
-            base_scripts_documents: self
-                .base_scripts_documents
-                .map(Arc::new)
-                .unwrap_or_else(|| self.base.base_scripts_documents.clone()),
+            documents: resolve(self.documents, &self.base.documents),
+            workspace_documents: resolve(self.workspace_documents, &self.base.workspace_documents),
+            base_scripts_documents: resolve(
+                self.base_scripts_documents,
+                &self.base.base_scripts_documents,
+            ),
         }
     }
 }
