@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
@@ -17,8 +18,89 @@ use witcherscript_language::diagnostics::{
     collect_base_script_conflict_diagnostics, collect_duplicate_local_diagnostics,
     collect_duplicate_symbol_diagnostics, collect_shadowing_diagnostics, WorkspaceDiagnostic,
 };
+use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::line_index::SourceRange;
+use witcherscript_language::resolve::WorkspaceIndex;
+use witcherscript_language::script_env::ScriptEnvironment;
+
+struct DiagnosticsBundle {
+    dup: HashMap<String, Vec<WorkspaceDiagnostic>>,
+    shadow: HashMap<String, Vec<WorkspaceDiagnostic>>,
+    dup_local: HashMap<String, Vec<WorkspaceDiagnostic>>,
+    base_conflict: HashMap<String, Vec<WorkspaceDiagnostic>>,
+}
+
+fn collect_workspace_diagnostics(
+    workspace: &WorkspaceIndex,
+    loose: &WorkspaceIndex,
+    base: &WorkspaceIndex,
+    env: &ScriptEnvironment,
+    legacy_dirs: &[PathBuf],
+    should_continue: &dyn Fn() -> bool,
+) -> Option<DiagnosticsBundle> {
+    let mut dup = tracing::debug_span!("dup_symbols")
+        .in_scope(|| collect_duplicate_symbol_diagnostics(workspace));
+    if !should_continue() {
+        return None;
+    }
+    let mut shadow = tracing::debug_span!("shadowing")
+        .in_scope(|| collect_shadowing_diagnostics(workspace, env));
+    if !should_continue() {
+        return None;
+    }
+    let mut dup_local = tracing::debug_span!("dup_locals")
+        .in_scope(|| collect_duplicate_local_diagnostics(workspace));
+    if !should_continue() {
+        return None;
+    }
+    let base_conflict = tracing::debug_span!("base_script_conflict")
+        .in_scope(|| collect_base_script_conflict_diagnostics(workspace, base, legacy_dirs));
+    if !should_continue() {
+        return None;
+    }
+    // Loose files compile in isolation; duplicates among them are still real.
+    dup.extend(collect_duplicate_symbol_diagnostics(loose));
+    shadow.extend(collect_shadowing_diagnostics(loose, env));
+    dup_local.extend(collect_duplicate_local_diagnostics(loose));
+    Some(DiagnosticsBundle {
+        dup,
+        shadow,
+        dup_local,
+        base_conflict,
+    })
+}
+
+fn assemble_diagnostics_for_key(
+    diag_key: &str,
+    bundle: &DiagnosticsBundle,
+    cst_by_uri: &HashMap<String, Vec<WorkspaceDiagnostic>>,
+    document: &ParsedDocument,
+) -> Vec<Diagnostic> {
+    let mut diagnostics = lsp_diagnostics(document);
+    let base_conflicts = bundle
+        .base_conflict
+        .get(diag_key)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    if let Some(dups) = bundle.dup.get(diag_key) {
+        diagnostics.extend(
+            duplicates_not_explained_by_conflict(dups, base_conflicts)
+                .map(lsp_workspace_diagnostic),
+        );
+    }
+    diagnostics.extend(base_conflicts.iter().map(lsp_workspace_diagnostic));
+    if let Some(shadows) = bundle.shadow.get(diag_key) {
+        diagnostics.extend(shadows.iter().map(lsp_workspace_diagnostic));
+    }
+    if let Some(dup_locals) = bundle.dup_local.get(diag_key) {
+        diagnostics.extend(dup_locals.iter().map(lsp_workspace_diagnostic));
+    }
+    if let Some(cst_diags) = cst_by_uri.get(diag_key) {
+        diagnostics.extend(cst_diags.iter().map(lsp_workspace_diagnostic));
+    }
+    diagnostics
+}
 
 // A file is published under its canonical URI so its key is stable whether or not it is open.
 pub(crate) fn publish_url(diag_key: &str) -> Option<Url> {
@@ -75,33 +157,18 @@ impl Backend {
                 whole_workspace,
             );
 
-            let mut dup = tracing::debug_span!("dup_symbols")
-                .in_scope(|| collect_duplicate_symbol_diagnostics(workspace));
-            if self.diagnostic_version.load(Ordering::Acquire) != version {
+            let version_check = || self.diagnostic_version.load(Ordering::Acquire) == version;
+            let Some(bundle) = collect_workspace_diagnostics(
+                workspace,
+                loose,
+                base,
+                env,
+                &legacy_dirs,
+                &version_check,
+            ) else {
                 return;
-            }
-            let mut shadow = tracing::debug_span!("shadowing")
-                .in_scope(|| collect_shadowing_diagnostics(workspace, env));
-            if self.diagnostic_version.load(Ordering::Acquire) != version {
-                return;
-            }
-            let mut dup_local = tracing::debug_span!("dup_locals")
-                .in_scope(|| collect_duplicate_local_diagnostics(workspace));
-            if self.diagnostic_version.load(Ordering::Acquire) != version {
-                return;
-            }
-            let base_conflict = tracing::debug_span!("base_script_conflict").in_scope(|| {
-                collect_base_script_conflict_diagnostics(workspace, base, &legacy_dirs)
-            });
-            if self.diagnostic_version.load(Ordering::Acquire) != version {
-                return;
-            }
-            // Loose files compile in isolation; duplicates among them are still real.
-            dup.extend(collect_duplicate_symbol_diagnostics(loose));
-            shadow.extend(collect_shadowing_diagnostics(loose, env));
-            dup_local.extend(collect_duplicate_local_diagnostics(loose));
-
-            if self.diagnostic_version.load(Ordering::Acquire) != version {
+            };
+            if !version_check() {
                 return;
             }
 
@@ -164,27 +231,8 @@ impl Backend {
             let mut current: HashSet<Url> = HashSet::new();
             let mut list: Vec<(Url, Vec<Diagnostic>)> = Vec::new();
             for (diag_key, document) in diag_docs.iter() {
-                let mut diagnostics = lsp_diagnostics(document);
-                let base_conflicts = base_conflict
-                    .get(diag_key.as_str())
-                    .map(Vec::as_slice)
-                    .unwrap_or(&[]);
-                if let Some(dups) = dup.get(diag_key.as_str()) {
-                    diagnostics.extend(
-                        duplicates_not_explained_by_conflict(dups, base_conflicts)
-                            .map(lsp_workspace_diagnostic),
-                    );
-                }
-                diagnostics.extend(base_conflicts.iter().map(lsp_workspace_diagnostic));
-                if let Some(shadows) = shadow.get(diag_key.as_str()) {
-                    diagnostics.extend(shadows.iter().map(lsp_workspace_diagnostic));
-                }
-                if let Some(dup_locals) = dup_local.get(diag_key.as_str()) {
-                    diagnostics.extend(dup_locals.iter().map(lsp_workspace_diagnostic));
-                }
-                if let Some(cst_diags) = cst.by_uri.get(diag_key.as_str()) {
-                    diagnostics.extend(cst_diags.iter().map(lsp_workspace_diagnostic));
-                }
+                let diagnostics =
+                    assemble_diagnostics_for_key(diag_key.as_str(), &bundle, &cst.by_uri, document);
                 let Some(publish_uri) = publish_url(diag_key) else {
                     continue;
                 };
@@ -261,23 +309,16 @@ impl Backend {
         let suppressed = &snap.suppressed_base_uris;
         let filtered = snap.filtered_base_catalogs.as_deref();
 
-        let mut dup = collect_duplicate_symbol_diagnostics(workspace);
-        if self.diagnostic_version.load(Ordering::Acquire) != version {
-            return None;
-        }
-        dup.extend(collect_duplicate_symbol_diagnostics(loose));
-        let mut shadow = collect_shadowing_diagnostics(workspace, env);
-        if self.diagnostic_version.load(Ordering::Acquire) != version {
-            return None;
-        }
-        shadow.extend(collect_shadowing_diagnostics(loose, env));
-        let mut dup_local = collect_duplicate_local_diagnostics(workspace);
-        if self.diagnostic_version.load(Ordering::Acquire) != version {
-            return None;
-        }
-        dup_local.extend(collect_duplicate_local_diagnostics(loose));
-        let base_conflict = collect_base_script_conflict_diagnostics(workspace, base, &legacy_dirs);
-        if self.diagnostic_version.load(Ordering::Acquire) != version {
+        let version_check = || self.diagnostic_version.load(Ordering::Acquire) == version;
+        let bundle = collect_workspace_diagnostics(
+            workspace,
+            loose,
+            base,
+            env,
+            &legacy_dirs,
+            &version_check,
+        )?;
+        if !version_check() {
             return None;
         }
 
@@ -304,10 +345,7 @@ impl Backend {
             filtered,
         );
 
-        let mut diag_docs: std::collections::HashMap<
-            String,
-            &witcherscript_language::document::ParsedDocument,
-        > = std::collections::HashMap::new();
+        let mut diag_docs: HashMap<String, &ParsedDocument> = HashMap::new();
         diag_docs.insert(uri.to_string(), document);
 
         let diagnostic_version = self.diagnostic_version.clone();
@@ -325,27 +363,8 @@ impl Backend {
         }
 
         let key = uri.to_string();
-        let mut diagnostics = lsp_diagnostics(document);
-        let base_conflicts = base_conflict
-            .get(key.as_str())
-            .map(Vec::as_slice)
-            .unwrap_or(&[]);
-        if let Some(dups) = dup.get(key.as_str()) {
-            diagnostics.extend(
-                duplicates_not_explained_by_conflict(dups, base_conflicts)
-                    .map(lsp_workspace_diagnostic),
-            );
-        }
-        diagnostics.extend(base_conflicts.iter().map(lsp_workspace_diagnostic));
-        if let Some(shadows) = shadow.get(key.as_str()) {
-            diagnostics.extend(shadows.iter().map(lsp_workspace_diagnostic));
-        }
-        if let Some(dup_locals) = dup_local.get(key.as_str()) {
-            diagnostics.extend(dup_locals.iter().map(lsp_workspace_diagnostic));
-        }
-        if let Some(cst_diags) = cst.by_uri.get(key.as_str()) {
-            diagnostics.extend(cst_diags.iter().map(lsp_workspace_diagnostic));
-        }
+        let diagnostics =
+            assemble_diagnostics_for_key(key.as_str(), &bundle, &cst.by_uri, document);
 
         let result_id = format!(
             "{}-{:x}-{:x}-{:x}-{:x}",
