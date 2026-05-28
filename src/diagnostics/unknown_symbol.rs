@@ -43,13 +43,13 @@ pub(crate) fn run_unknown_symbol_parallel(
         },
     );
     let elapsed = start.elapsed();
-    tracing::debug!(
+    tracing::trace!(
         rule = "unknown_symbol",
         visits = visits,
         elapsed_us = elapsed.as_micros() as u64,
         "cst rule timing"
     );
-    tracing::debug!(
+    tracing::trace!(
         top_level = shard.telemetry.top_level_lookups,
         member = shard.telemetry.member_lookups,
         enum_member = shard.telemetry.enum_member_lookups,
@@ -57,7 +57,7 @@ pub(crate) fn run_unknown_symbol_parallel(
         definition = shard.telemetry.definition_resolutions,
         "cst lookup counts"
     );
-    tracing::debug!(
+    tracing::trace!(
         type_ref_us = shard.telemetry.branch_type_ref_us,
         type_ref_visits = shard.telemetry.branch_type_ref_visits,
         member_access_us = shard.telemetry.branch_member_access_us,
