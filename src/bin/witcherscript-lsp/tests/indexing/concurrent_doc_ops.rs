@@ -7,9 +7,9 @@ use async_lsp::router::Router;
 use async_lsp::{ClientSocket, ErrorCode};
 use lsp_types::{
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
-    PartialResultParams, Position, Range, SemanticTokensParams, TextDocumentContentChangeEvent,
-    TextDocumentIdentifier, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
-    WorkDoneProgressParams,
+    DocumentDiagnosticReport, DocumentDiagnosticReportResult, PartialResultParams, Position, Range,
+    SemanticTokensParams, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    Url, VersionedTextDocumentIdentifier, WorkDoneProgressParams,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens;
 
@@ -326,6 +326,31 @@ fn document_diagnostic_bails_when_pending_edit_outranks_snapshot() {
         err.code,
         ErrorCode::CONTENT_MODIFIED,
         "stale snapshot must surface CONTENT_MODIFIED for diagnostics"
+    );
+}
+
+#[test]
+fn document_diagnostic_under_none_scope_returns_empty_for_open_broken_file() {
+    let backend = make_backend();
+    backend.initial_index_done.store(true, Ordering::Release);
+    let uri: Url = "file:///none_scope.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "class CBroken {\n"));
+
+    let report =
+        futures::executor::block_on(backend._document_diagnostic(document_diagnostic_params(&uri)))
+            .expect("None scope must produce a successful response, not an error");
+    let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) = report
+    else {
+        panic!("None scope must return a Full report, got {report:?}");
+    };
+    assert!(
+        full.full_document_diagnostic_report.items.is_empty(),
+        "None scope must suppress diagnostics for open files, got {:?}",
+        full.full_document_diagnostic_report.items,
+    );
+    assert!(
+        full.full_document_diagnostic_report.result_id.is_none(),
+        "None scope must not assign a result_id the client could track",
     );
 }
 

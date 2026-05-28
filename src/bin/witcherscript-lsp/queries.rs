@@ -13,6 +13,8 @@ use lsp_types::{
     TextEdit, UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams,
     WorkspaceDiagnosticReportResult,
 };
+
+use crate::config::DiagnosticsScope;
 use tracing::trace;
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::formatter::format_document;
@@ -37,20 +39,33 @@ impl Backend {
         let uri = params.text_document.uri.clone();
         let started_at = Instant::now();
         trace!(op = "document_diagnostic", uri = %uri, "start");
+        let empty_full = || {
+            Ok(DocumentDiagnosticReportResult::Report(
+                DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+                    related_documents: None,
+                    full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                        result_id: None,
+                        items: Vec::new(),
+                    },
+                }),
+            ))
+        };
+        if matches!(self.config.load().diagnostics_scope, DiagnosticsScope::None) {
+            trace!(
+                op = "document_diagnostic",
+                uri = %uri,
+                elapsed_us = started_at.elapsed().as_micros(),
+                reason = "scope_none",
+                "complete",
+            );
+            return empty_full();
+        }
         let version = self.diagnostic_version.load(Ordering::Acquire);
         let result = 'body: {
             let computed = {
                 let snap = self.snapshot();
                 let Some(document) = snap.documents.get(&uri).cloned() else {
-                    break 'body Ok(DocumentDiagnosticReportResult::Report(
-                        DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
-                            related_documents: None,
-                            full_document_diagnostic_report: FullDocumentDiagnosticReport {
-                                result_id: None,
-                                items: Vec::new(),
-                            },
-                        }),
-                    ));
+                    break 'body empty_full();
                 };
                 let target = self.pending_target_for(&uri).unwrap_or(0);
                 if target > document.parse_version {

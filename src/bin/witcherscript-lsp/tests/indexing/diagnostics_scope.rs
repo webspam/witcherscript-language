@@ -57,6 +57,55 @@ fn has_items(report: &WorkspaceDocumentDiagnosticReport) -> bool {
 }
 
 #[tokio::test]
+async fn none_scope_workspace_pull_returns_no_items_when_client_has_no_prior_state() {
+    let temp = LocalTempDir::new("ws_scope_none_empty");
+    write_script(temp.path(), "Bad.ws", "class CBad {\n");
+
+    let backend = make_backend_with(DiagnosticsScope::None);
+    index_dir(&backend, temp.path()).await;
+
+    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let report = backend
+        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .expect("workspace pull must not bail");
+    assert!(
+        report.items.is_empty(),
+        "None scope with no prior client state must emit zero items, got {report:?}",
+    );
+}
+
+#[tokio::test]
+async fn none_scope_workspace_pull_clears_prior_client_state() {
+    let temp = LocalTempDir::new("ws_scope_none_clears_prior");
+    let path = write_script(temp.path(), "Bad.ws", "class CBad {\n");
+    let url = Url::from_file_path(&path).expect("path -> url");
+
+    let backend = make_backend_with(DiagnosticsScope::None);
+    index_dir(&backend, temp.path()).await;
+
+    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let mut previous = HashMap::new();
+    previous.insert(url.to_string(), "prior-id".to_string());
+    let report = backend
+        .compute_workspace_diagnostic_report(previous, version)
+        .expect("workspace pull must not bail");
+    let entry = report
+        .items
+        .iter()
+        .find(
+            |item| matches!(item, WorkspaceDocumentDiagnosticReport::Full(full) if full.uri == url),
+        )
+        .expect("prior tracked URI must be explicitly cleared under None scope");
+    match entry {
+        WorkspaceDocumentDiagnosticReport::Full(full) => assert!(
+            full.full_document_diagnostic_report.items.is_empty(),
+            "clearing entry must carry empty items, got {full:?}",
+        ),
+        WorkspaceDocumentDiagnosticReport::Unchanged(_) => unreachable!(),
+    }
+}
+
+#[tokio::test]
 async fn workspace_mode_diagnoses_every_file_without_opening_it() {
     let temp = LocalTempDir::new("ws_scope_workspace_diagnoses_all");
     let path = write_script(temp.path(), "Bad.ws", "class CBad {\n");

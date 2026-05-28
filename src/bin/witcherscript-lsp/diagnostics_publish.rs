@@ -118,6 +118,27 @@ fn result_id_for(
     )
 }
 
+// Clients treat omission as "no change", so a file that left the diagnosed set needs an explicit empty Full.
+fn clearing_items_for<I, S>(uris: I) -> Vec<WorkspaceDocumentDiagnosticReport>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    uris.into_iter()
+        .filter_map(|s| Url::parse(s.as_ref()).ok())
+        .map(|parsed| {
+            WorkspaceDocumentDiagnosticReport::Full(WorkspaceFullDocumentDiagnosticReport {
+                uri: parsed,
+                version: None,
+                full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                    result_id: None,
+                    items: Vec::new(),
+                },
+            })
+        })
+        .collect()
+}
+
 // A file is published under its canonical URI so its key is stable whether or not it is open.
 pub(crate) fn publish_url(diag_key: &str) -> Option<Url> {
     let parsed = Url::parse(diag_key).ok()?;
@@ -266,7 +287,9 @@ impl Backend {
 
         let cfg = self.config.load();
         if matches!(cfg.diagnostics_scope, DiagnosticsScope::None) {
-            return Some(WorkspaceDiagnosticReport { items: Vec::new() });
+            return Some(WorkspaceDiagnosticReport {
+                items: clearing_items_for(previous.keys()),
+            });
         }
         let whole_workspace = matches!(cfg.diagnostics_scope, DiagnosticsScope::Workspace);
 
@@ -338,25 +361,9 @@ impl Backend {
             ));
         }
 
-        // Clients treat omission as "no change", so a file that left the diagnosed set needs an explicit empty Full.
-        for prev_uri in previous.keys() {
-            if emitted.contains(prev_uri) {
-                continue;
-            }
-            let Ok(parsed) = Url::parse(prev_uri) else {
-                continue;
-            };
-            items.push(WorkspaceDocumentDiagnosticReport::Full(
-                WorkspaceFullDocumentDiagnosticReport {
-                    uri: parsed,
-                    version: None,
-                    full_document_diagnostic_report: FullDocumentDiagnosticReport {
-                        result_id: None,
-                        items: Vec::new(),
-                    },
-                },
-            ));
-        }
+        items.extend(clearing_items_for(
+            previous.keys().filter(|k| !emitted.contains(k.as_str())),
+        ));
 
         debug!(
             op = "compute_workspace_diagnostic_report",
