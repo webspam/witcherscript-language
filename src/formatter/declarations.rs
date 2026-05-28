@@ -228,53 +228,58 @@ impl<'a> Formatter<'a> {
         targets
     }
 
-    // Align `default` on consecutive same-line var/default pairs when enabled.
+    fn is_mergeable_default_pair(&self, members: &[Node], var_idx: usize) -> bool {
+        let Some(default) = members.get(var_idx + 1) else {
+            return false;
+        };
+        members[var_idx].kind() == "member_var_decl"
+            && default.kind() == "member_default_val"
+            && is_alignable_field(members[var_idx])
+            && self.default_on_same_line(members[var_idx], *default)
+    }
+
+    fn same_line_default_pair_run_end(&self, members: &[Node], run_start: usize) -> usize {
+        let mut next_var = run_start;
+        while next_var + 1 < members.len() && self.is_mergeable_default_pair(members, next_var) {
+            if next_var > run_start {
+                let gap = members[next_var]
+                    .start_position()
+                    .row
+                    .saturating_sub(members[next_var - 1].end_position().row);
+                if gap >= 2 {
+                    break;
+                }
+            }
+            next_var += 2;
+        }
+        next_var
+    }
+
     fn member_default_align_targets(&self, members: &[Node]) -> Vec<Option<usize>> {
         let mut targets = vec![None; members.len()];
         if !self.align_member_colons {
             return targets;
         }
         let indent_width = self.level * self.indent_unit.len();
-        let mut i = 0;
-        while i < members.len() {
-            if members[i].kind() != "member_var_decl"
-                || i + 1 >= members.len()
-                || members[i + 1].kind() != "member_default_val"
-                || !self.default_on_same_line(members[i], members[i + 1])
-                || !is_alignable_field(members[i])
-            {
-                i += 1;
+        let mut idx = 0;
+        while idx < members.len() {
+            if !self.is_mergeable_default_pair(members, idx) {
+                idx += 1;
                 continue;
             }
-            let mut j = i;
-            while j + 1 < members.len()
-                && members[j].kind() == "member_var_decl"
-                && members[j + 1].kind() == "member_default_val"
-                && self.default_on_same_line(members[j], members[j + 1])
-                && is_alignable_field(members[j])
-            {
-                if j > i {
-                    let gap = members[j]
-                        .start_position()
-                        .row
-                        .saturating_sub(members[j - 1].end_position().row);
-                    if gap >= 2 {
-                        break;
-                    }
-                }
-                j += 2;
-            }
-            if j > i + 2 {
-                let width = (0..((j - i) / 2))
-                    .map(|k| self.member_var_decl_width(members[i + k * 2]))
+            let run_end = self.same_line_default_pair_run_end(members, idx);
+            let pair_count = (run_end - idx) / 2;
+            if pair_count >= 2 {
+                let width = (0..pair_count)
+                    .map(|k| self.member_var_decl_width(members[idx + k * 2]))
                     .max()
                     .unwrap_or(0);
                 let col = indent_width + width + 1;
-                for k in 0..(j - i) / 2 {
-                    targets[i + k * 2] = Some(col);
+                for k in 0..pair_count {
+                    targets[idx + k * 2] = Some(col);
                 }
             }
-            i = j;
+            idx = run_end;
         }
         targets
     }
