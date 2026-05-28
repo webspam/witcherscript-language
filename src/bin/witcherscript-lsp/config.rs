@@ -48,6 +48,7 @@ pub(crate) struct Config {
     pub(crate) formatter_compact_colon: bool,
     pub(crate) formatter_align_member_colons: bool,
     pub(crate) formatter_annotation_placement: AnnotationPlacement,
+    pub(crate) formatter_default_placement: AnnotationPlacement,
 }
 
 impl Default for Config {
@@ -61,6 +62,7 @@ impl Default for Config {
             formatter_compact_colon: false,
             formatter_align_member_colons: false,
             formatter_annotation_placement: AnnotationPlacement::Preserve,
+            formatter_default_placement: AnnotationPlacement::Preserve,
         }
     }
 }
@@ -111,6 +113,10 @@ impl Backend {
             ConfigurationItem {
                 scope_uri: None,
                 section: Some("witcherscript.formatter.annotationPlacement".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.formatter.defaultPlacement".to_string()),
             },
             ConfigurationItem {
                 scope_uri: None,
@@ -197,6 +203,14 @@ impl Backend {
                 "formatter.annotationPlacement",
                 prev_cfg.formatter_annotation_placement,
                 next_cfg.formatter_annotation_placement,
+            );
+        }
+        if let Some(Value::String(placement)) = iter.next() {
+            next_cfg.formatter_default_placement = AnnotationPlacement::from_setting(&placement);
+            log_setting_change(
+                "formatter.defaultPlacement",
+                prev_cfg.formatter_default_placement,
+                next_cfg.formatter_default_placement,
             );
         }
         if let Some(Value::Object(map)) = iter.next() {

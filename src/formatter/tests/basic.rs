@@ -1,4 +1,4 @@
-use super::{fmt, fmt_with_annotation_placement, AnnotationPlacement};
+use super::{fmt, fmt_with_annotation_placement, fmt_with_default_placement, AnnotationPlacement};
 
 #[test]
 fn error_recovery_formats_valid_stmts_around_invalid() {
@@ -89,6 +89,58 @@ fn idempotent_on_valid_fixture() {
     let first = fmt(source);
     let second = fmt(&first);
     assert_eq!(first, second, "formatter should be idempotent");
+}
+
+#[test]
+fn preserve_default_placement() {
+    let same = fmt("class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }");
+    assert!(
+        same.contains("private const var RESET_TIME : float; default RESET_TIME = 0.750;"),
+        "got:\n{same}"
+    );
+
+    let split = fmt(
+        "class C {\n    private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;\n}",
+    );
+    assert!(
+        split.contains("private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;"),
+        "got:\n{split}"
+    );
+}
+
+#[test]
+fn same_line_default_placement() {
+    let cases = [
+        "class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }",
+        "class C {\n    private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;\n}",
+    ];
+    for input in cases {
+        let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);
+        assert!(
+            output.contains("private const var RESET_TIME : float; default RESET_TIME = 0.750;"),
+            "input:\n{input}\ngot:\n{output}"
+        );
+    }
+}
+
+#[test]
+fn own_line_default_placement() {
+    let input = "class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }";
+    let output = fmt_with_default_placement(input, AnnotationPlacement::OwnLine);
+    assert!(
+        output.contains("private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;"),
+        "got:\n{output}"
+    );
+}
+
+#[test]
+fn default_only_merges_when_ident_matches() {
+    let input = "class C {\n    private const var RESET_TIME : float;\n    default OTHER = 1;\n}";
+    let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);
+    assert!(
+        output.contains("private const var RESET_TIME : float;\n    default OTHER = 1;"),
+        "mismatched default name must stay on its own line, got:\n{output}"
+    );
 }
 
 #[test]

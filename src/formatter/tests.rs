@@ -53,6 +53,30 @@ pub(super) fn fmt_with_annotation_placement(
     )
 }
 
+pub(super) fn fmt_with_default_placement(source: &str, placement: AnnotationPlacement) -> String {
+    fmt_options(
+        source,
+        FormatOptions {
+            default_placement: placement,
+            ..Default::default()
+        },
+    )
+}
+
+pub(super) fn fmt_aligned_with_default_placement(
+    source: &str,
+    placement: AnnotationPlacement,
+) -> String {
+    fmt_options(
+        source,
+        FormatOptions {
+            align_member_colons: true,
+            default_placement: placement,
+            ..Default::default()
+        },
+    )
+}
+
 pub(super) fn fmt_limit(source: &str, line_limit: u32) -> String {
     fmt_options(
         source,

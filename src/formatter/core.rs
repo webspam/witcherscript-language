@@ -68,7 +68,7 @@ impl<'a> Formatter<'a> {
             "func_decl" | "event_decl" => self.format_func_decl(node),
             "class_decl" | "struct_decl" | "state_decl" => self.format_class_decl(node),
             "enum_decl" => self.format_enum_decl(node),
-            "member_var_decl" => self.format_member_var_decl(node, None),
+            "member_var_decl" => self.format_member_var_decl(node, None, None),
             "class_def" | "struct_def" => self.format_class_def(node),
             "func_block" => self.format_func_block(node),
             "if_stmt" => self.format_if_stmt(node),

@@ -433,6 +433,7 @@ impl Backend {
             let compact_colon = cfg.formatter_compact_colon;
             let align_member_colons = cfg.formatter_align_member_colons;
             let annotation_placement = cfg.formatter_annotation_placement;
+            let default_placement = cfg.formatter_default_placement;
 
             let formatted = format_document(
                 document.tree.root_node(),
@@ -444,6 +445,7 @@ impl Backend {
                     compact_colon,
                     align_member_colons,
                     annotation_placement,
+                    default_placement,
                 },
             );
 
