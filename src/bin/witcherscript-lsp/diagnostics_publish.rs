@@ -366,7 +366,7 @@ impl Backend {
             previous.keys().filter(|k| !emitted.contains(k.as_str())),
         ));
 
-        trace!(
+        debug!(
             op = "compute_workspace_diagnostic_report",
             version,
             items = items.len(),
