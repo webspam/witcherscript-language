@@ -1,5 +1,5 @@
+use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
 
 use witcherscript_language::diagnostics::{
     collect_cst_diagnostics_for_document, WorkspaceDiagnostic,
@@ -79,7 +79,7 @@ pub(crate) fn cst_diagnostics_with_cache(
                     diagnostics: d.clone(),
                 },
             );
-            new_subscriptions.push((uri.clone(), observations.into_inner().unwrap()));
+            new_subscriptions.push((uri.clone(), observations.into_inner()));
             d
         };
         if !diagnostics.is_empty() {
