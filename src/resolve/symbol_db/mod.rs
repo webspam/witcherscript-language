@@ -2,7 +2,9 @@ mod generics;
 mod lookup;
 
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use parking_lot::Mutex;
 
 use super::shadowed_base::{filter_catalog, ShadowedBase};
 use super::workspace_index::WorkspaceIndex;
@@ -118,7 +120,7 @@ impl<'a> SymbolDb<'a> {
         let Some(outer) = self.observer else {
             return;
         };
-        let mut outer = outer.lock().expect("observer mutex poisoned");
+        let mut outer = outer.lock();
         outer.top_level.extend(other.top_level);
         outer.members.extend(other.members);
         outer.enum_members.extend(other.enum_members);
@@ -126,7 +128,7 @@ impl<'a> SymbolDb<'a> {
 
     pub(super) fn record_top_level(&self, name: &str) {
         if let Some(obs) = self.observer {
-            let mut o = obs.lock().expect("observer mutex poisoned");
+            let mut o = obs.lock();
             if !o.top_level.contains(name) {
                 o.top_level.insert(name.to_string());
             }
@@ -135,7 +137,7 @@ impl<'a> SymbolDb<'a> {
 
     pub(super) fn record_member(&self, container: &str, name: &str) {
         if let Some(obs) = self.observer {
-            let mut o = obs.lock().expect("observer mutex poisoned");
+            let mut o = obs.lock();
             let key = (container.to_string(), name.to_string());
             if !o.members.contains(&key) {
                 o.members.insert(key);
@@ -145,7 +147,7 @@ impl<'a> SymbolDb<'a> {
 
     pub(super) fn record_enum_member(&self, name: &str) {
         if let Some(obs) = self.observer {
-            let mut o = obs.lock().expect("observer mutex poisoned");
+            let mut o = obs.lock();
             if !o.enum_members.contains(name) {
                 o.enum_members.insert(name.to_string());
             }

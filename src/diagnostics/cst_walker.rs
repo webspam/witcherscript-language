@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Add;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use parking_lot::Mutex;
 use rayon::prelude::*;
 use tree_sitter::Node;
 
@@ -282,7 +282,7 @@ where
             },
         )
         .map(|(mut shard, observer)| {
-            shard.observer = observer.into_inner().expect("observer mutex poisoned");
+            shard.observer = observer.into_inner();
             shard
         })
         .reduce(ParallelRuleShard::default, merge_shards)

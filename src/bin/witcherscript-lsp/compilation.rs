@@ -19,6 +19,11 @@ pub(crate) struct Compilation {
     pub(crate) base_scripts_documents: Arc<HashMap<String, Arc<ParsedDocument>>>,
 }
 
+enum SetTo<T> {
+    Unset,
+    Set(Option<T>),
+}
+
 pub(crate) struct CompilationBuilder {
     pub(crate) base: Arc<Compilation>,
     workspace_index: Option<WorkspaceIndex>,
@@ -26,8 +31,7 @@ pub(crate) struct CompilationBuilder {
     base_scripts_index: Option<WorkspaceIndex>,
     script_env: Option<ScriptEnvironment>,
     suppressed_base_uris: Option<HashSet<String>>,
-    // Outer Option flags "set"; inner Option carries the actual value.
-    filtered_base_catalogs: Option<Option<FilteredBaseCatalogs>>,
+    filtered_base_catalogs: SetTo<FilteredBaseCatalogs>,
     documents: Option<HashMap<Url, Arc<ParsedDocument>>>,
     workspace_documents: Option<HashMap<String, Arc<ParsedDocument>>>,
     base_scripts_documents: Option<HashMap<String, Arc<ParsedDocument>>>,
@@ -50,7 +54,7 @@ impl CompilationBuilder {
             base_scripts_index: None,
             script_env: None,
             suppressed_base_uris: None,
-            filtered_base_catalogs: None,
+            filtered_base_catalogs: SetTo::Unset,
             documents: None,
             workspace_documents: None,
             base_scripts_documents: None,
@@ -82,7 +86,7 @@ impl CompilationBuilder {
     }
 
     pub(crate) fn set_filtered_base_catalogs(&mut self, v: Option<FilteredBaseCatalogs>) {
-        self.filtered_base_catalogs = Some(v);
+        self.filtered_base_catalogs = SetTo::Set(v);
     }
 
     pub(crate) fn documents_mut(&mut self) -> &mut HashMap<Url, Arc<ParsedDocument>> {
@@ -142,9 +146,9 @@ impl CompilationBuilder {
                 &self.base.suppressed_base_uris,
             ),
             filtered_base_catalogs: match self.filtered_base_catalogs {
-                Some(Some(cats)) => Some(Arc::new(cats)),
-                Some(None) => None,
-                None => self.base.filtered_base_catalogs.clone(),
+                SetTo::Set(Some(cats)) => Some(Arc::new(cats)),
+                SetTo::Set(None) => None,
+                SetTo::Unset => self.base.filtered_base_catalogs.clone(),
             },
             documents: resolve(self.documents, &self.base.documents),
             workspace_documents: resolve(self.workspace_documents, &self.base.workspace_documents),
