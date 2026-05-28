@@ -38,7 +38,7 @@ impl Backend {
         self.update_open_document(uri.clone(), params.text_document.text);
         if uri_within_any(uri.as_str(), &legacy_dirs) {
             self.refresh_legacy_override_maps();
-            self.spawn_diagnostics_state_changed();
+            self.notify_diagnostics_changed();
         }
         self.publish_legacy_script_status();
         self.publish_file_scope_status();
@@ -130,7 +130,7 @@ impl Backend {
             self.reindex_closed_file(&uri);
             self.refresh_legacy_override_maps_if_legacy_uri(&uri);
         }
-        self.spawn_diagnostics_state_changed();
+        self.notify_diagnostics_changed();
         self.publish_file_scope_status();
         self.sent_file_scope_status.lock().remove(&uri);
         trace!(
@@ -217,7 +217,7 @@ impl Backend {
             self.index_base_scripts().await;
         }
         self.reindex_open_documents();
-        self.diagnostics_state_changed();
+        self.notify_diagnostics_changed();
         self.publish_file_scope_status();
         trace!(
             op = "did_change_workspace_folders",

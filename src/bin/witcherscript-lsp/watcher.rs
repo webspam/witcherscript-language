@@ -242,7 +242,7 @@ impl Backend {
         }
 
         if had_updates || had_removals || legacy_map_refresh || manifest_set_changed {
-            self.spawn_diagnostics_state_changed();
+            self.notify_diagnostics_changed();
         }
         debug!(
             op = "apply_watched_file_events",

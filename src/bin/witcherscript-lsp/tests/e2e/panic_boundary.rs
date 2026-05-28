@@ -16,7 +16,7 @@ async fn panicking_handler_returns_error_and_server_survives() {
 
     let uri: Url = "file:///after-panic.ws".parse().unwrap();
     client.open(&uri, "class Foo {}\n").await;
-    let diags = client.wait_diagnostics(&uri).await;
+    let diags = client.pull_diagnostics(&uri).await;
     assert!(
         diags.is_empty(),
         "server must still answer requests after a handler panic, got {diags:?}"

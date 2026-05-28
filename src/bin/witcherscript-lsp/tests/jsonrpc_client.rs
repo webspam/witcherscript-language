@@ -1,15 +1,13 @@
-use std::collections::HashMap;
 use std::time::Duration;
 
 use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification,
-    PublishDiagnostics,
 };
 use lsp_types::request::Request;
 use lsp_types::{
-    Diagnostic, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    PublishDiagnosticsParams, TextDocumentContentChangeEvent, TextDocumentIdentifier,
-    TextDocumentItem, Url, VersionedTextDocumentIdentifier,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Url,
+    VersionedTextDocumentIdentifier,
 };
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
@@ -21,7 +19,6 @@ pub(crate) struct JsonRpcClient<R, W> {
     write: W,
     read: BufReader<R>,
     next_id: i64,
-    diagnostics: HashMap<Url, Vec<Diagnostic>>,
 }
 
 #[allow(dead_code)]
@@ -31,7 +28,6 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
             write,
             read: BufReader::new(read),
             next_id: 1,
-            diagnostics: HashMap::new(),
         }
     }
 
@@ -91,7 +87,6 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
             },
         })
         .await;
-        let _ = self.wait_diagnostics(uri).await;
     }
 
     pub(crate) async fn did_change_full(&mut self, uri: &Url, version: i32, text: &str) {
@@ -107,8 +102,6 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
             }],
         })
         .await;
-        self.diagnostics.remove(uri);
-        let _ = self.wait_diagnostics(uri).await;
     }
 
     pub(crate) async fn did_close(&mut self, uri: &Url) {
@@ -116,23 +109,6 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
         })
         .await;
-        self.diagnostics.remove(uri);
-    }
-
-    pub(crate) async fn wait_diagnostics(&mut self, uri: &Url) -> Vec<Diagnostic> {
-        let result = timeout(REQUEST_TIMEOUT, async {
-            loop {
-                if let Some(diags) = self.diagnostics.get(uri) {
-                    return diags.clone();
-                }
-                let v = self.read_raw().await;
-                if let Some(reply) = self.handle_inbound(v) {
-                    self.send_raw(&reply).await;
-                }
-            }
-        })
-        .await;
-        result.unwrap_or_else(|_| panic!("timed out waiting for diagnostics for {uri}"))
     }
 
     async fn send_raw(&mut self, msg: &Value) {
@@ -170,14 +146,6 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
 
     fn handle_inbound(&mut self, v: Value) -> Option<Value> {
         let method = v.get("method").and_then(|m| m.as_str())?;
-        if method == PublishDiagnostics::METHOD {
-            if let Some(p) = v.get("params") {
-                if let Ok(params) = serde_json::from_value::<PublishDiagnosticsParams>(p.clone()) {
-                    self.diagnostics.insert(params.uri, params.diagnostics);
-                }
-            }
-            return None;
-        }
         let id = v.get("id").cloned()?;
         let result = match method {
             "workspace/configuration" => {

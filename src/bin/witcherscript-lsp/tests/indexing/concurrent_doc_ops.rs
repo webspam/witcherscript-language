@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -6,9 +7,9 @@ use async_lsp::router::Router;
 use async_lsp::{ClientSocket, ErrorCode};
 use lsp_types::{
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
-    PartialResultParams, Position, Range, SemanticTokensParams, TextDocumentContentChangeEvent,
-    TextDocumentIdentifier, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
-    WorkDoneProgressParams,
+    DocumentDiagnosticReport, DocumentDiagnosticReportResult, PartialResultParams, Position, Range,
+    SemanticTokensParams, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    Url, VersionedTextDocumentIdentifier, WorkDoneProgressParams,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens;
 
@@ -161,34 +162,21 @@ fn semantic_tokens_after_did_change_sees_new_source() {
     );
 }
 
-// Demonstrates the version-counter discard pattern: when diagnostic_version is bumped past
-// the version a publish was issued for, that publish bails before recording anything,
-// so a stale spawned task can't overwrite a newer one's result.
 #[test]
-fn publish_open_diagnostics_bails_when_version_advanced() {
+fn compute_workspace_diagnostic_report_bails_when_version_advanced() {
     let backend = make_workspace_backend();
     let uri: Url = "file:///stale.ws".parse().unwrap();
     backend._did_open(open_params(&uri, "class CBroken {\n"));
 
     let stale_version = backend.diagnostic_version.load(Ordering::Acquire);
     backend
-        .published_diagnostics
-        .lock()
-        .insert(uri.clone(), Vec::new());
-    backend
         .diagnostic_version
         .store(stale_version + 100, Ordering::Release);
 
-    backend.publish_open_diagnostics(stale_version);
-
-    assert_eq!(
-        backend
-            .published_diagnostics
-            .lock()
-            .get(&uri)
-            .map(|d| d.len()),
-        Some(0),
-        "a stale-version publish must not overwrite the already-recorded diagnostics",
+    let result = backend.compute_workspace_diagnostic_report(HashMap::new(), stale_version);
+    assert!(
+        result.is_none(),
+        "stale-version workspace pull must bail instead of returning a report",
     );
 }
 
@@ -338,6 +326,31 @@ fn document_diagnostic_bails_when_pending_edit_outranks_snapshot() {
         err.code,
         ErrorCode::CONTENT_MODIFIED,
         "stale snapshot must surface CONTENT_MODIFIED for diagnostics"
+    );
+}
+
+#[test]
+fn document_diagnostic_under_none_scope_returns_empty_for_open_broken_file() {
+    let backend = make_backend();
+    backend.initial_index_done.store(true, Ordering::Release);
+    let uri: Url = "file:///none_scope.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "class CBroken {\n"));
+
+    let report =
+        futures::executor::block_on(backend._document_diagnostic(document_diagnostic_params(&uri)))
+            .expect("None scope must produce a successful response, not an error");
+    let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) = report
+    else {
+        panic!("None scope must return a Full report, got {report:?}");
+    };
+    assert!(
+        full.full_document_diagnostic_report.items.is_empty(),
+        "None scope must suppress diagnostics for open files, got {:?}",
+        full.full_document_diagnostic_report.items,
+    );
+    assert!(
+        full.full_document_diagnostic_report.result_id.is_none(),
+        "None scope must not assign a result_id the client could track",
     );
 }
 

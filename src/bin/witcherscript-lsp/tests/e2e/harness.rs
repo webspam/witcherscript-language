@@ -8,10 +8,12 @@ use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
 use async_lsp::{ClientSocket, MainLoop};
 use lsp_types::notification::{DidSaveTextDocument, Initialized};
-use lsp_types::request::{Initialize, Request};
+use lsp_types::request::{DocumentDiagnosticRequest, Initialize, Request};
 use lsp_types::{
-    ClientCapabilities, Diagnostic, DidSaveTextDocumentParams, InitializeParams, InitializeResult,
-    InitializedParams, ServerCapabilities, TextDocumentIdentifier, Url,
+    ClientCapabilities, Diagnostic, DiagnosticClientCapabilities, DidSaveTextDocumentParams,
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+    InitializeParams, InitializeResult, InitializedParams, PartialResultParams, ServerCapabilities,
+    TextDocumentClientCapabilities, TextDocumentIdentifier, Url, WorkDoneProgressParams,
 };
 use serde_json::Value;
 use tokio::io::{split, DuplexStream, ReadHalf, WriteHalf};
@@ -83,7 +85,13 @@ impl LspClient {
 
         let init_result: <Initialize as Request>::Result = rpc
             .request::<Initialize>(InitializeParams {
-                capabilities: ClientCapabilities::default(),
+                capabilities: ClientCapabilities {
+                    text_document: Some(TextDocumentClientCapabilities {
+                        diagnostic: Some(DiagnosticClientCapabilities::default()),
+                        ..TextDocumentClientCapabilities::default()
+                    }),
+                    ..ClientCapabilities::default()
+                },
                 initialization_options: init_options,
                 ..InitializeParams::default()
             })
@@ -137,7 +145,26 @@ impl LspClient {
         self.rpc.raw_request(method, params).await
     }
 
-    pub(crate) async fn wait_diagnostics(&mut self, uri: &Url) -> Vec<Diagnostic> {
-        self.rpc.wait_diagnostics(uri).await
+    pub(crate) async fn pull_diagnostics(&mut self, uri: &Url) -> Vec<Diagnostic> {
+        let report = self
+            .request::<DocumentDiagnosticRequest>(DocumentDiagnosticParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                identifier: None,
+                previous_result_id: None,
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+            })
+            .await;
+        match report {
+            DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) => {
+                full.full_document_diagnostic_report.items
+            }
+            DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Unchanged(_)) => {
+                panic!("pull_diagnostics requested without previous_result_id must return Full")
+            }
+            DocumentDiagnosticReportResult::Partial(_) => {
+                panic!("server returned a partial report unexpectedly")
+            }
+        }
     }
 }
