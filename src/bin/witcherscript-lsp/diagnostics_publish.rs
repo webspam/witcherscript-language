@@ -6,7 +6,7 @@ use std::time::Instant;
 use crate::backend::{build_symbol_db, diagnostics_document_set, Backend};
 use crate::config::DiagnosticsScope;
 use crate::convert::{lsp_diagnostics, lsp_workspace_diagnostic};
-use crate::cst_cache::cst_diagnostics_with_cache;
+use crate::cst_cache::{cst_diagnostics_with_cache, CstDiagnosticsResult, DbFingerprint};
 use crate::file_scope::{classify_file_scope, FileScope};
 use crate::file_scope_status::{FileScopeStatusNotification, FileScopeStatusParams};
 use crate::legacy_status::{LegacyScriptStatusNotification, LegacyScriptStatusParams};
@@ -127,32 +127,35 @@ pub(crate) fn publish_url(diag_key: &str) -> Option<Url> {
     }
 }
 
+struct PullCompute {
+    bundle: DiagnosticsBundle,
+    cst: CstDiagnosticsResult,
+    workspace_surface: u64,
+    base_surface: u64,
+    env_version: u64,
+    fingerprint: DbFingerprint,
+}
+
 impl Backend {
-    pub(crate) fn compute_diagnostics_for_uri(
+    fn run_pull_compute(
         &self,
-        uri: &Url,
-        document: &witcherscript_language::document::ParsedDocument,
+        diag_docs: &HashMap<String, &ParsedDocument>,
+        loose_uri_strs: &HashSet<String>,
         version: u64,
-    ) -> Option<(Vec<Diagnostic>, String)> {
-        let started_at = Instant::now();
-        debug!(
-            op = "compute_diagnostics_for_uri",
-            uri = %uri,
-            "start",
-        );
-        let is_loose = self.file_scope_of(uri).is_loose();
+    ) -> Option<PullCompute> {
         let legacy_dirs = self.effective_legacy_dirs();
         let snap = self.snapshot();
         let workspace = &snap.workspace_index;
         let loose = &snap.loose_index;
         let base = &snap.base_scripts_index;
         let env = &snap.script_env;
+        let suppressed = &snap.suppressed_base_uris;
+        let filtered = snap.filtered_base_catalogs.as_deref();
+
         let mut cache = self.cst_diag_cache.lock();
         if self.diagnostic_version.load(Ordering::Acquire) != version {
             return None;
         }
-        let suppressed = &snap.suppressed_base_uris;
-        let filtered = snap.filtered_base_catalogs.as_deref();
 
         let version_check = || self.diagnostic_version.load(Ordering::Acquire) == version;
         let bundle = collect_workspace_diagnostics(
@@ -167,12 +170,7 @@ impl Backend {
             return None;
         }
 
-        let mut loose_uri_strs: HashSet<String> = HashSet::new();
-        if is_loose {
-            loose_uri_strs.insert(uri.to_string());
-        }
         let fingerprint = self.db_fingerprint(base, env);
-
         let ws_db = build_symbol_db(
             workspace,
             base,
@@ -190,15 +188,12 @@ impl Backend {
             filtered,
         );
 
-        let mut diag_docs: HashMap<String, &ParsedDocument> = HashMap::new();
-        diag_docs.insert(uri.to_string(), document);
-
         let diagnostic_version = self.diagnostic_version.clone();
         let should_continue = move || diagnostic_version.load(Ordering::Acquire) == version;
         let cst = cst_diagnostics_with_cache(
-            &diag_docs,
+            diag_docs,
             &ws_db,
-            Some((&loose_db, &loose_uri_strs)),
+            Some((&loose_db, loose_uri_strs)),
             fingerprint,
             &mut cache,
             &should_continue,
@@ -207,16 +202,49 @@ impl Backend {
             return None;
         }
 
-        let key = uri.to_string();
-        let diagnostics =
-            assemble_diagnostics_for_key(key.as_str(), &bundle, &cst.by_uri, document);
+        Some(PullCompute {
+            bundle,
+            cst,
+            workspace_surface: workspace.surface_hash(),
+            base_surface: base.surface_hash(),
+            env_version: env.version(),
+            fingerprint,
+        })
+    }
 
+    pub(crate) fn compute_diagnostics_for_uri(
+        &self,
+        uri: &Url,
+        document: &witcherscript_language::document::ParsedDocument,
+        version: u64,
+    ) -> Option<(Vec<Diagnostic>, String)> {
+        let started_at = Instant::now();
+        debug!(
+            op = "compute_diagnostics_for_uri",
+            uri = %uri,
+            "start",
+        );
+        let key = uri.to_string();
+        let mut diag_docs: HashMap<String, &ParsedDocument> = HashMap::new();
+        diag_docs.insert(key.clone(), document);
+        let mut loose_uri_strs: HashSet<String> = HashSet::new();
+        if self.file_scope_of(uri).is_loose() {
+            loose_uri_strs.insert(key.clone());
+        }
+
+        let compute = self.run_pull_compute(&diag_docs, &loose_uri_strs, version)?;
+        let diagnostics = assemble_diagnostics_for_key(
+            key.as_str(),
+            &compute.bundle,
+            &compute.cst.by_uri,
+            document,
+        );
         let result_id = result_id_for(
             document.parse_version,
-            workspace.surface_hash(),
-            base.surface_hash(),
-            env.version(),
-            fingerprint.legacy_db_generation,
+            compute.workspace_surface,
+            compute.base_surface,
+            compute.env_version,
+            compute.fingerprint.legacy_db_generation,
         );
         debug!(
             op = "compute_diagnostics_for_uri",
@@ -243,74 +271,21 @@ impl Backend {
         let whole_workspace = matches!(cfg.diagnostics_scope, DiagnosticsScope::Workspace);
 
         let snap = self.snapshot();
-        let legacy_dirs = self.effective_legacy_dirs();
-        let loose_uris = self.loose_open_uris(&snap.documents);
-        let workspace = &snap.workspace_index;
-        let loose = &snap.loose_index;
-        let base = &snap.base_scripts_index;
-        let env = &snap.script_env;
-        let suppressed = &snap.suppressed_base_uris;
-        let filtered = snap.filtered_base_catalogs.as_deref();
-
-        let mut cache = self.cst_diag_cache.lock();
-        if self.diagnostic_version.load(Ordering::Acquire) != version {
-            return None;
-        }
-
+        let loose_uri_strs: HashSet<String> = self
+            .loose_open_uris(&snap.documents)
+            .iter()
+            .map(|u| u.to_string())
+            .collect();
         let diag_docs =
             diagnostics_document_set(&snap.workspace_documents, &snap.documents, whole_workspace);
 
-        let version_check = || self.diagnostic_version.load(Ordering::Acquire) == version;
-        let bundle = collect_workspace_diagnostics(
-            workspace,
-            loose,
-            base,
-            env,
-            &legacy_dirs,
-            &version_check,
-        )?;
-        if !version_check() {
-            return None;
-        }
-
-        let fingerprint = self.db_fingerprint(base, env);
-        let loose_uri_strs: HashSet<String> = loose_uris.iter().map(|u| u.to_string()).collect();
-        let ws_db = build_symbol_db(
-            workspace,
-            base,
-            env,
-            self.builtins_index.as_ref(),
-            suppressed,
-            filtered,
-        );
-        let loose_db = build_symbol_db(
-            loose,
-            base,
-            env,
-            self.builtins_index.as_ref(),
-            suppressed,
-            filtered,
-        );
-
-        let diagnostic_version = self.diagnostic_version.clone();
-        let should_continue = move || diagnostic_version.load(Ordering::Acquire) == version;
-        let cst = cst_diagnostics_with_cache(
-            &diag_docs,
-            &ws_db,
-            Some((&loose_db, &loose_uri_strs)),
-            fingerprint,
-            &mut cache,
-            &should_continue,
-        );
-        if cst.cancelled {
-            return None;
-        }
-        let cst_stats = cst.stats;
+        let compute = self.run_pull_compute(&diag_docs, &loose_uri_strs, version)?;
+        let cst_stats = compute.cst.stats;
 
         {
             let mut loose_subs = self.loose_subscriptions.lock();
             let mut workspace_subs = self.workspace_subscriptions.lock();
-            for (uri, observations) in cst.new_subscriptions {
+            for (uri, observations) in compute.cst.new_subscriptions {
                 if loose_uri_strs.contains(&uri) {
                     loose_subs.register(&uri, observations);
                 } else {
@@ -319,9 +294,6 @@ impl Backend {
             }
         }
 
-        let workspace_surface = workspace.surface_hash();
-        let base_surface = base.surface_hash();
-        let env_version = env.version();
         let mut items: Vec<WorkspaceDocumentDiagnosticReport> = Vec::with_capacity(diag_docs.len());
         let mut emitted: HashSet<String> = HashSet::with_capacity(diag_docs.len());
         for (diag_key, document) in diag_docs.iter() {
@@ -330,10 +302,10 @@ impl Backend {
             };
             let result_id = result_id_for(
                 document.parse_version,
-                workspace_surface,
-                base_surface,
-                env_version,
-                fingerprint.legacy_db_generation,
+                compute.workspace_surface,
+                compute.base_surface,
+                compute.env_version,
+                compute.fingerprint.legacy_db_generation,
             );
             emitted.insert(publish_uri.to_string());
             if previous.get(diag_key) == Some(&result_id) {
@@ -348,8 +320,12 @@ impl Backend {
                 ));
                 continue;
             }
-            let diagnostics =
-                assemble_diagnostics_for_key(diag_key.as_str(), &bundle, &cst.by_uri, document);
+            let diagnostics = assemble_diagnostics_for_key(
+                diag_key.as_str(),
+                &compute.bundle,
+                &compute.cst.by_uri,
+                document,
+            );
             items.push(WorkspaceDocumentDiagnosticReport::Full(
                 WorkspaceFullDocumentDiagnosticReport {
                     uri: publish_uri,
