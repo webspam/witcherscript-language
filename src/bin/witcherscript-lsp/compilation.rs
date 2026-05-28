@@ -19,7 +19,6 @@ pub(crate) struct Compilation {
     pub(crate) base_scripts_documents: Arc<HashMap<String, Arc<ParsedDocument>>>,
 }
 
-// Clone-on-write helper: only fields actually touched get cloned and re-Arc'd.
 pub(crate) struct CompilationBuilder {
     pub(crate) base: Arc<Compilation>,
     workspace_index: Option<WorkspaceIndex>,

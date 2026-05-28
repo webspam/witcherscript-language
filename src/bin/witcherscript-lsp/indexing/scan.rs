@@ -22,7 +22,6 @@ impl Backend {
         matches!(self.file_scope_of(uri), FileScope::AdditionalBase)
     }
 
-    // index_base_scripts rebuilds the base index from disk, dropping any open base script.
     fn merge_open_base_documents(&self) {
         let snap = self.snapshot();
         let base_uris: Vec<Url> = snap
