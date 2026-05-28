@@ -456,26 +456,7 @@ impl Backend {
     pub(crate) fn spawn_diagnostics_at_current_version(&self) {
         self.request_workspace_diagnostic_refresh();
         let version = self.diagnostic_version.load(Ordering::Acquire);
-        if tokio::runtime::Handle::try_current().is_err() {
-            self.publish_open_diagnostics(version);
-            return;
-        }
-        let backend = self.clone();
-        let handle = tokio::spawn(async move {
-            let started_at = std::time::Instant::now();
-            debug!(op = "publish_diagnostics_task", version, "start",);
-            let _ = tokio::task::spawn_blocking(move || backend.publish_open_diagnostics(version))
-                .await;
-            debug!(
-                op = "publish_diagnostics_task",
-                version,
-                elapsed_us = started_at.elapsed().as_micros(),
-                "complete",
-            );
-        });
-        if let Ok(mut slot) = self.last_publish_task.try_lock() {
-            *slot = Some(handle);
-        }
+        self.spawn_publish_at_version(version);
     }
 
     // Spawn entry for sync notification handlers (did_change/did_open/did_close/did_change_watched_files):
@@ -484,6 +465,10 @@ impl Backend {
     pub(crate) fn spawn_diagnostics_state_changed(&self) {
         self.request_workspace_diagnostic_refresh();
         let version = self.diagnostic_version.fetch_add(1, Ordering::AcqRel) + 1;
+        self.spawn_publish_at_version(version);
+    }
+
+    fn spawn_publish_at_version(&self, version: u64) {
         if tokio::runtime::Handle::try_current().is_err() {
             self.publish_open_diagnostics(version);
             return;
