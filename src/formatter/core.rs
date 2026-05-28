@@ -113,7 +113,7 @@ impl<'a> Formatter<'a> {
     pub(super) fn gap_between(&self, before: Node, after: Node, parent_kind: &str) -> bool {
         let bk = before.kind();
         let ak = after.kind();
-        if matches!(ak, "," | ";" | ")" | "]" | ">") {
+        if matches!(ak, "," | ";" | ")" | "]" | "<" | ">") {
             return false;
         }
         if matches!(bk, "(" | "[" | "<") {
