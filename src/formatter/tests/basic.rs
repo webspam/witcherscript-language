@@ -63,8 +63,18 @@ fn annotation_sits_directly_above_declaration() {
     let field = fmt_annotation_own_line("@addField(CR4Player)\n\n\nvar foo : int;");
     assert_eq!(field, "@addField(CR4Player)\nvar foo : int;\n");
 
-    let method = fmt_annotation_own_line("@addMethod(CR4Player)\n\n\nfunction Foo() {}");
+    let method = fmt("@addMethod(CR4Player)\n\n\nfunction Foo() {}");
     assert_eq!(method, "@addMethod(CR4Player)\nfunction Foo() {}\n");
+}
+
+#[test]
+fn add_method_annotation_ignores_placement_setting() {
+    let input = "@addMethod(CR4Player) function Foo() {}";
+    assert_eq!(
+        fmt_annotation_same_line(input),
+        "@addMethod(CR4Player)\nfunction Foo() {}\n"
+    );
+    assert_eq!(fmt(input), "@addMethod(CR4Player)\nfunction Foo() {}\n");
 }
 
 #[test]

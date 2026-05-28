@@ -107,7 +107,7 @@ The server reads the following user-configurable settings:
 | `witcherscript.formatter.lineLimit` | `number` | `100` | Soft wrap width for the formatter. |
 | `witcherscript.formatter.compactColon` | `boolean` | `false` | Drop the space before `:` in type annotations when formatting. |
 | `witcherscript.formatter.alignMemberColons` | `boolean` | `false` | Align `:` on consecutive member declarations when formatting. |
-| `witcherscript.formatter.annotationPlacement` | `string` | `"preserve"` | How `@addField` / `@addMethod` annotations sit relative to the member they annotate. `"preserve"` keeps the source line break; `"ownLine"` always puts the annotation above the member; `"sameLine"` always puts them on one line. |
+| `witcherscript.formatter.annotationPlacement` | `string` | `"preserve"` | How `@addField` sits relative to the field it annotates. `"preserve"` keeps the source line break; `"ownLine"` always puts the annotation above the field; `"sameLine"` always puts them on one line. |
 | `files.exclude` | `object` | `{}` | Standard VS Code exclude globs. The server respects these when walking workspace roots. |
 
 #### Auto-loaded: the Shared Imports mod

@@ -47,8 +47,20 @@ impl<'a> Formatter<'a> {
         false
     }
 
-    /// Emit a leading annotation and return whether the declaration continues on the same line.
-    fn emit_leading_annotation(&mut self, node: Node, ann: Node) -> bool {
+    fn is_add_field_annotation(&self, ann: Node) -> bool {
+        self.child_of_kind(ann, "annotation_ident")
+            .is_some_and(|ident| self.text(ident).trim_start_matches('@') == "addField")
+    }
+
+    fn emit_annotation_on_own_line(&mut self, ann: Node) {
+        let ann_text = self.render_node(ann);
+        self.emit_indent();
+        self.emit(&ann_text);
+        self.nl();
+    }
+
+    /// Emit `@addField` and return whether the field continues on the same line.
+    fn emit_add_field_annotation(&mut self, node: Node, ann: Node) -> bool {
         let same_line = match self.annotation_placement {
             super::AnnotationPlacement::SameLine => true,
             super::AnnotationPlacement::OwnLine => false,
@@ -68,7 +80,12 @@ impl<'a> Formatter<'a> {
 
     pub(super) fn format_member_var_decl(&mut self, node: Node, colon_align_col: Option<usize>) {
         let same_line = if let Some(ann) = self.child_of_kind(node, "annotation") {
-            self.emit_leading_annotation(node, ann)
+            if self.is_add_field_annotation(ann) {
+                self.emit_add_field_annotation(node, ann)
+            } else {
+                self.emit_annotation_on_own_line(ann);
+                false
+            }
         } else {
             false
         };
@@ -144,14 +161,10 @@ impl<'a> Formatter<'a> {
     }
 
     pub(super) fn format_func_decl(&mut self, node: Node) {
-        let same_line = if let Some(ann) = self.child_of_kind(node, "annotation") {
-            self.emit_leading_annotation(node, ann)
-        } else {
-            false
-        };
-        if !same_line {
-            self.emit_indent();
+        if let Some(ann) = self.child_of_kind(node, "annotation") {
+            self.emit_annotation_on_own_line(ann);
         }
+        self.emit_indent();
 
         let children = child_nodes(node);
         let mut prev: Option<Node> = None;
