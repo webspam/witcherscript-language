@@ -69,25 +69,16 @@ pub fn is_witcherscript_file(path: &Path) -> bool {
         .is_some_and(|extension| extension.eq_ignore_ascii_case("ws"))
 }
 
-pub fn read_script_file(path: &Path) -> io::Result<String> {
+pub fn read_text_file(path: &Path) -> io::Result<String> {
     let bytes = fs::read(path)?;
-    if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
-        let words: Vec<u16> = rest
-            .chunks_exact(2)
-            .map(|c| u16::from_le_bytes([c[0], c[1]]))
-            .collect();
-        return String::from_utf16(&words)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e));
+    let (text, _encoding, had_errors) = encoding_rs::UTF_8.decode(&bytes);
+    if had_errors {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "file contains bytes that are not valid in its detected encoding",
+        ));
     }
-    if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
-        let words: Vec<u16> = rest
-            .chunks_exact(2)
-            .map(|c| u16::from_be_bytes([c[0], c[1]]))
-            .collect();
-        return String::from_utf16(&words)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e));
-    }
-    String::from_utf8(bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    Ok(text.into_owned())
 }
 
 pub struct ExcludeFilter {

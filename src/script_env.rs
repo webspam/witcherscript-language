@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use lsp_types::Url;
 
+use crate::files::read_text_file;
 use crate::line_index::{SourcePosition, SourceRange};
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
@@ -53,7 +54,7 @@ impl ScriptEnvironment {
 }
 
 pub fn parse_script_environment(ini_path: &Path) -> Option<ScriptEnvironment> {
-    let content = std::fs::read_to_string(ini_path).ok()?;
+    let content = read_text_file(ini_path).ok()?;
     let ini_uri = Url::from_file_path(ini_path).ok()?.to_string();
 
     let line_starts: Vec<usize> = std::iter::once(0)

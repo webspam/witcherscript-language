@@ -181,12 +181,7 @@ Base scripts use `rayon` for parallel parsing. Each rayon thread gets its own `t
 
 ## File encoding handling
 
-`read_script_file(path)` detects BOM and decodes accordingly:
-- UTF-8 (default, no BOM)
-- UTF-16 LE (BOM: `FF FE`)
-- UTF-16 BE (BOM: `FE FF`)
-
-This handles the mixed encodings found in shipped Witcher 3 script files.
+`read_text_file(path)` (in `src/files.rs`) is the canonical text-file reader; route every disk read of a text file through it. It uses `encoding_rs`. This handles the mixed encodings found in shipped Witcher 3 script files and in user-authored mod files.
 
 ## Configuration
 
@@ -257,7 +252,7 @@ Open `documents` (editor-open) take precedence over `workspace_documents` (backg
 | `completion_item(def, doc, db)` | Builds `CompletionItem` with snippet + docs |
 | `document_symbols(syms, parent_id)` | Recursively builds LSP `DocumentSymbol` tree; skips Variable/Parameter |
 | `lsp_symbol_kind(kind)` | `SymbolKind` → LSP `SymbolKind` enum |
-| `read_script_file(path)` | UTF-8/16 aware file reader |
+| `read_text_file(path)` | BOM-sniffing text reader (UTF-8 / UTF-16 LE / UTF-16 BE) |
 | `workspace_roots(params)` | Extracts root paths from `InitializeParams` |
 
 ## Adding a new LSP handler

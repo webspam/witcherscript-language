@@ -1,10 +1,9 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use ignore::WalkBuilder;
 use serde::Deserialize;
 use tracing::{trace, warn};
-use witcherscript_language::files::build_overrides;
+use witcherscript_language::files::{build_overrides, read_text_file};
 
 pub(crate) const MANIFEST_FILENAME: &str = "witcherscript.toml";
 
@@ -22,7 +21,7 @@ struct ContentSection {
 }
 
 pub(crate) fn parse_manifest(toml_path: &Path) -> Option<PathBuf> {
-    let text = match fs::read_to_string(toml_path) {
+    let text = match read_text_file(toml_path) {
         Ok(t) => t,
         Err(err) => {
             warn!(path = %toml_path.display(), error = %err, "failed to read witcherscript.toml");

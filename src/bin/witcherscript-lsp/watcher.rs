@@ -10,7 +10,7 @@ use lsp_types::{
 use tracing::{debug, trace, warn};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::files::{
-    canonical_uri, is_witcherscript_file, read_script_file, ExcludeFilter,
+    canonical_uri, is_witcherscript_file, read_text_file, ExcludeFilter,
 };
 
 use crate::backend::Backend;
@@ -135,7 +135,7 @@ impl Backend {
             };
             match decision {
                 WatchedEvent::Upsert { canonical, path } => {
-                    let source = match read_script_file(&path) {
+                    let source = match read_text_file(&path) {
                         Ok(s) => s,
                         Err(err) => {
                             warn!(path = %path.display(), error = %err, "failed to read watched file");
