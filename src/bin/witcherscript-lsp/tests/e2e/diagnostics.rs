@@ -1,7 +1,7 @@
 use lsp_types::request::{DocumentDiagnosticRequest, WorkspaceDiagnosticRequest};
 use lsp_types::{
     DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-    PartialResultParams, TextDocumentIdentifier, Url, WorkDoneProgressParams,
+    PartialResultParams, PreviousResultId, TextDocumentIdentifier, Url, WorkDoneProgressParams,
     WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
 };
 
@@ -105,7 +105,7 @@ async fn pull_diagnostics_capability_is_advertised() {
 }
 
 #[tokio::test]
-async fn closing_a_file_in_open_files_scope_drops_it_from_workspace_report() {
+async fn closing_a_file_in_open_files_scope_clears_its_client_side_diagnostics() {
     let uri: Url = "file:///scoped.ws".parse().unwrap();
     let mut client = LspClient::spawn_open_files_scope().await;
     client.open(&uri, "class Foo {\n").await;
@@ -126,19 +126,25 @@ async fn closing_a_file_in_open_files_scope_drops_it_from_workspace_report() {
     let WorkspaceDiagnosticReportResult::Report(open_report) = workspace else {
         panic!("server must return a complete workspace report, not a partial");
     };
-    assert!(
-        open_report.items.iter().any(|item| match item {
-            WorkspaceDocumentDiagnosticReport::Full(full) => full.uri == uri,
-            WorkspaceDocumentDiagnosticReport::Unchanged(unchanged) => unchanged.uri == uri,
-        }),
-        "open broken file must appear in the workspace report under open-files scope",
-    );
+    let prior_result_id = open_report
+        .items
+        .iter()
+        .find_map(|item| match item {
+            WorkspaceDocumentDiagnosticReport::Full(full) if full.uri == uri => {
+                full.full_document_diagnostic_report.result_id.clone()
+            }
+            _ => None,
+        })
+        .expect("open broken file must appear as Full with a result_id");
 
     client.close(&uri).await;
     let after_close = client
         .request::<WorkspaceDiagnosticRequest>(WorkspaceDiagnosticParams {
             identifier: None,
-            previous_result_ids: Vec::new(),
+            previous_result_ids: vec![PreviousResultId {
+                uri: uri.clone(),
+                value: prior_result_id,
+            }],
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
         })
@@ -146,13 +152,23 @@ async fn closing_a_file_in_open_files_scope_drops_it_from_workspace_report() {
     let WorkspaceDiagnosticReportResult::Report(closed_report) = after_close else {
         panic!("server must return a complete workspace report after close, not a partial");
     };
-    assert!(
-        !closed_report.items.iter().any(|item| match item {
+    let entry = closed_report
+        .items
+        .iter()
+        .find(|item| match item {
             WorkspaceDocumentDiagnosticReport::Full(full) => full.uri == uri,
             WorkspaceDocumentDiagnosticReport::Unchanged(unchanged) => unchanged.uri == uri,
-        }),
-        "closing in open-files scope must drop the file from the workspace report",
-    );
+        })
+        .expect("closed file the client still tracks must be explicitly cleared, not omitted");
+    match entry {
+        WorkspaceDocumentDiagnosticReport::Full(full) => assert!(
+            full.full_document_diagnostic_report.items.is_empty(),
+            "client-side clear requires empty items, got {full:?}",
+        ),
+        WorkspaceDocumentDiagnosticReport::Unchanged(_) => {
+            panic!("a file that left the diagnosed set must not return Unchanged")
+        }
+    }
 }
 
 #[tokio::test]
