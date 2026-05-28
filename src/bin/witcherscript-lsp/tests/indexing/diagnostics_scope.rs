@@ -6,7 +6,9 @@ use arc_swap::ArcSwap;
 use async_lsp::router::Router;
 use async_lsp::ClientSocket;
 use lsp_types::{
-    DidCloseTextDocumentParams, TextDocumentIdentifier, Url, WorkspaceDocumentDiagnosticReport,
+    DidCloseTextDocumentParams, PartialResultParams, PreviousResultId, TextDocumentIdentifier, Url,
+    WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
+    WorkspaceDocumentDiagnosticReport,
 };
 
 use super::legacy_helpers::{write_script, LocalTempDir};
@@ -322,6 +324,86 @@ async fn workspace_pull_explicitly_clears_files_that_left_the_diagnosed_set() {
             panic!("a URI that left the diagnosed set must not return Unchanged")
         }
     }
+}
+
+// VSCode echoes URIs back URL-encoded (`file:///c%3A/...`); ours canonicalise to `file:///C:/...`.
+#[cfg(windows)]
+#[tokio::test]
+async fn workspace_pull_matches_previous_result_ids_in_client_uri_form() {
+    let temp = LocalTempDir::new("ws_canonicalize_previous");
+    let path = write_script(temp.path(), "Bad.ws", "class CBad {\n");
+    let url = Url::from_file_path(&path).expect("path -> url");
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+
+    let empty_params = || WorkspaceDiagnosticParams {
+        identifier: None,
+        previous_result_ids: Vec::new(),
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    };
+    let WorkspaceDiagnosticReportResult::Report(initial) = backend
+        ._workspace_diagnostic(empty_params())
+        .await
+        .expect("initial workspace pull must not bail")
+    else {
+        panic!("initial workspace pull must return a complete report");
+    };
+    let (emitted_uri, emitted_result_id) = initial
+        .items
+        .iter()
+        .find_map(|item| match item {
+            WorkspaceDocumentDiagnosticReport::Full(full) if full.uri == url => Some((
+                full.uri.clone(),
+                full.full_document_diagnostic_report.result_id.clone(),
+            )),
+            _ => None,
+        })
+        .expect("initial pull must include the broken file as Full");
+    let emitted_result_id = emitted_result_id.expect("Full report must carry a result_id");
+
+    let client_form: Url = emitted_uri
+        .to_string()
+        .replacen("file:///C:/", "file:///c%3A/", 1)
+        .parse()
+        .expect("client-form URL parses");
+    assert_ne!(
+        client_form, emitted_uri,
+        "test must exercise a URI form different from what we emit",
+    );
+
+    let WorkspaceDiagnosticReportResult::Report(second) = backend
+        ._workspace_diagnostic(WorkspaceDiagnosticParams {
+            previous_result_ids: vec![PreviousResultId {
+                uri: client_form,
+                value: emitted_result_id,
+            }],
+            ..empty_params()
+        })
+        .await
+        .expect("second workspace pull must not bail")
+    else {
+        panic!("second workspace pull must return a complete report");
+    };
+    let entry = second
+        .items
+        .iter()
+        .find(|item| match item {
+            WorkspaceDocumentDiagnosticReport::Full(full) => full.uri == url,
+            WorkspaceDocumentDiagnosticReport::Unchanged(unchanged) => unchanged.uri == url,
+        })
+        .expect("second pull must include the open file");
+    assert!(
+        matches!(entry, WorkspaceDocumentDiagnosticReport::Unchanged(_)),
+        "previous_result_ids in client URI form must match emitted publish_key, got {entry:?}",
+    );
+    assert_eq!(
+        second.items.len(),
+        1,
+        "no spurious clearings must be emitted for the URI we just echoed, got {:?}",
+        second.items,
+    );
 }
 
 #[tokio::test]
