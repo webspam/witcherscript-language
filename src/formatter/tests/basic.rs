@@ -66,3 +66,19 @@ fn local_var_init_with_ident_value_preserved() {
         "var initializer that is an identifier must be preserved, got:\n{output}"
     );
 }
+
+#[test]
+fn cast_has_no_space_between_paren_and_value() {
+    let cases = [
+        "function F() { var x : SomeType; x = (SomeType)      someVar; }",
+        "function F() { var x : SomeType; x = (  SomeType  )  someVar   ; }",
+        "function F() { var x : SomeType; x = (SomeType)someVar; }",
+    ];
+    for input in cases {
+        let output = fmt(input);
+        assert!(
+            output.contains("(SomeType)someVar;"),
+            "cast should have no space between `)` and value, got:\n{output}"
+        );
+    }
+}
