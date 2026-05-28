@@ -112,6 +112,17 @@ pub(crate) fn publish_url(diag_key: &str) -> Option<Url> {
 }
 
 impl Backend {
+    fn send_publish_diagnostics(&self, uri: Url, diagnostics: Vec<Diagnostic>) {
+        // notify failure means the client disconnected; nothing to recover.
+        let _ = self
+            .client
+            .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
+                uri,
+                diagnostics,
+                version: None,
+            });
+    }
+
     pub(crate) fn publish_open_diagnostics(&self, version: u64) {
         let cfg = self.config.load();
         if matches!(cfg.diagnostics_scope, DiagnosticsScope::None) {
@@ -259,13 +270,7 @@ impl Backend {
 
         let republished = to_publish.len();
         for (uri, diagnostics) in to_publish {
-            let _ = self
-                .client
-                .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
-                    uri,
-                    diagnostics,
-                    version: None,
-                });
+            self.send_publish_diagnostics(uri, diagnostics);
         }
 
         debug!(
@@ -407,13 +412,7 @@ impl Backend {
 
         let republished = to_publish.len();
         for (uri, diagnostics) in to_publish {
-            let _ = self
-                .client
-                .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
-                    uri,
-                    diagnostics,
-                    version: None,
-                });
+            self.send_publish_diagnostics(uri, diagnostics);
         }
         debug!(
             op = "publish_syntactic_only",
@@ -442,6 +441,7 @@ impl Backend {
             list
         };
         for params in to_send {
+            // notify failure means the client disconnected; nothing to recover.
             let _ = self.client.notify::<LegacyScriptStatusNotification>(params);
         }
     }
@@ -484,6 +484,7 @@ impl Backend {
             list
         };
         for params in to_send {
+            // notify failure means the client disconnected; nothing to recover.
             let _ = self.client.notify::<FileScopeStatusNotification>(params);
         }
     }
@@ -513,13 +514,7 @@ impl Backend {
         };
         let retracted = uris.len();
         for uri in uris {
-            let _ = self
-                .client
-                .notify::<PublishDiagnostics>(PublishDiagnosticsParams {
-                    uri,
-                    diagnostics: Vec::new(),
-                    version: None,
-                });
+            self.send_publish_diagnostics(uri, Vec::new());
         }
         debug!(
             op = "reconcile_published_diagnostics",

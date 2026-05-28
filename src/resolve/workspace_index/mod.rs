@@ -17,6 +17,9 @@ pub use subscribers::ObservedKey;
 
 use subscribers::{diff_outward_keys, doc_surface_hash, outward_hash_map, scan_ident_occurrences};
 
+// rough empirical estimate of bytes per HashMap entry slot; not authoritative.
+const HASHMAP_ENTRY_BYTES: usize = 56;
+
 #[derive(Debug, Clone, Default)]
 pub struct WorkspaceIndex {
     documents: HashMap<String, Vec<Symbol>>,
@@ -146,9 +149,9 @@ impl WorkspaceIndex {
                 total += name.capacity();
                 total += ranges.capacity() * size_of::<std::ops::Range<usize>>();
             }
-            total += name_map.capacity() * 56;
+            total += name_map.capacity() * HASHMAP_ENTRY_BYTES;
         }
-        total += self.doc_idents.capacity() * 56;
+        total += self.doc_idents.capacity() * HASHMAP_ENTRY_BYTES;
         total
     }
 

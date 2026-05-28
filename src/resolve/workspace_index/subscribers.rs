@@ -56,6 +56,7 @@ fn hash_symbol_fields<H: std::hash::Hasher>(s: &Symbol, h: &mut H) {
     s.is_out.hash(h);
 }
 
+// DefaultHasher is non-deterministic across builds; used here only within a single process run.
 fn outward_symbol_hash(s: &Symbol) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::Hasher;
@@ -91,6 +92,7 @@ pub(super) fn diff_outward_keys(
     changed
 }
 
+// DefaultHasher is non-deterministic across builds; used here only within a single process run.
 pub(super) fn doc_surface_hash(uri: &str, symbols: &[Symbol]) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};

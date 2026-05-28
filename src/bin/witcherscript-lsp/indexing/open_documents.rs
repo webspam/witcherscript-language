@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use lsp_types::{Position, Url};
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, warn};
 use tree_sitter::{Parser, Tree};
 use witcherscript_language::document::{parse_document, parse_document_with_prior};
 use witcherscript_language::files::{canonical_uri, read_script_file};
@@ -126,11 +126,21 @@ impl Backend {
         );
         let canonical = canonical_uri(uri).unwrap_or_else(|| uri.to_string());
         let is_base = self.is_base_script_uri(uri);
-        let parsed = uri
-            .to_file_path()
-            .ok()
-            .and_then(|path| read_script_file(&path).ok())
-            .and_then(|text| parse_document(text).ok());
+        let parsed = match uri.to_file_path() {
+            Ok(path) => match read_script_file(&path) {
+                Ok(text) => parse_document(text)
+                    .map_err(|e| warn!(uri = %uri, error = %e, "failed to parse closed file"))
+                    .ok(),
+                Err(e) => {
+                    warn!(uri = %uri, error = %e, "failed to read closed file");
+                    None
+                }
+            },
+            Err(_) => {
+                warn!(uri = %uri, "closed file URI is not a file path");
+                None
+            }
+        };
 
         let mut changed: Vec<ObservedKey> = Vec::new();
         self.publish_compilation(|builder| {
