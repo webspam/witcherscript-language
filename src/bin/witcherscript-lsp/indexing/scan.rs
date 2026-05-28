@@ -148,8 +148,8 @@ impl Backend {
 
         if game_dir_opt.is_none() && extras.is_empty() && legacy_dirs.is_empty() {
             self.publish_compilation(|builder| {
-                builder.replace_base_scripts_index(WorkspaceIndex::default());
-                builder.replace_base_scripts_documents(HashMap::new());
+                builder.set_base_scripts_index(WorkspaceIndex::default());
+                builder.set_base_scripts_documents(HashMap::new());
                 builder.set_suppressed_base_uris(HashSet::new());
             });
             self.legacy_replacements.lock().clear();
@@ -334,8 +334,8 @@ impl Backend {
             .map(|(uri, doc)| (uri, Arc::new(doc)))
             .collect();
         self.publish_compilation(|builder| {
-            builder.replace_base_scripts_index(base_new_index);
-            builder.replace_base_scripts_documents(base_new_docs_arc);
+            builder.set_base_scripts_index(base_new_index);
+            builder.set_base_scripts_documents(base_new_docs_arc);
             builder.set_suppressed_base_uris(suppressed_base);
         });
         *self.legacy_replacements.lock() = legacy_replacements;

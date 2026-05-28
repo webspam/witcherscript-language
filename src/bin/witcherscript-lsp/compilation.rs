@@ -65,7 +65,7 @@ impl CompilationBuilder {
             .get_or_insert_with(|| (**base).clone())
     }
 
-    pub(crate) fn replace_base_scripts_index(&mut self, idx: WorkspaceIndex) {
+    pub(crate) fn set_base_scripts_index(&mut self, idx: WorkspaceIndex) {
         self.base_scripts_index = Some(idx);
     }
 
@@ -129,7 +129,7 @@ impl CompilationBuilder {
         (index, docs)
     }
 
-    pub(crate) fn replace_base_scripts_documents(
+    pub(crate) fn set_base_scripts_documents(
         &mut self,
         docs: HashMap<String, Arc<ParsedDocument>>,
     ) {
