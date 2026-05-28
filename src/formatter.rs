@@ -8,8 +8,10 @@ mod statements;
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum AnnotationPlacement {
+    #[default]
     Preserve,
     OwnLine,
     SameLine,
@@ -43,6 +45,19 @@ pub struct FormatOptions {
     pub compact_colon: bool,
     pub align_member_colons: bool,
     pub annotation_placement: AnnotationPlacement,
+}
+
+impl Default for FormatOptions {
+    fn default() -> Self {
+        Self {
+            tab_size: 4,
+            use_tabs: false,
+            line_limit: 100,
+            compact_colon: false,
+            align_member_colons: false,
+            annotation_placement: AnnotationPlacement::default(),
+        }
+    }
 }
 
 fn render_expr(node: Node, source: &str) -> String {
@@ -124,12 +139,10 @@ pub(super) fn is_alignable_field(node: Node) -> bool {
         return false;
     }
     let mut c = node.walk();
-    for child in node.children(&mut c) {
-        if child.kind() == "comment" || child.kind() == "annotation" {
-            return false;
-        }
-    }
-    true
+    let has_comment_or_annotation = node
+        .children(&mut c)
+        .any(|n| matches!(n.kind(), "comment" | "annotation"));
+    !has_comment_or_annotation
 }
 
 pub(super) fn is_bodiless_callable(node: Node) -> bool {
