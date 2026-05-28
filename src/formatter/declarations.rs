@@ -52,23 +52,19 @@ impl<'a> Formatter<'a> {
             .is_some_and(|ident| self.text(ident).trim_start_matches('@') == "addField")
     }
 
-    fn emit_annotation_on_own_line(&mut self, ann: Node) {
+    fn emit_annotation(&mut self, ann: Node) {
         let ann_text = self.render_node(ann);
         self.emit_indent();
         self.emit(&ann_text);
         self.nl();
     }
 
-    fn add_field_on_same_line(&self, node: Node, ann: Node) -> bool {
-        match self.annotation_placement {
+    fn emit_add_field_annotation(&mut self, node: Node, ann: Node) -> bool {
+        let same_line = match self.annotation_placement {
             super::AnnotationPlacement::SameLine => true,
             super::AnnotationPlacement::OwnLine => false,
             super::AnnotationPlacement::Preserve => self.annotation_same_line_in_source(node, ann),
-        }
-    }
-
-    fn emit_add_field_annotation(&mut self, node: Node, ann: Node) -> bool {
-        let same_line = self.add_field_on_same_line(node, ann);
+        };
         let ann_text = self.render_node(ann);
         self.emit_indent();
         self.emit(&ann_text);
@@ -86,7 +82,7 @@ impl<'a> Formatter<'a> {
             if self.is_add_field_annotation(ann) {
                 self.emit_add_field_annotation(node, ann)
             } else {
-                self.emit_annotation_on_own_line(ann);
+                self.emit_annotation(ann);
                 false
             }
         } else {
@@ -165,7 +161,7 @@ impl<'a> Formatter<'a> {
 
     pub(super) fn format_func_decl(&mut self, node: Node) {
         if let Some(ann) = self.child_of_kind(node, "annotation") {
-            self.emit_annotation_on_own_line(ann);
+            self.emit_annotation(ann);
         }
         self.emit_indent();
 
