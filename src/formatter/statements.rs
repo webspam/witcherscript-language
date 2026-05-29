@@ -145,17 +145,16 @@ impl<'a> Formatter<'a> {
         let indent = self.level * self.indent_unit.len();
         let cond_len = cond.map(|c| self.render_node(c).len()).unwrap_or(0);
         let cond_line = indent + 4 + cond_len + 2;
+        let cond_parts = cond
+            .map(|c| split_binary_condition(c, self.source))
+            .unwrap_or_default();
+        let splittable_cond = cond_parts.len() > 1;
 
-        if cond_line > self.line_limit {
+        if splittable_cond && cond_line > self.line_limit {
             self.emit_indent();
             self.emit("if (\n");
             self.level += 1;
-            let parts = if let Some(c) = cond {
-                split_binary_condition(c, self.source)
-            } else {
-                vec![]
-            };
-            for (fragment, op) in parts {
+            for (fragment, op) in cond_parts {
                 self.emit_indent();
                 self.emit(&fragment);
                 if let Some(o) = op {

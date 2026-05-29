@@ -86,6 +86,21 @@ fn split_signature_is_idempotent() {
 }
 
 #[test]
+fn long_unsplittable_if_condition_stays_inline() {
+    let src = "function F() { if (thePlayer.GetWorldPosition()) continue; }";
+    let out = fmt_limit(src, 20);
+    assert!(
+        !out.contains("if (\n"),
+        "unsplittable condition should stay inline, got:\n{out}"
+    );
+    assert!(
+        out.contains("if (thePlayer.GetWorldPosition()) {\n"),
+        "body should use block form when line limit exceeded, got:\n{out}"
+    );
+    assert!(out.contains("    continue;\n"), "got:\n{out}");
+}
+
+#[test]
 fn long_if_condition_splits_onto_own_lines() {
     let src = "function F() { if (alpha || beta || gamma) return; }";
     let out = fmt_limit(src, 30);

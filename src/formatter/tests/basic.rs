@@ -131,6 +131,22 @@ fn unary_not_has_no_space_before_operand() {
 }
 
 #[test]
+fn generic_type_has_no_space_around_angle_brackets() {
+    let cases = [
+        "var x : array<CComponent>;",
+        "var x : array   <   CComponent   >;",
+        "var x : array <CComponent>;",
+    ];
+    for input in cases {
+        let output = fmt(input);
+        assert!(
+            output.contains("array<CComponent>"),
+            "generic type should have no spaces around angle brackets, got:\n{output}"
+        );
+    }
+}
+
+#[test]
 fn cast_has_no_space_between_paren_and_value() {
     let cases = [
         "function F() { var x : SomeType; x = (SomeType)      someVar; }",
