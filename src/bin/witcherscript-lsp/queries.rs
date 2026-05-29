@@ -20,10 +20,8 @@ use tracing::trace;
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::formatter::{format_document, FormatOptions};
 use witcherscript_language::resolve::{
-    parse_generic_type, resolve_all_definitions, resolve_definition, signature_help, Definition,
-    SymbolDb,
+    resolve_all_definitions, resolve_definition, resolve_type_definition, signature_help,
 };
-use witcherscript_language::symbols::SymbolKind;
 use witcherscript_language::semantic_tokens::collect_semantic_tokens_cancellable;
 
 use crate::backend::Backend;
@@ -230,13 +228,9 @@ impl Backend {
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
             let db = handles.db();
 
-            let Some(def) =
-                resolve_definition(uri.as_str(), document, &db, source_position(position))
+            let Some(type_def) =
+                resolve_type_definition(uri.as_str(), document, &db, source_position(position))
             else {
-                break 'body Ok(None);
-            };
-
-            let Some(type_def) = type_target_for(&def, &db) else {
                 break 'body Ok(None);
             };
 
@@ -475,22 +469,5 @@ impl Backend {
             "complete",
         );
         result
-    }
-}
-
-fn type_target_for(def: &Definition, db: &SymbolDb<'_>) -> Option<Definition> {
-    match def.symbol.kind {
-        SymbolKind::Class | SymbolKind::Struct | SymbolKind::Enum | SymbolKind::State => {
-            Some(def.clone())
-        }
-        SymbolKind::EnumMember => {
-            let owner = def.symbol.container_name.as_deref()?;
-            db.find_top_level(owner)
-        }
-        _ => {
-            let raw = def.symbol.type_annotation.as_deref()?;
-            let lookup = parse_generic_type(raw).map(|(ctor, _)| ctor).unwrap_or(raw);
-            db.find_top_level(lookup)
-        }
     }
 }
