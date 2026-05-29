@@ -25,6 +25,14 @@ impl AnnotationPlacement {
             _ => Self::Preserve,
         }
     }
+
+    fn resolve(self, preserve: impl FnOnce() -> bool) -> bool {
+        match self {
+            Self::SameLine => true,
+            Self::OwnLine => false,
+            Self::Preserve => preserve(),
+        }
+    }
 }
 
 impl std::fmt::Display for AnnotationPlacement {

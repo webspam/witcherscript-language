@@ -144,6 +144,16 @@ fn default_only_merges_when_ident_matches() {
 }
 
 #[test]
+fn annotated_field_default_merges_under_same_line() {
+    let input = "class C {\n    @addField(CClass)\n    public var x : int;\n    default x = 1;\n}";
+    let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);
+    assert!(
+        output.contains("public var x : int;  default x = 1;"),
+        "an annotated field must still honor same-line default placement, got:\n{output}"
+    );
+}
+
+#[test]
 fn commented_field_with_same_line_default_not_merged() {
     let input = "class C {\n    var x /* c */ : int;\n    default x = 1;\n}";
     let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);

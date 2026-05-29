@@ -2,6 +2,8 @@ use tree_sitter::Node;
 
 use super::{child_nodes, is_alignable_field, is_bodiless_callable, Formatter};
 
+const DEFAULT_GAP: &str = "  ";
+
 impl<'a> Formatter<'a> {
     // ---- Top level ----
 
@@ -60,11 +62,8 @@ impl<'a> Formatter<'a> {
     }
 
     fn emit_add_field_annotation(&mut self, node: Node, ann: Node) -> bool {
-        let same_line = match self.annotation_placement {
-            super::AnnotationPlacement::SameLine => true,
-            super::AnnotationPlacement::OwnLine => false,
-            super::AnnotationPlacement::Preserve => self.annotation_same_line_in_source(node, ann),
-        };
+        let placement = self.annotation_placement;
+        let same_line = placement.resolve(|| self.annotation_same_line_in_source(node, ann));
         let ann_text = self.render_node(ann);
         self.emit_indent();
         self.emit(&ann_text);
@@ -99,13 +98,8 @@ impl<'a> Formatter<'a> {
         if !self.paired_member_default(var_decl, default_val) {
             return false;
         }
-        match self.default_placement {
-            super::AnnotationPlacement::SameLine => true,
-            super::AnnotationPlacement::OwnLine => false,
-            super::AnnotationPlacement::Preserve => {
-                self.default_same_line_in_source(var_decl, default_val)
-            }
-        }
+        let placement = self.default_placement;
+        placement.resolve(|| self.default_same_line_in_source(var_decl, default_val))
     }
 
     pub(super) fn format_member_var_decl(
@@ -136,7 +130,7 @@ impl<'a> Formatter<'a> {
                     self.emit(" ");
                 }
             } else {
-                self.emit("  ");
+                self.emit(DEFAULT_GAP);
             }
             self.format_children(default_val);
         }
@@ -281,7 +275,6 @@ impl<'a> Formatter<'a> {
         members: &[Node],
         colon_targets: &[Option<usize>],
     ) -> Vec<Option<usize>> {
-        const MIN_GAP_BEFORE_DEFAULT: usize = 2;
         let mut targets = vec![None; members.len()];
         if !self.align_member_colons {
             return targets;
@@ -306,7 +299,7 @@ impl<'a> Formatter<'a> {
                     })
                     .max()
                     .unwrap_or(0);
-                let col = indent_width + width + MIN_GAP_BEFORE_DEFAULT;
+                let col = indent_width + width + DEFAULT_GAP.len();
                 for k in 0..pair_count {
                     targets[idx + k * 2] = Some(col);
                 }
