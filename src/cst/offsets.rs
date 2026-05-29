@@ -9,6 +9,14 @@ pub(crate) fn nodes_at_offset<'a>(root: Node<'a>, byte_offset: usize) -> Vec<Nod
         .collect()
 }
 
+pub(crate) fn offset_in_comment(root: Node, byte_offset: usize) -> bool {
+    let Some(probe) = byte_offset.checked_sub(1) else {
+        return false;
+    };
+    root.descendant_for_byte_range(probe, probe)
+        .is_some_and(|node| node.kind() == "comment")
+}
+
 pub(crate) fn significant_node_before_byte<'a>(
     root: Node<'a>,
     source: &[u8],

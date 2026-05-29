@@ -1,7 +1,8 @@
 use lsp_types::request::Completion;
 use lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse, PartialResultParams,
-    TextDocumentIdentifier, TextDocumentPositionParams, WorkDoneProgressParams,
+    CompletionContext, CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse,
+    CompletionTriggerKind, PartialResultParams, TextDocumentIdentifier, TextDocumentPositionParams,
+    WorkDoneProgressParams,
 };
 
 use super::fixture::Fixture;
@@ -11,6 +12,13 @@ fn items_of(resp: CompletionResponse) -> Vec<CompletionItem> {
     match resp {
         CompletionResponse::Array(items) => items,
         CompletionResponse::List(list) => list.items,
+    }
+}
+
+fn trigger_context(trigger_character: &str) -> CompletionContext {
+    CompletionContext {
+        trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,
+        trigger_character: Some(trigger_character.to_string()),
     }
 }
 
@@ -51,6 +59,86 @@ async fn completion_after_dot_returns_class_method() {
         .find(|i| i.label == "DoThing")
         .expect("DoThing completion item present");
     assert_eq!(method.kind, Some(CompletionItemKind::METHOD));
+}
+
+#[tokio::test]
+async fn dot_trigger_in_member_access_returns_members() {
+    let f = Fixture::parse(concat!(
+        "class CExample {\n",
+        "    public function DoThing() : void {}\n",
+        "}\n",
+        "function Test() {\n",
+        "    var e : CExample;\n",
+        "    e.$0\n",
+        "}\n",
+    ));
+
+    let mut client = LspClient::spawn().await;
+    for file in &f.files {
+        client.open(&file.uri, &file.text).await;
+    }
+
+    let (cursor_uri, pos) = f.cursor();
+    let resp = client
+        .request::<Completion>(CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: cursor_uri },
+                position: pos,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: Some(trigger_context(".")),
+        })
+        .await
+        .expect("completion response");
+
+    let labels: Vec<String> = items_of(resp).into_iter().map(|i| i.label).collect();
+    assert!(
+        labels.contains(&"DoThing".to_string()),
+        "dot trigger on member access should still list members, got {labels:?}"
+    );
+}
+
+#[tokio::test]
+async fn no_trigger_offers_completions_in_a_comment() {
+    let f = Fixture::parse(concat!(
+        "function Test() {\n",
+        "    // pick up the loot$0\n",
+        "}\n",
+    ));
+
+    let mut client = LspClient::spawn().await;
+    for file in &f.files {
+        client.open(&file.uri, &file.text).await;
+    }
+
+    let (cursor_uri, pos) = f.cursor();
+    let contexts = [
+        Some(trigger_context(".")),
+        Some(trigger_context(":")),
+        Some(trigger_context("@")),
+        None,
+    ];
+    for context in contexts {
+        let resp = client
+            .request::<Completion>(CompletionParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier {
+                        uri: cursor_uri.clone(),
+                    },
+                    position: pos,
+                },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: context.clone(),
+            })
+            .await;
+
+        assert!(
+            resp.is_none(),
+            "no completions expected in a comment (context {context:?}), got {resp:?}"
+        );
+    }
 }
 
 #[tokio::test]

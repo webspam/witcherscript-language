@@ -2,14 +2,15 @@ use std::time::Instant;
 
 use async_lsp::ResponseError;
 use lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse, InsertTextFormat,
+    CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse,
+    CompletionTriggerKind, InsertTextFormat,
 };
 use tracing::trace;
 use witcherscript_language::resolve::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
     default_or_hint_member_completions, expression_completions, extends_completions,
-    new_lifetime_completions, new_type_completions, script_body_completions,
+    new_lifetime_completions, new_type_completions, position_in_comment, script_body_completions,
     state_owner_completions, statement_completions, type_completions_arc,
     AfterWrapMethodCompletions, Definition, SymbolDb, BUILTIN_TYPE_COMPLETIONS,
 };
@@ -23,6 +24,14 @@ use crate::convert::{
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
+fn triggered_by_dot(params: &CompletionParams) -> bool {
+    let Some(ctx) = &params.context else {
+        return false;
+    };
+    ctx.trigger_kind == CompletionTriggerKind::TRIGGER_CHARACTER
+        && ctx.trigger_character.as_deref() == Some(".")
+}
+
 fn sorted_completion_item(db: &SymbolDb, def: &Definition, tier: u8) -> CompletionItem {
     let params = db.parameters_of(&def.uri, def.symbol.id);
     let mut item = completion_item(def, &params);
@@ -35,6 +44,7 @@ impl Backend {
         &self,
         params: CompletionParams,
     ) -> Result<Option<CompletionResponse>> {
+        let dot_triggered = triggered_by_dot(&params);
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
         let started_at = Instant::now();
@@ -50,6 +60,11 @@ impl Backend {
 
             let pos = source_position(position);
 
+            if position_in_comment(document, pos) {
+                trace!(op = "completion", "cursor in comment, suppressing");
+                break 'body Ok(None);
+            }
+
             let member_items: Vec<CompletionItem> =
                 completion_members(uri.as_str(), document, &db, pos)
                     .iter()
@@ -57,6 +72,11 @@ impl Backend {
                     .collect();
             if !member_items.is_empty() {
                 break 'body Ok(Some(CompletionResponse::Array(member_items)));
+            }
+
+            // A `.` keypress only ever opens a member access; suppress the statement/keyword fall-through.
+            if dot_triggered {
+                break 'body Ok(None);
             }
 
             let default_or_hint = default_or_hint_member_completions(document, &db, pos);
