@@ -4,7 +4,10 @@ use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::{Symbol, SymbolKind};
 
-use super::ast::{find_ancestor_of_kind, first_named_child, identifier_at, nodes_at_offset};
+use super::ast::{
+    find_ancestor_of_kind, first_named_child, identifier_at, nodes_at_offset,
+    significant_node_before_byte,
+};
 use super::inference::{
     enclosing_type_context, resolve_document_top_level, resolve_member_access, resolve_name,
     resolve_name_in_context,
@@ -101,10 +104,40 @@ pub fn resolve_all_definitions(
     db: &SymbolDb,
     position: SourcePosition,
 ) -> Vec<Definition> {
-    let Some(primary) = resolve_definition(uri, document, db, position) else {
+    let Some(byte_offset) = document
+        .line_index
+        .position_to_byte(&document.source, position)
+    else {
+        return Vec::new();
+    };
+    let primary = resolve_definition_at_byte(uri, document, db, byte_offset)
+        .or_else(|| resolve_past_trailing_semicolon(uri, document, db, byte_offset));
+    let Some(primary) = primary else {
         return Vec::new();
     };
     all_declarations_of(&primary, db)
+}
+
+/// Cursor parked past a line-ending `;` resolves nothing, yet the identifier left of it is the obvious intent.
+fn resolve_past_trailing_semicolon(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_offset: usize,
+) -> Option<Definition> {
+    let source = document.source.as_bytes();
+    let rest_of_line = source[byte_offset..].iter().take_while(|&&b| b != b'\n');
+    if rest_of_line.clone().any(|b| !b.is_ascii_whitespace()) {
+        return None;
+    }
+    let root = document.tree.root_node();
+    let semicolon = significant_node_before_byte(root, source, byte_offset)?;
+    if semicolon.kind() != ";" {
+        return None;
+    }
+    let before_semicolon = significant_node_before_byte(root, source, semicolon.start_byte())?;
+    let ident = identifier_at(root, before_semicolon.end_byte().checked_sub(1)?)?;
+    resolve_for_ident(uri, document, db, ident, ident.start_byte())
 }
 
 pub(super) fn all_declarations_of(definition: &Definition, db: &SymbolDb) -> Vec<Definition> {
