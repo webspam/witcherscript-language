@@ -104,12 +104,14 @@ pub fn resolve_all_definitions(
     db: &SymbolDb,
     position: SourcePosition,
 ) -> Vec<Definition> {
-    let primary = resolve_definition(uri, document, db, position).or_else(|| {
-        let byte_offset = document
-            .line_index
-            .position_to_byte(&document.source, position)?;
-        resolve_past_trailing_semicolon(uri, document, db, byte_offset)
-    });
+    let Some(byte_offset) = document
+        .line_index
+        .position_to_byte(&document.source, position)
+    else {
+        return Vec::new();
+    };
+    let primary = resolve_definition_at_byte(uri, document, db, byte_offset)
+        .or_else(|| resolve_past_trailing_semicolon(uri, document, db, byte_offset));
     let Some(primary) = primary else {
         return Vec::new();
     };
