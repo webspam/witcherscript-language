@@ -258,6 +258,37 @@ fn resolves_enum_member_reference_in_expression() {
 }
 
 #[test]
+fn goto_def_past_trailing_semicolon_resolves_left_identifier() {
+    let t = TestDb::new(
+        "class CInventoryComponent {}\n\
+         class C {\n  import final function GetInventory() : CInventoryComponent;$0\n}\n",
+    );
+    let (uri, pos) = t.cursor();
+    let defs = resolve_all_definitions(&uri, t.doc_for(&uri), &t.db(), pos);
+    assert_eq!(
+        defs.len(),
+        1,
+        "should resolve the type name left of the trailing semicolon"
+    );
+    assert_eq!(defs[0].symbol.name, "CInventoryComponent");
+    assert_eq!(defs[0].symbol.kind, SymbolKind::Class);
+}
+
+#[test]
+fn goto_def_past_semicolon_ignores_non_identifier_before_it() {
+    let t = TestDb::new(
+        "function Make() {}\n\
+         function F() {\n  Make();$0\n}\n",
+    );
+    let (uri, pos) = t.cursor();
+    let defs = resolve_all_definitions(&uri, t.doc_for(&uri), &t.db(), pos);
+    assert!(
+        defs.is_empty(),
+        "char left of the semicolon is ')', not an identifier"
+    );
+}
+
+#[test]
 fn goto_def_from_call_site_returns_class_body_and_wrap() {
     let t = TestDb::new(
         "//- /base.ws\n\
