@@ -8,6 +8,7 @@ mod completion_catalog;
 mod definition;
 mod inference;
 mod name_context;
+mod overrides;
 mod references;
 mod shadowed_base;
 mod signature;
@@ -37,6 +38,7 @@ pub use definition::{
 };
 pub use inference::infer_expr_type_memo;
 pub use name_context::{classify_ident_context, NameContext};
+pub use overrides::{overridden_top_level, OverriddenSymbol};
 pub use references::find_references;
 pub use signature::{hover_text, signature_help, SignatureHelpInfo};
 pub use subscription_registry::SubscriptionRegistry;

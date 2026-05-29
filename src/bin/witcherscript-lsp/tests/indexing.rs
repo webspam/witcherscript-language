@@ -96,6 +96,9 @@ mod watched_files;
 mod concurrent_doc_ops;
 
 #[cfg(test)]
+mod code_lens;
+
+#[cfg(test)]
 mod legacy_helpers;
 
 #[cfg(test)]

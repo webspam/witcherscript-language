@@ -17,6 +17,7 @@ mod completion_type;
 mod definition;
 mod index;
 mod inheritance;
+mod overrides;
 mod parameters;
 mod references;
 mod script_globals;

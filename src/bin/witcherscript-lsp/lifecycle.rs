@@ -5,16 +5,17 @@ use std::time::Instant;
 
 use async_lsp::ResponseError;
 use lsp_types::{
-    CodeActionKind, CodeActionOptions, CodeActionProviderCapability, CompletionOptions,
-    DiagnosticOptions, DiagnosticServerCapabilities, DidChangeConfigurationParams,
-    FileOperationFilter, FileOperationPattern, FileOperationPatternKind,
-    FileOperationRegistrationOptions, HoverProviderCapability, InitializeParams, InitializeResult,
-    InitializedParams, OneOf, RenameOptions, SemanticTokenModifier, SemanticTokenType,
-    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
-    SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelpOptions,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TypeDefinitionProviderCapability,
-    WorkDoneProgressOptions, WorkspaceFileOperationsServerCapabilities,
-    WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
+    CodeActionKind, CodeActionOptions, CodeActionProviderCapability, CodeLensOptions,
+    CompletionOptions, DiagnosticOptions, DiagnosticServerCapabilities,
+    DidChangeConfigurationParams, FileOperationFilter, FileOperationPattern,
+    FileOperationPatternKind, FileOperationRegistrationOptions, HoverProviderCapability,
+    InitializeParams, InitializeResult, InitializedParams, OneOf, RenameOptions,
+    SemanticTokenModifier, SemanticTokenType, SemanticTokensFullOptions, SemanticTokensLegend,
+    SemanticTokensOptions, SemanticTokensServerCapabilities, ServerCapabilities,
+    SignatureHelpOptions, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TypeDefinitionProviderCapability, WorkDoneProgressOptions,
+    WorkspaceFileOperationsServerCapabilities, WorkspaceFoldersServerCapabilities,
+    WorkspaceServerCapabilities,
 };
 use tracing::{info, trace};
 use witcherscript_language::formatter::AnnotationPlacement;
@@ -100,6 +101,13 @@ impl Backend {
                     cfg.diagnostics_scope = DiagnosticsScope::from_setting(s);
                 }
             }
+            if let Some(b) = opts
+                .get("codeLens")
+                .and_then(|v| v.get("overriddenSymbols"))
+                .and_then(|v| v.as_bool())
+            {
+                cfg.code_lens_overridden_symbols = b;
+            }
             if let Some(level_str) = opts.get("logLevel").and_then(|v| v.as_str()) {
                 cfg.log_level = level_to_u8(level_from_str(level_str));
             }
@@ -136,6 +144,16 @@ impl Backend {
             .is_some();
         self.client_supports_pull_diagnostics
             .store(supports_pull, Ordering::Release);
+
+        let supports_code_lens_refresh = params
+            .capabilities
+            .workspace
+            .as_ref()
+            .and_then(|ws| ws.code_lens.as_ref())
+            .and_then(|cl| cl.refresh_support)
+            .unwrap_or(false);
+        self.client_supports_code_lens_refresh
+            .store(supports_code_lens_refresh, Ordering::Release);
 
         let roots = workspace_roots(params);
         let game_dir = self.base_scripts_path.lock().clone();
@@ -195,6 +213,9 @@ impl Backend {
                         resolve_provider: None,
                     },
                 )),
+                code_lens_provider: Some(CodeLensOptions {
+                    resolve_provider: Some(false),
+                }),
                 workspace: Some(WorkspaceServerCapabilities {
                     workspace_folders: Some(WorkspaceFoldersServerCapabilities {
                         supported: Some(true),
@@ -233,6 +254,8 @@ impl Backend {
         self.index_base_scripts().await;
         self.initial_index_done.store(true, Ordering::Release);
         self.notify_diagnostics_changed();
+        // The client's first codeLens request raced ahead of index_base_scripts above; re-pull now that override maps exist.
+        self.request_code_lens_refresh();
         trace!(
             op = "initialized",
             elapsed_us = started_at.elapsed().as_micros(),
@@ -262,6 +285,9 @@ impl Backend {
         }
         if change.needs_reindex || change.diagnostics_changed {
             self.notify_diagnostics_changed();
+        }
+        if change.code_lens_changed || change.needs_reindex {
+            self.request_code_lens_refresh();
         }
         self.publish_file_scope_status();
         trace!(
