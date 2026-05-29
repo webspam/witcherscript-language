@@ -51,6 +51,17 @@ use crate::test_support::TestDb;
     3,
     &["file:///base.ws", "file:///a.ws"],
 )]
+#[case::from_wrapped_method_macro(
+    "//- /base.ws\n\
+     class CPlayer {\n  public function OnSpawned() {}\n}\n\
+     //- /a.ws\n\
+     @wrapMethod(CPlayer)\nfunction OnSpawned() {\n  wrapped$0Method();\n}\n\
+     //- /caller.ws\n\
+     function Caller() {\n  var p : CPlayer;\n  p.OnSpawned();\n}\n",
+    true,
+    3,
+    &["file:///base.ws", "file:///a.ws", "file:///caller.ws"],
+)]
 #[case::exclude_declaration_keeps_only_call_site(
     "//- /base.ws\n\
      class CPlayer {\n  public function On$0Spawned() {}\n}\n\

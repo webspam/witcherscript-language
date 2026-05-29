@@ -228,6 +228,18 @@ fn classified_tokens(source: &str, db: &SymbolDb) -> Vec<(String, u32)> {
     out
 }
 
+#[test]
+fn wrapped_method_macro_gets_no_token() {
+    let source = "class CPlayer {\n  public function OnSpawned() {}\n}\n\
+                  @wrapMethod(CPlayer)\nfunction OnSpawned() {\n  wrappedMethod();\n}\n";
+    let t = crate::test_support::TestDb::new(source);
+    let toks = classified_tokens(source, &t.db());
+    assert!(
+        !toks.iter().any(|(text, _)| text == "wrappedMethod"),
+        "wrappedMethod must keep its current (absent) highlighting, got: {toks:?}"
+    );
+}
+
 #[rstest]
 #[case::class_declaration_name("class declaration name", "class Foo {}\n", "Foo", TT_CLASS)]
 #[case::struct_declaration_name("struct declaration name", "struct Bar {}\n", "Bar", TT_CLASS)]

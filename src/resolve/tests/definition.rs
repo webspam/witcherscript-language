@@ -1,6 +1,6 @@
 use rstest::rstest;
 
-use super::super::{resolve_all_definitions, resolve_definition};
+use super::super::{hover_text, resolve_all_definitions, resolve_definition};
 use crate::symbols::SymbolKind;
 use crate::test_support::TestDb;
 
@@ -310,4 +310,64 @@ fn goto_def_from_call_site_returns_class_body_and_wrap() {
         "class-body declaration first"
     );
     assert!(defs.iter().any(|d| d.uri == "file:///a.ws"));
+}
+
+#[test]
+fn wrapped_method_macro_resolves_to_wrapped_method() {
+    let t = TestDb::new(
+        "//- /base.ws\n\
+         class CPlayer {\n  public function OnSpawned() {}\n}\n\
+         //- /a.ws\n\
+         @wrapMethod(CPlayer)\nfunction OnSpawned() {\n  wrapped$0Method();\n}\n",
+    );
+    let (uri, pos) = t.cursor();
+    let doc = t.doc_for(&uri);
+    let def = resolve_definition(&uri, doc, &t.db(), pos)
+        .expect("wrappedMethod should resolve to the wrapped method");
+    assert_eq!(def.symbol.name, "OnSpawned");
+    assert_eq!(def.symbol.kind, SymbolKind::Method);
+    assert_eq!(def.symbol.container_name.as_deref(), Some("CPlayer"));
+    assert!(
+        hover_text(&def).contains("(method) CPlayer.OnSpawned"),
+        "hover should describe the wrapped method"
+    );
+
+    let defs = resolve_all_definitions(&uri, doc, &t.db(), pos);
+    assert_eq!(
+        defs.len(),
+        2,
+        "class-body declaration plus the wrap declaration"
+    );
+    assert!(defs.iter().any(|d| d.uri == "file:///base.ws"));
+    assert!(defs.iter().any(|d| d.uri == "file:///a.ws"));
+}
+
+#[test]
+fn this_wrapped_method_member_access_does_not_redirect() {
+    let t = TestDb::new(
+        "class CPlayer {\n  public function OnSpawned() {}\n}\n\
+         @wrapMethod(CPlayer)\nfunction OnSpawned() {\n  this.wrapped$0Method();\n}\n",
+    );
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos);
+    assert!(
+        def.is_none(),
+        "this.wrappedMethod() is an ordinary member call, not the macro"
+    );
+}
+
+#[test]
+fn wrapped_method_outside_wrap_does_not_redirect() {
+    let t = TestDb::new(
+        "//- /base.ws\n\
+         class CPlayer {\n  public function Heal() {}\n}\n\
+         //- /a.ws\n\
+         @addMethod(CPlayer)\nfunction Boost() {\n  wrapped$0Method();\n}\n",
+    );
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos);
+    assert!(
+        def.is_none(),
+        "wrappedMethod outside a @wrapMethod body has nothing to wrap"
+    );
 }

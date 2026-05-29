@@ -2,7 +2,7 @@ use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
-use crate::symbols::{Symbol, SymbolKind};
+use crate::symbols::{AccessLevel, Symbol, SymbolKind};
 
 use super::ast::{
     find_ancestor_of_kind, first_named_child, identifier_at, nodes_at_offset,
@@ -68,8 +68,46 @@ fn resolve_for_ident(
     byte_offset: usize,
 ) -> Option<Definition> {
     let name = ident.utf8_text(document.source.as_bytes()).ok()?;
+    if let Some(def) = resolve_wrapped_method(document, db, ident, byte_offset, name) {
+        return Some(def);
+    }
     resolve_at_definition_site(uri, document, byte_offset, name)
         .or_else(|| resolve_for_ident_no_site_fallback(uri, document, db, ident, byte_offset))
+}
+
+const WRAPPED_METHOD_MACRO: &str = "wrappedMethod";
+
+/// `wrappedMethod()` inside a `@wrapMethod(Class)` body navigates to the method it wraps.
+fn resolve_wrapped_method(
+    document: &ParsedDocument,
+    db: &SymbolDb<'_>,
+    ident: Node,
+    byte_offset: usize,
+    name: &str,
+) -> Option<Definition> {
+    if name != WRAPPED_METHOD_MACRO {
+        return None;
+    }
+    // `this.wrappedMethod()` is an ordinary member call, not the macro.
+    if ident
+        .parent()
+        .is_some_and(|p| p.kind() == "member_access_expr")
+    {
+        return None;
+    }
+    let callable = document
+        .symbols
+        .enclosing_symbol_at(byte_offset, &[SymbolKind::Function])?;
+    let target = wrap_method_target_class(callable)?;
+    db.find_member(target, &callable.name, AccessLevel::Private)
+}
+
+fn wrap_method_target_class(symbol: &Symbol) -> Option<&str> {
+    symbol
+        .annotations
+        .iter()
+        .find(|a| a.name == "wrapMethod")
+        .and_then(|a| a.argument.as_deref())
 }
 
 fn resolve_for_ident_no_site_fallback(
