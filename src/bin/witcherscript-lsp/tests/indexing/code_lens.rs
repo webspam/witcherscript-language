@@ -1,9 +1,15 @@
 use std::sync::Arc;
 
+use async_lsp::ErrorCode;
 use lsp_types::WorkDoneProgressParams;
-use lsp_types::{CodeLensParams, Location, PartialResultParams, TextDocumentIdentifier, Url};
+use lsp_types::{
+    CodeLens, CodeLensParams, Command, Location, PartialResultParams, Position, Range,
+    TextDocumentIdentifier, Url,
+};
 
-use super::legacy_helpers::{indexed_legacy_override, open_params};
+use super::legacy_helpers::{indexed_legacy_override, make_backend, open_params};
+use crate::backend::Backend;
+use crate::queries::ReferenceLensData;
 
 fn code_lens_params(uri: &Url) -> CodeLensParams {
     CodeLensParams {
@@ -11,6 +17,12 @@ fn code_lens_params(uri: &Url) -> CodeLensParams {
         work_done_progress_params: WorkDoneProgressParams::default(),
         partial_result_params: PartialResultParams::default(),
     }
+}
+
+fn enable_references_lens(backend: &Backend) {
+    let mut cfg = (**backend.config.load()).clone();
+    cfg.code_lens_references = true;
+    backend.config.store(Arc::new(cfg));
 }
 
 #[tokio::test]
@@ -98,5 +110,181 @@ async fn no_lens_for_brand_new_legacy_file() {
     assert!(
         result.is_none(),
         "a brand-new legacy file overrides no base script"
+    );
+}
+
+#[tokio::test]
+async fn references_lens_emits_unresolved_data_lens() {
+    let backend = make_backend();
+    enable_references_lens(&backend);
+    let uri = Url::parse("file:///refs_main.ws").expect("uri parses");
+    backend._did_open(open_params(
+        &uri,
+        "function Foo() {}\nfunction Bar() { Foo(); }\n",
+    ));
+
+    let lenses = backend
+        ._code_lens(code_lens_params(&uri))
+        .await
+        .expect("code_lens ok")
+        .expect("references lenses present");
+
+    assert!(
+        lenses.iter().all(|l| l.command.is_none()),
+        "phase-1 reference lenses carry no command"
+    );
+    for lens in &lenses {
+        let data: ReferenceLensData = serde_json::from_value(
+            lens.data
+                .clone()
+                .expect("phase-1 lens carries resolve data"),
+        )
+        .expect("data deserializes as ReferenceLensData");
+        assert_eq!(
+            data.position, lens.range.start,
+            "resolve data position anchors the lens identifier"
+        );
+        assert_eq!(data.uri, uri, "resolve data carries the document uri");
+    }
+}
+
+#[tokio::test]
+async fn references_lens_resolve_fills_count() {
+    let backend = make_backend();
+    enable_references_lens(&backend);
+    let uri = Url::parse("file:///refs_count.ws").expect("uri parses");
+    backend._did_open(open_params(
+        &uri,
+        "function Foo() {}\nfunction Bar() {}\nfunction Baz() { Foo(); Foo(); Bar(); }\n",
+    ));
+
+    let lenses = backend
+        ._code_lens(code_lens_params(&uri))
+        .await
+        .expect("code_lens ok")
+        .expect("references lenses present");
+
+    let mut titles = Vec::new();
+    for lens in lenses {
+        let resolved = backend._code_lens_resolve(lens).await.expect("resolve ok");
+        let command = resolved.command.expect("resolved lens carries a command");
+        assert_eq!(
+            command.command, "witcherscript.showReferences",
+            "reference lens invokes the show-references command"
+        );
+        assert_eq!(
+            command
+                .arguments
+                .as_ref()
+                .expect("command has arguments")
+                .len(),
+            3,
+            "show-references carries uri, position and locations"
+        );
+        titles.push(command.title);
+    }
+    titles.sort();
+    assert_eq!(
+        titles,
+        vec![
+            "0 references".to_string(),
+            "1 reference".to_string(),
+            "2 references".to_string(),
+        ],
+        "counts cover zero (Baz), singular (Bar) and plural (Foo)"
+    );
+}
+
+#[tokio::test]
+async fn references_lens_resolve_passthrough_for_gamedef() {
+    let backend = make_backend();
+    let lens = CodeLens {
+        range: Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 5,
+            },
+        },
+        command: Some(Command {
+            title: "game definition".to_string(),
+            command: "witcherscript.goToBaseDefinition".to_string(),
+            arguments: Some(vec![]),
+        }),
+        data: None,
+    };
+
+    let resolved = backend._code_lens_resolve(lens).await.expect("resolve ok");
+    let command = resolved.command.expect("command preserved");
+    assert_eq!(
+        command.command, "witcherscript.goToBaseDefinition",
+        "a fully-built lens with no data passes through unchanged"
+    );
+}
+
+#[tokio::test]
+async fn references_lens_resolve_rejects_malformed_data() {
+    let backend = make_backend();
+    let lens = CodeLens {
+        range: Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 1,
+            },
+        },
+        command: None,
+        data: Some(serde_json::json!({ "bogus": true })),
+    };
+
+    let err = backend
+        ._code_lens_resolve(lens)
+        .await
+        .expect_err("malformed data is rejected");
+    assert_eq!(
+        err.code,
+        ErrorCode::INVALID_PARAMS,
+        "malformed reference lens data fails loud"
+    );
+}
+
+#[tokio::test]
+async fn references_lens_suppressed_when_disabled() {
+    let backend = make_backend();
+    let uri = Url::parse("file:///refs_off.ws").expect("uri parses");
+    backend._did_open(open_params(&uri, "function Foo() {}\n"));
+
+    let result = backend
+        ._code_lens(code_lens_params(&uri))
+        .await
+        .expect("code_lens ok");
+    assert!(
+        result.is_none(),
+        "no references lens when the feature is off and the file overrides nothing"
+    );
+}
+
+#[tokio::test]
+async fn references_lens_appears_on_non_override_file() {
+    let backend = make_backend();
+    enable_references_lens(&backend);
+    let uri = Url::parse("file:///refs_plain.ws").expect("uri parses");
+    backend._did_open(open_params(&uri, "function Foo() {}\n"));
+
+    let lenses = backend
+        ._code_lens(code_lens_params(&uri))
+        .await
+        .expect("code_lens ok")
+        .expect("a plain file still gets reference lenses");
+    assert_eq!(lenses.len(), 1, "one eligible top-level function");
+    assert!(
+        lenses.iter().all(|l| l.command.is_none()),
+        "references lens decouples from the game-definition override gate"
     );
 }

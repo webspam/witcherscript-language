@@ -8,10 +8,10 @@ use lsp_types::{
     DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentSymbolParams,
     DocumentSymbolResponse, FullDocumentDiagnosticReport, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, MarkupContent, MarkupKind,
-    RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, SemanticToken,
-    SemanticTokens, SemanticTokensParams, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
-    TextEdit, UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams,
-    WorkspaceDiagnosticReportResult,
+    Position, RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport,
+    SemanticToken, SemanticTokens, SemanticTokensParams, SemanticTokensResult, SignatureHelp,
+    SignatureHelpParams, TextEdit, UnchangedDocumentDiagnosticReport, Url,
+    WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
 };
 
 use crate::config::DiagnosticsScope;
@@ -23,6 +23,7 @@ use witcherscript_language::resolve::{
     signature_help, OverriddenSymbol,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens_cancellable;
+use witcherscript_language::symbols::{Symbol, SymbolKind};
 
 use crate::backend::Backend;
 use crate::convert::{
@@ -35,6 +36,14 @@ type Result<T> = std::result::Result<T, ResponseError>;
 
 const GO_TO_BASE_COMMAND: &str = "witcherscript.goToBaseDefinition";
 const GO_TO_BASE_TITLE: &str = "game definition";
+const SHOW_REFERENCES_COMMAND: &str = "witcherscript.showReferences";
+
+// Identifies the declaration a reference-count lens belongs to so phase 2 can re-resolve it.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct ReferenceLensData {
+    pub(crate) uri: Url,
+    pub(crate) position: Position,
+}
 
 // Custom command, not a built-in: VS Code built-ins reject raw JSON args, so the extension wrapper reconstructs vscode types from this Location.
 fn base_definition_lens(overridden: OverriddenSymbol) -> Option<CodeLens> {
@@ -59,6 +68,32 @@ fn base_definition_lens(overridden: OverriddenSymbol) -> Option<CodeLens> {
         }),
         data: None,
     })
+}
+
+fn symbol_eligible_for_reference_lens(symbol: &Symbol) -> bool {
+    matches!(
+        symbol.kind,
+        SymbolKind::Class
+            | SymbolKind::Struct
+            | SymbolKind::Enum
+            | SymbolKind::Function
+            | SymbolKind::State
+            | SymbolKind::Method
+            | SymbolKind::Event
+    )
+}
+
+fn reference_lens(symbol: &Symbol, uri: &Url) -> CodeLens {
+    let range = lsp_range(symbol.selection_range);
+    let data = ReferenceLensData {
+        uri: uri.clone(),
+        position: range.start,
+    };
+    CodeLens {
+        range,
+        command: None,
+        data: Some(serde_json::to_value(data).expect("ReferenceLensData always serializes")),
+    }
 }
 
 impl Backend {
@@ -384,12 +419,11 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "code_lens", uri = %uri, "start");
         let result = 'body: {
-            if !self.config.load().code_lens_overridden_symbols {
+            let cfg = self.config.load();
+            let want_overrides = cfg.code_lens_overridden_symbols;
+            let want_references = cfg.code_lens_references;
+            if !want_overrides && !want_references {
                 trace!(op = "code_lens", uri = %uri, reason = "feature_disabled", "skip");
-                break 'body Ok(None);
-            }
-            if !self.replaces_base_script(&uri) {
-                trace!(op = "code_lens", uri = %uri, reason = "not_an_override", "skip");
                 break 'body Ok(None);
             }
             let snap = self.snapshot();
@@ -397,21 +431,27 @@ impl Backend {
                 trace!(op = "code_lens", uri = %uri, reason = "no_open_document", "skip");
                 break 'body Ok(None);
             };
-            let top_level = document
-                .symbols
-                .all()
-                .iter()
-                .filter(|s| s.container.is_none())
-                .count();
-            let lenses: Vec<CodeLens> =
-                overridden_top_level(document.symbols.all(), &snap.base_scripts_index)
-                    .into_iter()
-                    .filter_map(base_definition_lens)
-                    .collect();
+            let mut lenses: Vec<CodeLens> = Vec::new();
+            if want_overrides && self.replaces_base_script(&uri) {
+                lenses.extend(
+                    overridden_top_level(document.symbols.all(), &snap.base_scripts_index)
+                        .into_iter()
+                        .filter_map(base_definition_lens),
+                );
+            }
+            if want_references {
+                lenses.extend(
+                    document
+                        .symbols
+                        .all()
+                        .iter()
+                        .filter(|s| symbol_eligible_for_reference_lens(s))
+                        .map(|s| reference_lens(s, &uri)),
+                );
+            }
             trace!(
                 op = "code_lens",
                 uri = %uri,
-                top_level,
                 base_docs = snap.base_scripts_index.documents().count(),
                 lenses = lenses.len(),
                 "computed",
@@ -425,6 +465,39 @@ impl Backend {
             "complete",
         );
         result
+    }
+
+    pub(crate) async fn _code_lens_resolve(&self, mut lens: CodeLens) -> Result<CodeLens> {
+        // Game-definition lenses arrive fully built (command set, no data); pass them through.
+        let Some(data) = lens.data.take() else {
+            return Ok(lens);
+        };
+        let ReferenceLensData { uri, position } = serde_json::from_value(data).map_err(|err| {
+            ResponseError::new(
+                ErrorCode::INVALID_PARAMS,
+                format!("malformed reference code-lens data: {err}"),
+            )
+        })?;
+        let locations = self
+            .reference_locations(&uri, position, false)
+            .unwrap_or_default();
+        let count = locations.len();
+        let title = if count == 1 {
+            "1 reference".to_string()
+        } else {
+            format!("{count} references")
+        };
+        let arguments = vec![
+            serde_json::to_value(&uri).expect("Url always serializes"),
+            serde_json::to_value(position).expect("Position always serializes"),
+            serde_json::to_value(&locations).expect("Locations always serialize"),
+        ];
+        lens.command = Some(Command {
+            title,
+            command: SHOW_REFERENCES_COMMAND.to_string(),
+            arguments: Some(arguments),
+        });
+        Ok(lens)
     }
 
     pub(crate) async fn _semantic_tokens_full(

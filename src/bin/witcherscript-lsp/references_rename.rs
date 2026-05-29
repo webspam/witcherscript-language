@@ -4,8 +4,8 @@ use std::time::Instant;
 
 use async_lsp::{ErrorCode, ResponseError};
 use lsp_types::{
-    Location, PrepareRenameResponse, ReferenceParams, RenameParams, TextDocumentPositionParams,
-    TextEdit, Url, WorkspaceEdit,
+    Location, Position, PrepareRenameResponse, ReferenceParams, RenameParams,
+    TextDocumentPositionParams, TextEdit, Url, WorkspaceEdit,
 };
 use tracing::{debug, trace};
 use witcherscript_language::builtins::builtin_source;
@@ -94,6 +94,69 @@ fn search_docs_from<'a>(
 }
 
 impl Backend {
+    // `None` means the document is not open; `Some(empty)` means it resolved to nothing.
+    pub(crate) fn reference_locations(
+        &self,
+        uri: &Url,
+        position: Position,
+        include_declaration: bool,
+    ) -> Option<Vec<Location>> {
+        let snap = self.snapshot();
+        let document_arc = snap.documents.get(uri).cloned()?;
+        let document = document_arc.as_ref();
+        let handles = self.db_handles_for_with_snapshot(uri, &snap);
+        let db = handles.db();
+
+        let ws_kb = handles.workspace().doc_idents_bytes() / 1024;
+        let base_kb = handles.base().doc_idents_bytes() / 1024;
+        debug!(
+            ws_kb,
+            base_kb,
+            total_kb = ws_kb + base_kb,
+            "ident index memory"
+        );
+
+        let Some(definition) =
+            resolve_definition(uri.as_str(), document, &db, source_position(position))
+        else {
+            return Some(Vec::new());
+        };
+
+        let loose_uris = self.loose_open_uris(&snap.documents);
+        let target_is_loose = loose_uris.contains(uri);
+
+        let merged = merge_documents(
+            &snap.base_scripts_documents,
+            &snap.workspace_documents,
+            &snap.documents,
+            &loose_uris,
+            target_is_loose,
+        );
+
+        let definition_document = merged.get(&definition.uri).copied().unwrap_or(document);
+
+        let search_docs = search_docs_from(&merged);
+
+        let refs = find_references(
+            &definition,
+            definition_document,
+            &search_docs,
+            &db,
+            include_declaration,
+        );
+
+        Some(
+            refs.into_iter()
+                .filter_map(|(ref_uri, range)| {
+                    Url::parse(&ref_uri).ok().map(|url| Location {
+                        uri: url,
+                        range: lsp_range(range),
+                    })
+                })
+                .collect(),
+        )
+    }
+
     pub(crate) async fn _references(
         &self,
         params: ReferenceParams,
@@ -103,65 +166,7 @@ impl Backend {
         let include_declaration = params.context.include_declaration;
         let started_at = Instant::now();
         trace!(op = "references", uri = %uri, "start");
-        let result = 'body: {
-            let snap = self.snapshot();
-            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
-                break 'body Ok(None);
-            };
-            let document = document_arc.as_ref();
-            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
-            let db = handles.db();
-
-            let ws_kb = handles.workspace().doc_idents_bytes() / 1024;
-            let base_kb = handles.base().doc_idents_bytes() / 1024;
-            debug!(
-                ws_kb,
-                base_kb,
-                total_kb = ws_kb + base_kb,
-                "ident index memory"
-            );
-
-            let Some(definition) =
-                resolve_definition(uri.as_str(), document, &db, source_position(position))
-            else {
-                break 'body Ok(Some(Vec::new()));
-            };
-
-            let loose_uris = self.loose_open_uris(&snap.documents);
-            let target_is_loose = loose_uris.contains(&uri);
-
-            let merged = merge_documents(
-                &snap.base_scripts_documents,
-                &snap.workspace_documents,
-                &snap.documents,
-                &loose_uris,
-                target_is_loose,
-            );
-
-            let definition_document = merged.get(&definition.uri).copied().unwrap_or(document);
-
-            let search_docs = search_docs_from(&merged);
-
-            let refs = find_references(
-                &definition,
-                definition_document,
-                &search_docs,
-                &db,
-                include_declaration,
-            );
-
-            let locations: Vec<Location> = refs
-                .into_iter()
-                .filter_map(|(ref_uri, range)| {
-                    Url::parse(&ref_uri).ok().map(|url| Location {
-                        uri: url,
-                        range: lsp_range(range),
-                    })
-                })
-                .collect();
-
-            Ok(Some(locations))
-        };
+        let result = Ok(self.reference_locations(&uri, position, include_declaration));
         trace!(
             op = "references",
             uri = %uri,

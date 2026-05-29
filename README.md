@@ -87,7 +87,7 @@ client extension to connect to `127.0.0.1:9257` instead of spawning the binary.
 | Semantic tokens | Full-document semantic highlighting; legend exposed in `initialize` |
 | Document formatting | Pretty-prints whole documents using `witcherscript.formatter.*` settings |
 | Code actions | Quick fix for `base_script_conflict`: marks the conflicting directory as a legacy override directory |
-| Code lens | On legacy override files, a "game definition" lens above each top-level symbol that shadows a base game symbol; jumps to the vanilla definition. Gated by `witcherscript.codeLens.overriddenSymbols` |
+| Code lens | On legacy override files, a "game definition" lens above each top-level symbol that shadows a base game symbol; jumps to the vanilla definition. Gated by `witcherscript.codeLens.overriddenSymbols`. Optionally, an "N references" lens above declarations and class methods; clicking it lists the references. Gated by `witcherscript.codeLens.references` |
 
 On startup the server indexes every `.ws` file in the workspace root(s), then keeps
 open documents in sync as they are edited.
@@ -104,6 +104,7 @@ The server reads the following user-configurable settings:
 | `witcherscript.autoLoadModSharedImports` | `boolean` | `true` | Auto-load the **Shared Imports** mod (a specific community mod at `<gameDirectory>\Mods\modSharedImports` that most modern Witcher 3 mods depend on to avoid clashes between `import` declarations). When this flag is on and the directory exists, it is loaded automatically - see "Auto-loaded: the Shared Imports mod" below. |
 | `witcherscript.detectProjectManifests` | `boolean` | `true` | When true, the server recursively scans each workspace folder for `witcherscript.toml` files (legacy witcherscript-ide project manifests) and registers each manifest's `scripts_root` as a legacy script directory automatically. Only the `scripts_root` field is read; everything else in the manifest is ignored. `files.exclude` is honored; `.gitignore` is intentionally not, because mod `scripts/` directories are commonly gitignored. |
 | `witcherscript.codeLens.overriddenSymbols` | `boolean` | `true` | Show a "game definition" code lens above each top-level symbol in a legacy override file that shadows a base game symbol. Clicking it jumps to the vanilla definition. The lens appears only on legacy override files (those replacing a specific base game script). |
+| `witcherscript.codeLens.references` | `boolean` | `false` | Show an "N references" code lens above each top-level declaration (classes, structs, enums, functions, states) and class method (`function`/`event`). Clicking it lists the references. The count is resolved lazily, only for lenses the editor shows. |
 | `witcherscript.diagnostics.scope` | `string` | `"workspace"` | Which files are diagnosed. `"workspace"` diagnoses every `.ws` file in the project on startup, so the Problems list is complete and stays stable as you open and close editor tabs. `"openFiles"` diagnoses only the files currently open in the editor — symbols are still indexed project-wide so go-to-definition and completion work everywhere, but the heavy whole-project checking is skipped. `"none"` suppresses all diagnostics. Live-switchable. |
 | `witcherscript.logLevel` | `string` | `"warn"` | Server log level (`error`, `warn`, `debug`, `trace`; unknown values fall back to `warn`). Live-toggleable via `workspace/didChangeConfiguration`. |
 | `witcherscript.formatter.lineLimit` | `number` | `100` | Soft wrap width for the formatter. |
@@ -158,6 +159,7 @@ const clientOptions: LanguageClientOptions = {
     },
     codeLens: {
       overriddenSymbols: cfg.get<boolean>('codeLens.overriddenSymbols') ?? true,
+      references: cfg.get<boolean>('codeLens.references') ?? false,
     },
     logLevel: cfg.get<string>('logLevel') ?? 'warn',
     formatter: {
