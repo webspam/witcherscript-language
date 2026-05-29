@@ -13,6 +13,7 @@ mod shadowed_base;
 mod signature;
 mod subscription_registry;
 mod symbol_db;
+mod type_definition;
 mod workspace_index;
 
 #[cfg(test)]
@@ -40,6 +41,7 @@ pub use references::find_references;
 pub use signature::{hover_text, signature_help, SignatureHelpInfo};
 pub use subscription_registry::SubscriptionRegistry;
 pub use symbol_db::{FilteredBaseCatalogs, SymbolDb};
+pub use type_definition::resolve_type_definition;
 pub use workspace_index::{ObservedKey, WorkspaceIndex};
 
 #[derive(Debug, Default, Clone)]

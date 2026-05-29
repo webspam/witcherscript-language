@@ -19,7 +19,7 @@ use tracing::trace;
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::formatter::{format_document, FormatOptions};
 use witcherscript_language::resolve::{
-    resolve_all_definitions, resolve_definition, signature_help,
+    resolve_all_definitions, resolve_definition, resolve_type_definition, signature_help,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens_cancellable;
 
@@ -203,6 +203,46 @@ impl Backend {
         };
         trace!(
             op = "definition",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
+        result
+    }
+
+    pub(crate) async fn _type_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+        let started_at = Instant::now();
+        trace!(op = "type_definition", uri = %uri, "start");
+        let result = 'body: {
+            let snap = self.snapshot();
+            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+                break 'body Ok(None);
+            };
+            let document = document_arc.as_ref();
+            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
+            let db = handles.db();
+
+            let Some(type_def) =
+                resolve_type_definition(uri.as_str(), document, &db, source_position(position))
+            else {
+                break 'body Ok(None);
+            };
+
+            let Ok(target_uri) = Url::parse(&type_def.uri) else {
+                break 'body Ok(None);
+            };
+            Ok(Some(GotoDefinitionResponse::Scalar(Location {
+                uri: target_uri,
+                range: lsp_range(type_def.symbol.selection_range),
+            })))
+        };
+        trace!(
+            op = "type_definition",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
             "complete",
