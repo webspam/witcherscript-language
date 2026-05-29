@@ -2,7 +2,8 @@ use std::time::Instant;
 
 use async_lsp::ResponseError;
 use lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse, InsertTextFormat,
+    CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse,
+    CompletionTriggerKind, InsertTextFormat,
 };
 use tracing::trace;
 use witcherscript_language::resolve::{
@@ -23,6 +24,14 @@ use crate::convert::{
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
+fn triggered_by_dot(params: &CompletionParams) -> bool {
+    let Some(ctx) = &params.context else {
+        return false;
+    };
+    ctx.trigger_kind == CompletionTriggerKind::TRIGGER_CHARACTER
+        && ctx.trigger_character.as_deref() == Some(".")
+}
+
 fn sorted_completion_item(db: &SymbolDb, def: &Definition, tier: u8) -> CompletionItem {
     let params = db.parameters_of(&def.uri, def.symbol.id);
     let mut item = completion_item(def, &params);
@@ -35,6 +44,7 @@ impl Backend {
         &self,
         params: CompletionParams,
     ) -> Result<Option<CompletionResponse>> {
+        let dot_triggered = triggered_by_dot(&params);
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
         let started_at = Instant::now();
@@ -57,6 +67,11 @@ impl Backend {
                     .collect();
             if !member_items.is_empty() {
                 break 'body Ok(Some(CompletionResponse::Array(member_items)));
+            }
+
+            // A `.` keypress only ever opens a member access; suppress the statement/keyword fall-through.
+            if dot_triggered {
+                break 'body Ok(None);
             }
 
             let default_or_hint = default_or_hint_member_completions(document, &db, pos);
