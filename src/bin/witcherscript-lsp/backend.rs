@@ -8,17 +8,17 @@ use std::time::Duration;
 use arc_swap::ArcSwap;
 use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
 use futures::future::BoxFuture;
-use lsp_types::request::WorkspaceDiagnosticRefresh;
+use lsp_types::request::{CodeLensRefresh, WorkspaceDiagnosticRefresh};
 use lsp_types::{
-    CodeActionParams, CodeActionResponse, CompletionParams, CompletionResponse,
-    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
-    DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentSymbolParams,
-    DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams,
-    InitializeParams, InitializeResult, InitializedParams, Location, PrepareRenameResponse,
-    ReferenceParams, RenameParams, SemanticTokensParams, SemanticTokensResult, SignatureHelp,
-    SignatureHelpParams, TextDocumentPositionParams, TextEdit, Url, WorkspaceDiagnosticParams,
-    WorkspaceDiagnosticReportResult, WorkspaceEdit,
+    CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, CompletionParams,
+    CompletionResponse, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+    DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DocumentDiagnosticParams, DocumentDiagnosticReportResult, DocumentFormattingParams,
+    DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse,
+    Hover, HoverParams, InitializeParams, InitializeResult, InitializedParams, Location,
+    PrepareRenameResponse, ReferenceParams, RenameParams, SemanticTokensParams,
+    SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextDocumentPositionParams, TextEdit,
+    Url, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult, WorkspaceEdit,
 };
 use parking_lot::Mutex;
 use serde_json::{json, Value};
@@ -111,6 +111,7 @@ pub(crate) struct Backend {
     pub(crate) legacy_db_generation: Arc<AtomicU64>,
     pub(crate) diagnostic_version: Arc<AtomicU64>,
     pub(crate) client_supports_pull_diagnostics: Arc<AtomicBool>,
+    pub(crate) client_supports_code_lens_refresh: Arc<AtomicBool>,
     pub(crate) refresh_pending: Arc<AtomicBool>,
     pub(crate) pending_edits: Arc<Mutex<HashMap<Url, PendingEdit>>>,
     pub(crate) edit_notify: Arc<tokio::sync::Notify>,
@@ -198,6 +199,7 @@ impl Backend {
             legacy_db_generation: Arc::new(AtomicU64::new(0)),
             diagnostic_version: Arc::new(AtomicU64::new(0)),
             client_supports_pull_diagnostics: Arc::new(AtomicBool::new(false)),
+            client_supports_code_lens_refresh: Arc::new(AtomicBool::new(false)),
             refresh_pending: Arc::new(AtomicBool::new(false)),
             pending_edits: Arc::new(Mutex::new(HashMap::new())),
             edit_notify: Arc::new(tokio::sync::Notify::new()),
@@ -282,6 +284,11 @@ impl Backend {
             game_dir.as_deref(),
             &additional,
         )
+    }
+
+    // Holds even for an override inside a workspace root, which `file_scope_of` reports as `InProject`, not `LegacyOverride`.
+    pub(crate) fn replaces_base_script(&self, uri: &Url) -> bool {
+        canonical_uri(uri).is_some_and(|canon| self.legacy_replacements.lock().contains_key(&canon))
     }
 
     pub(crate) fn loose_open_uris(
@@ -445,6 +452,29 @@ impl Backend {
         self.request_workspace_diagnostic_refresh();
     }
 
+    // Ask the client to re-pull code lenses for open editors (e.g. after the feature is toggled).
+    pub(crate) fn request_code_lens_refresh(&self) {
+        if !self
+            .client_supports_code_lens_refresh
+            .load(Ordering::Acquire)
+        {
+            trace!(
+                op = "code_lens_refresh",
+                reason = "client_unsupported",
+                "skip"
+            );
+            return;
+        }
+        if tokio::runtime::Handle::try_current().is_err() {
+            return;
+        }
+        let client = self.client.clone();
+        crate::spawn_logged("workspace/codeLens/refresh", async move {
+            trace!(op = "code_lens_refresh", "send");
+            let _ = client.request::<CodeLensRefresh>(()).await;
+        });
+    }
+
     pub(crate) async fn handle_builtin_source(&self, params: Value) -> Result<Value> {
         let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("");
         let started_at = std::time::Instant::now();
@@ -532,6 +562,14 @@ impl LanguageServer for Backend {
     ) -> BoxFuture<'static, Result<Option<GotoDefinitionResponse>>> {
         let backend = self.clone();
         Box::pin(async move { backend._type_definition(params).await })
+    }
+
+    fn code_lens(
+        &mut self,
+        params: CodeLensParams,
+    ) -> BoxFuture<'static, Result<Option<Vec<CodeLens>>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._code_lens(params).await })
     }
 
     fn hover(&mut self, params: HoverParams) -> BoxFuture<'static, Result<Option<Hover>>> {

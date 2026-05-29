@@ -3,11 +3,11 @@ use std::time::Instant;
 
 use async_lsp::{ErrorCode, ResponseError};
 use lsp_types::{
-    CodeActionParams, CodeActionResponse, DiagnosticServerCancellationData,
-    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-    DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse,
-    FullDocumentDiagnosticReport, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-    HoverContents, HoverParams, Location, MarkupContent, MarkupKind,
+    CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, Command,
+    DiagnosticServerCancellationData, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentSymbolParams,
+    DocumentSymbolResponse, FullDocumentDiagnosticReport, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, MarkupContent, MarkupKind,
     RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, SemanticToken,
     SemanticTokens, SemanticTokensParams, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
     TextEdit, UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams,
@@ -15,11 +15,12 @@ use lsp_types::{
 };
 
 use crate::config::DiagnosticsScope;
-use tracing::trace;
+use tracing::{trace, warn};
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::formatter::{format_document, FormatOptions};
 use witcherscript_language::resolve::{
-    resolve_all_definitions, resolve_definition, resolve_type_definition, signature_help,
+    overridden_top_level, resolve_all_definitions, resolve_definition, resolve_type_definition,
+    signature_help, OverriddenSymbol,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens_cancellable;
 
@@ -31,6 +32,34 @@ use crate::convert::{
 use crate::diagnostics_publish::publish_url;
 
 type Result<T> = std::result::Result<T, ResponseError>;
+
+const GO_TO_BASE_COMMAND: &str = "witcherscript.goToBaseDefinition";
+const GO_TO_BASE_TITLE: &str = "game definition";
+
+// Custom command, not a built-in: VS Code built-ins reject raw JSON args, so the extension wrapper reconstructs vscode types from this Location.
+fn base_definition_lens(overridden: OverriddenSymbol) -> Option<CodeLens> {
+    let uri = match Url::parse(&overridden.base.uri) {
+        Ok(uri) => uri,
+        Err(err) => {
+            warn!(uri = %overridden.base.uri, %err, "base symbol uri failed to parse; skipping lens");
+            return None;
+        }
+    };
+    let target = Location {
+        uri,
+        range: lsp_range(overridden.base.symbol.selection_range),
+    };
+    let argument = serde_json::to_value(target).expect("Location always serializes");
+    Some(CodeLens {
+        range: lsp_range(overridden.range),
+        command: Some(Command {
+            title: GO_TO_BASE_TITLE.to_string(),
+            command: GO_TO_BASE_COMMAND.to_string(),
+            arguments: Some(vec![argument]),
+        }),
+        data: None,
+    })
+}
 
 impl Backend {
     pub(crate) async fn _document_diagnostic(
@@ -343,6 +372,54 @@ impl Backend {
         };
         trace!(
             op = "document_symbol",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
+        result
+    }
+
+    pub(crate) async fn _code_lens(&self, params: CodeLensParams) -> Result<Option<Vec<CodeLens>>> {
+        let uri = params.text_document.uri;
+        let started_at = Instant::now();
+        trace!(op = "code_lens", uri = %uri, "start");
+        let result = 'body: {
+            if !self.config.load().code_lens_overridden_symbols {
+                trace!(op = "code_lens", uri = %uri, reason = "feature_disabled", "skip");
+                break 'body Ok(None);
+            }
+            if !self.replaces_base_script(&uri) {
+                trace!(op = "code_lens", uri = %uri, reason = "not_an_override", "skip");
+                break 'body Ok(None);
+            }
+            let snap = self.snapshot();
+            let Some(document) = snap.documents.get(&uri).cloned() else {
+                trace!(op = "code_lens", uri = %uri, reason = "no_open_document", "skip");
+                break 'body Ok(None);
+            };
+            let top_level = document
+                .symbols
+                .all()
+                .iter()
+                .filter(|s| s.container.is_none())
+                .count();
+            let lenses: Vec<CodeLens> =
+                overridden_top_level(document.symbols.all(), &snap.base_scripts_index)
+                    .into_iter()
+                    .filter_map(base_definition_lens)
+                    .collect();
+            trace!(
+                op = "code_lens",
+                uri = %uri,
+                top_level,
+                base_docs = snap.base_scripts_index.documents().count(),
+                lenses = lenses.len(),
+                "computed",
+            );
+            Ok((!lenses.is_empty()).then_some(lenses))
+        };
+        trace!(
+            op = "code_lens",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
             "complete",

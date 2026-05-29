@@ -58,6 +58,7 @@ fn config_change_default_is_no_op() {
             change: ConfigChange {
                 needs_reindex: true,
                 diagnostics_changed: false,
+                ..ConfigChange::default()
             },
             expect_any_action: true,
         },
@@ -66,6 +67,7 @@ fn config_change_default_is_no_op() {
             change: ConfigChange {
                 needs_reindex: false,
                 diagnostics_changed: true,
+                ..ConfigChange::default()
             },
             expect_any_action: true,
         },
@@ -74,6 +76,7 @@ fn config_change_default_is_no_op() {
             change: ConfigChange {
                 needs_reindex: true,
                 diagnostics_changed: true,
+                ..ConfigChange::default()
             },
             expect_any_action: true,
         },
