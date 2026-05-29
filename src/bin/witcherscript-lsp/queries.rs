@@ -432,13 +432,7 @@ impl Backend {
                 break 'body Ok(None);
             };
             let mut lenses: Vec<CodeLens> = Vec::new();
-            if want_overrides && self.replaces_base_script(&uri) {
-                lenses.extend(
-                    overridden_top_level(document.symbols.all(), &snap.base_scripts_index)
-                        .into_iter()
-                        .filter_map(base_definition_lens),
-                );
-            }
+            // References first so it keeps a fixed left position; the optional game-def lens renders to its right.
             if want_references {
                 lenses.extend(
                     document
@@ -447,6 +441,13 @@ impl Backend {
                         .iter()
                         .filter(|s| symbol_eligible_for_reference_lens(s))
                         .map(|s| reference_lens(s, &uri)),
+                );
+            }
+            if want_overrides && self.replaces_base_script(&uri) {
+                lenses.extend(
+                    overridden_top_level(document.symbols.all(), &snap.base_scripts_index)
+                        .into_iter()
+                        .filter_map(base_definition_lens),
                 );
             }
             trace!(

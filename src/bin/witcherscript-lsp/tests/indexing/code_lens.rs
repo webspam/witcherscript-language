@@ -271,6 +271,42 @@ async fn references_lens_suppressed_when_disabled() {
 }
 
 #[tokio::test]
+async fn references_lens_precedes_game_definition_lens() {
+    let (_temp, backend, override_url, _new_url) =
+        indexed_legacy_override("ws_code_lens_order").await;
+    enable_references_lens(&backend);
+    backend._did_open(open_params(
+        &override_url,
+        "class CR4Player {}\n// legacy\n",
+    ));
+
+    let lenses = backend
+        ._code_lens(code_lens_params(&override_url))
+        .await
+        .expect("code_lens ok")
+        .expect("both lenses present");
+
+    assert_eq!(
+        lenses.len(),
+        2,
+        "one references lens and one game-definition lens"
+    );
+    assert!(
+        lenses[0].command.is_none(),
+        "the references lens is emitted first so it stays leftmost"
+    );
+    assert_eq!(
+        lenses[1]
+            .command
+            .as_ref()
+            .expect("game-definition lens carries a command")
+            .command,
+        "witcherscript.goToBaseDefinition",
+        "the game-definition lens renders to the right of the references lens"
+    );
+}
+
+#[tokio::test]
 async fn references_lens_appears_on_non_override_file() {
     let backend = make_backend();
     enable_references_lens(&backend);
