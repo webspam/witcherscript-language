@@ -7,9 +7,10 @@ use async_lsp::router::Router;
 use async_lsp::{ClientSocket, ErrorCode};
 use lsp_types::{
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
-    DocumentDiagnosticReport, DocumentDiagnosticReportResult, PartialResultParams, Position, Range,
-    SemanticTokensParams, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    Url, VersionedTextDocumentIdentifier, WorkDoneProgressParams,
+    DocumentDiagnosticReport, DocumentDiagnosticReportResult, DocumentFormattingParams,
+    FormattingOptions, PartialResultParams, Position, Range, SemanticTokensParams,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Url,
+    VersionedTextDocumentIdentifier, WorkDoneProgressParams,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens;
 
@@ -223,6 +224,18 @@ fn document_diagnostic_params(uri: &Url) -> DocumentDiagnosticParams {
     }
 }
 
+fn formatting_params(uri: &Url) -> DocumentFormattingParams {
+    DocumentFormattingParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        options: FormattingOptions {
+            tab_size: 4,
+            insert_spaces: true,
+            ..FormattingOptions::default()
+        },
+        work_done_progress_params: WorkDoneProgressParams::default(),
+    }
+}
+
 #[test]
 fn did_change_chains_against_in_flight_edit_after_worker_takes_clone() {
     let backend = make_backend();
@@ -372,5 +385,59 @@ fn document_diagnostic_unrelated_uri_unaffected_by_pending_edit_elsewhere() {
     assert!(
         result.is_ok(),
         "an edit to main_diag.ws must not CONTENT_MODIFIED a diagnostic on utils_diag.ws",
+    );
+}
+
+#[test]
+fn formatting_reflects_queued_edit_instead_of_bailing() {
+    let backend = make_backend();
+    backend.edit_writer_spawned.store(true, Ordering::Release);
+
+    let uri: Url = "file:///queued_fmt.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "function Foo() {}\n"));
+    // Queue a rename plus leading blank lines; neither is published yet.
+    backend._did_change(change_params(&uri, 2, (0, 9), (0, 12), "Renamed"));
+    backend._did_change(change_params(&uri, 3, (0, 0), (0, 0), "\n\n"));
+
+    let snap = backend.snapshot();
+    assert_eq!(
+        snap.documents.get(&uri).map(|d| d.source.as_str()),
+        Some("function Foo() {}\n"),
+        "edits must still be queued, not published, for this test to be meaningful",
+    );
+    assert!(
+        backend.pending_target_for(&uri).unwrap() > snap.documents.get(&uri).unwrap().parse_version,
+        "pending edit must outrank the published snapshot",
+    );
+
+    let edits = futures::executor::block_on(backend._formatting(formatting_params(&uri)))
+        .expect("formatting must succeed against the queued text, not bail")
+        .expect("formatting returns an edit set");
+    let new_text = edits
+        .first()
+        .map(|e| e.new_text.as_str())
+        .expect("queued text needed reformatting, so an edit must be produced");
+    assert_eq!(
+        new_text, "function Renamed() {}\n",
+        "formatting must reformat the queued text, including the rename",
+    );
+}
+
+#[test]
+fn formatting_unrelated_uri_unaffected_by_pending_edit_elsewhere() {
+    let backend = make_backend();
+    backend.edit_writer_spawned.store(true, Ordering::Release);
+
+    let main: Url = "file:///main_fmt.ws".parse().unwrap();
+    let utils: Url = "file:///utils_fmt.ws".parse().unwrap();
+    backend._did_open(open_params(&main, "function Foo() {}\n"));
+    backend._did_open(open_params(&utils, "function Bar() {}\n"));
+
+    backend._did_change(change_params(&main, 2, (0, 9), (0, 12), "Renamed"));
+
+    let result = futures::executor::block_on(backend._formatting(formatting_params(&utils)));
+    assert!(
+        result.is_ok(),
+        "an edit to main_fmt.ws must not CONTENT_MODIFIED a format on utils_fmt.ws",
     );
 }
