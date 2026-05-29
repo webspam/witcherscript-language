@@ -108,6 +108,13 @@ impl Backend {
             {
                 cfg.code_lens_overridden_symbols = b;
             }
+            if let Some(b) = opts
+                .get("codeLens")
+                .and_then(|v| v.get("references"))
+                .and_then(|v| v.as_bool())
+            {
+                cfg.code_lens_references = b;
+            }
             if let Some(level_str) = opts.get("logLevel").and_then(|v| v.as_str()) {
                 cfg.log_level = level_to_u8(level_from_str(level_str));
             }
@@ -214,7 +221,7 @@ impl Backend {
                     },
                 )),
                 code_lens_provider: Some(CodeLensOptions {
-                    resolve_provider: Some(false),
+                    resolve_provider: Some(true),
                 }),
                 workspace: Some(WorkspaceServerCapabilities {
                     workspace_folders: Some(WorkspaceFoldersServerCapabilities {

@@ -572,6 +572,11 @@ impl LanguageServer for Backend {
         Box::pin(async move { backend._code_lens(params).await })
     }
 
+    fn code_lens_resolve(&mut self, params: CodeLens) -> BoxFuture<'static, Result<CodeLens>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._code_lens_resolve(params).await })
+    }
+
     fn hover(&mut self, params: HoverParams) -> BoxFuture<'static, Result<Option<Hover>>> {
         let backend = self.clone();
         Box::pin(async move { backend._hover(params).await })

@@ -50,6 +50,7 @@ pub(crate) struct Config {
     pub(crate) formatter_annotation_placement: AnnotationPlacement,
     pub(crate) formatter_default_placement: AnnotationPlacement,
     pub(crate) code_lens_overridden_symbols: bool,
+    pub(crate) code_lens_references: bool,
 }
 
 impl Default for Config {
@@ -65,6 +66,7 @@ impl Default for Config {
             formatter_annotation_placement: AnnotationPlacement::Preserve,
             formatter_default_placement: AnnotationPlacement::Preserve,
             code_lens_overridden_symbols: true,
+            code_lens_references: false,
         }
     }
 }
@@ -148,6 +150,10 @@ impl Backend {
             ConfigurationItem {
                 scope_uri: None,
                 section: Some("witcherscript.codeLens.overriddenSymbols".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.codeLens.references".to_string()),
             },
         ];
         let Ok(values) = self
@@ -246,6 +252,10 @@ impl Backend {
             Some(Value::Bool(b)) => b,
             _ => true,
         };
+        next_cfg.code_lens_references = match iter.next() {
+            Some(Value::Bool(b)) => b,
+            _ => false,
+        };
 
         self.config.store(Arc::new(next_cfg.clone()));
 
@@ -260,8 +270,9 @@ impl Backend {
         let auto_detect_manifests_changed =
             next_cfg.auto_detect_project_manifests != prev_cfg.auto_detect_project_manifests;
         let diagnostics_changed = next_cfg.diagnostics_scope != prev_cfg.diagnostics_scope;
-        let code_lens_changed =
-            next_cfg.code_lens_overridden_symbols != prev_cfg.code_lens_overridden_symbols;
+        let code_lens_changed = next_cfg.code_lens_overridden_symbols
+            != prev_cfg.code_lens_overridden_symbols
+            || next_cfg.code_lens_references != prev_cfg.code_lens_references;
         if base_scripts_changed {
             trace!(setting = "gameDirectory", "setting changed");
         }
@@ -295,11 +306,19 @@ impl Backend {
         if diagnostics_changed {
             trace!(setting = "diagnostics", "setting changed");
         }
-        if code_lens_changed {
+        if next_cfg.code_lens_overridden_symbols != prev_cfg.code_lens_overridden_symbols {
             trace!(
                 setting = "codeLens.overriddenSymbols",
                 prev = prev_cfg.code_lens_overridden_symbols,
                 new = next_cfg.code_lens_overridden_symbols,
+                "setting changed"
+            );
+        }
+        if next_cfg.code_lens_references != prev_cfg.code_lens_references {
+            trace!(
+                setting = "codeLens.references",
+                prev = prev_cfg.code_lens_references,
+                new = next_cfg.code_lens_references,
                 "setting changed"
             );
         }
