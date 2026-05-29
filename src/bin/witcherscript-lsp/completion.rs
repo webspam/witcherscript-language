@@ -45,13 +45,28 @@ impl Backend {
         params: CompletionParams,
     ) -> Result<Option<CompletionResponse>> {
         let dot_triggered = triggered_by_dot(&params);
+        let trigger_kind = params.context.as_ref().map(|c| c.trigger_kind);
+        let trigger_char = params
+            .context
+            .as_ref()
+            .and_then(|c| c.trigger_character.clone());
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
         let started_at = Instant::now();
-        trace!(op = "completion", uri = %uri, "start");
+        trace!(
+            op = "completion",
+            uri = %uri,
+            line = position.line,
+            character = position.character,
+            trigger_kind = ?trigger_kind,
+            trigger_char = ?trigger_char,
+            "start",
+        );
         let result: Result<Option<CompletionResponse>> = 'body: {
             let snap = self.snapshot();
-            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+            // A typed `.` arrives as a queued edit; parse it now so completion sees the dot, not the stale tree.
+            let Some(document_arc) = self.latest_parsed_document(&uri) else {
+                trace!(op = "completion", "no document for uri");
                 break 'body Ok(None);
             };
             let document = document_arc.as_ref();
@@ -59,6 +74,18 @@ impl Backend {
             let db = handles.db();
 
             let pos = source_position(position);
+
+            let byte_offset = document.line_index.position_to_byte(&document.source, pos);
+            let text_before_cursor = byte_offset
+                .and_then(|off| document.source.get(off.saturating_sub(16)..off))
+                .unwrap_or("");
+            trace!(
+                op = "completion",
+                parse_version = document.parse_version,
+                byte_offset = ?byte_offset,
+                text_before_cursor,
+                "document state seen by request",
+            );
 
             if position_in_comment(document, pos) {
                 trace!(op = "completion", "cursor in comment, suppressing");
@@ -70,12 +97,21 @@ impl Backend {
                     .iter()
                     .map(|(tier, def)| sorted_completion_item(&db, def, *tier))
                     .collect();
+            trace!(
+                op = "completion",
+                member_count = member_items.len(),
+                "members resolved"
+            );
             if !member_items.is_empty() {
                 break 'body Ok(Some(CompletionResponse::Array(member_items)));
             }
 
             // A `.` keypress only ever opens a member access; suppress the statement/keyword fall-through.
             if dot_triggered {
+                trace!(
+                    op = "completion",
+                    "dot trigger with no members, suppressing"
+                );
                 break 'body Ok(None);
             }
 

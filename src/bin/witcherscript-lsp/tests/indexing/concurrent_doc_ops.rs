@@ -6,11 +6,12 @@ use arc_swap::ArcSwap;
 use async_lsp::router::Router;
 use async_lsp::{ClientSocket, ErrorCode};
 use lsp_types::{
+    CompletionContext, CompletionParams, CompletionResponse, CompletionTriggerKind,
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
     DocumentDiagnosticReport, DocumentDiagnosticReportResult, DocumentFormattingParams,
     FormattingOptions, PartialResultParams, Position, Range, SemanticTokensParams,
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem, Url,
-    VersionedTextDocumentIdentifier, WorkDoneProgressParams,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    TextDocumentPositionParams, Url, VersionedTextDocumentIdentifier, WorkDoneProgressParams,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens;
 
@@ -420,6 +421,60 @@ fn formatting_reflects_queued_edit_instead_of_bailing() {
     assert_eq!(
         new_text, "function Renamed() {}\n",
         "formatting must reformat the queued text, including the rename",
+    );
+}
+
+fn dot_completion_params(uri: &Url, line: u32, character: u32) -> CompletionParams {
+    CompletionParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position { line, character },
+        },
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+        context: Some(CompletionContext {
+            trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,
+            trigger_character: Some(".".to_string()),
+        }),
+    }
+}
+
+#[test]
+fn completion_reflects_queued_edit_instead_of_bailing() {
+    let backend = make_backend();
+    backend.edit_writer_spawned.store(true, Ordering::Release);
+
+    let uri: Url = "file:///queued_completion.ws".parse().unwrap();
+    backend._did_open(open_params(
+        &uri,
+        concat!(
+            "class CExample {\n",
+            "    public function DoThing() : void {}\n",
+            "}\n",
+            "function Test() {\n",
+            "    var e : CExample;\n",
+            "    e\n",
+            "}\n",
+        ),
+    ));
+    backend._did_change(change_params(&uri, 2, (5, 5), (5, 5), "."));
+
+    let snap = backend.snapshot();
+    assert!(
+        backend.pending_target_for(&uri).unwrap() > snap.documents.get(&uri).unwrap().parse_version,
+        "the dot edit must still be queued for this test to be meaningful",
+    );
+
+    let resp = futures::executor::block_on(backend._completion(dot_completion_params(&uri, 5, 6)))
+        .expect("completion must succeed against the queued text, not bail")
+        .expect("a member access must produce completions");
+    let labels: Vec<String> = match resp {
+        CompletionResponse::Array(items) => items.into_iter().map(|i| i.label).collect(),
+        CompletionResponse::List(list) => list.items.into_iter().map(|i| i.label).collect(),
+    };
+    assert!(
+        labels.contains(&"DoThing".to_string()),
+        "completion must resolve members from the queued dot edit, got {labels:?}",
     );
 }
 
