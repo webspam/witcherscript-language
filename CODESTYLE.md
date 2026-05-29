@@ -33,18 +33,18 @@ Switch to an explicit `for` loop when the body accumulates non-trivial state, br
 
 ## Control flow
 
-Guard clauses and early returns over nested `if`/`else`. `match` over an `if let` / `else if let` chain once there are more than two arms. For closed enums, write exhaustive `match` arms; do not reach for `_ => ...` to silence the compiler, since that defeats the warning when a variant is added.
+Guard clauses and early returns over nested `if`/`else`. `match` over an `if let` / `else if let` chain once there are more than two arms. For closed enums, write exhaustive `match` arms; do not use `_ => ...` to silence the compiler, since that defeats the warning when a variant is added.
 The exhaustiveness rule applies to closed Rust enums. For open-domain dispatches (matching on string tags such as `node.kind()`, externally-defined identifiers, or any value whose universe is not enumerated in the type system) a catch-all `_ => ...` is idiomatic.
 
 ## Early returns must not hide bugs
 
-A guard that returns must distinguish "correctly did nothing" from "bailed because something was broken". Before a guard returns, decide which you have: if the condition should never happen, make it observable by logging it or returning an `Err`, *then* return. Silently discarding error state with `let _ = result;`, `.ok()`, or an unconsidered `if let Ok(...)` erases the difference between the two and is a rule violation.
+A guard that returns must distinguish "correctly did nothing" from "exited because something was broken". Before a guard returns, decide which you have: if the condition should never happen, make it observable by logging it or returning an `Err`, *then* return. Silently discarding error state with `let _ = result;`, `.ok()`, or an unconsidered `if let Ok(...)` erases the difference between the two and is a rule violation.
 
 ## Error handling
 
 `Result` is the default; propagate with `?`. `.unwrap()` and `.expect("...")` are only acceptable when the call site is a documented invariant the type system cannot express, and a brief comment names that invariant on the same or preceding line.
 
-Use `thiserror` to define typed error enums for library-style modules where callers may want to match on the variant. Use `anyhow` only at binary boundaries (`main`, request handlers, top-level commands) where the error is destined for a log line or a user message. One error story per crate; do not mix `thiserror` and `anyhow` definitions in the same module.
+Use `thiserror` to define typed error enums for library-style modules where callers may want to match on the variant. Use `anyhow` only at binary boundaries (`main`, request handlers, top-level commands) where the error is destined for a log line or a user message. One error-handling approach per crate; do not mix `thiserror` and `anyhow` definitions in the same module.
 
 Errors fail loud. No silent `catch`-equivalent: an `Err` that is intentionally dropped is explicit, named, and justified in a comment.
 
@@ -59,7 +59,7 @@ Errors fail loud. No silent `catch`-equivalent: an `Err` that is intentionally d
 ## Ownership and borrowing
 
 Borrow by default. Parameters take `&str` over `String`, `&[T]` over `Vec<T>`, `&Path` over `PathBuf`. Return owned values when ownership transfer is the point; otherwise return a borrow tied to an input lifetime.
-`.clone()` is a deliberate choice with a reason behind it, not a way to silence the borrow checker. If you reach for `.clone()` repeatedly in one function, the data model is probably wrong; stop and reshape it.
+`.clone()` is a deliberate choice with a reason behind it, not a way to silence the borrow checker. Repeated `.clone()` calls in one function indicate a wrong data model; reconsider, and reshape it.
 `Cow<'_, T>` is reserved for cases where both the borrowed and the owned path are actually taken; do not introduce it speculatively.
 
 ## Mutability
@@ -92,7 +92,7 @@ Do not interleave them: a function that reads a file, parses it, and stores the 
 When an input changes, prefer applying a delta to the cached value over discarding it and recomputing from scratch. The delta must be well-defined and demonstrably cheaper than the rebuild for the rule to apply.
 Document the invariant the update preserves: a one-line comment naming what the cache holds and what the update keeps true. A cache whose invariant is not written down will, eventually, drift.
 
-Existing caches in this workspace use fingerprint-driven invalidate-and-rebuild; treat that as the legacy default. New caches default to delta updates, and existing rebuild-style caches are fair game to convert where appropriate. Some (the CST diagnostics cache is a likely example) may stay invalidate-and-rebuild because tracking incremental deltas across a parsed-tree change is not cheaper than recomputing. The per-cache assessment is deliberately out of scope for this guide; the standard sets the direction, not the schedule.
+Existing caches in this workspace use fingerprint-driven invalidate-and-rebuild; treat that as the legacy default. New caches default to delta updates, and existing rebuild-style caches may be converted where appropriate. Some (the CST diagnostics cache is a likely example) may stay invalidate-and-rebuild because tracking incremental deltas across a parsed-tree change is not cheaper than recomputing. The per-cache assessment is deliberately out of scope for this guide; the standard sets the direction, not the schedule.
 
 ## Performance
 
@@ -106,18 +106,18 @@ Test names describe the behaviour being asserted: `returns_none_when_input_empty
 
 ## Async and concurrency
 
-Keep `async` at the edges, sync at the core. Network and FS boundaries are `async`; the analysis and resolution code they call is plain functions. Do not colour the whole call tree `async` by reflex.
+Keep `async` at the edges, sync at the core. Network and FS boundaries are `async`; the analysis and resolution code they call is plain functions. Do not mark the whole call tree `async` without justification.
 One runtime per binary, constructed at the top of `main`. Library crates do not pick a runtime.
 `Send + Sync` is the default bound for shared state; narrow it only with justification.
 Prefer message passing (`tokio::sync::mpsc`, `oneshot`) over shared `Mutex` when ownership can move; reach for a lock only when shared mutable state genuinely cannot be avoided. Request-handler architectures with workspace-wide state read and mutated by many concurrent handlers (e.g. the LSP backend) are the canonical exception: handlers do not own slices of state, they query and mutate by identity, and locks are the appropriate primitive there.
-When a lock is the right answer, prefer `parking_lot::Mutex`/`parking_lot::RwLock` over the `std::sync` equivalents: no poisoning, no `LockResult` to unwrap, and faster in practice.
+When a lock is warranted, prefer `parking_lot::Mutex`/`parking_lot::RwLock` over the `std::sync` equivalents: no poisoning, no `LockResult` to unwrap, and faster in practice.
 
 ## Public-API conventions
 
 `pub` struct fields are rare; types expose constructors and methods, not raw state, so internal invariants are enforceable (`C-STRUCT-PRIVATE`).
 Mark extension-prone public enums and structs `#[non_exhaustive]`.
 Use the sealed-trait pattern (`C-SEALED`) for traits not meant for downstream implementation.
-Reach for the builder pattern only when a type has many optional fields *and* construction order or validation matters; for two or three fields, a direct constructor reads better.
+Use the builder pattern only when a type has many optional fields *and* construction order or validation matters; for two or three fields, a direct constructor reads better.
 
 ## Principles
 
@@ -130,10 +130,10 @@ Reach for the builder pattern only when a type has many optional fields *and* co
 - Name magic values as `const`.
 - Errors fail loud; no silent discard.
 - Small files, one responsibility each.
-- No clever one-liners; clarity beats brevity.
+- No dense one-liners; clarity beats brevity.
 
 ## General
 
-No premature abstractions. Three similar lines beats an abstraction that does not yet earn its keep.
+No premature abstractions. Three similar lines beats an abstraction that is not yet justified by its use.
 No backwards-compatibility shims, `_unused` renames, or `// removed` placeholder comments for deleted code; if it is gone, it is gone.
 Do not design for hypothetical future requirements unless explicitly instructed to.
