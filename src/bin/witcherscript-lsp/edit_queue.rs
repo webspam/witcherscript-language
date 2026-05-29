@@ -37,6 +37,26 @@ impl Backend {
             .map(|doc| (doc.source.clone(), doc.line_index.clone(), doc.tree.clone()))
     }
 
+    // A queued edit holds the latest source but an edited-not-reparsed tree, so reparse it.
+    pub(crate) fn latest_parsed_document(&self, uri: &Url) -> Option<Arc<ParsedDocument>> {
+        let pending = self.pending_edits.lock().get(uri).cloned();
+        let Some(edit) = pending else {
+            return self.snapshot().documents.get(uri).cloned();
+        };
+        let mut parser = Parser::new();
+        if let Err(err) = parser.set_language(&tree_sitter_witcherscript::language()) {
+            error!(uri = %uri, error = %err, "failed to load WitcherScript grammar");
+            return None;
+        }
+        match parse_document_with_prior(&mut parser, edit.source, Some(&edit.tree)) {
+            Ok(document) => Some(Arc::new(document)),
+            Err(err) => {
+                error!(uri = %uri, error = %err, "failed to parse queued edit for formatting");
+                None
+            }
+        }
+    }
+
     pub(crate) fn enqueue_edit(&self, uri: Url, source: String, line_index: LineIndex, tree: Tree) {
         let target_parse_version = allocate_parse_version();
         let edit = PendingEdit {

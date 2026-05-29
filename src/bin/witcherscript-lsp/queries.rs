@@ -421,8 +421,9 @@ impl Backend {
             let tab_size = params.options.tab_size;
             let use_tabs = !params.options.insert_spaces;
 
-            let snap = self.snapshot();
-            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+            // Include a queued edit: clients don't retry formatting on CONTENT_MODIFIED, so
+            // bailing would silently apply nothing instead of formatting the just-typed text.
+            let Some(document_arc) = self.latest_parsed_document(&uri) else {
                 break 'body Ok(None);
             };
             let document = document_arc.as_ref();
