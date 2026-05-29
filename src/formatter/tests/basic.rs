@@ -1,4 +1,4 @@
-use super::{fmt, fmt_with_annotation_placement, AnnotationPlacement};
+use super::{fmt, fmt_with_annotation_placement, fmt_with_default_placement, AnnotationPlacement};
 
 #[test]
 fn error_recovery_formats_valid_stmts_around_invalid() {
@@ -89,6 +89,82 @@ fn idempotent_on_valid_fixture() {
     let first = fmt(source);
     let second = fmt(&first);
     assert_eq!(first, second, "formatter should be idempotent");
+}
+
+#[test]
+fn preserve_default_placement() {
+    let same = fmt("class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }");
+    assert!(
+        same.contains("private const var RESET_TIME : float;  default RESET_TIME = 0.750;"),
+        "got:\n{same}"
+    );
+
+    let split = fmt(
+        "class C {\n    private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;\n}",
+    );
+    assert!(
+        split.contains("private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;"),
+        "got:\n{split}"
+    );
+}
+
+#[test]
+fn same_line_default_placement() {
+    let cases = [
+        "class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }",
+        "class C {\n    private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;\n}",
+    ];
+    for input in cases {
+        let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);
+        assert!(
+            output.contains("private const var RESET_TIME : float;  default RESET_TIME = 0.750;"),
+            "input:\n{input}\ngot:\n{output}"
+        );
+    }
+}
+
+#[test]
+fn own_line_default_placement() {
+    let input = "class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }";
+    let output = fmt_with_default_placement(input, AnnotationPlacement::OwnLine);
+    assert!(
+        output.contains("private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;"),
+        "got:\n{output}"
+    );
+}
+
+#[test]
+fn default_only_merges_when_ident_matches() {
+    let input = "class C {\n    private const var RESET_TIME : float;\n    default OTHER = 1;\n}";
+    let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);
+    assert!(
+        output.contains("private const var RESET_TIME : float;\n    default OTHER = 1;"),
+        "mismatched default name must stay on its own line, got:\n{output}"
+    );
+}
+
+#[test]
+fn annotated_field_default_merges_under_same_line() {
+    let input = "class C {\n    @addField(CClass)\n    public var x : int;\n    default x = 1;\n}";
+    let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);
+    assert!(
+        output.contains("public var x : int;  default x = 1;"),
+        "an annotated field must still honor same-line default placement, got:\n{output}"
+    );
+}
+
+#[test]
+fn commented_field_with_same_line_default_not_merged() {
+    let input = "class C {\n    var x /* c */ : int;\n    default x = 1;\n}";
+    let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);
+    assert!(
+        output.contains("/* c */"),
+        "inline comment in field must be preserved, got:\n{output}"
+    );
+    assert!(
+        output.contains("var x /* c */ : int;\n    default x = 1;"),
+        "a commented field is emitted verbatim, so its default must not merge onto its line, got:\n{output}"
+    );
 }
 
 #[test]

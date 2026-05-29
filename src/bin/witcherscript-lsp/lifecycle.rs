@@ -120,6 +120,10 @@ impl Backend {
                     cfg.formatter_annotation_placement =
                         AnnotationPlacement::from_setting(placement);
                 }
+                if let Some(placement) = formatter.get("defaultPlacement").and_then(|v| v.as_str())
+                {
+                    cfg.formatter_default_placement = AnnotationPlacement::from_setting(placement);
+                }
             }
             self.config.store(Arc::new(cfg));
         }

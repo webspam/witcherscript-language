@@ -25,6 +25,14 @@ impl AnnotationPlacement {
             _ => Self::Preserve,
         }
     }
+
+    fn resolve(self, preserve: impl FnOnce() -> bool) -> bool {
+        match self {
+            Self::SameLine => true,
+            Self::OwnLine => false,
+            Self::Preserve => preserve(),
+        }
+    }
 }
 
 impl std::fmt::Display for AnnotationPlacement {
@@ -45,6 +53,7 @@ pub struct FormatOptions {
     pub compact_colon: bool,
     pub align_member_colons: bool,
     pub annotation_placement: AnnotationPlacement,
+    pub default_placement: AnnotationPlacement,
 }
 
 impl Default for FormatOptions {
@@ -56,6 +65,7 @@ impl Default for FormatOptions {
             compact_colon: false,
             align_member_colons: false,
             annotation_placement: AnnotationPlacement::default(),
+            default_placement: AnnotationPlacement::default(),
         }
     }
 }
@@ -71,6 +81,7 @@ fn render_expr(node: Node, source: &str) -> String {
         compact_colon: false,
         align_member_colons: false,
         annotation_placement: AnnotationPlacement::Preserve,
+        default_placement: AnnotationPlacement::Preserve,
         colon_align_col: None,
     }
     .render_node(node)
@@ -197,6 +208,7 @@ pub fn render_callable_signature(node: Node, source: &str) -> Option<String> {
         compact_colon: true,
         align_member_colons: false,
         annotation_placement: AnnotationPlacement::Preserve,
+        default_placement: AnnotationPlacement::Preserve,
         colon_align_col: None,
     };
     f.render_sig(node)
@@ -218,6 +230,7 @@ pub fn format_document(root: Node, source: &str, options: FormatOptions) -> Stri
         compact_colon: options.compact_colon,
         align_member_colons: options.align_member_colons,
         annotation_placement: options.annotation_placement,
+        default_placement: options.default_placement,
         colon_align_col: None,
     };
     f.format_node(root);
@@ -240,5 +253,6 @@ struct Formatter<'a> {
     compact_colon: bool,
     align_member_colons: bool,
     annotation_placement: AnnotationPlacement,
+    default_placement: AnnotationPlacement,
     colon_align_col: Option<usize>,
 }

@@ -2,6 +2,8 @@ use tree_sitter::Node;
 
 use super::{child_nodes, is_alignable_field, is_bodiless_callable, Formatter};
 
+const DEFAULT_GAP: &str = "  ";
+
 impl<'a> Formatter<'a> {
     // ---- Top level ----
 
@@ -60,11 +62,8 @@ impl<'a> Formatter<'a> {
     }
 
     fn emit_add_field_annotation(&mut self, node: Node, ann: Node) -> bool {
-        let same_line = match self.annotation_placement {
-            super::AnnotationPlacement::SameLine => true,
-            super::AnnotationPlacement::OwnLine => false,
-            super::AnnotationPlacement::Preserve => self.annotation_same_line_in_source(node, ann),
-        };
+        let placement = self.annotation_placement;
+        let same_line = placement.resolve(|| self.annotation_same_line_in_source(node, ann));
         let ann_text = self.render_node(ann);
         self.emit_indent();
         self.emit(&ann_text);
@@ -77,7 +76,38 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    pub(super) fn format_member_var_decl(&mut self, node: Node, colon_align_col: Option<usize>) {
+    fn first_ident_text(&self, node: Node) -> Option<&str> {
+        self.child_of_kind(node, "ident").map(|n| self.text(n))
+    }
+
+    fn paired_member_default(&self, var_decl: Node, default_val: Node) -> bool {
+        matches!(
+            (
+                self.first_ident_text(var_decl),
+                self.first_ident_text(default_val)
+            ),
+            (Some(var_name), Some(default_name)) if var_name == default_name
+        )
+    }
+
+    fn default_same_line_in_source(&self, var_decl: Node, default_val: Node) -> bool {
+        var_decl.start_position().row == default_val.start_position().row
+    }
+
+    fn default_on_same_line(&self, var_decl: Node, default_val: Node) -> bool {
+        if !self.paired_member_default(var_decl, default_val) {
+            return false;
+        }
+        let placement = self.default_placement;
+        placement.resolve(|| self.default_same_line_in_source(var_decl, default_val))
+    }
+
+    pub(super) fn format_member_var_decl(
+        &mut self,
+        node: Node,
+        colon_align_col: Option<usize>,
+        trailing_default: Option<(Node, Option<usize>)>,
+    ) {
         let same_line = if let Some(ann) = self.child_of_kind(node, "annotation") {
             if self.is_add_field_annotation(ann) {
                 self.emit_add_field_annotation(node, ann)
@@ -94,22 +124,28 @@ impl<'a> Formatter<'a> {
         self.colon_align_col = colon_align_col;
         self.format_children(node);
         self.colon_align_col = None;
+        if let Some((default_val, default_align_col)) = trailing_default {
+            if let Some(col) = default_align_col {
+                while self.current_line_len() < col {
+                    self.emit(" ");
+                }
+            } else {
+                self.emit(DEFAULT_GAP);
+            }
+            self.format_children(default_val);
+        }
         self.nl();
     }
 
-    fn member_var_pre_colon_width(&self, node: Node) -> usize {
-        let children = child_nodes(node);
-        let Some(colon) = children.iter().position(|c| c.kind() == ":") else {
-            return 0;
-        };
+    fn rendered_width(&self, children: &[Node], parent_kind: &str) -> usize {
         let mut width = 0;
         let mut prev: Option<Node> = None;
-        for child in &children[..colon] {
+        for child in children {
             if child.is_missing() || child.kind() == "annotation" {
                 continue;
             }
             if let Some(p) = prev {
-                if self.gap_between(p, *child, node.kind()) {
+                if self.gap_between(p, *child, parent_kind) {
                     width += 1;
                 }
             }
@@ -117,6 +153,39 @@ impl<'a> Formatter<'a> {
             prev = Some(*child);
         }
         width
+    }
+
+    fn member_var_suffix_from_colon_width(&self, node: Node) -> usize {
+        let children = child_nodes(node);
+        let Some(colon_idx) = children.iter().position(|c| c.kind() == ":") else {
+            return 0;
+        };
+        self.rendered_width(&children[colon_idx..], node.kind())
+    }
+
+    fn member_var_line_width_to_semicolon(
+        &self,
+        node: Node,
+        colon_align_col: Option<usize>,
+    ) -> usize {
+        let indent_width = self.level * self.indent_unit.len();
+        let suffix = self.member_var_suffix_from_colon_width(node);
+        match colon_align_col {
+            None => self.member_var_decl_width(node),
+            Some(col) => col.saturating_sub(indent_width) + suffix,
+        }
+    }
+
+    fn member_var_decl_width(&self, node: Node) -> usize {
+        self.rendered_width(&child_nodes(node), node.kind())
+    }
+
+    fn member_var_pre_colon_width(&self, node: Node) -> usize {
+        let children = child_nodes(node);
+        let Some(colon) = children.iter().position(|c| c.kind() == ":") else {
+            return 0;
+        };
+        self.rendered_width(&children[..colon], node.kind())
     }
 
     // Targets for colon-aligning runs of consecutive field declarations. A run is a
@@ -128,33 +197,114 @@ impl<'a> Formatter<'a> {
             return targets;
         }
         let indent_width = self.level * self.indent_unit.len();
-        let mut i = 0;
-        while i < members.len() {
-            if !is_alignable_field(members[i]) {
-                i += 1;
-                continue;
+        let mut idx = 0;
+        while idx < members.len() {
+            if self.is_mergeable_default_pair(members, idx) {
+                let run_end = self.same_line_default_pair_run_end(members, idx);
+                let pair_count = (run_end - idx) / 2;
+                if pair_count >= 2 {
+                    let width = (0..pair_count)
+                        .map(|k| self.member_var_pre_colon_width(members[idx + k * 2]))
+                        .max()
+                        .unwrap_or(0);
+                    let col = indent_width + width;
+                    for k in 0..pair_count {
+                        targets[idx + k * 2] = Some(col);
+                    }
+                }
+                idx = run_end;
+            } else if is_alignable_field(members[idx]) {
+                let mut j = idx;
+                while j + 1 < members.len()
+                    && is_alignable_field(members[j + 1])
+                    && !self.is_mergeable_default_pair(members, j + 1)
+                    && members[j + 1]
+                        .start_position()
+                        .row
+                        .saturating_sub(members[j].end_position().row)
+                        <= 1
+                {
+                    j += 1;
+                }
+                if j > idx {
+                    let width = (idx..=j)
+                        .map(|k| self.member_var_pre_colon_width(members[k]))
+                        .max()
+                        .unwrap_or(0);
+                    for target in targets.iter_mut().take(j + 1).skip(idx) {
+                        *target = Some(indent_width + width);
+                    }
+                }
+                idx = j + 1;
+            } else {
+                idx += 1;
             }
-            let mut j = i;
-            while j + 1 < members.len()
-                && is_alignable_field(members[j + 1])
-                && members[j + 1]
+        }
+        targets
+    }
+
+    fn is_mergeable_default_pair(&self, members: &[Node], var_idx: usize) -> bool {
+        let Some(default) = members.get(var_idx + 1) else {
+            return false;
+        };
+        members[var_idx].kind() == "member_var_decl"
+            && default.kind() == "member_default_val"
+            && is_alignable_field(members[var_idx])
+            && self.default_on_same_line(members[var_idx], *default)
+    }
+
+    fn same_line_default_pair_run_end(&self, members: &[Node], run_start: usize) -> usize {
+        let mut next_var = run_start;
+        while next_var + 1 < members.len() && self.is_mergeable_default_pair(members, next_var) {
+            if next_var > run_start {
+                let gap = members[next_var]
                     .start_position()
                     .row
-                    .saturating_sub(members[j].end_position().row)
-                    <= 1
-            {
-                j += 1;
-            }
-            if j > i {
-                let width = (i..=j)
-                    .map(|k| self.member_var_pre_colon_width(members[k]))
-                    .max()
-                    .unwrap_or(0);
-                for target in targets.iter_mut().take(j + 1).skip(i) {
-                    *target = Some(indent_width + width);
+                    .saturating_sub(members[next_var - 1].end_position().row);
+                if gap >= 2 {
+                    break;
                 }
             }
-            i = j + 1;
+            next_var += 2;
+        }
+        next_var
+    }
+
+    fn member_default_align_targets(
+        &self,
+        members: &[Node],
+        colon_targets: &[Option<usize>],
+    ) -> Vec<Option<usize>> {
+        let mut targets = vec![None; members.len()];
+        if !self.align_member_colons {
+            return targets;
+        }
+        let indent_width = self.level * self.indent_unit.len();
+        let mut idx = 0;
+        while idx < members.len() {
+            if !self.is_mergeable_default_pair(members, idx) {
+                idx += 1;
+                continue;
+            }
+            let run_end = self.same_line_default_pair_run_end(members, idx);
+            let pair_count = (run_end - idx) / 2;
+            if pair_count >= 2 {
+                let width = (0..pair_count)
+                    .map(|k| {
+                        let var_idx = idx + k * 2;
+                        self.member_var_line_width_to_semicolon(
+                            members[var_idx],
+                            colon_targets[var_idx],
+                        )
+                    })
+                    .max()
+                    .unwrap_or(0);
+                let col = indent_width + width + DEFAULT_GAP.len();
+                for k in 0..pair_count {
+                    targets[idx + k * 2] = Some(col);
+                }
+            }
+            idx = run_end;
         }
         targets
     }
@@ -333,19 +483,22 @@ impl<'a> Formatter<'a> {
         self.level += 1;
 
         let colon_targets = self.member_colon_targets(&members);
+        let default_targets = self.member_default_align_targets(&members, &colon_targets);
         let open_row = node.start_position().row;
         let mut prev_end_row: Option<usize> = None;
         let mut prev_was_comment = false;
         let mut prev_member: Option<Node> = None;
 
-        for (idx, member) in members.iter().enumerate() {
+        let mut idx = 0;
+        while idx < members.len() {
+            let member = members[idx];
             let child_row = member.start_position().row;
             let source_gap = match prev_end_row {
                 Some(prev) => child_row.saturating_sub(prev),
                 None => child_row.saturating_sub(open_row),
             };
             let is_callable = matches!(member.kind(), "func_decl" | "event_decl");
-            let both_bodiless = is_bodiless_callable(*member)
+            let both_bodiless = is_bodiless_callable(member)
                 && prev_member.map(is_bodiless_callable).unwrap_or(false);
             let want_blank = source_gap >= 2
                 || (is_callable && prev_end_row.is_some() && !prev_was_comment && !both_bodiless);
@@ -353,9 +506,27 @@ impl<'a> Formatter<'a> {
                 self.nl();
             }
             prev_was_comment = member.kind() == "comment";
-            self.format_class_member(*member, colon_targets[idx]);
-            prev_end_row = Some(member.end_position().row);
-            prev_member = Some(*member);
+
+            if member.kind() == "member_var_decl"
+                && !self.renders_verbatim(member)
+                && idx + 1 < members.len()
+                && members[idx + 1].kind() == "member_default_val"
+                && self.default_on_same_line(member, members[idx + 1])
+            {
+                self.format_member_var_decl(
+                    member,
+                    colon_targets[idx],
+                    Some((members[idx + 1], default_targets[idx])),
+                );
+                prev_end_row = Some(members[idx + 1].end_position().row);
+                prev_member = Some(member);
+                idx += 2;
+            } else {
+                self.format_class_member(member, colon_targets[idx]);
+                prev_end_row = Some(member.end_position().row);
+                prev_member = Some(member);
+                idx += 1;
+            }
         }
 
         self.level -= 1;
@@ -369,13 +540,18 @@ impl<'a> Formatter<'a> {
         self.nl();
     }
 
+    // Reformatting a member with an inner comment would relocate or drop it; emit verbatim.
+    fn renders_verbatim(&self, node: Node) -> bool {
+        if node.is_error() {
+            return true;
+        }
+        let mut c = node.walk();
+        let has_comment_child = node.children(&mut c).any(|n| n.kind() == "comment");
+        has_comment_child
+    }
+
     fn format_class_member(&mut self, node: Node, colon_align_col: Option<usize>) {
-        let has_comment_child = {
-            let mut wc = node.walk();
-            let result = node.children(&mut wc).any(|n| n.kind() == "comment");
-            result
-        };
-        if node.is_error() || has_comment_child {
+        if self.renders_verbatim(node) {
             let t = self.text(node).trim().to_string();
             self.emit_indent();
             self.emit(&t);
@@ -391,7 +567,12 @@ impl<'a> Formatter<'a> {
                 self.nl();
             }
             "member_default_val_block" => self.format_defaults_block(node),
-            "member_var_decl" => self.format_member_var_decl(node, colon_align_col),
+            "member_default_val" => {
+                self.emit_indent();
+                self.format_children(node);
+                self.nl();
+            }
+            "member_var_decl" => self.format_member_var_decl(node, colon_align_col, None),
             _ => {
                 self.emit_indent();
                 self.format_children(node);
