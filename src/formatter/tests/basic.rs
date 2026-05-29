@@ -144,6 +144,20 @@ fn default_only_merges_when_ident_matches() {
 }
 
 #[test]
+fn commented_field_with_same_line_default_not_merged() {
+    let input = "class C {\n    var x /* c */ : int;\n    default x = 1;\n}";
+    let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);
+    assert!(
+        output.contains("/* c */"),
+        "inline comment in field must be preserved, got:\n{output}"
+    );
+    assert!(
+        output.contains("var x /* c */ : int;\n    default x = 1;"),
+        "a commented field is emitted verbatim, so its default must not merge onto its line, got:\n{output}"
+    );
+}
+
+#[test]
 fn member_default_val_with_ident_value_preserved() {
     let input = "class C extends B {\n    default isPotato = OT_None;\n}";
     let output = fmt(input);

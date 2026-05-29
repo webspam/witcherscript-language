@@ -77,19 +77,15 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    fn member_var_name(&self, node: Node) -> Option<&str> {
-        self.child_of_kind(node, "ident").map(|n| self.text(n))
-    }
-
-    fn member_default_val_name(&self, node: Node) -> Option<&str> {
+    fn first_ident_text(&self, node: Node) -> Option<&str> {
         self.child_of_kind(node, "ident").map(|n| self.text(n))
     }
 
     fn paired_member_default(&self, var_decl: Node, default_val: Node) -> bool {
         matches!(
             (
-                self.member_var_name(var_decl),
-                self.member_default_val_name(default_val)
+                self.first_ident_text(var_decl),
+                self.first_ident_text(default_val)
             ),
             (Some(var_name), Some(default_name)) if var_name == default_name
         )
@@ -147,19 +143,15 @@ impl<'a> Formatter<'a> {
         self.nl();
     }
 
-    fn member_var_suffix_from_colon_width(&self, node: Node) -> usize {
-        let children = child_nodes(node);
-        let Some(colon_idx) = children.iter().position(|c| c.kind() == ":") else {
-            return 0;
-        };
+    fn rendered_width(&self, children: &[Node], parent_kind: &str) -> usize {
         let mut width = 0;
         let mut prev: Option<Node> = None;
-        for child in &children[colon_idx..] {
+        for child in children {
             if child.is_missing() || child.kind() == "annotation" {
                 continue;
             }
             if let Some(p) = prev {
-                if self.gap_between(p, *child, node.kind()) {
+                if self.gap_between(p, *child, parent_kind) {
                     width += 1;
                 }
             }
@@ -167,6 +159,14 @@ impl<'a> Formatter<'a> {
             prev = Some(*child);
         }
         width
+    }
+
+    fn member_var_suffix_from_colon_width(&self, node: Node) -> usize {
+        let children = child_nodes(node);
+        let Some(colon_idx) = children.iter().position(|c| c.kind() == ":") else {
+            return 0;
+        };
+        self.rendered_width(&children[colon_idx..], node.kind())
     }
 
     fn member_var_line_width_to_semicolon(
@@ -183,22 +183,7 @@ impl<'a> Formatter<'a> {
     }
 
     fn member_var_decl_width(&self, node: Node) -> usize {
-        let children = child_nodes(node);
-        let mut width = 0;
-        let mut prev: Option<Node> = None;
-        for child in &children {
-            if child.is_missing() || child.kind() == "annotation" {
-                continue;
-            }
-            if let Some(p) = prev {
-                if self.gap_between(p, *child, node.kind()) {
-                    width += 1;
-                }
-            }
-            width += self.render_node(*child).len();
-            prev = Some(*child);
-        }
-        width
+        self.rendered_width(&child_nodes(node), node.kind())
     }
 
     fn member_var_pre_colon_width(&self, node: Node) -> usize {
@@ -206,21 +191,7 @@ impl<'a> Formatter<'a> {
         let Some(colon) = children.iter().position(|c| c.kind() == ":") else {
             return 0;
         };
-        let mut width = 0;
-        let mut prev: Option<Node> = None;
-        for child in &children[..colon] {
-            if child.is_missing() || child.kind() == "annotation" {
-                continue;
-            }
-            if let Some(p) = prev {
-                if self.gap_between(p, *child, node.kind()) {
-                    width += 1;
-                }
-            }
-            width += self.render_node(*child).len();
-            prev = Some(*child);
-        }
-        width
+        self.rendered_width(&children[..colon], node.kind())
     }
 
     // Targets for colon-aligning runs of consecutive field declarations. A run is a
@@ -252,6 +223,7 @@ impl<'a> Formatter<'a> {
                 let mut j = idx;
                 while j + 1 < members.len()
                     && is_alignable_field(members[j + 1])
+                    && !self.is_mergeable_default_pair(members, j + 1)
                     && members[j + 1]
                         .start_position()
                         .row
@@ -543,6 +515,7 @@ impl<'a> Formatter<'a> {
             prev_was_comment = member.kind() == "comment";
 
             if member.kind() == "member_var_decl"
+                && !self.renders_verbatim(member)
                 && idx + 1 < members.len()
                 && members[idx + 1].kind() == "member_default_val"
                 && self.default_on_same_line(member, members[idx + 1])
@@ -574,13 +547,18 @@ impl<'a> Formatter<'a> {
         self.nl();
     }
 
+    // Reformatting a member with an inner comment would relocate or drop it; emit verbatim.
+    fn renders_verbatim(&self, node: Node) -> bool {
+        if node.is_error() {
+            return true;
+        }
+        let mut c = node.walk();
+        let has_comment_child = node.children(&mut c).any(|n| n.kind() == "comment");
+        has_comment_child
+    }
+
     fn format_class_member(&mut self, node: Node, colon_align_col: Option<usize>) {
-        let has_comment_child = {
-            let mut wc = node.walk();
-            let result = node.children(&mut wc).any(|n| n.kind() == "comment");
-            result
-        };
-        if node.is_error() || has_comment_child {
+        if self.renders_verbatim(node) {
             let t = self.text(node).trim().to_string();
             self.emit_indent();
             self.emit(&t);

@@ -296,6 +296,36 @@ fn aligned_same_line_defaults_are_idempotent() {
 }
 
 #[test]
+fn plain_field_before_default_pair_run_does_not_skew_colons() {
+    let output = fmt_aligned_with_default_placement(
+        "class C {\n    \
+         var plainLongField : int;\n    \
+         var x : int; default x = 1;\n    \
+         var y : int; default y = 2;\n}",
+        AnnotationPlacement::SameLine,
+    );
+    let lines: Vec<&str> = output.lines().collect();
+    let x = lines
+        .iter()
+        .find(|l| l.contains("default x = 1"))
+        .expect("x line");
+    let y = lines
+        .iter()
+        .find(|l| l.contains("default y = 2"))
+        .expect("y line");
+    assert_eq!(
+        x.find(':'),
+        y.find(':'),
+        "paired fields must align colons with each other, not the preceding plain field, got:\n{output}"
+    );
+    assert_eq!(
+        default_keyword_col(x, "x"),
+        default_keyword_col(y, "y"),
+        "paired defaults must align, got:\n{output}"
+    );
+}
+
+#[test]
 fn annotated_field_excluded_from_colon_alignment_run() {
     let output = fmt_aligned(
         "class C {\n    @addField(CClass)\n    public var x : int;\n    public var someLongName : string;\n}",
