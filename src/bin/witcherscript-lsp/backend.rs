@@ -526,6 +526,14 @@ impl LanguageServer for Backend {
         Box::pin(async move { backend._definition(params).await })
     }
 
+    fn type_definition(
+        &mut self,
+        params: GotoDefinitionParams,
+    ) -> BoxFuture<'static, Result<Option<GotoDefinitionResponse>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._type_definition(params).await })
+    }
+
     fn hover(&mut self, params: HoverParams) -> BoxFuture<'static, Result<Option<Hover>>> {
         let backend = self.clone();
         Box::pin(async move { backend._hover(params).await })

@@ -8,9 +8,10 @@ use lsp_types::{
     DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse,
     FullDocumentDiagnosticReport, GotoDefinitionParams, GotoDefinitionResponse, Hover,
     HoverContents, HoverParams, Location, MarkupContent, MarkupKind,
-    RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, SemanticToken,
-    SemanticTokens, SemanticTokensParams, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
-    TextEdit, UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams,
+    RelatedFullDocumentDiagnosticReport,
+    RelatedUnchangedDocumentDiagnosticReport, SemanticToken, SemanticTokens, SemanticTokensParams,
+    SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextEdit,
+    UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams,
     WorkspaceDiagnosticReportResult,
 };
 
@@ -19,8 +20,10 @@ use tracing::trace;
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::formatter::{format_document, FormatOptions};
 use witcherscript_language::resolve::{
-    resolve_all_definitions, resolve_definition, signature_help,
+    parse_generic_type, resolve_all_definitions, resolve_definition, signature_help, Definition,
+    SymbolDb,
 };
+use witcherscript_language::symbols::SymbolKind;
 use witcherscript_language::semantic_tokens::collect_semantic_tokens_cancellable;
 
 use crate::backend::Backend;
@@ -203,6 +206,50 @@ impl Backend {
         };
         trace!(
             op = "definition",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
+        result
+    }
+
+    pub(crate) async fn _type_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+        let started_at = Instant::now();
+        trace!(op = "type_definition", uri = %uri, "start");
+        let result = 'body: {
+            let snap = self.snapshot();
+            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+                break 'body Ok(None);
+            };
+            let document = document_arc.as_ref();
+            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
+            let db = handles.db();
+
+            let Some(def) =
+                resolve_definition(uri.as_str(), document, &db, source_position(position))
+            else {
+                break 'body Ok(None);
+            };
+
+            let Some(type_def) = type_target_for(&def, &db) else {
+                break 'body Ok(None);
+            };
+
+            let Ok(target_uri) = Url::parse(&type_def.uri) else {
+                break 'body Ok(None);
+            };
+            Ok(Some(GotoDefinitionResponse::Scalar(Location {
+                uri: target_uri,
+                range: lsp_range(type_def.symbol.selection_range),
+            })))
+        };
+        trace!(
+            op = "type_definition",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
             "complete",
@@ -428,5 +475,22 @@ impl Backend {
             "complete",
         );
         result
+    }
+}
+
+fn type_target_for(def: &Definition, db: &SymbolDb<'_>) -> Option<Definition> {
+    match def.symbol.kind {
+        SymbolKind::Class | SymbolKind::Struct | SymbolKind::Enum | SymbolKind::State => {
+            Some(def.clone())
+        }
+        SymbolKind::EnumMember => {
+            let owner = def.symbol.container_name.as_deref()?;
+            db.find_top_level(owner)
+        }
+        _ => {
+            let raw = def.symbol.type_annotation.as_deref()?;
+            let lookup = parse_generic_type(raw).map(|(ctor, _)| ctor).unwrap_or(raw);
+            db.find_top_level(lookup)
+        }
     }
 }

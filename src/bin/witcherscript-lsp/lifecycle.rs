@@ -12,7 +12,8 @@ use lsp_types::{
     InitializedParams, OneOf, RenameOptions, SemanticTokenModifier, SemanticTokenType,
     SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
     SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelpOptions,
-    TextDocumentSyncCapability, TextDocumentSyncKind, WorkDoneProgressOptions,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TypeDefinitionProviderCapability,
+    WorkDoneProgressOptions,
     WorkspaceFileOperationsServerCapabilities, WorkspaceFoldersServerCapabilities,
     WorkspaceServerCapabilities,
 };
@@ -157,6 +158,7 @@ impl Backend {
                     work_done_progress_options: WorkDoneProgressOptions::default(),
                 }),
                 definition_provider: Some(OneOf::Left(true)),
+                type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
                 references_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Right(RenameOptions {
                     prepare_provider: Some(true),
