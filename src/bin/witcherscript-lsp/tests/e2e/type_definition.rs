@@ -106,10 +106,7 @@ async fn type_definition_for_function_return_type() {
 #[tokio::test]
 async fn type_definition_on_class_itself_returns_self() {
     assert_jumps_to(
-        concat!(
-            "class CExa$0mple {}\n",
-            "//    ^^^^^^^^ target\n",
-        ),
+        concat!("class CExa$0mple {}\n", "//    ^^^^^^^^ target\n",),
         "target",
     )
     .await;

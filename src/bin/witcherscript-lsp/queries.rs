@@ -8,10 +8,9 @@ use lsp_types::{
     DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse,
     FullDocumentDiagnosticReport, GotoDefinitionParams, GotoDefinitionResponse, Hover,
     HoverContents, HoverParams, Location, MarkupContent, MarkupKind,
-    RelatedFullDocumentDiagnosticReport,
-    RelatedUnchangedDocumentDiagnosticReport, SemanticToken, SemanticTokens, SemanticTokensParams,
-    SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextEdit,
-    UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams,
+    RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, SemanticToken,
+    SemanticTokens, SemanticTokensParams, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
+    TextEdit, UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams,
     WorkspaceDiagnosticReportResult,
 };
 
