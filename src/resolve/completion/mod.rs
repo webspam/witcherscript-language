@@ -1,6 +1,7 @@
 mod body_class;
 mod body_function;
 mod body_script;
+mod comment;
 mod globals;
 mod headers;
 mod members;
@@ -13,6 +14,7 @@ pub use body_function::{
     ExpressionCompletions, StatementCompletions,
 };
 pub use body_script::script_body_completions;
+pub use comment::position_in_comment;
 pub use globals::merged_global_completions;
 pub use headers::class_header_keyword_completions;
 pub use members::completion_members;

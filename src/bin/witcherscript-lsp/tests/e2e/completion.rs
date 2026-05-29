@@ -15,10 +15,10 @@ fn items_of(resp: CompletionResponse) -> Vec<CompletionItem> {
     }
 }
 
-fn dot_trigger_context() -> CompletionContext {
+fn trigger_context(trigger_character: &str) -> CompletionContext {
     CompletionContext {
         trigger_kind: CompletionTriggerKind::TRIGGER_CHARACTER,
-        trigger_character: Some(".".to_string()),
+        trigger_character: Some(trigger_character.to_string()),
     }
 }
 
@@ -87,7 +87,7 @@ async fn dot_trigger_in_member_access_returns_members() {
             },
             work_done_progress_params: WorkDoneProgressParams::default(),
             partial_result_params: PartialResultParams::default(),
-            context: Some(dot_trigger_context()),
+            context: Some(trigger_context(".")),
         })
         .await
         .expect("completion response");
@@ -100,10 +100,10 @@ async fn dot_trigger_in_member_access_returns_members() {
 }
 
 #[tokio::test]
-async fn dot_trigger_in_comment_returns_nothing() {
+async fn no_trigger_offers_completions_in_a_comment() {
     let f = Fixture::parse(concat!(
         "function Test() {\n",
-        "    // pick up the loot.$0\n",
+        "    // pick up the loot$0\n",
         "}\n",
     ));
 
@@ -113,22 +113,32 @@ async fn dot_trigger_in_comment_returns_nothing() {
     }
 
     let (cursor_uri, pos) = f.cursor();
-    let resp = client
-        .request::<Completion>(CompletionParams {
-            text_document_position: TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier { uri: cursor_uri },
-                position: pos,
-            },
-            work_done_progress_params: WorkDoneProgressParams::default(),
-            partial_result_params: PartialResultParams::default(),
-            context: Some(dot_trigger_context()),
-        })
-        .await;
+    let contexts = [
+        Some(trigger_context(".")),
+        Some(trigger_context(":")),
+        Some(trigger_context("@")),
+        None,
+    ];
+    for context in contexts {
+        let resp = client
+            .request::<Completion>(CompletionParams {
+                text_document_position: TextDocumentPositionParams {
+                    text_document: TextDocumentIdentifier {
+                        uri: cursor_uri.clone(),
+                    },
+                    position: pos,
+                },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: context.clone(),
+            })
+            .await;
 
-    assert!(
-        resp.is_none(),
-        "dot trigger inside a comment should yield no completions, got {resp:?}"
-    );
+        assert!(
+            resp.is_none(),
+            "no completions expected in a comment (context {context:?}), got {resp:?}"
+        );
+    }
 }
 
 #[tokio::test]
