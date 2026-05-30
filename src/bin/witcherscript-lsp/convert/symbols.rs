@@ -1,5 +1,4 @@
 use lsp_types::{DocumentSymbol, Url};
-use tracing::warn;
 use witcherscript_language::resolve::{hover_text, Definition};
 use witcherscript_language::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
 
@@ -9,23 +8,12 @@ use super::positions::lsp_range;
 pub(crate) fn document_symbols(
     symbols: &DocumentSymbols,
     container: Option<SymbolId>,
-    uri: &str,
 ) -> Vec<DocumentSymbol> {
     symbols
         .children_of(container)
         .filter(|symbol| is_outline_symbol(symbol))
-        .filter(|symbol| {
-            if symbol.name.is_empty() {
-                warn!(
-                    "skipping {:?} symbol with empty name at line {} in {uri} (parse error in source)",
-                    symbol.kind,
-                    symbol.range.start.line + 1,
-                );
-                false
-            } else {
-                true
-            }
-        })
+        // VS Code rejects DocumentSymbols with empty names; skip them silently.
+        .filter(|symbol| !symbol.name.is_empty())
         .map(|symbol| DocumentSymbol {
             name: symbol.name.clone(),
             detail: symbol
@@ -36,7 +24,7 @@ pub(crate) fn document_symbols(
             deprecated: None,
             range: lsp_range(symbol.range),
             selection_range: lsp_range(symbol.selection_range),
-            children: Some(document_symbols(symbols, Some(symbol.id), uri)),
+            children: Some(document_symbols(symbols, Some(symbol.id))),
         })
         .collect()
 }
