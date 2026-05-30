@@ -63,7 +63,8 @@ impl Backend {
 
         let Some((mut source, mut line_index, mut prior_tree)) = self.latest_edit_state(&uri)
         else {
-            error!(uri = %uri, "did_change before did_open");
+            // VS Code replays did_change for restored dirty editors before did_open.
+            trace!(uri = %uri, "did_change before did_open; ignoring");
             return;
         };
 

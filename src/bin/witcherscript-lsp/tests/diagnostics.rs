@@ -71,7 +71,7 @@ fn signature_help_response_maps_label_offsets_and_active_parameter() {
 #[test]
 fn maps_symbols_to_lsp_document_symbols() {
     let t = TestDb::new("class CExample {\n var value : int;\n}\n");
-    let symbols = document_symbols(&t.primary_doc().symbols, None, t.primary_uri());
+    let symbols = document_symbols(&t.primary_doc().symbols, None);
 
     assert_eq!(symbols.len(), 1);
     assert_eq!(symbols[0].name, "CExample");

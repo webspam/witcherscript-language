@@ -402,7 +402,6 @@ impl Backend {
             Ok(Some(DocumentSymbolResponse::Nested(document_symbols(
                 &document.symbols,
                 None,
-                uri.as_str(),
             ))))
         };
         trace!(
