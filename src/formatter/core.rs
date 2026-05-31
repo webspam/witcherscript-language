@@ -219,7 +219,7 @@ impl<'a> Formatter<'a> {
             }
             if child.child_count() == 0 {
                 self.emit_verbatim(*child);
-            } else {
+            } else if !self.try_emit_broken_chain(*child, node.kind()) {
                 self.format_node(*child);
             }
             prev = Some(*child);
