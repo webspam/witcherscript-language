@@ -1,3 +1,5 @@
+use rstest::rstest;
+
 use super::fmt;
 
 #[test]
@@ -101,14 +103,30 @@ fn normalizes_extra_spaces_in_call() {
     assert!(output.contains("SomeFunc(a, b);"), "got:\n{output}");
 }
 
-#[test]
-fn inline_single_stmt_if() {
-    let input = "function F() { if (x)\n    return; }";
+#[rstest]
+#[case::if_stmt(
+    "function F() { if (x)\n    return; }",
+    "if (x) return;",
+    "single-stmt if body should be on same line"
+)]
+#[case::while_stmt(
+    "function F() { while (attrIndex < 0)\n    attrIndex += count; }",
+    "while (attrIndex < 0) attrIndex += count;",
+    "single-stmt while body should be on same line"
+)]
+#[case::for_stmt(
+    "function F() { for (i = 0; i < 10; i += 1)\n    total += i; }",
+    "for (i = 0; i < 10; i += 1) total += i;",
+    "single-stmt for body should be on same line"
+)]
+#[case::do_while(
+    "function F() { do\n    attrIndex += 1;\nwhile (attrIndex < 0); }",
+    "do attrIndex += 1; while (attrIndex < 0)",
+    "single-stmt do-while body should stay inline"
+)]
+fn inline_single_stmt_body(#[case] input: &str, #[case] expected: &str, #[case] msg: &str) {
     let output = fmt(input);
-    assert!(
-        output.contains("if (x) return;"),
-        "single-stmt if body should be on same line, got:\n{output}"
-    );
+    assert!(output.contains(expected), "{msg}, got:\n{output}");
 }
 
 #[test]
