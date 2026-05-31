@@ -136,16 +136,7 @@ impl<'a> Formatter<'a> {
         let body = node.child_by_field_name("body");
         let else_body = node.child_by_field_name("else");
 
-        let indent = self.level * self.indent_unit.len();
-        let cond_len = cond.map(|c| self.render_node(c).len()).unwrap_or(0);
-        let cond_line = indent + 4 + cond_len + 2;
-        let cond_parts = cond
-            .map(|c| split_binary_condition(c, self.source))
-            .unwrap_or_default();
-        let splittable_cond = cond_parts.len() > 1;
-
-        if splittable_cond && (cond_line > self.line_limit || chain_fully_broken(&cond_parts)) {
-            self.emit_condition_split("if (", &cond_parts);
+        if self.emit_split_keyword_cond("if (", cond) {
             self.emit_if_body(body, true);
         } else {
             self.emit_indent();
