@@ -85,14 +85,13 @@ impl Backend {
             .map(|e| e.target_parse_version)
     }
 
-    // Reference counts are wrong against an empty index; block until the startup walk finishes.
-    // Recheck after registering interest to avoid losing a notify fired between load and await.
+    // enable() registers before the recheck: notify_waiters stores no permit, so registering
+    // only at .await would lose a notify fired in the gap and hang against the empty index.
     pub(crate) async fn await_initial_index(&self) {
         loop {
-            if self.initial_index_done.load(Ordering::Acquire) {
-                return;
-            }
             let notified = self.index_ready_notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
             if self.initial_index_done.load(Ordering::Acquire) {
                 return;
             }
