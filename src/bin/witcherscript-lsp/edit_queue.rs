@@ -69,6 +69,7 @@ impl Backend {
             trace!(op = "enqueue_edit", uri = %uri, path = "sync", target_parse_version, "enter");
             self.process_pending_edit(uri, edit);
             self.notify_diagnostics_changed();
+            self.request_code_lens_refresh();
             return;
         }
         self.pending_edits.lock().insert(uri.clone(), edit);
@@ -82,6 +83,21 @@ impl Backend {
             .lock()
             .get(uri)
             .map(|e| e.target_parse_version)
+    }
+
+    // Reference counts are wrong against an empty index; block until the startup walk finishes.
+    // Recheck after registering interest to avoid losing a notify fired between load and await.
+    pub(crate) async fn await_initial_index(&self) {
+        loop {
+            if self.initial_index_done.load(Ordering::Acquire) {
+                return;
+            }
+            let notified = self.index_ready_notify.notified();
+            if self.initial_index_done.load(Ordering::Acquire) {
+                return;
+            }
+            notified.await;
+        }
     }
 
     pub(crate) fn spawn_edit_writer(&self) {
@@ -124,6 +140,7 @@ impl Backend {
                 })
                 .await;
                 self.request_workspace_diagnostic_refresh();
+                self.request_code_lens_refresh();
             }
         }
     }

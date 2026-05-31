@@ -10,10 +10,11 @@ use async_lsp::{ClientSocket, MainLoop};
 use lsp_types::notification::{DidSaveTextDocument, Initialized};
 use lsp_types::request::{DocumentDiagnosticRequest, Initialize, Request};
 use lsp_types::{
-    ClientCapabilities, Diagnostic, DiagnosticClientCapabilities, DidSaveTextDocumentParams,
-    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-    InitializeParams, InitializeResult, InitializedParams, PartialResultParams, ServerCapabilities,
-    TextDocumentClientCapabilities, TextDocumentIdentifier, Url, WorkDoneProgressParams,
+    ClientCapabilities, CodeLensWorkspaceClientCapabilities, Diagnostic,
+    DiagnosticClientCapabilities, DidSaveTextDocumentParams, DocumentDiagnosticParams,
+    DocumentDiagnosticReport, DocumentDiagnosticReportResult, InitializeParams, InitializeResult,
+    InitializedParams, PartialResultParams, ServerCapabilities, TextDocumentClientCapabilities,
+    TextDocumentIdentifier, Url, WorkDoneProgressParams, WorkspaceClientCapabilities,
 };
 use serde_json::Value;
 use tokio::io::{split, DuplexStream, ReadHalf, WriteHalf};
@@ -40,17 +41,24 @@ pub(crate) struct LspClient {
 
 impl LspClient {
     pub(crate) async fn spawn() -> Self {
-        Self::spawn_with(None).await
+        Self::spawn_with(None, false).await
     }
 
     pub(crate) async fn spawn_open_files_scope() -> Self {
-        Self::spawn_with(Some(serde_json::json!({
-            "diagnostics": { "scope": "openFiles" }
-        })))
+        Self::spawn_with(
+            Some(serde_json::json!({
+                "diagnostics": { "scope": "openFiles" }
+            })),
+            false,
+        )
         .await
     }
 
-    async fn spawn_with(init_options: Option<Value>) -> Self {
+    pub(crate) async fn spawn_with_code_lens_refresh() -> Self {
+        Self::spawn_with(None, true).await
+    }
+
+    async fn spawn_with(init_options: Option<Value>, code_lens_refresh: bool) -> Self {
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (server_read, server_write) = split(server_io);
 
@@ -89,6 +97,12 @@ impl LspClient {
                     text_document: Some(TextDocumentClientCapabilities {
                         diagnostic: Some(DiagnosticClientCapabilities::default()),
                         ..TextDocumentClientCapabilities::default()
+                    }),
+                    workspace: code_lens_refresh.then(|| WorkspaceClientCapabilities {
+                        code_lens: Some(CodeLensWorkspaceClientCapabilities {
+                            refresh_support: Some(true),
+                        }),
+                        ..WorkspaceClientCapabilities::default()
                     }),
                     ..ClientCapabilities::default()
                 },
@@ -143,6 +157,10 @@ impl LspClient {
 
     pub(crate) async fn raw_request(&mut self, method: &str, params: Value) -> Value {
         self.rpc.raw_request(method, params).await
+    }
+
+    pub(crate) async fn wait_for_server_request(&mut self, method: &str) -> bool {
+        self.rpc.wait_for_server_request(method).await
     }
 
     pub(crate) async fn pull_diagnostics(&mut self, uri: &Url) -> Vec<Diagnostic> {

@@ -260,6 +260,7 @@ impl Backend {
         self.register_file_watchers().await;
         self.index_base_scripts().await;
         self.initial_index_done.store(true, Ordering::Release);
+        self.index_ready_notify.notify_waiters();
         self.notify_diagnostics_changed();
         // The client's first codeLens request raced ahead of index_base_scripts above; re-pull now that override maps exist.
         self.request_code_lens_refresh();

@@ -116,6 +116,8 @@ pub(crate) struct Backend {
     pub(crate) pending_edits: Arc<Mutex<HashMap<Url, PendingEdit>>>,
     pub(crate) edit_notify: Arc<tokio::sync::Notify>,
     pub(crate) edit_writer_spawned: Arc<AtomicBool>,
+    // Wakes handlers blocked in `await_initial_index`; paired with `initial_index_done`.
+    pub(crate) index_ready_notify: Arc<tokio::sync::Notify>,
 }
 
 pub(super) fn build_symbol_db<'a>(
@@ -204,6 +206,7 @@ impl Backend {
             pending_edits: Arc::new(Mutex::new(HashMap::new())),
             edit_notify: Arc::new(tokio::sync::Notify::new()),
             edit_writer_spawned: Arc::new(AtomicBool::new(false)),
+            index_ready_notify: Arc::new(tokio::sync::Notify::new()),
         }
     }
 

@@ -478,6 +478,7 @@ impl Backend {
                 format!("malformed reference code-lens data: {err}"),
             )
         })?;
+        self.await_initial_index().await;
         let locations = self
             .reference_locations(&uri, position, false)
             .unwrap_or_default();

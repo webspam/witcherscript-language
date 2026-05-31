@@ -42,6 +42,7 @@ impl Backend {
         }
         self.publish_legacy_script_status();
         self.publish_file_scope_status();
+        self.request_code_lens_refresh();
         trace!(
             op = "did_open",
             uri = %uri,
@@ -134,6 +135,7 @@ impl Backend {
         self.notify_diagnostics_changed();
         self.publish_file_scope_status();
         self.sent_file_scope_status.lock().remove(&uri);
+        self.request_code_lens_refresh();
         trace!(
             op = "did_close",
             uri = %uri,
@@ -220,6 +222,7 @@ impl Backend {
         self.reindex_open_documents();
         self.notify_diagnostics_changed();
         self.publish_file_scope_status();
+        self.request_code_lens_refresh();
         trace!(
             op = "did_change_workspace_folders",
             elapsed_us = started_at.elapsed().as_micros(),
