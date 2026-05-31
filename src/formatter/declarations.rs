@@ -241,12 +241,6 @@ impl<'a> Formatter<'a> {
             && self.default_on_same_line(members[var_idx], *default)
     }
 
-    fn colon_align_run(&self, members: &[Node], run_start: usize) -> Vec<usize> {
-        self.alignment_run(members, run_start, 1, |m, i| {
-            is_alignable_field(m[i]) && !self.is_mergeable_default_pair(m, i)
-        })
-    }
-
     // A comment between members doesn't break the run; a blank line does.
     fn alignment_run(
         &self,
@@ -279,6 +273,12 @@ impl<'a> Formatter<'a> {
             scan += stride;
         }
         run
+    }
+
+    fn colon_align_run(&self, members: &[Node], run_start: usize) -> Vec<usize> {
+        self.alignment_run(members, run_start, 1, |m, i| {
+            is_alignable_field(m[i]) && !self.is_mergeable_default_pair(m, i)
+        })
     }
 
     fn same_line_default_pair_run(&self, members: &[Node], run_start: usize) -> Vec<usize> {
