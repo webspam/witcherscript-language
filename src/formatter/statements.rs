@@ -34,7 +34,7 @@ impl<'a> Formatter<'a> {
         let close = children.iter().rfind(|n| n.kind() == "}");
 
         if let Some(o) = open {
-            self.emit_verbatim(*o);
+            self.emit_block_open(*o);
         }
         if stmts.is_empty() {
             if let Some(cl) = close {

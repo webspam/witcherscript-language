@@ -3,7 +3,7 @@ use tree_sitter::Node;
 use super::{named_child_nodes, Formatter};
 
 impl<'a> Formatter<'a> {
-    pub(super) fn format_func_sig(&mut self, func_node: Node) {
+    pub(super) fn format_func_params(&mut self, func_node: Node) {
         let params = self.child_of_kind(func_node, "func_params");
         if let Some(fp) = params {
             self.flush_comments_before(fp.start_byte());
@@ -50,9 +50,9 @@ impl<'a> Formatter<'a> {
         let fits = group_count == 0
             || self.current_line_len() + inline.len() + ret_str.len() <= self.line_limit;
 
+        // The caller emits the `: type` so comments stay ordered - we do not.
         if fits {
             self.emit(&inline);
-            self.emit(&ret_str);
         } else {
             self.emit("(\n");
             self.level += 1;
@@ -74,7 +74,6 @@ impl<'a> Formatter<'a> {
             self.level -= 1;
             self.emit_indent();
             self.emit(")");
-            self.emit(&ret_str);
         }
         if let Some(fp) = params {
             self.consume_comments_before(fp.end_byte());

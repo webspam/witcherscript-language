@@ -1,12 +1,15 @@
 use std::collections::BTreeSet;
 
+use expect_test::expect;
+use rstest::rstest;
+
 use super::fmt;
 
 // Matches a fixture comment id (`c0`, `cL1`) without matching code idents like `count`.
-fn comment_ids(source: &str) -> BTreeSet<String> {
+fn comment_ids_in_order(source: &str) -> Vec<String> {
     let is_ident = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
     let bytes = source.as_bytes();
-    let mut ids = BTreeSet::new();
+    let mut ids = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
         let starts_token = i == 0 || !is_ident(bytes[i - 1]);
@@ -21,7 +24,7 @@ fn comment_ids(source: &str) -> BTreeSet<String> {
             }
             let ends_token = j >= bytes.len() || !is_ident(bytes[j]);
             if j > digits_start && ends_token {
-                ids.insert(source[i..j].to_string());
+                ids.push(source[i..j].to_string());
                 i = j;
                 continue;
             }
@@ -29,6 +32,10 @@ fn comment_ids(source: &str) -> BTreeSet<String> {
         i += 1;
     }
     ids
+}
+
+fn comment_ids(source: &str) -> BTreeSet<String> {
+    comment_ids_in_order(source).into_iter().collect()
 }
 
 #[test]
@@ -51,6 +58,29 @@ fn every_comment_survives_formatting_all_constructs() {
         dropped.len(),
         before.len()
     );
+}
+
+#[test]
+fn comment_order_is_preserved_across_all_constructs() {
+    let input = include_str!("../../../tests/fixtures/formatter/all_grammar_constructs.ws");
+    let before = comment_ids_in_order(input);
+    let after = comment_ids_in_order(&fmt(input));
+    assert_eq!(
+        before, after,
+        "formatter reordered comments: source sequence must equal formatted sequence"
+    );
+}
+
+#[test]
+fn comments_around_return_type_keep_source_order() {
+    let input = include_str!("../../../tests/fixtures/formatter/comments_around_return_type.ws");
+    let output = fmt(input);
+    expect![[r#"
+        function f2(/* a*/ b /*c */ : bool) /* d */ : /* e */ bool //test
+        {}
+    "#]]
+    .assert_eq(&output);
+    assert_eq!(output, fmt(&output), "formatting must be idempotent");
 }
 
 #[test]
@@ -250,6 +280,51 @@ fn no_comment_duplicated_across_all_constructs() {
         })
         .collect();
     assert!(dups.is_empty(), "comments emitted more than once: {dups:?}");
+}
+
+#[test]
+fn line_comment_before_brace_moves_brace_to_own_indented_line() {
+    let input =
+        include_str!("../../../tests/fixtures/formatter/line_comment_before_brace_function.ws");
+    let output = fmt(input);
+    expect![[r#"
+        function fn() // c0
+        {
+            if (true) // c1
+            {
+                return; // c2
+            }
+            // c3
+        }
+    "#]]
+    .assert_eq(&output);
+    assert_eq!(output, fmt(&output), "formatting must be idempotent");
+}
+
+#[rstest]
+#[case::function(include_str!(
+    "../../../tests/fixtures/formatter/line_comment_before_brace_function.ws"
+))]
+#[case::enumeration(include_str!(
+    "../../../tests/fixtures/formatter/line_comment_before_brace_enum.ws"
+))]
+#[case::class(include_str!(
+    "../../../tests/fixtures/formatter/line_comment_before_brace_class.ws"
+))]
+#[case::while_loop(include_str!(
+    "../../../tests/fixtures/formatter/line_comment_before_brace_while.ws"
+))]
+fn line_comment_before_brace_never_swallows_brace(#[case] input: &str) {
+    let once = fmt(input);
+    assert!(
+        !once.contains("// c0 {") && !once.contains("// c1 {") && !once.contains("// c {"),
+        "line comment must not swallow the block brace, got:\n{once}"
+    );
+    assert_eq!(
+        once,
+        fmt(&once),
+        "formatting must be idempotent, got:\n{once}"
+    );
 }
 
 #[test]

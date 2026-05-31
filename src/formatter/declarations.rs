@@ -321,31 +321,21 @@ impl<'a> Formatter<'a> {
 
         let children = child_nodes(node);
         let mut prev: Option<Node> = None;
-        let mut emitted_sig = false;
         for child in &children {
-            if child.is_missing() {
+            if child.is_missing() || child.kind() == "annotation" {
+                continue;
+            }
+            self.flush_comments_before(child.start_byte());
+            if child.kind() == "comment" {
                 continue;
             }
             match child.kind() {
-                "annotation" => continue,
                 "func_params" => {
-                    if !emitted_sig {
-                        self.format_func_sig(node);
-                        emitted_sig = true;
-                    }
-                    prev = Some(*child);
-                    continue;
-                }
-                ":" if emitted_sig => {
-                    prev = Some(*child);
-                    continue;
-                }
-                "type_annot" if emitted_sig => {
+                    self.format_func_params(node);
                     prev = Some(*child);
                     continue;
                 }
                 "func_block" => {
-                    self.emit(" ");
                     self.format_func_block(*child);
                     return;
                 }
@@ -358,7 +348,7 @@ impl<'a> Formatter<'a> {
                 _ => {}
             }
             if let Some(p) = prev {
-                if self.gap_between(p, *child, node.kind()) {
+                if !self.out.ends_with('\n') && self.gap_between(p, *child, node.kind()) {
                     self.emit(" ");
                 }
             }
@@ -383,6 +373,10 @@ impl<'a> Formatter<'a> {
         let mut prev: Option<Node> = None;
         for child in &children {
             if child.is_missing() {
+                continue;
+            }
+            // Defer to the brace's flush, else a `//` comment here swallows the brace.
+            if child.kind() == "comment" {
                 continue;
             }
             if child.kind() == "enum_def" {
@@ -414,9 +408,7 @@ impl<'a> Formatter<'a> {
         let close = children.iter().rfind(|n| n.kind() == "}");
 
         if let Some(o) = open {
-            if !o.is_missing() {
-                self.emit_verbatim(*o);
-            }
+            self.emit_block_open(*o);
         }
         if members.is_empty() {
             if let Some(cl) = close {
@@ -473,10 +465,7 @@ impl<'a> Formatter<'a> {
         let close = children.iter().rfind(|n| n.kind() == "}");
 
         if let Some(o) = open {
-            if !o.is_missing() {
-                let t = self.text(*o).to_string();
-                self.emit(&t);
-            }
+            self.emit_block_open(*o);
         }
         if members.is_empty() {
             if let Some(cl) = close {
