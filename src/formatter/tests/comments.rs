@@ -1,5 +1,8 @@
 use std::collections::BTreeSet;
 
+use expect_test::expect;
+use rstest::rstest;
+
 use super::fmt;
 
 // Matches a fixture comment id (`c0`, `cL1`) without matching code idents like `count`.
@@ -253,39 +256,48 @@ fn no_comment_duplicated_across_all_constructs() {
 }
 
 #[test]
-fn line_comment_before_block_brace_does_not_swallow_brace() {
+fn line_comment_before_brace_moves_brace_to_own_indented_line() {
     let input =
-        "function fn() // c0\n {\n\tif (true) // c1\n{\n\t\treturn; // c2\n\t}\n\t// c3\n}\n";
+        include_str!("../../../tests/fixtures/formatter/line_comment_before_brace_function.ws");
     let output = fmt(input);
-    assert!(
-        !output.contains("// c0 {") && !output.contains("// c1 {"),
-        "line comment must not swallow the block brace, got:\n{output}"
-    );
-    assert!(
-        output.contains("// c0\n{") && output.contains("// c1\n    {"),
-        "brace must move to its own indented line after a line comment, got:\n{output}"
-    );
-    assert_eq!(
-        output,
-        fmt(&output),
-        "formatting must be idempotent, got:\n{output}"
-    );
+    expect![[r#"
+        function fn() // c0
+        {
+            if (true) // c1
+            {
+                return; // c2
+            }
+            // c3
+        }
+    "#]]
+    .assert_eq(&output);
+    assert_eq!(output, fmt(&output), "formatting must be idempotent");
 }
 
-#[test]
-fn line_comment_before_brace_is_idempotent_across_constructs() {
-    for src in [
-        "enum E // c\n{\n\tA\n}\n",
-        "class C // c\n{\n\tvar x : int;\n}\n",
-        "function f() {\n\twhile (true) // c\n\t{\n\t\tx();\n\t}\n}\n",
-    ] {
-        let once = fmt(src);
-        assert!(
-            !once.contains("// c {") && !once.contains("// c\t{"),
-            "line comment swallowed the brace for:\n{src}\ngot:\n{once}"
-        );
-        assert_eq!(once, fmt(&once), "not idempotent for:\n{src}\ngot:\n{once}");
-    }
+#[rstest]
+#[case::function(include_str!(
+    "../../../tests/fixtures/formatter/line_comment_before_brace_function.ws"
+))]
+#[case::enumeration(include_str!(
+    "../../../tests/fixtures/formatter/line_comment_before_brace_enum.ws"
+))]
+#[case::class(include_str!(
+    "../../../tests/fixtures/formatter/line_comment_before_brace_class.ws"
+))]
+#[case::while_loop(include_str!(
+    "../../../tests/fixtures/formatter/line_comment_before_brace_while.ws"
+))]
+fn line_comment_before_brace_never_swallows_brace(#[case] input: &str) {
+    let once = fmt(input);
+    assert!(
+        !once.contains("// c0 {") && !once.contains("// c1 {") && !once.contains("// c {"),
+        "line comment must not swallow the block brace, got:\n{once}"
+    );
+    assert_eq!(
+        once,
+        fmt(&once),
+        "formatting must be idempotent, got:\n{once}"
+    );
 }
 
 #[test]
