@@ -331,7 +331,7 @@ impl<'a> Formatter<'a> {
             }
             match child.kind() {
                 "func_params" => {
-                    self.format_func_sig(node);
+                    self.format_func_params(node);
                     prev = Some(*child);
                     continue;
                 }

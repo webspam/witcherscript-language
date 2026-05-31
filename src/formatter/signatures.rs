@@ -3,7 +3,7 @@ use tree_sitter::Node;
 use super::{named_child_nodes, Formatter};
 
 impl<'a> Formatter<'a> {
-    pub(super) fn format_func_sig(&mut self, func_node: Node) {
+    pub(super) fn format_func_params(&mut self, func_node: Node) {
         let params = self.child_of_kind(func_node, "func_params");
         if let Some(fp) = params {
             self.flush_comments_before(fp.start_byte());
