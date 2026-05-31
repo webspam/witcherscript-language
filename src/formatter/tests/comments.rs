@@ -253,6 +253,42 @@ fn no_comment_duplicated_across_all_constructs() {
 }
 
 #[test]
+fn line_comment_before_block_brace_does_not_swallow_brace() {
+    let input =
+        "function fn() // c0\n {\n\tif (true) // c1\n{\n\t\treturn; // c2\n\t}\n\t// c3\n}\n";
+    let output = fmt(input);
+    assert!(
+        !output.contains("// c0 {") && !output.contains("// c1 {"),
+        "line comment must not swallow the block brace, got:\n{output}"
+    );
+    assert!(
+        output.contains("// c0\n{") && output.contains("// c1\n    {"),
+        "brace must move to its own indented line after a line comment, got:\n{output}"
+    );
+    assert_eq!(
+        output,
+        fmt(&output),
+        "formatting must be idempotent, got:\n{output}"
+    );
+}
+
+#[test]
+fn line_comment_before_brace_is_idempotent_across_constructs() {
+    for src in [
+        "enum E // c\n{\n\tA\n}\n",
+        "class C // c\n{\n\tvar x : int;\n}\n",
+        "function f() {\n\twhile (true) // c\n\t{\n\t\tx();\n\t}\n}\n",
+    ] {
+        let once = fmt(src);
+        assert!(
+            !once.contains("// c {") && !once.contains("// c\t{"),
+            "line comment swallowed the brace for:\n{src}\ngot:\n{once}"
+        );
+        assert_eq!(once, fmt(&once), "not idempotent for:\n{src}\ngot:\n{once}");
+    }
+}
+
+#[test]
 fn formats_all_constructs_idempotently() {
     let input = include_str!("../../../tests/fixtures/formatter/all_grammar_constructs.ws");
     let once = fmt(input);

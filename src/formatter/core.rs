@@ -102,6 +102,22 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    // A preceding `//` comment would swallow the brace, so move it to its own indented line.
+    pub(super) fn emit_block_open(&mut self, open: Node) {
+        if open.is_missing() {
+            return;
+        }
+        self.flush_comments_before(open.start_byte());
+        if self.out.ends_with('\n') {
+            self.emit_indent();
+        } else if !self.out.ends_with(' ') {
+            self.emit(" ");
+        }
+        let t = self.text(open).to_string();
+        self.emit(&t);
+        self.consume_comments_before(open.end_byte());
+    }
+
     // True when a trailing comment can rejoin the current line: mid-line, or a lone
     // '\n' right after content (not a blank line, where rejoining would dangle).
     fn can_trail(&self) -> bool {

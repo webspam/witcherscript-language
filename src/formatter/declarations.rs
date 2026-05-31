@@ -328,6 +328,9 @@ impl<'a> Formatter<'a> {
             }
             match child.kind() {
                 "annotation" => continue,
+                // Leave comments queued so the brace's flush handles them; emitting
+                // here would inline a `//` comment that then swallows the block brace.
+                "comment" => continue,
                 "func_params" => {
                     if !emitted_sig {
                         self.format_func_sig(node);
@@ -385,6 +388,10 @@ impl<'a> Formatter<'a> {
             if child.is_missing() {
                 continue;
             }
+            // Defer to the brace's flush, else a `//` comment here swallows the brace.
+            if child.kind() == "comment" {
+                continue;
+            }
             if child.kind() == "enum_def" {
                 self.emit(" ");
                 self.format_enum_def(*child);
@@ -414,9 +421,7 @@ impl<'a> Formatter<'a> {
         let close = children.iter().rfind(|n| n.kind() == "}");
 
         if let Some(o) = open {
-            if !o.is_missing() {
-                self.emit_verbatim(*o);
-            }
+            self.emit_block_open(*o);
         }
         if members.is_empty() {
             if let Some(cl) = close {
@@ -473,10 +478,7 @@ impl<'a> Formatter<'a> {
         let close = children.iter().rfind(|n| n.kind() == "}");
 
         if let Some(o) = open {
-            if !o.is_missing() {
-                let t = self.text(*o).to_string();
-                self.emit(&t);
-            }
+            self.emit_block_open(*o);
         }
         if members.is_empty() {
             if let Some(cl) = close {
