@@ -229,3 +229,19 @@ fn preserved_return_chain_is_idempotent() {
         "preserved-break formatting should be idempotent"
     );
 }
+
+#[test]
+fn authored_break_in_do_while_uses_paren_split() {
+    let src = "function F() { do { Foo(); } while (condAlpha\n        && condBeta); }";
+    let out = fmt(src);
+    assert!(
+        out.contains("} while (\n"),
+        "while should open on its own line after the brace, got:\n{out}"
+    );
+    assert!(out.contains("        condAlpha &&\n"), "got:\n{out}");
+    assert!(out.contains("        condBeta\n"), "got:\n{out}");
+    assert!(
+        out.contains("    )\n"),
+        "closing paren should sit at the do indent, got:\n{out}"
+    );
+}

@@ -353,26 +353,39 @@ impl<'a> Formatter<'a> {
             "do_while_stmt" => {
                 self.emit_indent();
                 self.emit("do");
-                if let Some(b) = node.child_by_field_name("body") {
-                    if b.kind() == "func_block" {
+                let cond = node.child_by_field_name("cond");
+                // `while (` trails the body's closing brace mid-line, so its indent is suppressed.
+                let mid_line = match node.child_by_field_name("body") {
+                    Some(b) if b.kind() == "func_block" => {
                         self.emit(" ");
                         self.format_func_block_inner(b, false);
-                        self.emit(" while (");
-                    } else {
+                        self.emit(" ");
+                        true
+                    }
+                    Some(b) => {
                         self.nl();
                         self.level += 1;
                         self.format_stmt(b);
                         self.level -= 1;
-                        self.emit_indent();
-                        self.emit("while (");
+                        false
                     }
-                } else {
-                    self.emit(" while (");
+                    None => {
+                        self.emit(" ");
+                        true
+                    }
+                };
+                if mid_line {
+                    self.suppress_next_indent = true;
                 }
-                if let Some(cond) = node.child_by_field_name("cond") {
-                    self.format_node(cond);
+                if !self.emit_split_keyword_cond("while (", cond) {
+                    self.emit_indent();
+                    self.emit("while (");
+                    if let Some(c) = cond {
+                        self.format_node(c);
+                    }
+                    self.emit(")");
                 }
-                self.emit(")\n");
+                self.nl();
             }
             "for_stmt" => {
                 self.emit_indent();
