@@ -19,7 +19,7 @@ impl<'a> Formatter<'a> {
             .iter()
             .enumerate()
             .filter_map(|(i, child)| {
-                if child.is_named() && child.kind() != "nop" {
+                if child.is_named() && child.kind() != "nop" && child.kind() != "comment" {
                     let trailing_semi = children
                         .get(i + 1)
                         .map(|n| n.kind() == ";" || n.kind() == "nop")
@@ -34,17 +34,11 @@ impl<'a> Formatter<'a> {
         let close = children.iter().rfind(|n| n.kind() == "}");
 
         if let Some(o) = open {
-            if !o.is_missing() {
-                let t = self.text(*o).to_string();
-                self.emit(&t);
-            }
+            self.emit_verbatim(*o);
         }
         if stmts.is_empty() {
             if let Some(cl) = close {
-                if !cl.is_missing() {
-                    let t = self.text(*cl).to_string();
-                    self.emit(&t);
-                }
+                self.emit_verbatim(*cl);
             }
             if trailing_nl {
                 self.nl();
@@ -63,6 +57,7 @@ impl<'a> Formatter<'a> {
             self.emit_stmt_in_block(*stmt, *trailing_semi);
             prev_end_row = Some(stmt.end_position().row);
         }
+        self.flush_before_close(close.copied());
         self.level -= 1;
         self.emit_indent();
         if let Some(cl) = close {
@@ -87,12 +82,14 @@ impl<'a> Formatter<'a> {
             "if_stmt" | "while_stmt" | "do_while_stmt" | "for_stmt" | "switch_stmt" | "func_block"
         );
         if node.is_error() || (!is_compound && node.has_error()) {
+            self.flush_comments_before(node.start_byte());
             let t = self.text(node).trim().to_string();
             self.emit_indent();
             self.emit(&t);
             if trailing_semi {
                 self.emit(";");
             }
+            self.consume_comments_before(node.end_byte());
             self.nl();
         } else {
             self.format_stmt(node);
@@ -102,10 +99,12 @@ impl<'a> Formatter<'a> {
     // ---- Statements ----
 
     fn format_stmt(&mut self, node: Node) {
+        self.flush_comments_before(node.start_byte());
         if node.is_error() || node.has_error() {
             let t = self.text(node).trim().to_string();
             self.emit_indent();
             self.emit(&t);
+            self.consume_comments_before(node.end_byte());
             self.nl();
             return;
         }
@@ -118,12 +117,6 @@ impl<'a> Formatter<'a> {
                 self.format_func_block(node);
             }
             "expr_stmt" => self.format_expr_stmt(node),
-            "comment" => {
-                let t = self.text(node).to_string();
-                self.emit_indent();
-                self.emit(&t);
-                self.nl();
-            }
             _ => {
                 self.emit_indent();
                 self.format_children(node);
@@ -362,22 +355,28 @@ impl<'a> Formatter<'a> {
         }
         self.emit(") {\n");
         self.level += 1;
+        let mut close: Option<Node> = None;
         if let Some(block) = self.child_of_kind(node, "switch_block") {
             let children = child_nodes(block);
+            close = children.iter().rfind(|n| n.kind() == "}").copied();
             for child in &children {
                 match child.kind() {
                     "switch_case_label" | "switch_default_label" => {
+                        // Flush before the label's indent, else `case` loses that indent.
                         self.level -= 1;
+                        self.flush_comments_before(child.start_byte());
                         self.emit_indent();
                         self.level += 1;
                         self.format_children(*child);
                         self.nl();
                     }
+                    "comment" => {}
                     _ if child.is_named() => self.format_stmt(*child),
                     _ => {}
                 }
             }
         }
+        self.flush_before_close(close);
         self.level -= 1;
         self.emit_indent();
         self.emit("}\n");

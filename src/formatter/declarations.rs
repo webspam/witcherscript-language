@@ -14,24 +14,24 @@ impl<'a> Formatter<'a> {
             .collect();
         let mut prev_end_row: Option<usize> = None;
         let mut prev_was_comment = false;
+        let mut prev_node: Option<Node> = None;
         for child in &children {
             let child_row = child.start_position().row;
+            let trailing = child.kind() == "comment" && self.is_trailing_comment(prev_node, *child);
             if let Some(prev) = prev_end_row {
                 let source_gap = child_row.saturating_sub(prev);
-                if source_gap >= 2 || !prev_was_comment {
+                if !trailing && (source_gap >= 2 || !prev_was_comment) {
                     self.nl();
                 }
             }
             prev_was_comment = child.kind() == "comment";
             if child.kind() == "comment" {
-                let t = self.text(*child).to_string();
-                self.emit_indent();
-                self.emit(&t);
-                self.nl();
+                self.flush_comments_before(child.end_byte());
             } else {
                 self.format_node(*child);
             }
             prev_end_row = Some(child.end_position().row);
+            prev_node = Some(*child);
         }
     }
 
@@ -55,18 +55,22 @@ impl<'a> Formatter<'a> {
     }
 
     fn emit_annotation(&mut self, ann: Node) {
+        self.flush_comments_before(ann.start_byte());
         let ann_text = self.render_node(ann);
         self.emit_indent();
         self.emit(&ann_text);
+        self.consume_comments_before(ann.end_byte());
         self.nl();
     }
 
     fn emit_add_field_annotation(&mut self, node: Node, ann: Node) -> bool {
         let placement = self.annotation_placement;
         let same_line = placement.resolve(|| self.annotation_same_line_in_source(node, ann));
+        self.flush_comments_before(ann.start_byte());
         let ann_text = self.render_node(ann);
         self.emit_indent();
         self.emit(&ann_text);
+        self.consume_comments_before(ann.end_byte());
         if same_line {
             self.emit(" ");
             true
@@ -431,6 +435,10 @@ impl<'a> Formatter<'a> {
             .count();
         let mut emitted_members = 0;
         for member in &members {
+            if member.kind() == "comment" {
+                self.flush_comments_before(member.end_byte());
+                continue;
+            }
             self.emit_indent();
             if member.kind() == "enum_decl_variant" {
                 self.format_children(*member);
@@ -443,6 +451,7 @@ impl<'a> Formatter<'a> {
             }
             self.nl();
         }
+        self.flush_before_close(close.copied());
         self.level -= 1;
         self.emit_indent();
         if let Some(cl) = close {
@@ -502,10 +511,22 @@ impl<'a> Formatter<'a> {
                 && prev_member.map(is_bodiless_callable).unwrap_or(false);
             let want_blank = source_gap >= 2
                 || (is_callable && prev_end_row.is_some() && !prev_was_comment && !both_bodiless);
+            prev_was_comment = member.kind() == "comment";
+
+            if member.kind() == "comment" {
+                let trailing = self.is_trailing_comment(prev_member, member);
+                if want_blank && !trailing {
+                    self.nl();
+                }
+                self.flush_comments_before(member.end_byte());
+                prev_end_row = Some(member.end_position().row);
+                prev_member = Some(member);
+                idx += 1;
+                continue;
+            }
             if want_blank {
                 self.nl();
             }
-            prev_was_comment = member.kind() == "comment";
 
             if member.kind() == "member_var_decl"
                 && !self.renders_verbatim(member)
@@ -529,6 +550,7 @@ impl<'a> Formatter<'a> {
             }
         }
 
+        self.flush_before_close(close.copied());
         self.level -= 1;
         self.emit_indent();
         if let Some(cl) = close {
@@ -551,21 +573,17 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_class_member(&mut self, node: Node, colon_align_col: Option<usize>) {
+        self.flush_comments_before(node.start_byte());
         if self.renders_verbatim(node) {
             let t = self.text(node).trim().to_string();
             self.emit_indent();
             self.emit(&t);
+            self.consume_comments_before(node.end_byte());
             self.nl();
             return;
         }
         match node.kind() {
             "func_decl" | "event_decl" => self.format_func_decl(node),
-            "comment" => {
-                let t = self.text(node).to_string();
-                self.emit_indent();
-                self.emit(&t);
-                self.nl();
-            }
             "member_default_val_block" => self.format_defaults_block(node),
             "member_default_val" => {
                 self.emit_indent();
@@ -618,6 +636,10 @@ impl<'a> Formatter<'a> {
         self.nl();
         self.level += 1;
         for member in &members {
+            if member.kind() == "comment" {
+                self.flush_comments_before(member.end_byte());
+                continue;
+            }
             self.emit_indent();
             if member.kind() == "member_default_val_block_assign" {
                 self.format_children(*member);
@@ -626,6 +648,7 @@ impl<'a> Formatter<'a> {
             }
             self.nl();
         }
+        self.flush_before_close(close.copied());
         self.level -= 1;
         self.emit_indent();
         if let Some(cl) = close {

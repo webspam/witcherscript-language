@@ -4,6 +4,10 @@ use super::{named_child_nodes, Formatter};
 
 impl<'a> Formatter<'a> {
     pub(super) fn format_func_sig(&mut self, func_node: Node) {
+        let params = self.child_of_kind(func_node, "func_params");
+        if let Some(fp) = params {
+            self.flush_comments_before(fp.start_byte());
+        }
         // Keep `,` tokens in the walk so comments land on the correct side.
         let inner_nodes: Vec<Node> = self
             .child_of_kind(func_node, "func_params")
@@ -71,6 +75,9 @@ impl<'a> Formatter<'a> {
             self.emit_indent();
             self.emit(")");
             self.emit(&ret_str);
+        }
+        if let Some(fp) = params {
+            self.consume_comments_before(fp.end_byte());
         }
     }
 

@@ -1,4 +1,57 @@
+use std::collections::BTreeSet;
+
 use super::fmt;
+
+// Matches a fixture comment id (`c0`, `cL1`) without matching code idents like `count`.
+fn comment_ids(source: &str) -> BTreeSet<String> {
+    let is_ident = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+    let bytes = source.as_bytes();
+    let mut ids = BTreeSet::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        let starts_token = i == 0 || !is_ident(bytes[i - 1]);
+        if bytes[i] == b'c' && starts_token {
+            let mut j = i + 1;
+            if j < bytes.len() && bytes[j] == b'L' {
+                j += 1;
+            }
+            let digits_start = j;
+            while j < bytes.len() && bytes[j].is_ascii_digit() {
+                j += 1;
+            }
+            let ends_token = j >= bytes.len() || !is_ident(bytes[j]);
+            if j > digits_start && ends_token {
+                ids.insert(source[i..j].to_string());
+                i = j;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    ids
+}
+
+#[test]
+fn every_comment_survives_formatting_all_constructs() {
+    let input = include_str!("../../../tests/fixtures/formatter/all_grammar_constructs.ws");
+    let before = comment_ids(input);
+    assert!(
+        before.len() > 700,
+        "fixture id extraction is broken: only found {} ids",
+        before.len()
+    );
+
+    let output = fmt(input);
+    let after = comment_ids(&output);
+
+    let dropped: Vec<&String> = before.difference(&after).collect();
+    assert!(
+        dropped.is_empty(),
+        "formatter dropped {} of {} comments: {dropped:?}",
+        dropped.len(),
+        before.len()
+    );
+}
 
 #[test]
 fn trailing_comment_on_error_member_var_preserved() {
@@ -106,4 +159,103 @@ fn comment_between_params_keeps_source_comma_position() {
         output.contains("/*f*/, /*g*/"),
         "comma must sit between /*f*/ and /*g*/ as in source, got:\n{output}"
     );
+}
+
+#[test]
+fn line_comment_between_statements_does_not_swallow_next() {
+    let input = "function f() {\n    var y : int = a // c\n        + b;\n}";
+    let output = fmt(input);
+    assert!(
+        output.contains("// c\n"),
+        "line comment must be newline-terminated, got:\n{output}"
+    );
+    assert!(
+        output.contains("+ b"),
+        "following tokens must survive the comment, got:\n{output}"
+    );
+    assert!(
+        !output.contains("// c +"),
+        "comment must not swallow the operator, got:\n{output}"
+    );
+}
+
+#[test]
+fn trailing_line_comment_after_statement_stays_and_terminates() {
+    let input = "function f() {\n    doSomething(); // explain\n    other();\n}";
+    let output = fmt(input);
+    assert!(
+        output.contains("doSomething(); // explain\n"),
+        "trailing line comment must stay on the statement line and terminate, got:\n{output}"
+    );
+    assert!(
+        output.contains("other();"),
+        "next statement must survive, got:\n{output}"
+    );
+}
+
+#[test]
+fn trailing_comment_after_class_member_stays_trailing() {
+    let input = "class C {\n    var x : int; // trailing\n    var y : int;\n}";
+    let output = fmt(input);
+    assert!(
+        output.contains("var x : int; // trailing\n"),
+        "trailing comment must stay on the member line, got:\n{output}"
+    );
+    assert!(
+        output.contains("var y : int;"),
+        "following member must survive, got:\n{output}"
+    );
+}
+
+#[test]
+fn trailing_comment_after_enum_variant_keeps_comma_order() {
+    let input = "enum E {\n    A, // first\n    B\n}";
+    let output = fmt(input);
+    assert!(
+        output.contains("A, // first"),
+        "comma must precede the trailing comment, got:\n{output}"
+    );
+}
+
+#[test]
+fn trailing_comment_in_defaults_block_stays_trailing() {
+    let input = "class C {\n    defaults {\n        x = 1; // trailing\n    }\n}";
+    let output = fmt(input);
+    assert!(
+        output.contains("x = 1; // trailing"),
+        "trailing comment in defaults block must stay trailing, got:\n{output}"
+    );
+}
+
+#[test]
+fn own_line_comment_in_nested_block_is_indented() {
+    let input = "function f() {\n    if (x) {\n        // note\n        a();\n    }\n}";
+    let output = fmt(input);
+    assert!(
+        output.contains("        // note\n"),
+        "own-line comment must be indented to its block depth, got:\n{output}"
+    );
+}
+
+#[test]
+fn no_comment_duplicated_across_all_constructs() {
+    let input = include_str!("../../../tests/fixtures/formatter/all_grammar_constructs.ws");
+    let output = fmt(input);
+    let dups: Vec<String> = comment_ids(input)
+        .iter()
+        .filter_map(|id| {
+            let n = output.matches(&format!("/*{id}*/")).count()
+                + output.matches(&format!("// {id}")).count();
+            (n > 1).then(|| format!("{id}x{n}"))
+        })
+        .collect();
+    assert!(dups.is_empty(), "comments emitted more than once: {dups:?}");
+}
+
+#[test]
+fn formats_all_constructs_idempotently() {
+    let input = include_str!("../../../tests/fixtures/formatter/all_grammar_constructs.ws");
+    let once = fmt(input);
+    let twice = fmt(&once);
+    assert_eq!(once, twice, "formatting all constructs is not idempotent");
 }
