@@ -72,6 +72,18 @@ fn comment_order_is_preserved_across_all_constructs() {
 }
 
 #[test]
+fn comments_around_return_type_keep_source_order() {
+    let input = include_str!("../../../tests/fixtures/formatter/comments_around_return_type.ws");
+    let output = fmt(input);
+    expect![[r#"
+        function f2(/* a*/ b /*c */ : bool) /* d */ : /* e */ bool //test
+        {}
+    "#]]
+    .assert_eq(&output);
+    assert_eq!(output, fmt(&output), "formatting must be idempotent");
+}
+
+#[test]
 fn trailing_comment_on_error_member_var_preserved() {
     let input = "class C {\n    var x : int // trailing comment\n}";
     let output = fmt(input);

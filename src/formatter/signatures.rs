@@ -50,9 +50,9 @@ impl<'a> Formatter<'a> {
         let fits = group_count == 0
             || self.current_line_len() + inline.len() + ret_str.len() <= self.line_limit;
 
+        // The caller emits the `: type` so comments stay ordered - we do not.
         if fits {
             self.emit(&inline);
-            self.emit(&ret_str);
         } else {
             self.emit("(\n");
             self.level += 1;
@@ -74,7 +74,6 @@ impl<'a> Formatter<'a> {
             self.level -= 1;
             self.emit_indent();
             self.emit(")");
-            self.emit(&ret_str);
         }
         if let Some(fp) = params {
             self.consume_comments_before(fp.end_byte());

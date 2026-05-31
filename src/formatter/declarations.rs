@@ -321,34 +321,21 @@ impl<'a> Formatter<'a> {
 
         let children = child_nodes(node);
         let mut prev: Option<Node> = None;
-        let mut emitted_sig = false;
         for child in &children {
-            if child.is_missing() {
+            if child.is_missing() || child.kind() == "annotation" {
+                continue;
+            }
+            self.flush_comments_before(child.start_byte());
+            if child.kind() == "comment" {
                 continue;
             }
             match child.kind() {
-                "annotation" => continue,
-                // Leave comments queued so the brace's flush handles them; emitting
-                // here would inline a `//` comment that then swallows the block brace.
-                "comment" => continue,
                 "func_params" => {
-                    if !emitted_sig {
-                        self.format_func_sig(node);
-                        emitted_sig = true;
-                    }
-                    prev = Some(*child);
-                    continue;
-                }
-                ":" if emitted_sig => {
-                    prev = Some(*child);
-                    continue;
-                }
-                "type_annot" if emitted_sig => {
+                    self.format_func_sig(node);
                     prev = Some(*child);
                     continue;
                 }
                 "func_block" => {
-                    self.emit(" ");
                     self.format_func_block(*child);
                     return;
                 }
@@ -361,7 +348,7 @@ impl<'a> Formatter<'a> {
                 _ => {}
             }
             if let Some(p) = prev {
-                if self.gap_between(p, *child, node.kind()) {
+                if !self.out.ends_with('\n') && self.gap_between(p, *child, node.kind()) {
                     self.emit(" ");
                 }
             }
