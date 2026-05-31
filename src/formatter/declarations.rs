@@ -212,28 +212,18 @@ impl<'a> Formatter<'a> {
                 }
                 idx = run[run.len() - 1] + 2;
             } else if is_alignable_field(members[idx]) {
-                let mut j = idx;
-                while j + 1 < members.len()
-                    && is_alignable_field(members[j + 1])
-                    && !self.is_mergeable_default_pair(members, j + 1)
-                    && members[j + 1]
-                        .start_position()
-                        .row
-                        .saturating_sub(members[j].end_position().row)
-                        <= 1
-                {
-                    j += 1;
-                }
-                if j > idx {
-                    let width = (idx..=j)
-                        .map(|k| self.member_var_pre_colon_width(members[k]))
+                let run = self.colon_align_run(members, idx);
+                if run.len() >= 2 {
+                    let width = run
+                        .iter()
+                        .map(|&k| self.member_var_pre_colon_width(members[k]))
                         .max()
                         .unwrap_or(0);
-                    for target in targets.iter_mut().take(j + 1).skip(idx) {
-                        *target = Some(indent_width + width);
+                    for &k in &run {
+                        targets[k] = Some(indent_width + width);
                     }
                 }
-                idx = j + 1;
+                idx = run[run.len() - 1] + 1;
             } else {
                 idx += 1;
             }
@@ -249,6 +239,34 @@ impl<'a> Formatter<'a> {
             && default.kind() == "member_default_val"
             && is_alignable_field(members[var_idx])
             && self.default_on_same_line(members[var_idx], *default)
+    }
+
+    // A comment between fields doesn't break the run; a blank line does.
+    fn colon_align_run(&self, members: &[Node], run_start: usize) -> Vec<usize> {
+        let mut run = vec![run_start];
+        let mut prev = run_start;
+        let mut scan = run_start + 1;
+        while scan < members.len() {
+            let gap = members[scan]
+                .start_position()
+                .row
+                .saturating_sub(members[prev].end_position().row);
+            if gap >= 2 {
+                break;
+            }
+            if members[scan].kind() == "comment" {
+                prev = scan;
+                scan += 1;
+                continue;
+            }
+            if !is_alignable_field(members[scan]) || self.is_mergeable_default_pair(members, scan) {
+                break;
+            }
+            run.push(scan);
+            prev = scan;
+            scan += 1;
+        }
+        run
     }
 
     // Var-decl indices of a run of same-line default pairs. Comments between pairs are skipped

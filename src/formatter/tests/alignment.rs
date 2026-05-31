@@ -54,6 +54,24 @@ fn blank_line_breaks_alignment_run() {
 }
 
 #[test]
+fn doc_comment_between_plain_fields_does_not_break_colon_alignment() {
+    let output = fmt_aligned(
+        "class C {\n    \
+         var x : int;\n    \
+         /** doc */\n    \
+         var someLongName : string;\n}",
+    );
+    expect![[r#"
+        class C {
+            var x            : int;
+            /** doc */
+            var someLongName : string;
+        }
+    "#]]
+    .assert_eq(&output);
+}
+
+#[test]
 fn single_field_is_not_padded() {
     let output = fmt_aligned("class C { var x : int; }");
     assert!(output.contains("    var x : int;"), "got:\n{output}");
