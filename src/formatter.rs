@@ -89,7 +89,14 @@ fn render_expr(node: Node, source: &str) -> String {
     .render_node(node)
 }
 
-fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<(String, Option<&'static str>)>) {
+pub(super) struct BoolPart {
+    pub fragment: String,
+    pub op: Option<&'static str>,
+    // The author put a newline between this operand and the next one in the source.
+    pub break_after: bool,
+}
+
+fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<BoolPart>) {
     if node.kind() == "binary_op_expr" {
         if let Some(op_node) = node.child_by_field_name("op") {
             let op_str: Option<&'static str> = match op_node.kind() {
@@ -104,7 +111,8 @@ fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<(String, Option<
                 ) {
                     collect_bool_parts(left, source, parts);
                     if let Some(last) = parts.last_mut() {
-                        last.1 = Some(op);
+                        last.op = Some(op);
+                        last.break_after = right.start_position().row > left.end_position().row;
                     }
                     collect_bool_parts(right, source, parts);
                     return;
@@ -112,16 +120,22 @@ fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<(String, Option<
             }
         }
     }
-    parts.push((render_expr(node, source), None));
+    parts.push(BoolPart {
+        fragment: render_expr(node, source),
+        op: None,
+        break_after: false,
+    });
 }
 
-pub(super) fn split_binary_condition(
-    node: Node,
-    source: &str,
-) -> Vec<(String, Option<&'static str>)> {
+pub(super) fn split_binary_condition(node: Node, source: &str) -> Vec<BoolPart> {
     let mut parts = Vec::new();
     collect_bool_parts(node, source, &mut parts);
     parts
+}
+
+pub(super) fn chain_fully_broken(parts: &[BoolPart]) -> bool {
+    // The last operand has no successor, so break_after is only meaningful on the rest.
+    parts.len() > 1 && parts[..parts.len() - 1].iter().all(|p| p.break_after)
 }
 
 pub(super) fn try_split_call_args(node: Node, source: &str) -> Option<(String, Vec<String>)> {

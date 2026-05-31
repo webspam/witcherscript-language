@@ -1,7 +1,8 @@
 use tree_sitter::Node;
 
 use super::{
-    child_nodes, named_child_nodes, split_binary_condition, try_split_call_args, Formatter,
+    chain_fully_broken, child_nodes, named_child_nodes, split_binary_condition,
+    try_split_call_args, BoolPart, Formatter,
 };
 
 impl<'a> Formatter<'a> {
@@ -143,22 +144,8 @@ impl<'a> Formatter<'a> {
             .unwrap_or_default();
         let splittable_cond = cond_parts.len() > 1;
 
-        if splittable_cond && cond_line > self.line_limit {
-            self.emit_indent();
-            self.emit("if (\n");
-            self.level += 1;
-            for (fragment, op) in cond_parts {
-                self.emit_indent();
-                self.emit(&fragment);
-                if let Some(o) = op {
-                    self.emit(" ");
-                    self.emit(o);
-                }
-                self.nl();
-            }
-            self.level -= 1;
-            self.emit_indent();
-            self.emit(")");
+        if splittable_cond && (cond_line > self.line_limit || chain_fully_broken(&cond_parts)) {
+            self.emit_condition_split("if (", &cond_parts);
             self.emit_if_body(body, true);
         } else {
             self.emit_indent();
@@ -175,6 +162,72 @@ impl<'a> Formatter<'a> {
             self.emit("else");
             self.emit_else_clause(eb, force_block);
         }
+    }
+
+    fn emit_split_keyword_cond(&mut self, keyword_open: &str, cond: Option<Node>) -> bool {
+        let Some(c) = cond else {
+            return false;
+        };
+        let parts = split_binary_condition(c, self.source);
+        if parts.len() <= 1 {
+            return false;
+        }
+        let indent = self.level * self.indent_unit.len();
+        let cond_line = indent + keyword_open.len() + self.render_node(c).len() + 1;
+        if cond_line > self.line_limit || chain_fully_broken(&parts) {
+            self.emit_condition_split(keyword_open, &parts);
+            return true;
+        }
+        false
+    }
+
+    fn emit_condition_split(&mut self, keyword_open: &str, parts: &[BoolPart]) {
+        self.emit_indent();
+        self.emit(keyword_open);
+        self.nl();
+        self.level += 1;
+        for part in parts {
+            self.emit_indent();
+            self.emit(&part.fragment);
+            if let Some(op) = part.op {
+                self.emit(" ");
+                self.emit(op);
+            }
+            self.nl();
+        }
+        self.level -= 1;
+        self.emit_indent();
+        self.emit(")");
+    }
+
+    pub(super) fn try_emit_broken_chain(&mut self, node: Node, parent_kind: &str) -> bool {
+        if node.kind() != "binary_op_expr" {
+            return false;
+        }
+        // A chain nested in an enclosing chain is already rendered as one flat fragment.
+        if parent_kind == "binary_op_expr" {
+            return false;
+        }
+        let parts = split_binary_condition(node, self.source);
+        if !chain_fully_broken(&parts) {
+            return false;
+        }
+        self.level += 1;
+        for (i, part) in parts.iter().enumerate() {
+            if i > 0 {
+                self.emit_indent();
+            }
+            self.emit(&part.fragment);
+            if let Some(op) = part.op {
+                self.emit(" ");
+                self.emit(op);
+            }
+            if i + 1 < parts.len() {
+                self.nl();
+            }
+        }
+        self.level -= 1;
+        true
     }
 
     fn emit_if_body(&mut self, body: Option<Node>, force_block: bool) {
@@ -282,12 +335,15 @@ impl<'a> Formatter<'a> {
     pub(super) fn format_loop_stmt(&mut self, node: Node) {
         match node.kind() {
             "while_stmt" => {
-                self.emit_indent();
-                self.emit("while (");
-                if let Some(cond) = node.child_by_field_name("cond") {
-                    self.format_node(cond);
+                let cond = node.child_by_field_name("cond");
+                if !self.emit_split_keyword_cond("while (", cond) {
+                    self.emit_indent();
+                    self.emit("while (");
+                    if let Some(c) = cond {
+                        self.format_node(c);
+                    }
+                    self.emit(")");
                 }
-                self.emit(")");
                 if let Some(b) = node.child_by_field_name("body") {
                     self.emit_compound_body(b);
                 } else {
@@ -348,12 +404,17 @@ impl<'a> Formatter<'a> {
     }
 
     pub(super) fn format_switch_stmt(&mut self, node: Node) {
-        self.emit_indent();
-        self.emit("switch (");
-        if let Some(cond) = node.child_by_field_name("cond") {
-            self.format_node(cond);
+        let cond = node.child_by_field_name("cond");
+        if self.emit_split_keyword_cond("switch (", cond) {
+            self.emit(" {\n");
+        } else {
+            self.emit_indent();
+            self.emit("switch (");
+            if let Some(c) = cond {
+                self.format_node(c);
+            }
+            self.emit(") {\n");
         }
-        self.emit(") {\n");
         self.level += 1;
         let mut close: Option<Node> = None;
         if let Some(block) = self.child_of_kind(node, "switch_block") {
@@ -411,7 +472,9 @@ impl<'a> Formatter<'a> {
                     return;
                 }
             }
-            self.format_node(e);
+            if !self.try_emit_broken_chain(e, node.kind()) {
+                self.format_node(e);
+            }
         }
         let semi = self.child_of_kind(node, ";");
         if semi.map(|n| !n.is_missing()).unwrap_or(false) {
