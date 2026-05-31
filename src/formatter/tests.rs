@@ -8,6 +8,7 @@ mod colon_spacing;
 mod comments;
 mod line_breaking;
 mod structures;
+mod switch;
 
 use super::{AnnotationPlacement, FormatOptions};
 
