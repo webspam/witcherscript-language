@@ -159,29 +159,19 @@ impl<'a> Formatter<'a> {
         width
     }
 
-    fn member_var_suffix_from_colon_width(&self, node: Node) -> usize {
-        let children = child_nodes(node);
-        let Some(colon_idx) = children.iter().position(|c| c.kind() == ":") else {
-            return 0;
-        };
-        self.rendered_width(&children[colon_idx..], node.kind())
-    }
-
     fn member_var_line_width_to_semicolon(
         &self,
         node: Node,
         colon_align_col: Option<usize>,
     ) -> usize {
+        let natural = self.member_var_decl_width(node);
+        let Some(col) = colon_align_col else {
+            return natural;
+        };
         let indent_width = self.level * self.indent_unit.len();
-        let suffix = self.member_var_suffix_from_colon_width(node);
-        match colon_align_col {
-            None => self.member_var_decl_width(node),
-            // Colon is emitted one gap-space past `col` (unless compact_colon); count it.
-            Some(col) => {
-                let pre_colon_gap = usize::from(!self.compact_colon);
-                col.saturating_sub(indent_width) + pre_colon_gap + suffix
-            }
-        }
+        let alignment_pad =
+            col.saturating_sub(indent_width + self.member_var_pre_colon_width(node));
+        natural + alignment_pad
     }
 
     fn member_var_decl_width(&self, node: Node) -> usize {
