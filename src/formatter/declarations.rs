@@ -176,7 +176,11 @@ impl<'a> Formatter<'a> {
         let suffix = self.member_var_suffix_from_colon_width(node);
         match colon_align_col {
             None => self.member_var_decl_width(node),
-            Some(col) => col.saturating_sub(indent_width) + suffix,
+            // Colon is emitted one gap-space past `col` (unless compact_colon); count it.
+            Some(col) => {
+                let pre_colon_gap = usize::from(!self.compact_colon);
+                col.saturating_sub(indent_width) + pre_colon_gap + suffix
+            }
         }
     }
 

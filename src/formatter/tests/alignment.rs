@@ -79,7 +79,7 @@ fn aligns_consecutive_same_line_defaults() {
         AnnotationPlacement::SameLine,
     );
     assert!(
-        output.contains("private const var RESET_TIME : float; default RESET_TIME = 0.750;"),
+        output.contains("private const var RESET_TIME : float;  default RESET_TIME = 0.750;"),
         "got:\n{output}"
     );
     let lines: Vec<&str> = output.lines().collect();
@@ -342,11 +342,11 @@ fn doc_comment_between_pairs_does_not_break_default_alignment() {
     expect![[r#"
         class C {
             /** first */
-            private const var ALPHA : int;   default ALPHA = 6;
+            private const var ALPHA : int;    default ALPHA = 6;
             /** second */
-            private const var BETA  : float; default BETA = 0.333;
+            private const var BETA  : float;  default BETA = 0.333;
             /** third */
-            private const var GAMMA : int;   default GAMMA = 1;
+            private const var GAMMA : int;    default GAMMA = 1;
         }
     "#]]
     .assert_eq(&output);
@@ -366,12 +366,12 @@ fn blank_line_with_comment_still_breaks_default_alignment_run() {
     );
     expect![[r#"
         class C {
-            var a        : int;   default a = 1;
-            var longName : float; default longName = 0.5;
+            var a        : int;    default a = 1;
+            var longName : float;  default longName = 0.5;
 
             /** new group */
-            var b           : int;   default b = 2;
-            var anotherLong : float; default anotherLong = 1.0;
+            var b           : int;    default b = 2;
+            var anotherLong : float;  default anotherLong = 1.0;
         }
     "#]]
     .assert_eq(&output);
