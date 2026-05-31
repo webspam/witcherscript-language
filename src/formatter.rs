@@ -83,6 +83,8 @@ fn render_expr(node: Node, source: &str) -> String {
         annotation_placement: AnnotationPlacement::Preserve,
         default_placement: AnnotationPlacement::Preserve,
         colon_align_col: None,
+        comments: Vec::new(),
+        comment_cursor: 0,
     }
     .render_node(node)
 }
@@ -194,6 +196,27 @@ pub(super) fn is_expr_node(kind: &str) -> bool {
     )
 }
 
+fn collect_comments(root: Node) -> Vec<Node> {
+    let mut comments = Vec::new();
+    let mut cursor = root.walk();
+    loop {
+        if cursor.node().kind() == "comment" {
+            comments.push(cursor.node());
+        }
+        if cursor.goto_first_child() {
+            continue;
+        }
+        loop {
+            if cursor.goto_next_sibling() {
+                break;
+            }
+            if !cursor.goto_parent() {
+                return comments;
+            }
+        }
+    }
+}
+
 /// Renders the parameter list and return type of a callable declaration node as a
 /// clean, normalised string — comments stripped, whitespace canonical.
 /// Returns `None` if the node has no `func_params` child.
@@ -210,6 +233,8 @@ pub fn render_callable_signature(node: Node, source: &str) -> Option<String> {
         annotation_placement: AnnotationPlacement::Preserve,
         default_placement: AnnotationPlacement::Preserve,
         colon_align_col: None,
+        comments: Vec::new(),
+        comment_cursor: 0,
     };
     f.render_sig(node)
 }
@@ -232,8 +257,11 @@ pub fn format_document(root: Node, source: &str, options: FormatOptions) -> Stri
         annotation_placement: options.annotation_placement,
         default_placement: options.default_placement,
         colon_align_col: None,
+        comments: collect_comments(root),
+        comment_cursor: 0,
     };
     f.format_node(root);
+    f.flush_comments_before(usize::MAX);
     while f.out.ends_with("\n\n") {
         f.out.pop();
     }
@@ -255,4 +283,7 @@ struct Formatter<'a> {
     annotation_placement: AnnotationPlacement,
     default_placement: AnnotationPlacement,
     colon_align_col: Option<usize>,
+    // Source-ordered comments; the sweep emits each just before the next node past it.
+    comments: Vec<Node<'a>>,
+    comment_cursor: usize,
 }

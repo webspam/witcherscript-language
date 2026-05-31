@@ -2,6 +2,26 @@ use tree_sitter::Node;
 
 use super::{child_nodes, is_expr_node, Formatter};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CommentPlacement {
+    Trailing,
+    OwnLine,
+}
+
+// `//` runs to end-of-line: it must be newline-terminated or it swallows the next token.
+fn is_line_comment(text: &str) -> bool {
+    text.trim_start().starts_with("//")
+}
+
+fn comment_placement(prev: Option<Node>, comment: Node) -> CommentPlacement {
+    match prev {
+        Some(p) if p.end_position().row == comment.start_position().row => {
+            CommentPlacement::Trailing
+        }
+        _ => CommentPlacement::OwnLine,
+    }
+}
+
 impl<'a> Formatter<'a> {
     pub(super) fn text(&self, node: Node) -> &'a str {
         &self.source[node.start_byte()..node.end_byte()]
@@ -39,23 +59,98 @@ impl<'a> Formatter<'a> {
 
     // ---- Core: token-preserving walk ----
 
-    // Universal safety-net: emit a node's source text verbatim.
-    // Use this as the fallback in every exhaustive child loop so that
-    // no CST node — especially comment extras — is ever silently dropped.
+    // Emit comments starting before `byte`, so none is stranded behind a later token.
+    pub(super) fn flush_comments_before(&mut self, byte: usize) {
+        while self
+            .comments
+            .get(self.comment_cursor)
+            .is_some_and(|c| c.start_byte() < byte)
+        {
+            let comment = self.comments[self.comment_cursor];
+            self.comment_cursor += 1;
+            self.emit_comment(comment);
+        }
+    }
+
+    pub(super) fn is_trailing_comment(&self, prev: Option<Node>, comment: Node) -> bool {
+        comment_placement(prev, comment) == CommentPlacement::Trailing
+    }
+
+    pub(super) fn flush_before_close(&mut self, close: Option<Node>) {
+        if let Some(cl) = close {
+            self.flush_comments_before(cl.start_byte());
+        }
+    }
+
+    // Skip comments before `byte` whose text was already emitted verbatim by the caller.
+    pub(super) fn consume_comments_before(&mut self, byte: usize) {
+        while self
+            .comments
+            .get(self.comment_cursor)
+            .is_some_and(|c| c.start_byte() < byte)
+        {
+            self.comment_cursor += 1;
+        }
+    }
+
     pub(super) fn emit_verbatim(&mut self, node: Node) {
         if !node.is_missing() {
+            self.flush_comments_before(node.start_byte());
             let t = self.text(node).to_string();
             self.emit(&t);
+            self.consume_comments_before(node.end_byte());
         }
+    }
+
+    // True when a trailing comment can rejoin the current line: mid-line, or a lone
+    // '\n' right after content (not a blank line, where rejoining would dangle).
+    fn can_trail(&self) -> bool {
+        if self.out.is_empty() {
+            return false;
+        }
+        if !self.out.ends_with('\n') {
+            return true;
+        }
+        let before = &self.out[..self.out.len() - 1];
+        !before.is_empty() && !before.ends_with('\n')
+    }
+
+    fn emit_comment(&mut self, comment: Node) {
+        let prev = comment.prev_sibling();
+        let text = self.text(comment).trim_end().to_string();
+        let line_comment = is_line_comment(&text);
+        if comment_placement(prev, comment) == CommentPlacement::Trailing && self.can_trail() {
+            let popped = self.out.ends_with('\n');
+            if popped {
+                self.out.pop();
+            }
+            if !self.out.ends_with(' ') {
+                self.emit(" ");
+            }
+            self.emit(&text);
+            // `//` runs to EOL; a rejoined `/* */` must restore the row break we popped.
+            if popped || line_comment {
+                self.nl();
+            }
+            return;
+        }
+        if !self.out.is_empty() && !self.out.ends_with('\n') {
+            self.nl();
+        }
+        self.emit_indent();
+        self.emit(&text);
+        self.nl();
     }
 
     pub(super) fn format_node(&mut self, node: Node) {
         if node.is_missing() {
             return;
         }
+        self.flush_comments_before(node.start_byte());
         if node.is_error() {
             let t = self.text(node).trim().to_string();
             self.emit(&t);
+            self.consume_comments_before(node.end_byte());
             return;
         }
         if node.child_count() == 0 {
@@ -87,6 +182,10 @@ impl<'a> Formatter<'a> {
             if child.is_missing() || child.kind() == "annotation" {
                 continue;
             }
+            self.flush_comments_before(child.start_byte());
+            if child.kind() == "comment" {
+                continue;
+            }
             if child.kind() == ":" {
                 if let Some(col) = self.colon_align_col.take() {
                     let mut len = self.current_line_len();
@@ -97,7 +196,8 @@ impl<'a> Formatter<'a> {
                 }
             }
             if let Some(p) = prev {
-                if self.gap_between(p, *child, node.kind()) {
+                // A preceding comment may have ended the line; don't prefix a space.
+                if !self.out.ends_with('\n') && self.gap_between(p, *child, node.kind()) {
                     self.emit(" ");
                 }
             }
