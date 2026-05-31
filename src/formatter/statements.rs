@@ -30,6 +30,7 @@ fn collect_switch_arms<'t>(children: &[Node<'t>]) -> Vec<SwitchArm<'t>> {
         match child.kind() {
             "switch_case_label" | "switch_default_label" => {
                 if current.as_ref().is_some_and(|a| !a.stmts.is_empty()) {
+                    // `is_some_and` above guarantees `current` is `Some` here.
                     arms.push(current.take().unwrap());
                 }
                 current
@@ -588,6 +589,7 @@ impl<'a> Formatter<'a> {
     }
 
     fn assign_run_layout(&self, run: &[SwitchArm], layouts: &mut [ArmLayout], indent_width: usize) {
+        // A run holds only structurally-inline arms, which always have a last label.
         let label_w = run
             .iter()
             .map(|a| self.render_node(*a.labels.last().unwrap()).len())
@@ -656,16 +658,9 @@ impl<'a> Formatter<'a> {
     }
 
     fn arm_has_interior_comment(&self, arm: &SwitchArm) -> bool {
-        let Some(first) = arm.labels.first().or_else(|| arm.stmts.first()) else {
+        let (Some(start_row), Some(end_row)) = (arm_start_row(arm), arm_end_row(arm)) else {
             return false;
         };
-        let start_row = first.start_position().row;
-        let end_row = arm
-            .stmts
-            .last()
-            .or_else(|| arm.labels.last())
-            .map(|n| n.end_position().row)
-            .unwrap_or(start_row);
         self.comments
             .iter()
             .any(|c| (start_row..=end_row).contains(&c.start_position().row))
