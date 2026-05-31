@@ -241,11 +241,23 @@ impl<'a> Formatter<'a> {
             && self.default_on_same_line(members[var_idx], *default)
     }
 
-    // A comment between fields doesn't break the run; a blank line does.
     fn colon_align_run(&self, members: &[Node], run_start: usize) -> Vec<usize> {
+        self.alignment_run(members, run_start, 1, |m, i| {
+            is_alignable_field(m[i]) && !self.is_mergeable_default_pair(m, i)
+        })
+    }
+
+    // A comment between members doesn't break the run; a blank line does.
+    fn alignment_run(
+        &self,
+        members: &[Node],
+        run_start: usize,
+        stride: usize,
+        is_run_member: impl Fn(&[Node], usize) -> bool,
+    ) -> Vec<usize> {
         let mut run = vec![run_start];
-        let mut prev = run_start;
-        let mut scan = run_start + 1;
+        let mut prev = run_start + stride - 1;
+        let mut scan = run_start + stride;
         while scan < members.len() {
             let gap = members[scan]
                 .start_position()
@@ -259,43 +271,20 @@ impl<'a> Formatter<'a> {
                 scan += 1;
                 continue;
             }
-            if !is_alignable_field(members[scan]) || self.is_mergeable_default_pair(members, scan) {
+            if !is_run_member(members, scan) {
                 break;
             }
             run.push(scan);
-            prev = scan;
-            scan += 1;
+            prev = scan + stride - 1;
+            scan += stride;
         }
         run
     }
 
-    // Var-decl indices of a run of same-line default pairs. Comments between pairs are skipped
-    // (a doc comment must not break alignment); a blank line still ends the run.
     fn same_line_default_pair_run(&self, members: &[Node], run_start: usize) -> Vec<usize> {
-        let mut run = vec![run_start];
-        let mut prev = run_start + 1;
-        let mut scan = run_start + 2;
-        while scan < members.len() {
-            let gap = members[scan]
-                .start_position()
-                .row
-                .saturating_sub(members[prev].end_position().row);
-            if gap >= 2 {
-                break;
-            }
-            if members[scan].kind() == "comment" {
-                prev = scan;
-                scan += 1;
-                continue;
-            }
-            if !self.is_mergeable_default_pair(members, scan) {
-                break;
-            }
-            run.push(scan);
-            prev = scan + 1;
-            scan += 2;
-        }
-        run
+        self.alignment_run(members, run_start, 2, |m, i| {
+            self.is_mergeable_default_pair(m, i)
+        })
     }
 
     fn member_default_align_targets(
