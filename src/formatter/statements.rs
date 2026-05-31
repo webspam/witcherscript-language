@@ -578,11 +578,7 @@ impl<'a> Formatter<'a> {
                 continue;
             }
             let mut j = i;
-            while j + 1 < arms.len()
-                && self.switch_arm_structurally_inline(&arms[j + 1])
-                && !blank_line_between_arms(&arms[j], &arms[j + 1])
-                && !self.comment_between_arms(&arms[j], &arms[j + 1])
-            {
+            while j + 1 < arms.len() && self.switch_arm_structurally_inline(&arms[j + 1]) {
                 j += 1;
             }
             self.assign_run_layout(&arms[i..=j], &mut layouts[i..=j], indent_width);

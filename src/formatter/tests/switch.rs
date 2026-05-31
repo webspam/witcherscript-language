@@ -108,7 +108,7 @@ fn fall_through_bare_labels() {
 }
 
 #[test]
-fn blank_line_breaks_alignment_run() {
+fn blank_line_is_preserved_but_does_not_break_run() {
     let src = "function F() {\nswitch (x) {\ncase 1: return 'a';\ncase 22: return 'b';\n\ncase 3: return 'c';\n}\n}\n";
     expect![[r#"
         function F() {
@@ -116,7 +116,7 @@ fn blank_line_breaks_alignment_run() {
                 case 1:   return 'a';
                 case 22:  return 'b';
 
-                case 3: return 'c';
+                case 3:   return 'c';
             }
         }
     "#]]
@@ -132,15 +132,15 @@ fn comment_inside_arm_forces_block() {
 }
 
 #[test]
-fn comment_between_arms_breaks_run() {
+fn comment_between_arms_is_preserved_within_run() {
     let src =
         "function F() {\nswitch (x) {\ncase 1: return 'a';\n// sep\ncase 22: return 'b';\n}\n}\n";
     expect![[r#"
         function F() {
             switch (x) {
-                case 1: return 'a';
+                case 1:   return 'a';
                 // sep
-                case 22: return 'b';
+                case 22:  return 'b';
             }
         }
     "#]]
