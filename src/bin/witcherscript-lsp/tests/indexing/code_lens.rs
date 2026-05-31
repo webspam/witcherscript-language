@@ -149,9 +149,54 @@ async fn references_lens_emits_unresolved_data_lens() {
 }
 
 #[tokio::test]
+async fn reference_lens_count_waits_for_initial_index() {
+    let backend = make_backend();
+    enable_references_lens(&backend);
+    let uri = Url::parse("file:///refs_gate.ws").expect("uri parses");
+    backend._did_open(open_params(
+        &uri,
+        "function Foo() {}\nfunction Bar() { Foo(); }\n",
+    ));
+
+    let lenses = backend
+        ._code_lens(code_lens_params(&uri))
+        .await
+        .expect("code_lens ok")
+        .expect("references lenses present");
+    let foo_lens = lenses
+        .into_iter()
+        .find(|l| l.range.start.line == 0)
+        .expect("lens for Foo on line 0");
+
+    let resolver = backend.clone();
+    let handle = tokio::spawn(async move { resolver._code_lens_resolve(foo_lens).await });
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert!(
+        !handle.is_finished(),
+        "resolve must block until the initial index completes, not count against an empty index"
+    );
+
+    backend
+        .initial_index_done
+        .store(true, std::sync::atomic::Ordering::Release);
+    backend.index_ready_notify.notify_waiters();
+
+    let resolved = handle.await.expect("join").expect("resolve ok");
+    let command = resolved.command.expect("resolved lens carries a command");
+    assert_eq!(
+        command.title, "1 reference",
+        "Foo has exactly one caller once the index is populated"
+    );
+}
+
+#[tokio::test]
 async fn references_lens_resolve_fills_count() {
     let backend = make_backend();
     enable_references_lens(&backend);
+    backend
+        .initial_index_done
+        .store(true, std::sync::atomic::Ordering::Release);
     let uri = Url::parse("file:///refs_count.ws").expect("uri parses");
     backend._did_open(open_params(
         &uri,

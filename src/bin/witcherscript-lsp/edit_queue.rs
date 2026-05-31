@@ -69,6 +69,7 @@ impl Backend {
             trace!(op = "enqueue_edit", uri = %uri, path = "sync", target_parse_version, "enter");
             self.process_pending_edit(uri, edit);
             self.notify_diagnostics_changed();
+            self.request_code_lens_refresh();
             return;
         }
         self.pending_edits.lock().insert(uri.clone(), edit);
@@ -82,6 +83,20 @@ impl Backend {
             .lock()
             .get(uri)
             .map(|e| e.target_parse_version)
+    }
+
+    // enable() registers before the recheck: notify_waiters stores no permit, so registering
+    // only at .await would lose a notify fired in the gap and hang against the empty index.
+    pub(crate) async fn await_initial_index(&self) {
+        loop {
+            let notified = self.index_ready_notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if self.initial_index_done.load(Ordering::Acquire) {
+                return;
+            }
+            notified.await;
+        }
     }
 
     pub(crate) fn spawn_edit_writer(&self) {
@@ -124,6 +139,7 @@ impl Backend {
                 })
                 .await;
                 self.request_workspace_diagnostic_refresh();
+                self.request_code_lens_refresh();
             }
         }
     }

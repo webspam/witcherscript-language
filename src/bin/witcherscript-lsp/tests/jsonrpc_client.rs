@@ -111,6 +111,26 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
         .await;
     }
 
+    // Answers every server->client request while waiting, so a blocked handler (e.g. fetch_config) unblocks.
+    pub(crate) async fn wait_for_server_request(&mut self, method: &str) -> bool {
+        timeout(REQUEST_TIMEOUT, async {
+            loop {
+                let v = self.read_raw().await;
+                let is_request = v.get("id").is_some() && v.get("method").is_some();
+                if is_request {
+                    if let Some(reply) = self.handle_inbound(v.clone()) {
+                        self.send_raw(&reply).await;
+                    }
+                    if v.get("method").and_then(|m| m.as_str()) == Some(method) {
+                        return true;
+                    }
+                }
+            }
+        })
+        .await
+        .unwrap_or(false)
+    }
+
     async fn send_raw(&mut self, msg: &Value) {
         let body = serde_json::to_vec(msg).expect("serialize message");
         let header = format!("Content-Length: {}\r\n\r\n", body.len());

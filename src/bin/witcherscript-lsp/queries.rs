@@ -478,6 +478,9 @@ impl Backend {
                 format!("malformed reference code-lens data: {err}"),
             )
         })?;
+        let started_at = Instant::now();
+        trace!(op = "code_lens_resolve", uri = %uri, "start");
+        self.await_initial_index().await;
         let locations = self
             .reference_locations(&uri, position, false)
             .unwrap_or_default();
@@ -497,6 +500,13 @@ impl Backend {
             command: SHOW_REFERENCES_COMMAND.to_string(),
             arguments: Some(arguments),
         });
+        trace!(
+            op = "code_lens_resolve",
+            uri = %uri,
+            count,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
         Ok(lens)
     }
 
