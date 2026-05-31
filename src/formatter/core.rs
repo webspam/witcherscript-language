@@ -229,6 +229,10 @@ impl<'a> Formatter<'a> {
     pub(super) fn gap_between(&self, before: Node, after: Node, parent_kind: &str) -> bool {
         let bk = before.kind();
         let ak = after.kind();
+        // An empty call argument is two adjacent commas; render the gap as one space.
+        if parent_kind == "func_call_args" && bk == "," && ak == "," {
+            return true;
+        }
         if matches!(ak, "," | ";" | ")" | "]" | "<" | ">") {
             return false;
         }

@@ -26,6 +26,16 @@ fn short_call_stmt_stays_inline() {
 }
 
 #[test]
+fn empty_call_arg_keeps_space_between_commas() {
+    let src = "function F() { someVar.Func(true, , \"test\"); }";
+    let out = fmt(src);
+    assert!(
+        out.contains("Func(true, , \"test\");"),
+        "empty param should render as a single space, got:\n{out}"
+    );
+}
+
+#[test]
 fn split_call_stmt_is_idempotent() {
     let src =
         "function F() { SetupEnemiesCollection(enemyCollectionDist, findMoveTargetDist, 10); }";
