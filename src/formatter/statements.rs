@@ -213,7 +213,7 @@ impl<'a> Formatter<'a> {
         let else_body = node.child_by_field_name("else");
 
         if self.emit_split_keyword_cond("if (", cond) {
-            self.emit_if_body(body, true);
+            self.emit_stmt_body(body, true);
         } else {
             self.emit_indent();
             self.emit("if (");
@@ -221,7 +221,7 @@ impl<'a> Formatter<'a> {
                 self.format_node(c);
             }
             self.emit(")");
-            self.emit_if_body(body, force_block);
+            self.emit_stmt_body(body, force_block);
         }
 
         if let Some(eb) = else_body {
@@ -297,49 +297,68 @@ impl<'a> Formatter<'a> {
         true
     }
 
-    fn emit_if_body(&mut self, body: Option<Node>, force_block: bool) {
-        match body {
-            None => self.nl(),
-            Some(b) if b.kind() == "func_block" => {
+    fn emit_stmt_body(&mut self, body: Option<Node>, force_block: bool) {
+        self.emit_stmt_body_trailing(body, force_block, None);
+    }
+
+    // `trailing` is `Some(n)` when a continuation (do-while's `while (...)`) follows on the
+    // body's last line and needs `n` more columns; the body then stays mid-line for it.
+    fn emit_stmt_body_trailing(
+        &mut self,
+        body: Option<Node>,
+        force_block: bool,
+        trailing: Option<usize>,
+    ) {
+        let mid_line = trailing.is_some();
+        let Some(body) = body else {
+            if mid_line {
                 self.emit(" ");
-                self.format_func_block(b);
+            } else {
+                self.nl();
             }
-            Some(b) if force_block => {
-                self.emit(" {\n");
-                self.level += 1;
-                self.format_stmt(b);
-                self.level -= 1;
-                self.emit_indent();
-                self.emit("}\n");
-            }
-            Some(b) => {
+            return;
+        };
+        if body.kind() == "func_block" {
+            self.emit(" ");
+            self.format_func_block_inner(body, !mid_line);
+            if mid_line {
                 self.emit(" ");
-                self.suppress_next_indent = true;
-                self.format_stmt(b);
+            }
+            return;
+        }
+        let line_len = self.current_line_len() + 1 + self.text(body).len() + trailing.unwrap_or(0);
+        if force_block || line_len > self.line_limit {
+            self.emit(" {\n");
+            self.level += 1;
+            self.format_stmt(body);
+            self.level -= 1;
+            self.emit_indent();
+            self.emit("}");
+            if mid_line {
+                self.emit(" ");
+            } else {
+                self.nl();
+            }
+        } else {
+            self.emit(" ");
+            self.suppress_next_indent = true;
+            self.format_stmt(body);
+            if mid_line && self.out.ends_with('\n') {
+                self.out.pop();
+                self.emit(" ");
             }
         }
     }
 
     fn emit_else_clause(&mut self, node: Node, force_block: bool) {
+        // An `else if` is another if-chain link, not a body slot; recurse to carry force_block.
         if node.kind() == "if_stmt" {
             self.emit(" ");
             self.suppress_next_indent = true;
             self.format_if_stmt_emit(node, force_block);
-        } else if node.kind() == "func_block" {
-            self.emit(" ");
-            self.format_func_block(node);
-        } else if force_block {
-            self.emit(" {\n");
-            self.level += 1;
-            self.format_stmt(node);
-            self.level -= 1;
-            self.emit_indent();
-            self.emit("}\n");
-        } else {
-            self.emit(" ");
-            self.suppress_next_indent = true;
-            self.format_stmt(node);
+            return;
         }
+        self.emit_stmt_body(Some(node), force_block);
     }
 
     fn if_chain_needs_block(&self, node: Node) -> bool {
@@ -387,23 +406,12 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    fn emit_compound_body(&mut self, node: Node) {
-        if node.kind() == "func_block" {
-            self.emit(" ");
-            self.format_func_block(node);
-        } else {
-            self.nl();
-            self.level += 1;
-            self.format_stmt(node);
-            self.level -= 1;
-        }
-    }
-
     pub(super) fn format_loop_stmt(&mut self, node: Node) {
         match node.kind() {
             "while_stmt" => {
                 let cond = node.child_by_field_name("cond");
-                if !self.emit_split_keyword_cond("while (", cond) {
+                let split = self.emit_split_keyword_cond("while (", cond);
+                if !split {
                     self.emit_indent();
                     self.emit("while (");
                     if let Some(c) = cond {
@@ -411,39 +419,20 @@ impl<'a> Formatter<'a> {
                     }
                     self.emit(")");
                 }
-                if let Some(b) = node.child_by_field_name("body") {
-                    self.emit_compound_body(b);
-                } else {
-                    self.nl();
-                }
+                self.emit_stmt_body(node.child_by_field_name("body"), split);
             }
             "do_while_stmt" => {
                 self.emit_indent();
                 self.emit("do");
                 let cond = node.child_by_field_name("cond");
-                // `while (` trails the body's closing brace mid-line, so its indent is suppressed.
-                let mid_line = match node.child_by_field_name("body") {
-                    Some(b) if b.kind() == "func_block" => {
-                        self.emit(" ");
-                        self.format_func_block_inner(b, false);
-                        self.emit(" ");
-                        true
-                    }
-                    Some(b) => {
-                        self.nl();
-                        self.level += 1;
-                        self.format_stmt(b);
-                        self.level -= 1;
-                        false
-                    }
-                    None => {
-                        self.emit(" ");
-                        true
-                    }
-                };
-                if mid_line {
-                    self.suppress_next_indent = true;
-                }
+                let cond_len = cond.map(|c| self.render_node(c).len()).unwrap_or(0);
+                let trailing = " while (".len() + cond_len + ")".len();
+                self.emit_stmt_body_trailing(
+                    node.child_by_field_name("body"),
+                    false,
+                    Some(trailing),
+                );
+                self.suppress_next_indent = true;
                 if !self.emit_split_keyword_cond("while (", cond) {
                     self.emit_indent();
                     self.emit("while (");
@@ -469,11 +458,7 @@ impl<'a> Formatter<'a> {
                     self.format_node(iter);
                 }
                 self.emit(")");
-                if let Some(b) = node.child_by_field_name("body") {
-                    self.emit_compound_body(b);
-                } else {
-                    self.nl();
-                }
+                self.emit_stmt_body(node.child_by_field_name("body"), false);
             }
             _ => {
                 self.emit_indent();
