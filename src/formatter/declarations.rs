@@ -164,14 +164,14 @@ impl<'a> Formatter<'a> {
         node: Node,
         colon_align_col: Option<usize>,
     ) -> usize {
-        let natural = self.member_var_decl_width(node);
+        let unaligned_width = self.member_var_decl_width(node);
         let Some(col) = colon_align_col else {
-            return natural;
+            return unaligned_width;
         };
         let indent_width = self.level * self.indent_unit.len();
         let alignment_pad =
             col.saturating_sub(indent_width + self.member_var_pre_colon_width(node));
-        natural + alignment_pad
+        unaligned_width + alignment_pad
     }
 
     fn member_var_decl_width(&self, node: Node) -> usize {
