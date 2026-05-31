@@ -204,19 +204,19 @@ impl<'a> Formatter<'a> {
         let mut idx = 0;
         while idx < members.len() {
             if self.is_mergeable_default_pair(members, idx) {
-                let run_end = self.same_line_default_pair_run_end(members, idx);
-                let pair_count = (run_end - idx) / 2;
-                if pair_count >= 2 {
-                    let width = (0..pair_count)
-                        .map(|k| self.member_var_pre_colon_width(members[idx + k * 2]))
+                let run = self.same_line_default_pair_run(members, idx);
+                if run.len() >= 2 {
+                    let width = run
+                        .iter()
+                        .map(|&v| self.member_var_pre_colon_width(members[v]))
                         .max()
                         .unwrap_or(0);
                     let col = indent_width + width;
-                    for k in 0..pair_count {
-                        targets[idx + k * 2] = Some(col);
+                    for &v in &run {
+                        targets[v] = Some(col);
                     }
                 }
-                idx = run_end;
+                idx = run[run.len() - 1] + 2;
             } else if is_alignable_field(members[idx]) {
                 let mut j = idx;
                 while j + 1 < members.len()
@@ -257,21 +257,33 @@ impl<'a> Formatter<'a> {
             && self.default_on_same_line(members[var_idx], *default)
     }
 
-    fn same_line_default_pair_run_end(&self, members: &[Node], run_start: usize) -> usize {
-        let mut next_var = run_start;
-        while next_var + 1 < members.len() && self.is_mergeable_default_pair(members, next_var) {
-            if next_var > run_start {
-                let gap = members[next_var]
-                    .start_position()
-                    .row
-                    .saturating_sub(members[next_var - 1].end_position().row);
-                if gap >= 2 {
-                    break;
-                }
+    // Var-decl indices of a run of same-line default pairs. Comments between pairs are skipped
+    // (a doc comment must not break alignment); a blank line still ends the run.
+    fn same_line_default_pair_run(&self, members: &[Node], run_start: usize) -> Vec<usize> {
+        let mut run = vec![run_start];
+        let mut prev = run_start + 1;
+        let mut scan = run_start + 2;
+        while scan < members.len() {
+            let gap = members[scan]
+                .start_position()
+                .row
+                .saturating_sub(members[prev].end_position().row);
+            if gap >= 2 {
+                break;
             }
-            next_var += 2;
+            if members[scan].kind() == "comment" {
+                prev = scan;
+                scan += 1;
+                continue;
+            }
+            if !self.is_mergeable_default_pair(members, scan) {
+                break;
+            }
+            run.push(scan);
+            prev = scan + 1;
+            scan += 2;
         }
-        next_var
+        run
     }
 
     fn member_default_align_targets(
@@ -290,25 +302,19 @@ impl<'a> Formatter<'a> {
                 idx += 1;
                 continue;
             }
-            let run_end = self.same_line_default_pair_run_end(members, idx);
-            let pair_count = (run_end - idx) / 2;
-            if pair_count >= 2 {
-                let width = (0..pair_count)
-                    .map(|k| {
-                        let var_idx = idx + k * 2;
-                        self.member_var_line_width_to_semicolon(
-                            members[var_idx],
-                            colon_targets[var_idx],
-                        )
-                    })
+            let run = self.same_line_default_pair_run(members, idx);
+            if run.len() >= 2 {
+                let width = run
+                    .iter()
+                    .map(|&v| self.member_var_line_width_to_semicolon(members[v], colon_targets[v]))
                     .max()
                     .unwrap_or(0);
                 let col = indent_width + width + DEFAULT_GAP.len();
-                for k in 0..pair_count {
-                    targets[idx + k * 2] = Some(col);
+                for &v in &run {
+                    targets[v] = Some(col);
                 }
             }
-            idx = run_end;
+            idx = run[run.len() - 1] + 2;
         }
         targets
     }
