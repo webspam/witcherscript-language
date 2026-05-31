@@ -159,25 +159,19 @@ impl<'a> Formatter<'a> {
         width
     }
 
-    fn member_var_suffix_from_colon_width(&self, node: Node) -> usize {
-        let children = child_nodes(node);
-        let Some(colon_idx) = children.iter().position(|c| c.kind() == ":") else {
-            return 0;
-        };
-        self.rendered_width(&children[colon_idx..], node.kind())
-    }
-
     fn member_var_line_width_to_semicolon(
         &self,
         node: Node,
         colon_align_col: Option<usize>,
     ) -> usize {
+        let unaligned_width = self.member_var_decl_width(node);
+        let Some(col) = colon_align_col else {
+            return unaligned_width;
+        };
         let indent_width = self.level * self.indent_unit.len();
-        let suffix = self.member_var_suffix_from_colon_width(node);
-        match colon_align_col {
-            None => self.member_var_decl_width(node),
-            Some(col) => col.saturating_sub(indent_width) + suffix,
-        }
+        let alignment_pad =
+            col.saturating_sub(indent_width + self.member_var_pre_colon_width(node));
+        unaligned_width + alignment_pad
     }
 
     fn member_var_decl_width(&self, node: Node) -> usize {
@@ -204,42 +198,32 @@ impl<'a> Formatter<'a> {
         let mut idx = 0;
         while idx < members.len() {
             if self.is_mergeable_default_pair(members, idx) {
-                let run_end = self.same_line_default_pair_run_end(members, idx);
-                let pair_count = (run_end - idx) / 2;
-                if pair_count >= 2 {
-                    let width = (0..pair_count)
-                        .map(|k| self.member_var_pre_colon_width(members[idx + k * 2]))
+                let run = self.same_line_default_pair_run(members, idx);
+                if run.len() >= 2 {
+                    let width = run
+                        .iter()
+                        .map(|&v| self.member_var_pre_colon_width(members[v]))
                         .max()
                         .unwrap_or(0);
                     let col = indent_width + width;
-                    for k in 0..pair_count {
-                        targets[idx + k * 2] = Some(col);
+                    for &v in &run {
+                        targets[v] = Some(col);
                     }
                 }
-                idx = run_end;
+                idx = run[run.len() - 1] + 2;
             } else if is_alignable_field(members[idx]) {
-                let mut j = idx;
-                while j + 1 < members.len()
-                    && is_alignable_field(members[j + 1])
-                    && !self.is_mergeable_default_pair(members, j + 1)
-                    && members[j + 1]
-                        .start_position()
-                        .row
-                        .saturating_sub(members[j].end_position().row)
-                        <= 1
-                {
-                    j += 1;
-                }
-                if j > idx {
-                    let width = (idx..=j)
-                        .map(|k| self.member_var_pre_colon_width(members[k]))
+                let run = self.colon_align_run(members, idx);
+                if run.len() >= 2 {
+                    let width = run
+                        .iter()
+                        .map(|&k| self.member_var_pre_colon_width(members[k]))
                         .max()
                         .unwrap_or(0);
-                    for target in targets.iter_mut().take(j + 1).skip(idx) {
-                        *target = Some(indent_width + width);
+                    for &k in &run {
+                        targets[k] = Some(indent_width + width);
                     }
                 }
-                idx = j + 1;
+                idx = run[run.len() - 1] + 1;
             } else {
                 idx += 1;
             }
@@ -257,21 +241,50 @@ impl<'a> Formatter<'a> {
             && self.default_on_same_line(members[var_idx], *default)
     }
 
-    fn same_line_default_pair_run_end(&self, members: &[Node], run_start: usize) -> usize {
-        let mut next_var = run_start;
-        while next_var + 1 < members.len() && self.is_mergeable_default_pair(members, next_var) {
-            if next_var > run_start {
-                let gap = members[next_var]
-                    .start_position()
-                    .row
-                    .saturating_sub(members[next_var - 1].end_position().row);
-                if gap >= 2 {
-                    break;
-                }
+    // A comment between members doesn't break the run; a blank line does.
+    fn alignment_run(
+        &self,
+        members: &[Node],
+        run_start: usize,
+        stride: usize,
+        is_run_member: impl Fn(&[Node], usize) -> bool,
+    ) -> Vec<usize> {
+        let mut run = vec![run_start];
+        let mut prev = run_start + stride - 1;
+        let mut scan = run_start + stride;
+        while scan < members.len() {
+            let gap = members[scan]
+                .start_position()
+                .row
+                .saturating_sub(members[prev].end_position().row);
+            if gap >= 2 {
+                break;
             }
-            next_var += 2;
+            if members[scan].kind() == "comment" {
+                prev = scan;
+                scan += 1;
+                continue;
+            }
+            if !is_run_member(members, scan) {
+                break;
+            }
+            run.push(scan);
+            prev = scan + stride - 1;
+            scan += stride;
         }
-        next_var
+        run
+    }
+
+    fn colon_align_run(&self, members: &[Node], run_start: usize) -> Vec<usize> {
+        self.alignment_run(members, run_start, 1, |m, i| {
+            is_alignable_field(m[i]) && !self.is_mergeable_default_pair(m, i)
+        })
+    }
+
+    fn same_line_default_pair_run(&self, members: &[Node], run_start: usize) -> Vec<usize> {
+        self.alignment_run(members, run_start, 2, |m, i| {
+            self.is_mergeable_default_pair(m, i)
+        })
     }
 
     fn member_default_align_targets(
@@ -290,25 +303,19 @@ impl<'a> Formatter<'a> {
                 idx += 1;
                 continue;
             }
-            let run_end = self.same_line_default_pair_run_end(members, idx);
-            let pair_count = (run_end - idx) / 2;
-            if pair_count >= 2 {
-                let width = (0..pair_count)
-                    .map(|k| {
-                        let var_idx = idx + k * 2;
-                        self.member_var_line_width_to_semicolon(
-                            members[var_idx],
-                            colon_targets[var_idx],
-                        )
-                    })
+            let run = self.same_line_default_pair_run(members, idx);
+            if run.len() >= 2 {
+                let width = run
+                    .iter()
+                    .map(|&v| self.member_var_line_width_to_semicolon(members[v], colon_targets[v]))
                     .max()
                     .unwrap_or(0);
                 let col = indent_width + width + DEFAULT_GAP.len();
-                for k in 0..pair_count {
-                    targets[idx + k * 2] = Some(col);
+                for &v in &run {
+                    targets[v] = Some(col);
                 }
             }
-            idx = run_end;
+            idx = run[run.len() - 1] + 2;
         }
         targets
     }

@@ -1,3 +1,5 @@
+use expect_test::expect;
+
 use super::{fmt, fmt_aligned, fmt_aligned_with_default_placement, AnnotationPlacement};
 
 fn default_keyword_col(line: &str, field: &str) -> usize {
@@ -52,6 +54,24 @@ fn blank_line_breaks_alignment_run() {
 }
 
 #[test]
+fn doc_comment_between_plain_fields_does_not_break_colon_alignment() {
+    let output = fmt_aligned(
+        "class C {\n    \
+         var x : int;\n    \
+         /** doc */\n    \
+         var someLongName : string;\n}",
+    );
+    expect![[r#"
+        class C {
+            var x            : int;
+            /** doc */
+            var someLongName : string;
+        }
+    "#]]
+    .assert_eq(&output);
+}
+
+#[test]
 fn single_field_is_not_padded() {
     let output = fmt_aligned("class C { var x : int; }");
     assert!(output.contains("    var x : int;"), "got:\n{output}");
@@ -77,7 +97,7 @@ fn aligns_consecutive_same_line_defaults() {
         AnnotationPlacement::SameLine,
     );
     assert!(
-        output.contains("private const var RESET_TIME : float; default RESET_TIME = 0.750;"),
+        output.contains("private const var RESET_TIME : float;  default RESET_TIME = 0.750;"),
         "got:\n{output}"
     );
     let lines: Vec<&str> = output.lines().collect();
@@ -323,6 +343,56 @@ fn plain_field_before_default_pair_run_does_not_skew_colons() {
         default_keyword_col(y, "y"),
         "paired defaults must align, got:\n{output}"
     );
+}
+
+#[test]
+fn doc_comment_between_pairs_does_not_break_default_alignment() {
+    let output = fmt_aligned_with_default_placement(
+        "class C {\n    \
+         /** first */\n    \
+         private const var ALPHA : int; default ALPHA = 6;\n    \
+         /** second */\n    \
+         private const var BETA : float; default BETA = 0.333;\n    \
+         /** third */\n    \
+         private const var GAMMA : int; default GAMMA = 1;\n}",
+        AnnotationPlacement::SameLine,
+    );
+    expect![[r#"
+        class C {
+            /** first */
+            private const var ALPHA : int;    default ALPHA = 6;
+            /** second */
+            private const var BETA  : float;  default BETA = 0.333;
+            /** third */
+            private const var GAMMA : int;    default GAMMA = 1;
+        }
+    "#]]
+    .assert_eq(&output);
+}
+
+#[test]
+fn blank_line_with_comment_still_breaks_default_alignment_run() {
+    let output = fmt_aligned_with_default_placement(
+        "class C {\n    \
+         var a : int; default a = 1;\n    \
+         var longName : float; default longName = 0.5;\n\
+         \n    \
+         /** new group */\n    \
+         var b : int; default b = 2;\n    \
+         var anotherLong : float; default anotherLong = 1.0;\n}",
+        AnnotationPlacement::SameLine,
+    );
+    expect![[r#"
+        class C {
+            var a        : int;    default a = 1;
+            var longName : float;  default longName = 0.5;
+
+            /** new group */
+            var b           : int;    default b = 2;
+            var anotherLong : float;  default anotherLong = 1.0;
+        }
+    "#]]
+    .assert_eq(&output);
 }
 
 #[test]
