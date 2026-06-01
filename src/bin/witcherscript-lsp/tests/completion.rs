@@ -7,6 +7,8 @@ fn annotation_name_items_reopen_suggestions_for_class_name() {
     use crate::convert::annotation_name_items;
     use lsp_types::Range;
 
+    use lsp_types::CompletionTextEdit;
+
     let items = annotation_name_items(Range::default());
     assert!(
         !items.is_empty(),
@@ -18,6 +20,15 @@ fn annotation_name_items_reopen_suggestions_for_class_name() {
             Some("editor.action.triggerSuggest"),
             "{} should reopen suggestions for its class-name argument",
             item.label
+        );
+        let Some(CompletionTextEdit::Edit(edit)) = &item.text_edit else {
+            panic!("{} should insert via a text edit", item.label);
+        };
+        assert!(
+            edit.new_text.ends_with("($1)"),
+            "{} must land the cursor in empty parens (no placeholder word to filter on), got {:?}",
+            item.label,
+            edit.new_text
         );
     }
 }

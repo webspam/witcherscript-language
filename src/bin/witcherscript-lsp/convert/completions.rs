@@ -219,10 +219,12 @@ pub(crate) fn keyword_snippet_item(label: &str, snippet: &str) -> CompletionItem
 
 pub(crate) fn annotation_name_items(replace_range: Range) -> Vec<CompletionItem> {
     [
-        ("@wrapMethod", "@wrapMethod(${1:ClassName})"),
-        ("@addMethod", "@addMethod(${1:ClassName})"),
-        ("@replaceMethod", "@replaceMethod(${1:ClassName})"),
-        ("@addField", "@addField(${1:ClassName})"),
+        // Empty tabstop, not `${1:ClassName}`: the cursor lands in empty parens so the
+        // re-triggered suggest opens an unfiltered class list instead of filtering on a placeholder word.
+        ("@wrapMethod", "@wrapMethod($1)"),
+        ("@addMethod", "@addMethod($1)"),
+        ("@replaceMethod", "@replaceMethod($1)"),
+        ("@addField", "@addField($1)"),
     ]
     .iter()
     .map(|(label, snippet)| CompletionItem {
