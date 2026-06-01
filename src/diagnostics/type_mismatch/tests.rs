@@ -195,3 +195,17 @@ fn does_not_fire_inside_parse_error() {
     let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
     assert!(result.is_empty(), "expected no diagnostics, got {result:?}");
 }
+
+#[test]
+fn surfaces_through_aggregate_pipeline() {
+    let t = TestDb::new("function Test() { var i : int = \"x\"; }\n");
+    let diags = crate::diagnostics::collect_cst_diagnostics_for_document(
+        t.primary_uri(),
+        t.primary_doc(),
+        &t.db(),
+    );
+    assert!(
+        diags.iter().any(|d| d.kind == "type_mismatch"),
+        "expected a type_mismatch from the registered rule set, got {diags:?}"
+    );
+}
