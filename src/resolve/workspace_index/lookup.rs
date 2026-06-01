@@ -87,6 +87,19 @@ impl WorkspaceIndex {
             .cloned()
     }
 
+    // Class-body declarations only, never annotation overlays: the method a `@wrapMethod` wraps.
+    pub(crate) fn class_body_member_of(
+        &self,
+        container_name: &str,
+        name: &str,
+    ) -> Option<Definition> {
+        self.member_by_type
+            .get(container_name)
+            .and_then(|members| members.get(name))
+            .and_then(|defs| defs.last())
+            .cloned()
+    }
+
     pub fn direct_members_of(
         &self,
         container_name: &str,

@@ -73,6 +73,12 @@ impl<'a> ShadowedBase<'a> {
             .filter(|d| self.def_visible(d))
     }
 
+    pub(super) fn class_body_member_of(&self, container: &str, name: &str) -> Option<Definition> {
+        self.index
+            .class_body_member_of(container, name)
+            .filter(|d| self.def_visible(d))
+    }
+
     pub(super) fn direct_members_of(
         &self,
         container: &str,

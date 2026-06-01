@@ -334,12 +334,28 @@ fn wrapped_method_macro_resolves_to_wrapped_method() {
 
     let defs = resolve_all_definitions(&uri, doc, &t.db(), pos);
     assert_eq!(
-        defs.len(),
-        2,
-        "class-body declaration plus the wrap declaration"
+        defs.iter().map(|d| d.uri.as_str()).collect::<Vec<_>>(),
+        vec!["file:///base.ws"],
+        "wrappedMethod resolves only to the wrapped method, not the wrapper"
     );
-    assert!(defs.iter().any(|d| d.uri == "file:///base.ws"));
-    assert!(defs.iter().any(|d| d.uri == "file:///a.ws"));
+}
+
+// Cursor past the `;` resolves through the wrappedMethod ident; suppression must follow that ident, not the offset.
+#[test]
+fn wrapped_method_macro_past_trailing_semicolon_suppresses_wrapper() {
+    let t = TestDb::new(
+        "//- /base.ws\n\
+         class CPlayer {\n  public function OnSpawned() {}\n}\n\
+         //- /a.ws\n\
+         @wrapMethod(CPlayer)\nfunction OnSpawned() {\n  wrappedMethod; $0\n}\n",
+    );
+    let (uri, pos) = t.cursor();
+    let defs = resolve_all_definitions(&uri, t.doc_for(&uri), &t.db(), pos);
+    assert_eq!(
+        defs.iter().map(|d| d.uri.as_str()).collect::<Vec<_>>(),
+        vec!["file:///base.ws"],
+        "wrappedMethod must resolve only to the wrapped method, never the wrapper"
+    );
 }
 
 #[test]
@@ -370,4 +386,64 @@ fn wrapped_method_outside_wrap_does_not_redirect() {
         def.is_none(),
         "wrappedMethod outside a @wrapMethod body has nothing to wrap"
     );
+}
+
+// A real method declaration must win over a @wrapMethod overlay of the same name,
+// even when the declaration lives in a lower-priority index (the base game scripts).
+#[test]
+fn wrapped_method_macro_resolves_to_base_class_body() {
+    let t =
+        TestDb::new("@wrapMethod(CR4Player)\nfunction OnSpawnHorse() {\n  wrapped$0Method();\n}\n")
+            .with_base_doc(
+                "file:///base/r4Player.ws",
+                "class CR4Player {\n  public function OnSpawnHorse() {}\n}\n",
+            );
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
+        .expect("wrappedMethod should resolve to the wrapped method");
+    assert_eq!(
+        def.uri, "file:///base/r4Player.ws",
+        "wrappedMethod must target the base class-body method, not the wrapper"
+    );
+    assert_eq!(def.symbol.kind, SymbolKind::Method);
+    assert_eq!(def.symbol.container_name.as_deref(), Some("CR4Player"));
+}
+
+// `wrappedMethod` points only at the wrapped method, so the handler path must not fan out to the wrapper.
+#[test]
+fn wrapped_method_macro_yields_only_base_via_handler_path() {
+    let t =
+        TestDb::new("@wrapMethod(CR4Player)\nfunction OnSpawnHorse() {\n  wrapped$0Method();\n}\n")
+            .with_base_doc(
+                "file:///base/r4Player.ws",
+                "class CR4Player {\n  public function OnSpawnHorse() {}\n}\n",
+            );
+    let (uri, pos) = t.cursor();
+    let defs = resolve_all_definitions(&uri, t.doc_for(&uri), &t.db(), pos);
+    assert_eq!(
+        defs.iter().map(|d| d.uri.as_str()).collect::<Vec<_>>(),
+        vec!["file:///base/r4Player.ws"],
+        "wrappedMethod must resolve to the base method only, never the wrapper"
+    );
+}
+
+// @addMethod has no class-body declaration anywhere; the annotation overlay is the
+// only declaration and must still resolve.
+#[test]
+fn goto_def_on_added_method_call_resolves_to_annotation() {
+    let t = TestDb::new(
+        "//- /add.ws\n\
+         @addMethod(CR4Player)\nfunction Boost() {}\n\
+         //- /caller.ws\n\
+         function test(p : CR4Player) {\n  p.Boo$0st();\n}\n",
+    )
+    .with_base_doc(
+        "file:///base/r4Player.ws",
+        "class CR4Player {\n  public function OnSpawnHorse() {}\n}\n",
+    );
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
+        .expect("added method should resolve to its annotation declaration");
+    assert_eq!(def.uri, "file:///add.ws");
+    assert_eq!(def.symbol.name, "Boost");
 }
