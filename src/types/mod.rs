@@ -8,7 +8,7 @@ mod tests;
 pub(crate) use parse::is_builtin_type_name;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Type {
+pub(crate) enum Type {
     Void,
     Primitive(Primitive),
     /// A class, struct, enum, or state, by name.
@@ -21,7 +21,7 @@ pub enum Type {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Primitive {
+pub(crate) enum Primitive {
     Bool,
     Byte,
     Int,
@@ -32,12 +32,12 @@ pub enum Primitive {
 
 impl Type {
     /// Parse a type-annotation string. Recurses `array<...>`, canonicalises aliases; empty -> `Unknown`, unknown word -> `Named`.
-    pub fn from_annotation(s: &str) -> Type {
+    pub(crate) fn from_annotation(s: &str) -> Type {
         parse::from_annotation(s)
     }
 
     /// Collapse to the `SymbolDb` lookup key. `Null`/`Unknown` have no container -> `None`.
-    pub fn to_db_string(&self) -> Option<String> {
+    pub(crate) fn to_db_string(&self) -> Option<String> {
         match self {
             Type::Void => Some("void".to_string()),
             Type::Primitive(p) => Some(p.canonical().to_string()),
@@ -45,10 +45,6 @@ impl Type {
             Type::Array(elem) => Some(format!("array<{}>", elem.to_db_string()?)),
             Type::Null | Type::Unknown => None,
         }
-    }
-
-    pub fn is_unknown(&self) -> bool {
-        matches!(self, Type::Unknown)
     }
 }
 
@@ -80,7 +76,7 @@ pub fn parse_generic_type(s: &str) -> Option<(&str, &str)> {
 }
 
 impl Primitive {
-    pub fn canonical(self) -> &'static str {
+    pub(crate) fn canonical(self) -> &'static str {
         match self {
             Primitive::Bool => "bool",
             Primitive::Byte => "byte",

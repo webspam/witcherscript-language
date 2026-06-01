@@ -51,7 +51,7 @@ pub(crate) fn infer_expr_type(
 }
 
 /// Infer an expression's [`Type`]. [`Type::Unknown`] means not-confident; callers must treat it as "do not report".
-pub fn infer_type(
+pub(crate) fn infer_type(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,

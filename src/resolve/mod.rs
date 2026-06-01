@@ -22,7 +22,7 @@ mod workspace_index;
 mod tests;
 
 pub use crate::types::parse_generic_type;
-pub use assignability::{assignability, Assignability, CastKind};
+pub(crate) use assignability::{assignability, Assignability};
 pub use ast::BUILTIN_TYPE_COMPLETIONS;
 pub use completion::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
@@ -39,7 +39,8 @@ pub use definition::{
     classify_definition_at_ident, resolve_all_definitions, resolve_definition,
     resolve_definition_at_byte, resolve_definition_at_ident,
 };
-pub use inference::{infer_expr_type_memo, infer_type};
+pub use inference::infer_expr_type_memo;
+pub(crate) use inference::infer_type;
 pub use name_context::{classify_ident_context, NameContext};
 pub use overrides::{overridden_top_level, OverriddenSymbol};
 pub use references::find_references;

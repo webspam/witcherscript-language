@@ -6,7 +6,7 @@ use crate::types::{Primitive, Type};
 use super::SymbolDb;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CastKind {
+pub(crate) enum CastKind {
     /// Lossless numeric promotion (`byte`->`int`, `int`->`float`, ...).
     NumericWidening,
     /// Scalar stringified into a `string` slot.
@@ -18,7 +18,7 @@ pub enum CastKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Assignability {
+pub(crate) enum Assignability {
     Identical,
     ImplicitCast(CastKind),
     Incompatible,
@@ -37,7 +37,7 @@ const IMPLICIT_PRIMITIVE_CASTS: &[(Primitive, Primitive)] = &[
 ];
 
 /// Whether `from` may be assigned into a `to` slot. Callers must filter out [`Type::Unknown`] first.
-pub fn assignability(from: &Type, to: &Type, db: &SymbolDb) -> Assignability {
+pub(crate) fn assignability(from: &Type, to: &Type, db: &SymbolDb) -> Assignability {
     if from == to {
         return Assignability::Identical;
     }
