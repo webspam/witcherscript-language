@@ -24,6 +24,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 16 | `super_field_access` | error | `super.x` used outside of a method call |
 | 17 | `private_member_access` | error | Private field or method accessed from outside its declaring class |
 | 18 | `type_used_as_value` | error | Type name (class, struct, state, enum) used in a value position |
+| 19 | `type_mismatch` | error | A value's type is not assignable to the target slot |
 
 ## Details
 
@@ -128,3 +129,11 @@ The compiler only resolves the `super.` qualifier for method dispatch. Inherited
 A bare identifier that resolves to a `class`, `struct`, `state`, or `enum` declaration but appears where a value is expected, e.g. `EnumGetMin(ESomeEnum)` or `var x : int; x = MyClass;`. Also fires when a type name is called like a function, e.g. `ESomeEnum()`, except struct constructor calls (`StructName(a, b, ...)`).
 
 Type-position uses (`extends T`, `: T` annotations, `new T in owner`, `(T) value` casts, `@addMethod(T)` annotations) are unaffected. Enum *members* used as values are also unaffected; only the enum's own name triggers the rule.
+
+### 19. Type mismatch
+
+A value flowing into a typed slot whose type is not assignable to the slot's type. Currently covers direct assignments (`x = value`) and local `var` initializers (`var x : T = value`).
+
+Assignability allows: an identical type; a derived class into a base slot (upcast, traversed up to depth 32); `NULL` into a class/struct/state slot; an `enum` and `int` in either direction; and a fixed set of implicit primitive conversions (numeric widening `byte`/`int`/`float`, and stringifying a scalar into a `string` slot, e.g. `float` -> `string`). Everything else, e.g. `string` -> `int` or a base class into a derived slot, is reported.
+
+Sites where either the value's type or the target's type cannot be inferred with confidence emit nothing, as do sites inside a tree-sitter error subtree, to avoid false positives while typing.
