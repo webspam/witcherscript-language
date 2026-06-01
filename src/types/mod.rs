@@ -5,6 +5,8 @@ mod parse;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use parse::is_builtin_type_name;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Void,

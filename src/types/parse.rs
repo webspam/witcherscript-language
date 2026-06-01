@@ -2,7 +2,7 @@ use super::parse_generic_type;
 
 use super::{Primitive, Type};
 
-/// Aliases mapping onto a [`Primitive`]; mirrors `resolve::ast::BUILTIN_TYPES`.
+/// Source of truth for primitive spellings; `is_builtin_type_name` derives the builtin set from it.
 const PRIMITIVE_ALIASES: &[(&str, Primitive)] = &[
     ("bool", Primitive::Bool),
     ("Bool", Primitive::Bool),
@@ -45,4 +45,8 @@ pub(super) fn from_annotation(s: &str) -> Type {
         return Type::Primitive(prim);
     }
     Type::Named(trimmed.to_string())
+}
+
+pub(crate) fn is_builtin_type_name(name: &str) -> bool {
+    name == "void" || PRIMITIVE_ALIASES.iter().any(|(alias, _)| *alias == name)
 }

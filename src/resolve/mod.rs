@@ -23,7 +23,7 @@ mod tests;
 
 pub use crate::types::parse_generic_type;
 pub use assignability::{assignability, Assignability, CastKind};
-pub use ast::{BUILTIN_TYPES, BUILTIN_TYPE_COMPLETIONS};
+pub use ast::BUILTIN_TYPE_COMPLETIONS;
 pub use completion::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
