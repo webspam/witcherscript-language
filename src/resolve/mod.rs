@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::symbols::Symbol;
 
+mod assignability;
 mod ast;
 mod completion;
 mod completion_catalog;
@@ -20,6 +21,7 @@ mod workspace_index;
 #[cfg(test)]
 mod tests;
 
+pub use assignability::{assignability, Assignability, CastKind};
 pub use ast::{BUILTIN_TYPES, BUILTIN_TYPE_COMPLETIONS};
 pub use completion::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
