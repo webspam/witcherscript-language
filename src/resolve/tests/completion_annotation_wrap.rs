@@ -1,46 +1,53 @@
 use rstest::rstest;
 
 use super::super::{after_wrap_method_completions, AfterWrapMethodCompletions};
-use crate::test_support::TestDb;
+use crate::test_support::{def_names, TestDb};
+
+fn run(fixture: &str) -> Option<AfterWrapMethodCompletions> {
+    let t = TestDb::new(fixture);
+    let (uri, pos) = t.cursor();
+    after_wrap_method_completions(t.doc_for(&uri), &t.db(), pos)
+}
 
 #[test]
-fn after_wrap_method_stage1_offers_only_function_keyword() {
-    let t = TestDb::new(concat!(
+fn after_wrap_method_offers_methods_with_function_keyword() {
+    let result = run(concat!(
         "class CPlayer {\n",
         "  public function OnSpawned() {}\n",
         "}\n",
         "@wrapMethod(CPlayer) $0\n",
-    ));
-    let (_uri, pos) = t.cursor();
-    let result = after_wrap_method_completions(t.primary_doc(), &t.db(), pos);
+    ))
+    .expect("methods should be offered directly after the annotation");
 
     assert!(
-        matches!(result, Some(AfterWrapMethodCompletions::FunctionKeyword)),
-        "stage 1 must yield FunctionKeyword, got {result:?}"
+        result.needs_function_keyword,
+        "insert must lead with `function` before the keyword is typed"
+    );
+    assert!(
+        def_names(&result.methods).contains(&"OnSpawned"),
+        "method should be offered immediately"
     );
 }
 
 #[test]
-fn after_wrap_method_stage1_none_for_unknown_class() {
-    let t = TestDb::new("@wrapMethod(CUnknown) $0\n");
-    let (_uri, pos) = t.cursor();
-    let result = after_wrap_method_completions(t.primary_doc(), &t.db(), pos);
-
-    assert!(result.is_none(), "unknown class should yield None");
+fn after_wrap_method_none_for_unknown_class() {
+    assert!(
+        run("@wrapMethod(CUnknown) $0\n").is_none(),
+        "unknown class should yield None"
+    );
 }
 
 #[test]
-fn after_wrap_method_stage1_none_for_struct() {
-    let t = TestDb::new(concat!("struct SData {}\n", "@wrapMethod(SData) $0\n"));
-    let (_uri, pos) = t.cursor();
-    let result = after_wrap_method_completions(t.primary_doc(), &t.db(), pos);
-
-    assert!(result.is_none(), "struct target should yield None");
+fn after_wrap_method_none_for_struct() {
+    assert!(
+        run(concat!("struct SData {}\n", "@wrapMethod(SData) $0\n")).is_none(),
+        "struct target should yield None"
+    );
 }
 
 #[test]
-fn after_wrap_method_stage2_offers_method_list_after_function_keyword() {
-    let t = TestDb::new(concat!(
+fn after_wrap_method_offers_methods_after_function_keyword() {
+    let result = run(concat!(
         "class CPlayer {\n",
         "  public function OnSpawned() {}\n",
         "  public event OnDeath() {}\n",
@@ -48,23 +55,22 @@ fn after_wrap_method_stage2_offers_method_list_after_function_keyword() {
         "}\n",
         "@wrapMethod(CPlayer)\n",
         "function $0\n",
-    ));
-    let (_uri, pos) = t.cursor();
-    let result = after_wrap_method_completions(t.primary_doc(), &t.db(), pos);
+    ))
+    .expect("methods should be offered after `function`");
 
-    let methods = match result {
-        Some(AfterWrapMethodCompletions::MethodList(m)) => m,
-        other => panic!("expected MethodList, got {other:?}"),
-    };
-    let names: Vec<&str> = methods.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        !result.needs_function_keyword,
+        "`function` already typed; insert must not repeat it"
+    );
+    let names = def_names(&result.methods);
     assert!(names.contains(&"OnSpawned"), "method should be offered");
     assert!(names.contains(&"OnDeath"), "event should be offered");
     assert!(!names.contains(&"mHp"), "field must not be offered");
 }
 
 #[test]
-fn after_wrap_method_stage2_does_not_walk_inheritance() {
-    let t = TestDb::new(concat!(
+fn after_wrap_method_does_not_walk_inheritance() {
+    let result = run(concat!(
         "//- /base.ws\n",
         "class CBase {\n",
         "  public function BaseMethod() {}\n",
@@ -75,14 +81,10 @@ fn after_wrap_method_stage2_does_not_walk_inheritance() {
         "}\n",
         "@wrapMethod(CChild)\n",
         "function $0\n",
-    ));
-    let (uri, pos) = t.cursor();
-    let methods = match after_wrap_method_completions(t.doc_for(&uri), &t.db(), pos) {
-        Some(AfterWrapMethodCompletions::MethodList(m)) => m,
-        other => panic!("expected MethodList, got {other:?}"),
-    };
+    ))
+    .expect("methods should be offered");
 
-    let names: Vec<&str> = methods.iter().map(|d| d.symbol.name.as_str()).collect();
+    let names = def_names(&result.methods);
     assert!(names.contains(&"OwnMethod"), "own method should appear");
     assert!(
         !names.contains(&"BaseMethod"),
@@ -91,20 +93,23 @@ fn after_wrap_method_stage2_does_not_walk_inheritance() {
 }
 
 #[test]
-fn after_wrap_method_stage1_offers_function_keyword_while_typing_partial_word() {
-    let t = TestDb::new(concat!(
+fn after_wrap_method_offers_methods_while_typing_first_word() {
+    let result = run(concat!(
         "class CPlayer {\n",
         "  public function OnSpawned() {}\n",
         "}\n",
         "@wrapMethod(CPlayer)\n",
         "fun$0\n",
-    ));
-    let (_uri, pos) = t.cursor();
-    let result = after_wrap_method_completions(t.primary_doc(), &t.db(), pos);
+    ))
+    .expect("methods should be offered while typing the first word");
 
     assert!(
-        matches!(result, Some(AfterWrapMethodCompletions::FunctionKeyword)),
-        "typing a partial first word after @wrapMethod must yield FunctionKeyword, got {result:?}"
+        result.needs_function_keyword,
+        "first word is not yet `function`; insert must lead with it"
+    );
+    assert!(
+        def_names(&result.methods).contains(&"OnSpawned"),
+        "method should be offered"
     );
 }
 
@@ -130,51 +135,44 @@ fn after_wrap_method_stage1_offers_function_keyword_while_typing_partial_word() 
     "}\n",
     "@wrapMethod(CPlayer) function AddMet$0\n",
 ))]
-fn after_wrap_method_stage2_offers_method_list_while_typing_method_name(#[case] fixture: &str) {
-    let t = TestDb::new(fixture);
-    let (_uri, pos) = t.cursor();
-    let result = after_wrap_method_completions(t.primary_doc(), &t.db(), pos);
-    let methods = match result {
-        Some(AfterWrapMethodCompletions::MethodList(m)) => m,
-        other => panic!("expected MethodList, got {other:?}"),
-    };
-    let names: Vec<&str> = methods.iter().map(|d| d.symbol.name.as_str()).collect();
+fn after_wrap_method_offers_methods_while_typing_method_name(#[case] fixture: &str) {
+    let result = run(fixture).expect("methods should be offered");
+    let names = def_names(&result.methods);
     assert!(names.contains(&"AddMethodA"), "AddMethodA missing");
     assert!(names.contains(&"AddMethodB"), "AddMethodB missing");
 }
 
 #[test]
-fn after_wrap_method_stage2_none_when_function_not_preceded_by_wrap_method() {
-    let t = TestDb::new("function $0\n");
-    let (_uri, pos) = t.cursor();
-    let result = after_wrap_method_completions(t.primary_doc(), &t.db(), pos);
-
+fn after_wrap_method_none_when_function_not_preceded_by_wrap_method() {
     assert!(
-        result.is_none(),
+        run("function $0\n").is_none(),
         "bare `function` should not trigger wrap method completions"
     );
 }
 
 #[test]
-fn after_replace_method_stage1_offers_only_function_keyword() {
-    let t = TestDb::new(concat!(
+fn after_replace_method_offers_methods_with_function_keyword() {
+    let result = run(concat!(
         "class CPlayer {\n",
         "  public function OnSpawned() {}\n",
         "}\n",
         "@replaceMethod(CPlayer) $0\n",
-    ));
-    let (_uri, pos) = t.cursor();
-    let result = after_wrap_method_completions(t.primary_doc(), &t.db(), pos);
+    ))
+    .expect("methods should be offered directly after the annotation");
 
     assert!(
-        matches!(result, Some(AfterWrapMethodCompletions::FunctionKeyword)),
-        "stage 1 must yield FunctionKeyword for @replaceMethod, got {result:?}"
+        result.needs_function_keyword,
+        "insert must lead with `function` before the keyword is typed"
+    );
+    assert!(
+        def_names(&result.methods).contains(&"OnSpawned"),
+        "method should be offered immediately"
     );
 }
 
 #[test]
-fn after_replace_method_stage2_offers_method_list() {
-    let t = TestDb::new(concat!(
+fn after_replace_method_offers_methods_after_function_keyword() {
+    let result = run(concat!(
         "class CPlayer {\n",
         "  public function OnSpawned() {}\n",
         "  public event OnDeath() {}\n",
@@ -182,15 +180,14 @@ fn after_replace_method_stage2_offers_method_list() {
         "}\n",
         "@replaceMethod(CPlayer)\n",
         "function $0\n",
-    ));
-    let (_uri, pos) = t.cursor();
-    let result = after_wrap_method_completions(t.primary_doc(), &t.db(), pos);
+    ))
+    .expect("methods should be offered after `function`");
 
-    let methods = match result {
-        Some(AfterWrapMethodCompletions::MethodList(m)) => m,
-        other => panic!("expected MethodList, got {other:?}"),
-    };
-    let names: Vec<&str> = methods.iter().map(|d| d.symbol.name.as_str()).collect();
+    assert!(
+        !result.needs_function_keyword,
+        "`function` already typed; insert must not repeat it"
+    );
+    let names = def_names(&result.methods);
     assert!(names.contains(&"OnSpawned"), "method should be offered");
     assert!(names.contains(&"OnDeath"), "event should be offered");
     assert!(!names.contains(&"mHp"), "field must not be offered");

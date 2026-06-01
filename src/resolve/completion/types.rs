@@ -157,11 +157,10 @@ fn is_inside_annotation_parens(annotation: Node, byte_offset: usize) -> bool {
 }
 
 #[derive(Debug)]
-pub enum AfterWrapMethodCompletions {
-    /// Cursor is directly after `@wrapMethod(CClass)` — only `function` is valid next.
-    FunctionKeyword,
-    /// Cursor is after `@wrapMethod(CClass)\nfunction ` — offer methods of the class.
-    MethodList(Vec<Definition>),
+pub struct AfterWrapMethodCompletions {
+    pub methods: Vec<Definition>,
+    /// `function` keyword not yet typed; each insert must lead with it.
+    pub needs_function_keyword: bool,
 }
 
 pub fn after_wrap_method_completions(
@@ -184,22 +183,23 @@ pub fn after_wrap_method_completions(
         .and_then(|n| significant_node_before_byte(root, source, n.start_byte()))
         .or_else(|| significant_node_before_byte(root, source, byte_offset))?;
 
-    // Stage 2: `function` keyword is the boundary — cursor is after it or typing a name.
+    // After a typed `function` keyword: insert needs no leading `function`.
     if effective_prev.kind() == "function" {
         let before_fn = significant_node_before_byte(root, source, effective_prev.start_byte())?;
         let class_name = wrap_method_class_from_closing_paren(before_fn, &document.source)?;
-        return Some(AfterWrapMethodCompletions::MethodList(
-            direct_methods_of_class(class_name, db)?,
-        ));
+        return Some(AfterWrapMethodCompletions {
+            methods: direct_methods_of_class(class_name, db)?,
+            needs_function_keyword: false,
+        });
     }
 
-    // Stage 1: `)` of annotation is the boundary — `function` keyword not yet complete.
+    // Directly after `@wrapMethod(CClass)`: offer the same methods, but each
+    // insert must lead with the not-yet-typed `function` keyword.
     let class_name = wrap_method_class_from_closing_paren(effective_prev, &document.source)?;
-    let class_def = db.find_top_level(class_name)?;
-    if class_def.symbol.kind != SymbolKind::Class {
-        return None;
-    }
-    Some(AfterWrapMethodCompletions::FunctionKeyword)
+    Some(AfterWrapMethodCompletions {
+        methods: direct_methods_of_class(class_name, db)?,
+        needs_function_keyword: true,
+    })
 }
 
 fn direct_methods_of_class(class_name: &str, db: &SymbolDb) -> Option<Vec<Definition>> {

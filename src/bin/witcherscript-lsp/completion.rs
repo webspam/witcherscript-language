@@ -11,8 +11,8 @@ use witcherscript_language::resolve::{
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
     default_or_hint_member_completions, expression_completions, extends_completions,
     new_lifetime_completions, new_type_completions, position_in_comment, script_body_completions,
-    state_owner_completions, statement_completions, type_completions_arc,
-    AfterWrapMethodCompletions, Definition, SymbolDb, BUILTIN_TYPE_COMPLETIONS,
+    state_owner_completions, statement_completions, type_completions_arc, Definition, SymbolDb,
+    BUILTIN_TYPE_COMPLETIONS,
 };
 
 use crate::backend::Backend;
@@ -138,30 +138,28 @@ impl Backend {
                 ))));
             }
 
-            match after_wrap_method_completions(document, &db, pos) {
-                Some(AfterWrapMethodCompletions::FunctionKeyword) => {
-                    break 'body Ok(Some(CompletionResponse::Array(vec![keyword_snippet_item(
-                        "function", "function",
-                    )])));
-                }
-                Some(AfterWrapMethodCompletions::MethodList(methods)) => {
-                    let items = methods
-                        .iter()
-                        .map(|def| {
-                            let snippet = wrap_method_snippet(def, &db);
-                            CompletionItem {
-                                label: def.symbol.name.clone(),
-                                kind: Some(CompletionItemKind::METHOD),
-                                detail: def.symbol.signature.clone(),
-                                insert_text: Some(snippet),
-                                insert_text_format: Some(InsertTextFormat::SNIPPET),
-                                ..CompletionItem::default()
-                            }
-                        })
-                        .collect();
-                    break 'body Ok(Some(CompletionResponse::Array(items)));
-                }
-                None => {}
+            if let Some(wrap) = after_wrap_method_completions(document, &db, pos) {
+                let items = wrap
+                    .methods
+                    .iter()
+                    .map(|def| {
+                        let snippet = wrap_method_snippet(def, &db);
+                        let insert_text = if wrap.needs_function_keyword {
+                            format!("function {snippet}")
+                        } else {
+                            snippet
+                        };
+                        CompletionItem {
+                            label: def.symbol.name.clone(),
+                            kind: Some(CompletionItemKind::METHOD),
+                            detail: def.symbol.signature.clone(),
+                            insert_text: Some(insert_text),
+                            insert_text_format: Some(InsertTextFormat::SNIPPET),
+                            ..CompletionItem::default()
+                        }
+                    })
+                    .collect();
+                break 'body Ok(Some(CompletionResponse::Array(items)));
             }
 
             let extends = extends_completions(document, &db, pos);
