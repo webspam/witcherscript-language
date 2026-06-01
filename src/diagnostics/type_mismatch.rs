@@ -101,7 +101,7 @@ fn check_assignment<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         return;
     };
     let target = infer_type(ctx.uri, ctx.document, ctx.db, left, left.start_byte());
-    // Skip non-primitive LHS: objects may overload compound ops.
+    // Compound-op result type is only modelled for primitive operands.
     if op.kind() != "assign_op_direct" && !matches!(target, Type::Primitive(_)) {
         return;
     }
@@ -122,7 +122,7 @@ fn check_call_args<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     let Some(params) = callee_params(node, ctx) else {
         return;
     };
-    // Extra args mean an overload/vararg we don't model.
+    // Too many args is an arity error this rule doesn't own; bail before indexing past params.
     if slots.len() > params.len() {
         return;
     }
