@@ -9,6 +9,7 @@ pub mod resolve;
 pub mod script_env;
 pub mod semantic_tokens;
 pub mod symbols;
+pub mod types;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
