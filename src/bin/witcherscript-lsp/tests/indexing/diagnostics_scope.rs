@@ -125,6 +125,43 @@ async fn workspace_mode_diagnoses_every_file_without_opening_it() {
 }
 
 #[tokio::test]
+async fn opening_unchanged_indexed_file_reuses_parse_and_skips_diagnostic_refresh() {
+    let temp = LocalTempDir::new("ws_reopen_unchanged_no_refresh");
+    let text = "class CExample {\n  function Foo() {}\n}\n";
+    let path = write_script(temp.path(), "Example.ws", text);
+    let url = Url::from_file_path(&path).expect("path -> url");
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+
+    let canonical = witcherscript_language::files::canonical_uri(&url).expect("canonical uri");
+    let indexed_version = backend
+        .snapshot()
+        .workspace_documents
+        .get(&canonical)
+        .expect("file must be indexed on disk")
+        .parse_version;
+
+    let version_before = backend.diagnostic_version.load(Ordering::Acquire);
+    backend.update_open_document(url.clone(), text.to_string());
+
+    assert_eq!(
+        backend.diagnostic_version.load(Ordering::Acquire),
+        version_before,
+        "opening a byte-identical indexed file must not bump diagnostic_version",
+    );
+    let snap = backend.snapshot();
+    let open_doc = snap
+        .documents
+        .get(&url)
+        .expect("opened file must be registered in the open overlay");
+    assert_eq!(
+        open_doc.parse_version, indexed_version,
+        "opened file must reuse the indexed parse, not a fresh parse_version",
+    );
+}
+
+#[tokio::test]
 async fn open_files_mode_skips_unopened_files_but_still_indexes_symbols() {
     let temp = LocalTempDir::new("ws_scope_openfiles_skips_unopened");
     let path = write_script(temp.path(), "Bad.ws", "class CBad {\n");
