@@ -1,7 +1,8 @@
-use super::super::{completion_members, hover_text, parse_generic_type, resolve_definition};
+use super::super::{completion_members, hover_text, resolve_definition};
 use crate::builtins::BUILTIN_ARRAY_URI;
 use crate::symbols::AccessLevel;
 use crate::test_support::TestDb;
+use crate::types::parse_generic_type;
 
 #[test]
 fn parse_generic_type_handles_basic_and_nested() {

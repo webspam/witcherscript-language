@@ -21,7 +21,6 @@ mod workspace_index;
 #[cfg(test)]
 mod tests;
 
-pub use crate::types::parse_generic_type;
 pub(crate) use assignability::{assignability, Assignability};
 pub use ast::BUILTIN_TYPE_COMPLETIONS;
 pub use completion::{

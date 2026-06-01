@@ -61,7 +61,7 @@ impl std::fmt::Display for Type {
     }
 }
 
-pub fn parse_generic_type(s: &str) -> Option<(&str, &str)> {
+pub(crate) fn parse_generic_type(s: &str) -> Option<(&str, &str)> {
     let trimmed = s.trim();
     let lt = trimmed.find('<')?;
     if !trimmed.ends_with('>') {
