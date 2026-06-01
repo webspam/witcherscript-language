@@ -216,6 +216,49 @@ async fn completion_after_new_lifetime_in_offers_class_locals() {
 }
 
 #[tokio::test]
+async fn completion_after_wrap_method_offers_methods_with_function_keyword() {
+    let f = Fixture::parse(concat!(
+        "class CPlayer {\n",
+        "    public function OnSpawned() : void {}\n",
+        "}\n",
+        "@wrapMethod(CPlayer) $0\n",
+    ));
+
+    let mut client = LspClient::spawn().await;
+    for file in &f.files {
+        client.open(&file.uri, &file.text).await;
+    }
+
+    let (cursor_uri, pos) = f.cursor();
+    let resp = client
+        .request::<Completion>(CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: cursor_uri },
+                position: pos,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: None,
+        })
+        .await
+        .expect("completion response");
+
+    let method = items_of(resp)
+        .into_iter()
+        .find(|i| i.label == "OnSpawned")
+        .expect("OnSpawned offered directly after @wrapMethod");
+    assert_eq!(method.kind, Some(CompletionItemKind::METHOD));
+    assert!(
+        method
+            .insert_text
+            .as_deref()
+            .is_some_and(|t| t.starts_with("function OnSpawned(")),
+        "insert must lead with the `function` keyword, got {:?}",
+        method.insert_text
+    );
+}
+
+#[tokio::test]
 async fn completion_in_statement_offers_keywords() {
     let f = Fixture::parse(concat!("function Test() {\n", "    $0\n", "}\n",));
 
