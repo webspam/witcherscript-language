@@ -117,6 +117,21 @@ fn string_name_default_is_info_not_error(#[case] fixture: &str) {
     assert_eq!(diags[0].severity, super::Severity::Info);
 }
 
+#[rstest]
+#[case::default("class C { var n : int; default n = 10.0f; }\n")]
+#[case::defaults_block("class C { var n : int; defaults { n = 10.0f; } }\n")]
+fn float_int_default_is_info_not_error(#[case] fixture: &str) {
+    let t = TestDb::new(fixture);
+    let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
+
+    let diags = result
+        .get(t.primary_uri())
+        .expect("should have a diagnostic");
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].kind, "float_as_int_default");
+    assert_eq!(diags[0].severity, super::Severity::Info);
+}
+
 #[test]
 fn flags_null_into_primitive() {
     let t = TestDb::new("function Test() { var i : int = NULL; }\n");

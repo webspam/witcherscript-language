@@ -209,6 +209,19 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         return;
     }
     let value_type = infer_type(ctx.uri, ctx.document, ctx.db, value, value.start_byte());
+    // The compiler accepts a float literal as an `int` default
+    if matches!(value_type, Type::Primitive(Primitive::Float))
+        && matches!(target, Type::Primitive(Primitive::Int))
+    {
+        emit(
+            value,
+            "float_as_int_default",
+            format!("Float value used for an '{target}' default"),
+            Severity::Info,
+            ctx,
+        );
+        return;
+    }
     if is_incompatible(&value_type, &target, ctx.db) {
         emit(
             value,
