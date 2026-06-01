@@ -1,9 +1,4 @@
-//! Structured value model for WitcherScript types.
-//!
-//! The rest of the crate carries types as bare `String` annotations
-//! (`Symbol.type_annotation`). This module is the typed front-end: parse an
-//! annotation into a [`Type`], reason about it, and collapse it back to the
-//! string key the resolver's `SymbolDb` expects.
+//! Structured value model for WitcherScript types: the typed front-end over bare-`String` `type_annotation`s.
 
 mod parse;
 
@@ -34,18 +29,12 @@ pub enum Primitive {
 }
 
 impl Type {
-    /// Parse a `Symbol.type_annotation` / `SymbolDb` container string.
-    ///
-    /// Handles `array<...>` recursively and canonicalises engine aliases
-    /// (`Int32`, `CName`, ...). An empty string is [`Type::Unknown`]; an
-    /// unrecognised bare word is [`Type::Named`].
+    /// Parse a type-annotation string. Recurses `array<...>`, canonicalises aliases; empty -> `Unknown`, unknown word -> `Named`.
     pub fn from_annotation(s: &str) -> Type {
         parse::from_annotation(s)
     }
 
-    /// Collapse back to the string `SymbolDb` uses as a lookup key
-    /// (`find_member`, `find_top_level`). [`Type::Null`] and [`Type::Unknown`]
-    /// have no container to look up and return `None`.
+    /// Collapse to the `SymbolDb` lookup key. `Null`/`Unknown` have no container -> `None`.
     pub fn to_db_string(&self) -> Option<String> {
         match self {
             Type::Void => Some("void".to_string()),

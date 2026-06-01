@@ -101,8 +101,7 @@ fn check_assignment<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         return;
     };
     let target = infer_type(ctx.uri, ctx.document, ctx.db, left, left.start_byte());
-    // Compound ops (`+=`, `-=`, ...) only have defined type semantics on
-    // primitives; objects may overload them, so skip a non-primitive LHS.
+    // Skip non-primitive LHS: objects may overload compound ops.
     if op.kind() != "assign_op_direct" && !matches!(target, Type::Primitive(_)) {
         return;
     }
@@ -123,7 +122,7 @@ fn check_call_args<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     let Some(params) = callee_params(node, ctx) else {
         return;
     };
-    // More args than declared parameters means an overload/vararg we don't model.
+    // Extra args mean an overload/vararg we don't model.
     if slots.len() > params.len() {
         return;
     }
@@ -200,9 +199,7 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     }
 }
 
-/// Comma-delimited argument slots of a `func_call_expr`. Returns `None` when
-/// the call has no arguments or any slot is empty (`f(a,,b)`) - an empty slot
-/// breaks positional alignment, so the whole call is skipped.
+/// Argument slots of a call. `None` if no args or any slot is empty (`f(a,,b)`), which breaks positional alignment.
 fn arg_slots<'tree>(call: Node<'tree>) -> Option<Vec<Node<'tree>>> {
     let args = call.child_by_field_name("args")?;
     let mut slots: Vec<Option<Node>> = Vec::new();
@@ -246,10 +243,7 @@ fn is_incompatible(value_type: &Type, target: &Type, db: &SymbolDb) -> bool {
     assignability(value_type, target, db) == Assignability::Incompatible
 }
 
-/// A type we can judge with confidence: a primitive, `NULL`, or a `Named` type
-/// that actually resolves. An unresolved name (a base type we failed to index,
-/// or the unsubstituted generic placeholder `T`) is not concrete, so we skip
-/// it rather than risk a false positive.
+/// Confidently judgeable: primitive, `NULL`, or a resolvable `Named`. Unresolved names (unindexed base type, generic `T`) skip to avoid false positives.
 fn is_concrete(ty: &Type, db: &SymbolDb) -> bool {
     match ty {
         Type::Primitive(_) | Type::Null => true,

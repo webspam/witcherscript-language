@@ -36,9 +36,7 @@ pub fn infer_expr_type_memo(
     value
 }
 
-/// Adapter over [`infer_type`] preserving the legacy `Option<String>` contract:
-/// `None` means "not confidently known", which is how the `String`-keyed
-/// `SymbolDb` consumers expect to see an unresolved type.
+/// Adapter over [`infer_type`]: `None` == not confidently known (the legacy `String`-keyed contract).
 pub(crate) fn infer_expr_type(
     uri: &str,
     document: &ParsedDocument,
@@ -52,9 +50,7 @@ pub(crate) fn infer_expr_type(
     }
 }
 
-/// Infer the [`Type`] of an expression node. Returns [`Type::Unknown`] whenever
-/// the type cannot be determined with confidence; callers must treat `Unknown`
-/// as "do not report", never as an error.
+/// Infer an expression's [`Type`]. [`Type::Unknown`] means not-confident; callers must treat it as "do not report".
 pub fn infer_type(
     uri: &str,
     document: &ParsedDocument,

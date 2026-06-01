@@ -2,8 +2,7 @@ use crate::resolve::parse_generic_type;
 
 use super::{Primitive, Type};
 
-/// Engine aliases and canonical names that map onto a [`Primitive`].
-/// Mirrors the spelling variants in `resolve::ast::BUILTIN_TYPES`.
+/// Aliases mapping onto a [`Primitive`]; mirrors `resolve::ast::BUILTIN_TYPES`.
 const PRIMITIVE_ALIASES: &[(&str, Primitive)] = &[
     ("bool", Primitive::Bool),
     ("Bool", Primitive::Bool),

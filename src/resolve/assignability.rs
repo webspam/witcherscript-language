@@ -1,9 +1,4 @@
-//! Pure type-compatibility engine.
-//!
-//! Decides whether a value of one [`Type`] may flow into a slot of another,
-//! and if so whether an implicit conversion is involved. The allowed implicit
-//! conversions live in a single table ([`IMPLICIT_PRIMITIVE_CASTS`]) so the
-//! permitted set is tunable in one place.
+//! Pure type-compatibility engine. Allowed implicit casts live in one table ([`IMPLICIT_PRIMITIVE_CASTS`]).
 
 use crate::symbols::SymbolKind;
 use crate::types::{Primitive, Type};
@@ -29,11 +24,7 @@ pub enum Assignability {
     Incompatible,
 }
 
-/// Implicit primitive conversions the language performs silently.
-///
-/// Single source of truth for the allowed-cast set. Seeded with the
-/// well-known WitcherScript conversions; the exact set still wants
-/// confirmation against the compiler.
+/// Implicit primitive conversions the language performs silently. Sole tuning point; confirm against the compiler.
 const IMPLICIT_PRIMITIVE_CASTS: &[(Primitive, Primitive)] = &[
     (Primitive::Byte, Primitive::Int),
     (Primitive::Byte, Primitive::Float),
@@ -45,10 +36,7 @@ const IMPLICIT_PRIMITIVE_CASTS: &[(Primitive, Primitive)] = &[
     (Primitive::Name, Primitive::String),
 ];
 
-/// Whether a value of type `from` may be assigned into a slot of type `to`.
-///
-/// Contract: callers guarantee neither side is [`Type::Unknown`]; an `Unknown`
-/// type carries no information and must be filtered out before reporting.
+/// Whether `from` may be assigned into a `to` slot. Callers must filter out [`Type::Unknown`] first.
 pub fn assignability(from: &Type, to: &Type, db: &SymbolDb) -> Assignability {
     if from == to {
         return Assignability::Identical;
