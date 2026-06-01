@@ -25,6 +25,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 17 | `private_member_access` | error | Private field or method accessed from outside its declaring class |
 | 18 | `type_used_as_value` | error | Type name (class, struct, state, enum) used in a value position |
 | 19 | `type_mismatch` | error | A value's type is not assignable to the target slot |
+| 20 | `string_as_name_default` | info | A `name`/`CName` field default uses a string literal where a name literal is intended |
 
 ## Details
 
@@ -156,3 +157,7 @@ These mirror the conversions the compiler applies without a cast:
 The sized engine integer spellings (`Int16`, `Int8`, `Uint16`, `Uint32`, `Uint64`) and `StringAnsi` are their own types. The compiler converts them only with an explicit cast, so they are reported here unless the source and target spellings match.
 
 Sites where either the value's type or the target's type cannot be inferred with confidence emit nothing, as do sites inside a tree-sitter error subtree, to avoid false positives while typing. A target whose name does not resolve to a known type (including the unsubstituted generic element of `array<T>` methods) is treated as unknown and skipped. Calls with more arguments than declared parameters, or with an empty argument slot, are skipped.
+
+### 20. String literal as a name default
+
+A `name`/`CName` field default whose value is a double-quoted string literal, e.g. `default someVar = "Swimming";`. The compiler accepts this as a compile-time constant `name`, so it is not a type error here (unlike a `var` initializer or an assignment, where `string` -> `name` is reported as `type_mismatch`). It is surfaced at info level because a name literal (`'Swimming'`) is the intended form.

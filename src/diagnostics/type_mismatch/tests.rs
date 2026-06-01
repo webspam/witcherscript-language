@@ -43,6 +43,7 @@ use crate::test_support::TestDb;
 )]
 #[case::matching_default("class C { var n : int; default n = 5; }\n")]
 #[case::matching_defaults_block("class C { var n : int; defaults { n = 5; } }\n")]
+#[case::name_default_name_literal("class C { var n : name; default n = 'Swimming'; }\n")]
 #[case::compound_widening("function Test() { var f : float; f += 1; }\n")]
 #[case::compound_to_string("function Test() { var s : string; s += 5; }\n")]
 #[case::compound_object_skipped(
@@ -80,6 +81,35 @@ fn flags_incompatible_assignment() {
     assert_eq!(diags[0].kind, "type_mismatch");
     assert!(diags[0].message.contains("float"));
     assert!(diags[0].message.contains("int"));
+}
+
+#[test]
+fn flags_string_literal_into_name_var_initializer() {
+    let t = TestDb::new("function Test() { var n : name = \"Swimming\"; }\n");
+    let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
+
+    let diags = result
+        .get(t.primary_uri())
+        .expect("should have diagnostics");
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].kind, "type_mismatch");
+    assert!(diags[0].message.contains("string"));
+    assert!(diags[0].message.contains("name"));
+}
+
+#[rstest]
+#[case::default("class C { var n : name; default n = \"Swimming\"; }\n")]
+#[case::defaults_block("class C { var n : name; defaults { n = \"Swimming\"; } }\n")]
+fn string_name_default_is_info_not_error(#[case] fixture: &str) {
+    let t = TestDb::new(fixture);
+    let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
+
+    let diags = result
+        .get(t.primary_uri())
+        .expect("should have a diagnostic");
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].kind, "string_as_name_default");
+    assert_eq!(diags[0].severity, super::Severity::Info);
 }
 
 #[test]

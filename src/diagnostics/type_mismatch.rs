@@ -10,7 +10,7 @@ use crate::resolve::{
     assignability, infer_type, resolve_definition_at_byte, Assignability, SymbolDb,
 };
 use crate::symbols::{node_text, Symbol, SymbolKind};
-use crate::types::Type;
+use crate::types::{Primitive, Type};
 
 use super::{run_rules_on_document, CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic};
 
@@ -84,7 +84,9 @@ fn check_var_decl<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     if is_incompatible(&value_type, &target, ctx.db) {
         emit(
             value,
+            "type_mismatch",
             format!("Cannot assign value of type '{value_type}' to '{target}'"),
+            Severity::Error,
             ctx,
         );
     }
@@ -109,7 +111,9 @@ fn check_assignment<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     if is_incompatible(&value_type, &target, ctx.db) {
         emit(
             right,
+            "type_mismatch",
             format!("Cannot assign value of type '{value_type}' to '{target}'"),
+            Severity::Error,
             ctx,
         );
     }
@@ -135,10 +139,12 @@ fn check_call_args<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         if is_incompatible(&value_type, &target, ctx.db) {
             emit(
                 *arg,
+                "type_mismatch",
                 format!(
                     "Argument {} expects type '{target}' but got '{value_type}'",
                     i + 1
                 ),
+                Severity::Error,
                 ctx,
             );
         }
@@ -163,9 +169,11 @@ fn check_return<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     if is_incompatible(&value_type, &target, ctx.db) {
         emit(
             value,
+            "type_mismatch",
             format!(
                 "Cannot return value of type '{value_type}' from function returning '{target}'"
             ),
+            Severity::Error,
             ctx,
         );
     }
@@ -189,11 +197,24 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         return;
     };
     let target = Type::from_annotation(field_annot);
+    // The compiler accepts a constant string literal as a `name`/`CName` default, but a name literal is the intended form.
+    if value.kind() == "literal_string" && matches!(target, Type::Primitive(Primitive::Name)) {
+        emit(
+            value,
+            "string_as_name_default",
+            format!("String literal (double quotes) used for a '{target}' (single quotes) default"),
+            Severity::Info,
+            ctx,
+        );
+        return;
+    }
     let value_type = infer_type(ctx.uri, ctx.document, ctx.db, value, value.start_byte());
     if is_incompatible(&value_type, &target, ctx.db) {
         emit(
             value,
+            "type_mismatch",
             format!("Cannot assign value of type '{value_type}' to '{target}'"),
+            Severity::Error,
             ctx,
         );
     }
@@ -253,16 +274,22 @@ fn is_concrete(ty: &Type, db: &SymbolDb) -> bool {
     }
 }
 
-fn emit<'tree>(value_node: Node<'tree>, message: String, ctx: &mut CstRuleCtx<'_, 'tree>) {
+fn emit<'tree>(
+    value_node: Node<'tree>,
+    kind: &str,
+    message: String,
+    severity: Severity,
+    ctx: &mut CstRuleCtx<'_, 'tree>,
+) {
     let range = ctx.document.line_index.byte_range_to_range(
         &ctx.document.source,
         value_node.start_byte(),
         value_node.end_byte(),
     );
     ctx.diagnostics.push(WorkspaceDiagnostic {
-        kind: "type_mismatch".to_string(),
+        kind: kind.to_string(),
         message,
-        severity: Severity::Error,
+        severity,
         range,
         related: vec![],
         data: None,
