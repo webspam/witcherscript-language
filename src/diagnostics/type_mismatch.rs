@@ -197,7 +197,7 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         return;
     };
     let target = Type::from_annotation(field_annot);
-    // The compiler accepts a constant string literal as a `name`/`CName` default, but a name literal is the intended form.
+    // The compiler accepts a constant string literal as a `name`/`CName` default
     if value.kind() == "literal_string" && matches!(target, Type::Primitive(Primitive::Name)) {
         emit(
             value,
@@ -209,6 +209,19 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         return;
     }
     let value_type = infer_type(ctx.uri, ctx.document, ctx.db, value, value.start_byte());
+    // The compiler accepts a float literal as an `int` default
+    if matches!(value_type, Type::Primitive(Primitive::Float))
+        && matches!(target, Type::Primitive(Primitive::Int))
+    {
+        emit(
+            value,
+            "float_as_int_default",
+            format!("Float value used for an '{target}' default"),
+            Severity::Info,
+            ctx,
+        );
+        return;
+    }
     if is_incompatible(&value_type, &target, ctx.db) {
         emit(
             value,
