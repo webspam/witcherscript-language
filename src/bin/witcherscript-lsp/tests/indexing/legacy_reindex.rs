@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use lsp_types::{DidCloseTextDocumentParams, TextDocumentIdentifier, Url};
 
 use witcherscript_language::files::canonical_uri;
@@ -147,6 +149,23 @@ async fn did_open_refreshes_legacy_override_maps_for_open_first_override() {
             .suppressed_base_uris
             .contains(base_url.as_str()),
         "did_open must refresh suppress maps when the override was not indexed before open",
+    );
+}
+
+#[tokio::test]
+async fn reopening_unchanged_legacy_file_does_not_bump_diagnostic_version() {
+    let (_temp, backend, override_url, _new_url) =
+        indexed_legacy_override("ws_reopen_legacy_no_bump").await;
+    let text = "class CR4Player {}\n// legacy\n";
+
+    backend._did_open(open_params(&override_url, text));
+    let version_after_first = backend.diagnostic_version.load(Ordering::Acquire);
+    backend._did_open(open_params(&override_url, text));
+
+    assert_eq!(
+        backend.diagnostic_version.load(Ordering::Acquire),
+        version_after_first,
+        "re-opening a byte-identical legacy file must not bump diagnostic_version",
     );
 }
 

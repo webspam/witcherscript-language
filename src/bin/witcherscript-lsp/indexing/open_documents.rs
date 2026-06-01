@@ -166,8 +166,8 @@ impl Backend {
         );
     }
 
-    pub(crate) fn update_open_document(&self, uri: Url, text: String) {
-        self.update_open_document_with_prior(uri, text, None);
+    pub(crate) fn update_open_document(&self, uri: Url, text: String) -> bool {
+        self.update_open_document_with_prior(uri, text, None)
     }
 
     // A new parse_version invalidates the diagnostic result_id and forces a redundant
@@ -182,9 +182,14 @@ impl Backend {
                 .cloned()
         });
         let Some(existing) = existing else {
+            // Loose files are legitimately unindexed; only an in-scope miss is a real error.
+            if !self.file_scope_of(uri).is_loose() {
+                trace!(uri = %uri, "no indexed copy for in-scope file on open; canonical_uri did not match the index key");
+            }
             return false;
         };
         if existing.source != text {
+            trace!(uri = %uri, "open bytes differ from indexed copy; forcing reparse");
             return false;
         }
         // Edit tracking and document-pull read the open overlay, so it must hold the file.
@@ -202,10 +207,10 @@ impl Backend {
         uri: Url,
         text: String,
         prior_tree: Option<Tree>,
-    ) {
+    ) -> bool {
         if self.reuse_unchanged_open_document(&uri, &text) {
             trace!(op = "update_open_document", uri = %uri, "bytes unchanged; reused parse");
-            return;
+            return false;
         }
         let started_at = Instant::now();
         let bytes = text.len();
@@ -224,7 +229,7 @@ impl Backend {
                     Ok(()) => parse_document_with_prior(&mut parser, text, Some(&tree)),
                     Err(err) => {
                         error!(uri = %uri, error = %err, "failed to load WitcherScript grammar");
-                        return;
+                        return false;
                     }
                 }
             }
@@ -235,7 +240,7 @@ impl Backend {
             Ok(document) => document,
             Err(err) => {
                 error!(uri = %uri, error = %err, "failed to parse document");
-                return;
+                return false;
             }
         };
         let document = Arc::new(document);
@@ -258,6 +263,7 @@ impl Backend {
             elapsed_us = started_at.elapsed().as_micros(),
             "complete",
         );
+        true
     }
 
     pub(crate) fn publish_open_document_indices(
