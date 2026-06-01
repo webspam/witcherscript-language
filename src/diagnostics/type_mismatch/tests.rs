@@ -16,6 +16,24 @@ use crate::test_support::TestDb;
     "function Test() { var a : int; var b : int; var i : int = a + b; }\n"
 )]
 #[case::null_to_class("class Foo {} function Test() { var f : Foo; f = NULL; }\n")]
+#[case::matching_arg("function TakesInt(x : int) {} function Test() { TakesInt(5); }\n")]
+#[case::implicit_cast_arg(
+    "function TakesString(s : string) {} function Test() { TakesString(1.0); }\n"
+)]
+#[case::omitted_optional_arg(
+    "function F(a : int, optional b : int) {} function Test() { F(5); }\n"
+)]
+#[case::subtype_arg(
+    "class Base {} class Derived extends Base {} \
+     function Take(b : Base) {} function Test() { var d : Derived; Take(d); }\n"
+)]
+#[case::method_arg_ok(
+    "class Foo { function M(x : int) {} } function Test() { var f : Foo; f.M(5); }\n"
+)]
+#[case::unresolved_callee("function Test() { Mystery(\"s\"); }\n")]
+#[case::array_method_no_false_positive(
+    "function Test() { var a : array<int>; a.PushBack(\"s\"); }\n"
+)]
 fn does_not_fire(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
@@ -60,6 +78,48 @@ fn flags_null_into_primitive() {
         .expect("should have diagnostics");
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].kind, "type_mismatch");
+}
+
+#[test]
+fn flags_incompatible_argument() {
+    let t = TestDb::new("function TakesInt(x : int) {} function Test() { TakesInt(\"s\"); }\n");
+    let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
+
+    let diags = result
+        .get(t.primary_uri())
+        .expect("should have diagnostics");
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].kind, "type_mismatch");
+    assert!(diags[0].message.contains("Argument 1"));
+    assert!(diags[0].message.contains("int"));
+    assert!(diags[0].message.contains("string"));
+}
+
+#[test]
+fn flags_incompatible_method_argument() {
+    let t = TestDb::new(
+        "class Foo { function M(x : int) {} } function Test() { var f : Foo; f.M(\"s\"); }\n",
+    );
+    let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
+
+    let diags = result
+        .get(t.primary_uri())
+        .expect("should have diagnostics");
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].kind, "type_mismatch");
+    assert!(diags[0].message.contains("Argument 1"));
+}
+
+#[test]
+fn flags_second_argument_only() {
+    let t = TestDb::new("function F(a : int, b : int) {} function Test() { F(5, \"s\"); }\n");
+    let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
+
+    let diags = result
+        .get(t.primary_uri())
+        .expect("should have diagnostics");
+    assert_eq!(diags.len(), 1);
+    assert!(diags[0].message.contains("Argument 2"));
 }
 
 #[test]
