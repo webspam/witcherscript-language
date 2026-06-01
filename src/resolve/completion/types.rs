@@ -125,8 +125,10 @@ const CLASS_ARG_ANNOTATIONS: &[&str] =
     &["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"];
 
 fn has_annotation_arg_ancestor(node: Node, byte_offset: usize, source: &str) -> bool {
-    find_ancestor_of_kind(node, &["annotation"]).is_some_and(|annotation| {
-        takes_class_arg(annotation, source) && is_inside_annotation_parens(annotation, byte_offset)
+    // Empty parens (`@wrapMethod()`) fail the `'(' ident ')'` rule and recover as an
+    // ERROR node holding the same annotation_ident/`(`/`)` children, so accept both.
+    find_ancestor_of_kind(node, &["annotation", "ERROR"]).is_some_and(|container| {
+        takes_class_arg(container, source) && is_inside_annotation_parens(container, byte_offset)
     })
 }
 

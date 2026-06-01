@@ -1,7 +1,39 @@
+use expect_test::expect;
 use rstest::rstest;
 
 use super::super::annotation_arg_completions;
 use crate::test_support::TestDb;
+
+// Empty parens are an error-recovery shape (the grammar requires `'(' ident ')'`).
+// Our completion routing depends on it, so lock the tree a grammar bump would change.
+#[test]
+fn empty_annotation_parens_parse_shape() {
+    fn dump(node: tree_sitter::Node, out: &mut String, depth: usize) {
+        out.push_str(&"  ".repeat(depth));
+        out.push_str(&format!(
+            "{} [{}..{}]\n",
+            node.kind(),
+            node.start_byte(),
+            node.end_byte()
+        ));
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            dump(child, out, depth + 1);
+        }
+    }
+
+    let t = TestDb::new("@wrapMethod()\n");
+    let mut out = String::new();
+    dump(t.primary_doc().tree.root_node(), &mut out, 0);
+    expect![[r#"
+        script [0..14]
+          ERROR [0..13]
+            annotation_ident [0..11]
+            ( [11..12]
+            ) [12..13]
+    "#]]
+    .assert_eq(&out);
+}
 
 #[rstest]
 #[case::add_field(
@@ -14,6 +46,10 @@ use crate::test_support::TestDb;
 )]
 #[case::wrap_method(
     "class CPlayer {}\nstruct SData {}\nenum EDir { North = 0 }\n@wrapMethod($0CPlayer)\n",
+    true
+)]
+#[case::empty_parens(
+    "class CPlayer {}\nstruct SData {}\nenum EDir { North = 0 }\n@wrapMethod($0)\n",
     true
 )]
 #[case::replace_method(
