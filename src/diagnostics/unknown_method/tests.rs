@@ -15,6 +15,12 @@ use crate::test_support::TestDb;
 #[case::private_method_inside_class(
     "class Foo { private function Secret() {} function Test() { var f : Foo; f.Secret(); } }\n"
 )]
+#[case::cast_receiver_known_method(
+    "class Foo { function Bar() {} } function Test(p : CR4Player) { ((Foo)p).Bar(); }\n"
+)]
+#[case::new_receiver_known_method(
+    "class Foo { function Bar() {} } function Test() { (new Foo).Bar(); }\n"
+)]
 fn does_not_fire(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     let result = collect_unknown_method_diagnostics(&t.search_docs(), &t.db());

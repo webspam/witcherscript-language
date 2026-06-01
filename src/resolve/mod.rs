@@ -36,7 +36,7 @@ pub use definition::{
     classify_definition_at_ident, resolve_all_definitions, resolve_definition,
     resolve_definition_at_byte, resolve_definition_at_ident,
 };
-pub use inference::infer_expr_type_memo;
+pub use inference::{infer_expr_type_memo, infer_type};
 pub use name_context::{classify_ident_context, NameContext};
 pub use overrides::{overridden_top_level, OverriddenSymbol};
 pub use references::find_references;

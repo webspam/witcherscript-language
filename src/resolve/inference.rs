@@ -5,6 +5,7 @@ use tree_sitter::Node;
 use crate::cst::grammar::{call_callee, member_access_member};
 use crate::document::ParsedDocument;
 use crate::symbols::{AccessLevel, Symbol, SymbolKind};
+use crate::types::{Primitive, Type};
 
 use super::ast::first_named_child;
 use super::name_context::NameContext;
@@ -35,6 +36,9 @@ pub fn infer_expr_type_memo(
     value
 }
 
+/// Adapter over [`infer_type`] preserving the legacy `Option<String>` contract:
+/// `None` means "not confidently known", which is how the `String`-keyed
+/// `SymbolDb` consumers expect to see an unresolved type.
 pub(crate) fn infer_expr_type(
     uri: &str,
     document: &ParsedDocument,
@@ -42,36 +46,111 @@ pub(crate) fn infer_expr_type(
     node: Node,
     context_byte: usize,
 ) -> Option<String> {
+    match infer_type(uri, document, db, node, context_byte) {
+        Type::Unknown | Type::Null => None,
+        t => t.to_db_string(),
+    }
+}
+
+/// Infer the [`Type`] of an expression node. Returns [`Type::Unknown`] whenever
+/// the type cannot be determined with confidence; callers must treat `Unknown`
+/// as "do not report", never as an error.
+pub fn infer_type(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    node: Node,
+    context_byte: usize,
+) -> Type {
     match node.kind() {
         "ident" => {
-            let name = node.utf8_text(document.source.as_bytes()).ok()?;
-            infer_name_type(uri, document, db, context_byte, name)
+            let Ok(name) = node.utf8_text(document.source.as_bytes()) else {
+                return Type::Unknown;
+            };
+            named_or_unknown(infer_name_type(uri, document, db, context_byte, name))
         }
-        "func_call_expr" => {
-            let func = call_callee(node)?;
-            infer_expr_type(uri, document, db, func, context_byte)
-        }
-        "member_access_expr" => {
-            let accessor = first_named_child(node)?;
-            let member = member_access_member(node)?;
-            if member.kind() != "ident" {
-                return None;
-            }
-            let member_name = member.utf8_text(document.source.as_bytes()).ok()?;
-            let container_type = infer_expr_type(uri, document, db, accessor, context_byte)?;
-            let def = resolve_document_member(
-                uri,
-                document,
-                &container_type,
-                member_name,
-                AccessLevel::Public,
-            )
-            .or_else(|| db.find_member(&container_type, member_name, AccessLevel::Public))?;
-            def.symbol.type_annotation
-        }
-        "this_expr" => current_type_name(document, db, context_byte),
-        _ => None,
+        "func_call_expr" => match call_callee(node) {
+            Some(func) => infer_type(uri, document, db, func, context_byte),
+            None => Type::Unknown,
+        },
+        "member_access_expr" => infer_member_access_type(uri, document, db, node, context_byte),
+        "this_expr" => named_or_unknown(current_type_name(document, db, context_byte)),
+        "literal_int" | "literal_hex" => Type::Primitive(Primitive::Int),
+        "literal_float" => Type::Primitive(Primitive::Float),
+        "literal_bool" => Type::Primitive(Primitive::Bool),
+        "literal_string" => Type::Primitive(Primitive::String),
+        "literal_name" => Type::Primitive(Primitive::Name),
+        "literal_null" => Type::Null,
+        "new_expr" => match node
+            .child_by_field_name("class")
+            .filter(|c| c.kind() == "ident")
+            .and_then(|c| c.utf8_text(document.source.as_bytes()).ok())
+        {
+            Some(name) => Type::from_annotation(name),
+            None => Type::Unknown,
+        },
+        // A cast asserts the target type regardless of the inner value's type.
+        "cast_expr" => match node
+            .child_by_field_name("type")
+            .filter(|c| c.kind() == "ident")
+            .and_then(|c| c.utf8_text(document.source.as_bytes()).ok())
+        {
+            Some(name) => Type::from_annotation(name),
+            None => Type::Unknown,
+        },
+        "nested_expr" => match first_named_child(node) {
+            Some(inner) => infer_type(uri, document, db, inner, context_byte),
+            None => Type::Unknown,
+        },
+        "array_expr" => match node.child_by_field_name("accessor") {
+            Some(accessor) => match infer_type(uri, document, db, accessor, context_byte) {
+                Type::Array(elem) => *elem,
+                _ => Type::Unknown,
+            },
+            None => Type::Unknown,
+        },
+        _ => Type::Unknown,
     }
+}
+
+fn named_or_unknown(annotation: Option<String>) -> Type {
+    annotation
+        .map(|s| Type::from_annotation(&s))
+        .unwrap_or(Type::Unknown)
+}
+
+fn infer_member_access_type(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    node: Node,
+    context_byte: usize,
+) -> Type {
+    let Some(accessor) = first_named_child(node) else {
+        return Type::Unknown;
+    };
+    let Some(member) = member_access_member(node) else {
+        return Type::Unknown;
+    };
+    if member.kind() != "ident" {
+        return Type::Unknown;
+    }
+    let Ok(member_name) = member.utf8_text(document.source.as_bytes()) else {
+        return Type::Unknown;
+    };
+    let Some(container_type) = infer_type(uri, document, db, accessor, context_byte).to_db_string()
+    else {
+        return Type::Unknown;
+    };
+    let def = resolve_document_member(
+        uri,
+        document,
+        &container_type,
+        member_name,
+        AccessLevel::Public,
+    )
+    .or_else(|| db.find_member(&container_type, member_name, AccessLevel::Public));
+    named_or_unknown(def.and_then(|d| d.symbol.type_annotation))
 }
 
 pub(super) fn resolve_member_access(
