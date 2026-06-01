@@ -174,21 +174,15 @@ impl Backend {
     // workspace recompute; reuse the parse we already hold when the bytes are unchanged.
     fn reuse_unchanged_open_document(&self, uri: &Url, text: &str) -> bool {
         let snap = self.snapshot();
-        let existing = match snap.documents.get(uri) {
-            Some(doc) => doc.clone(),
-            None => {
-                let Some(canonical) = canonical_uri(uri) else {
-                    return false;
-                };
-                match snap
-                    .workspace_documents
-                    .get(&canonical)
-                    .or_else(|| snap.base_scripts_documents.get(&canonical))
-                {
-                    Some(doc) => doc.clone(),
-                    None => return false,
-                }
-            }
+        let existing = snap.documents.get(uri).cloned().or_else(|| {
+            let canonical = canonical_uri(uri)?;
+            snap.workspace_documents
+                .get(&canonical)
+                .or_else(|| snap.base_scripts_documents.get(&canonical))
+                .cloned()
+        });
+        let Some(existing) = existing else {
+            return false;
         };
         if existing.source != text {
             return false;
