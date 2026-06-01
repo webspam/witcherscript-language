@@ -238,7 +238,7 @@ impl<'a> SymbolDb<'a> {
     /// Class-body declaration first, then annotation declarations.
     pub(crate) fn all_member_declarations(&self, container: &str, name: &str) -> Vec<Definition> {
         let mut decls: Vec<Definition> = Vec::new();
-        if let Some(class_body) = self.find_member(container, name, AccessLevel::Private) {
+        if let Some(class_body) = self.find_class_body_member(container, name) {
             decls.push(class_body);
         }
         for def in self
