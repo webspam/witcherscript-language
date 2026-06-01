@@ -170,12 +170,43 @@ impl Backend {
         self.update_open_document_with_prior(uri, text, None);
     }
 
+    // A new parse_version invalidates the diagnostic result_id and forces a redundant
+    // workspace recompute; reuse the parse we already hold when the bytes are unchanged.
+    fn reuse_unchanged_open_document(&self, uri: &Url, text: &str) -> bool {
+        let snap = self.snapshot();
+        let existing = snap.documents.get(uri).cloned().or_else(|| {
+            let canonical = canonical_uri(uri)?;
+            snap.workspace_documents
+                .get(&canonical)
+                .or_else(|| snap.base_scripts_documents.get(&canonical))
+                .cloned()
+        });
+        let Some(existing) = existing else {
+            return false;
+        };
+        if existing.source != text {
+            return false;
+        }
+        // Edit tracking and document-pull read the open overlay, so it must hold the file.
+        if !snap.documents.contains_key(uri) {
+            let uri = uri.clone();
+            self.publish_compilation(move |builder| {
+                builder.documents_mut().insert(uri, existing);
+            });
+        }
+        true
+    }
+
     pub(crate) fn update_open_document_with_prior(
         &self,
         uri: Url,
         text: String,
         prior_tree: Option<Tree>,
     ) {
+        if self.reuse_unchanged_open_document(&uri, &text) {
+            trace!(op = "update_open_document", uri = %uri, "bytes unchanged; reused parse");
+            return;
+        }
         let started_at = Instant::now();
         let bytes = text.len();
         let had_prior_tree = prior_tree.is_some();
