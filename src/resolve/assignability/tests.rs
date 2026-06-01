@@ -3,8 +3,9 @@ use crate::types::{Primitive, Type};
 
 use super::{assignability, Assignability, CastKind};
 
-const TYPES_SRC: &str =
-    "class Base {} class Derived extends Base {} class Other {} enum Mood { Happy, Sad }\n";
+const TYPES_SRC: &str = "class Base {} class Derived extends Base {} class Other {} \
+     enum Mood { Happy, Sad } struct Vec { var x : float; } \
+     statemachine class Machine {} state Active in Machine {}\n";
 
 fn prim(p: Primitive) -> Type {
     Type::Primitive(p)
@@ -144,6 +145,64 @@ fn arrays_are_invariant() {
         assignability(&array_int, &array_float, &t.db()),
         Assignability::Incompatible
     );
+}
+
+#[test]
+fn objects_cast_to_bool_and_string() {
+    let t = TestDb::new(TYPES_SRC);
+    for name in ["Base", "Derived", "Active"] {
+        assert_eq!(
+            assignability(&Type::Named(name.into()), &prim(Primitive::Bool), &t.db()),
+            Assignability::ImplicitCast(CastKind::ObjectToBool),
+            "{name} -> bool"
+        );
+        assert_eq!(
+            assignability(&Type::Named(name.into()), &prim(Primitive::String), &t.db()),
+            Assignability::ImplicitCast(CastKind::ToString),
+            "{name} -> string"
+        );
+    }
+}
+
+#[test]
+fn enums_stringify_but_do_not_cast_to_bool() {
+    let t = TestDb::new(TYPES_SRC);
+    assert_eq!(
+        assignability(
+            &Type::Named("Mood".into()),
+            &prim(Primitive::String),
+            &t.db()
+        ),
+        Assignability::ImplicitCast(CastKind::ToString)
+    );
+    assert_eq!(
+        assignability(&Type::Named("Mood".into()), &prim(Primitive::Bool), &t.db()),
+        Assignability::Incompatible
+    );
+}
+
+#[test]
+fn structs_do_not_cast_to_bool_or_string() {
+    let t = TestDb::new(TYPES_SRC);
+    for to in [Primitive::Bool, Primitive::String] {
+        assert_eq!(
+            assignability(&Type::Named("Vec".into()), &prim(to), &t.db()),
+            Assignability::Incompatible,
+            "Vec -> {to:?}"
+        );
+    }
+}
+
+#[test]
+fn bool_and_string_do_not_cast_to_object() {
+    let t = TestDb::new(TYPES_SRC);
+    for from in [Primitive::Bool, Primitive::String] {
+        assert_eq!(
+            assignability(&prim(from), &Type::Named("Base".into()), &t.db()),
+            Assignability::Incompatible,
+            "{from:?} -> Base"
+        );
+    }
 }
 
 #[test]

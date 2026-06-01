@@ -49,6 +49,11 @@ use crate::test_support::TestDb;
 #[case::compound_object_skipped(
     "class Foo {} function Test() { var a : Foo; var b : Foo; a += b; }\n"
 )]
+#[case::object_to_bool("class Foo {} function Test() { var f : Foo; var b : bool; b = f; }\n")]
+#[case::object_to_string("class Foo {} function Test() { var f : Foo; var s : string; s = f; }\n")]
+#[case::enum_to_string(
+    "enum Mood { Happy } function Test() { var m : Mood; var s : string; s = m; }\n"
+)]
 fn does_not_fire(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
