@@ -43,6 +43,11 @@ use crate::test_support::TestDb;
 )]
 #[case::matching_default("class C { var n : int; default n = 5; }\n")]
 #[case::matching_defaults_block("class C { var n : int; defaults { n = 5; } }\n")]
+#[case::compound_widening("function Test() { var f : float; f += 1; }\n")]
+#[case::compound_to_string("function Test() { var s : string; s += 5; }\n")]
+#[case::compound_object_skipped(
+    "class Foo {} function Test() { var a : Foo; var b : Foo; a += b; }\n"
+)]
 fn does_not_fire(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
@@ -168,6 +173,20 @@ fn flags_incompatible_defaults_block() {
         .expect("should have diagnostics");
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].kind, "type_mismatch");
+}
+
+#[test]
+fn flags_incompatible_compound_assignment() {
+    let t = TestDb::new("function Test() { var i : int; i += \"s\"; }\n");
+    let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
+
+    let diags = result
+        .get(t.primary_uri())
+        .expect("should have diagnostics");
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].kind, "type_mismatch");
+    assert!(diags[0].message.contains("string"));
+    assert!(diags[0].message.contains("int"));
 }
 
 #[test]

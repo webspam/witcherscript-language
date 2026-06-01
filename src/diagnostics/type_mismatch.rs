@@ -94,9 +94,6 @@ fn check_assignment<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     let Some(op) = node.child_by_field_name("op") else {
         return;
     };
-    if op.kind() != "assign_op_direct" {
-        return;
-    }
     let (Some(left), Some(right)) = (
         node.child_by_field_name("left"),
         node.child_by_field_name("right"),
@@ -104,6 +101,11 @@ fn check_assignment<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         return;
     };
     let target = infer_type(ctx.uri, ctx.document, ctx.db, left, left.start_byte());
+    // Compound ops (`+=`, `-=`, ...) only have defined type semantics on
+    // primitives; objects may overload them, so skip a non-primitive LHS.
+    if op.kind() != "assign_op_direct" && !matches!(target, Type::Primitive(_)) {
+        return;
+    }
     let value_type = infer_type(ctx.uri, ctx.document, ctx.db, right, right.start_byte());
     if is_incompatible(&value_type, &target, ctx.db) {
         emit(
