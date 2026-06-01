@@ -1,4 +1,4 @@
-use crate::resolve::parse_generic_type;
+use super::parse_generic_type;
 
 use super::{Primitive, Type};
 

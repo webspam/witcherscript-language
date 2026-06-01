@@ -63,6 +63,20 @@ impl std::fmt::Display for Type {
     }
 }
 
+pub fn parse_generic_type(s: &str) -> Option<(&str, &str)> {
+    let trimmed = s.trim();
+    let lt = trimmed.find('<')?;
+    if !trimmed.ends_with('>') {
+        return None;
+    }
+    let ctor = trimmed[..lt].trim();
+    let element = trimmed[lt + 1..trimmed.len() - 1].trim();
+    if ctor.is_empty() || element.is_empty() {
+        return None;
+    }
+    Some((ctor, element))
+}
+
 impl Primitive {
     pub fn canonical(self) -> &'static str {
         match self {

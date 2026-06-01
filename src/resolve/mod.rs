@@ -21,6 +21,7 @@ mod workspace_index;
 #[cfg(test)]
 mod tests;
 
+pub use crate::types::parse_generic_type;
 pub use assignability::{assignability, Assignability, CastKind};
 pub use ast::{BUILTIN_TYPES, BUILTIN_TYPE_COMPLETIONS};
 pub use completion::{
@@ -79,20 +80,6 @@ pub(crate) fn annotation_target_class(symbol: &Symbol) -> Option<&str> {
         .iter()
         .find(|a| MEMBER_INJECTING_ANNOTATIONS.contains(&a.name.as_str()))
         .and_then(|a| a.argument.as_deref())
-}
-
-pub fn parse_generic_type(s: &str) -> Option<(&str, &str)> {
-    let trimmed = s.trim();
-    let lt = trimmed.find('<')?;
-    if !trimmed.ends_with('>') {
-        return None;
-    }
-    let ctor = trimmed[..lt].trim();
-    let element = trimmed[lt + 1..trimmed.len() - 1].trim();
-    if ctor.is_empty() || element.is_empty() {
-        return None;
-    }
-    Some((ctor, element))
 }
 
 pub(super) fn dedup_by_name(defs: impl Iterator<Item = Definition>) -> Vec<Definition> {
