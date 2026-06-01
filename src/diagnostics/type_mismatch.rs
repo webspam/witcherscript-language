@@ -4,6 +4,7 @@ use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::grammar::call_callee;
+use crate::cst::nav::first_named_child;
 use crate::document::ParsedDocument;
 use crate::resolve::{
     assignability, infer_type, resolve_definition_at_byte, Assignability, SymbolDb,
@@ -23,7 +24,12 @@ impl CstRule for TypeMismatchRule {
     fn interested_in(&self, kind: &str) -> bool {
         matches!(
             kind,
-            "local_var_decl_stmt" | "assign_op_expr" | "func_call_expr"
+            "local_var_decl_stmt"
+                | "assign_op_expr"
+                | "func_call_expr"
+                | "return_stmt"
+                | "member_default_val"
+                | "member_default_val_block_assign"
         )
     }
 
@@ -35,6 +41,8 @@ impl CstRule for TypeMismatchRule {
             "local_var_decl_stmt" => check_var_decl(node, ctx),
             "assign_op_expr" => check_assignment(node, ctx),
             "func_call_expr" => check_call_args(node, ctx),
+            "return_stmt" => check_return(node, ctx),
+            "member_default_val" | "member_default_val_block_assign" => check_default(node, ctx),
             _ => {}
         }
     }
@@ -133,6 +141,60 @@ fn check_call_args<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
                 ctx,
             );
         }
+    }
+}
+
+fn check_return<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
+    let Some(value) = first_named_child(node) else {
+        return;
+    };
+    let Some(callable) = ctx.document.symbols.enclosing_symbol_at(
+        node.start_byte(),
+        &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
+    ) else {
+        return;
+    };
+    let Some(return_annot) = callable.type_annotation.as_deref() else {
+        return;
+    };
+    let target = Type::from_annotation(return_annot);
+    let value_type = infer_type(ctx.uri, ctx.document, ctx.db, value, value.start_byte());
+    if is_incompatible(&value_type, &target, ctx.db) {
+        emit(
+            value,
+            format!(
+                "Cannot return value of type '{value_type}' from function returning '{target}'"
+            ),
+            ctx,
+        );
+    }
+}
+
+fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
+    let (Some(member), Some(value)) = (
+        node.child_by_field_name("member"),
+        node.child_by_field_name("value"),
+    ) else {
+        return;
+    };
+    let Some(def) = resolve_definition_at_byte(ctx.uri, ctx.document, ctx.db, member.start_byte())
+    else {
+        return;
+    };
+    if def.symbol.kind != SymbolKind::Field {
+        return;
+    }
+    let Some(field_annot) = def.symbol.type_annotation.as_deref() else {
+        return;
+    };
+    let target = Type::from_annotation(field_annot);
+    let value_type = infer_type(ctx.uri, ctx.document, ctx.db, value, value.start_byte());
+    if is_incompatible(&value_type, &target, ctx.db) {
+        emit(
+            value,
+            format!("Cannot assign value of type '{value_type}' to '{target}'"),
+            ctx,
+        );
     }
 }
 

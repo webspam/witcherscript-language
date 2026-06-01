@@ -34,6 +34,15 @@ use crate::test_support::TestDb;
 #[case::array_method_no_false_positive(
     "function Test() { var a : array<int>; a.PushBack(\"s\"); }\n"
 )]
+#[case::matching_return("function F() : int { return 5; }\n")]
+#[case::implicit_cast_return("function F() : string { return 1.0; }\n")]
+#[case::void_return("function F() { return; }\n")]
+#[case::subtype_return(
+    "class Base {} class Derived extends Base {} \
+     function F() : Base { var d : Derived; return d; }\n"
+)]
+#[case::matching_default("class C { var n : int; default n = 5; }\n")]
+#[case::matching_defaults_block("class C { var n : int; defaults { n = 5; } }\n")]
 fn does_not_fire(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
@@ -120,6 +129,45 @@ fn flags_second_argument_only() {
         .expect("should have diagnostics");
     assert_eq!(diags.len(), 1);
     assert!(diags[0].message.contains("Argument 2"));
+}
+
+#[test]
+fn flags_incompatible_return() {
+    let t = TestDb::new("function F() : int { return \"s\"; }\n");
+    let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
+
+    let diags = result
+        .get(t.primary_uri())
+        .expect("should have diagnostics");
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].kind, "type_mismatch");
+    assert!(diags[0].message.contains("return"));
+    assert!(diags[0].message.contains("string"));
+    assert!(diags[0].message.contains("int"));
+}
+
+#[test]
+fn flags_incompatible_default() {
+    let t = TestDb::new("class C { var n : int; default n = \"x\"; }\n");
+    let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
+
+    let diags = result
+        .get(t.primary_uri())
+        .expect("should have diagnostics");
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].kind, "type_mismatch");
+}
+
+#[test]
+fn flags_incompatible_defaults_block() {
+    let t = TestDb::new("class C { var n : int; defaults { n = \"x\"; } }\n");
+    let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
+
+    let diags = result
+        .get(t.primary_uri())
+        .expect("should have diagnostics");
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].kind, "type_mismatch");
 }
 
 #[test]

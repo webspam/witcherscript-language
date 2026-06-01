@@ -132,7 +132,7 @@ Type-position uses (`extends T`, `: T` annotations, `new T in owner`, `(T) value
 
 ### 19. Type mismatch
 
-A value flowing into a typed slot whose type is not assignable to the slot's type. Covers direct assignments (`x = value`), local `var` initializers (`var x : T = value`), and function/method call arguments matched positionally against the callee's parameters.
+A value flowing into a typed slot whose type is not assignable to the slot's type. Covers direct assignments (`x = value`), local `var` initializers (`var x : T = value`), function/method call arguments matched positionally against the callee's parameters, `return` values against the enclosing function's return type, and `default x = value;` / `defaults { x = value; }` field defaults.
 
 Assignability allows: an identical type; a derived class into a base slot (upcast, traversed up to depth 32); `NULL` into a class/struct/state slot; an `enum` and `int` in either direction; and a fixed set of implicit primitive conversions (numeric widening `byte`/`int`/`float`, and stringifying a scalar into a `string` slot, e.g. `float` -> `string`). Everything else, e.g. `string` -> `int` or a base class into a derived slot, is reported.
 
