@@ -235,6 +235,12 @@ pub(crate) fn annotation_name_items(replace_range: Range) -> Vec<CompletionItem>
         })),
         insert_text_format: Some(InsertTextFormat::SNIPPET),
         sort_text: Some(format!("0_{label}")),
+        // Cursor lands on the class-name placeholder; reopen suggestions there.
+        command: Some(Command {
+            title: "Suggest class name".to_string(),
+            command: "editor.action.triggerSuggest".to_string(),
+            arguments: None,
+        }),
         ..CompletionItem::default()
     })
     .collect()

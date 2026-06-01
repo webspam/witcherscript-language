@@ -3,6 +3,26 @@ use witcherscript_language::test_support::TestDb;
 use crate::convert::completion_item;
 
 #[test]
+fn annotation_name_items_reopen_suggestions_for_class_name() {
+    use crate::convert::annotation_name_items;
+    use lsp_types::Range;
+
+    let items = annotation_name_items(Range::default());
+    assert!(
+        !items.is_empty(),
+        "annotation name items should be produced"
+    );
+    for item in &items {
+        assert_eq!(
+            item.command.as_ref().map(|c| c.command.as_str()),
+            Some("editor.action.triggerSuggest"),
+            "{} should reopen suggestions for its class-name argument",
+            item.label
+        );
+    }
+}
+
+#[test]
 fn completion_item_method_has_method_kind() {
     use lsp_types::CompletionItemKind;
     use witcherscript_language::resolve::completion_members;
