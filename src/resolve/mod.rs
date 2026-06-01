@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::symbols::Symbol;
 
+mod assignability;
 mod ast;
 mod completion;
 mod completion_catalog;
@@ -20,7 +21,8 @@ mod workspace_index;
 #[cfg(test)]
 mod tests;
 
-pub use ast::{BUILTIN_TYPES, BUILTIN_TYPE_COMPLETIONS};
+pub(crate) use assignability::{assignability, Assignability};
+pub use ast::BUILTIN_TYPE_COMPLETIONS;
 pub use completion::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
@@ -37,6 +39,7 @@ pub use definition::{
     resolve_definition_at_byte, resolve_definition_at_ident,
 };
 pub use inference::infer_expr_type_memo;
+pub(crate) use inference::infer_type;
 pub use name_context::{classify_ident_context, NameContext};
 pub use overrides::{overridden_top_level, OverriddenSymbol};
 pub use references::find_references;
@@ -77,20 +80,6 @@ pub(crate) fn annotation_target_class(symbol: &Symbol) -> Option<&str> {
         .iter()
         .find(|a| MEMBER_INJECTING_ANNOTATIONS.contains(&a.name.as_str()))
         .and_then(|a| a.argument.as_deref())
-}
-
-pub fn parse_generic_type(s: &str) -> Option<(&str, &str)> {
-    let trimmed = s.trim();
-    let lt = trimmed.find('<')?;
-    if !trimmed.ends_with('>') {
-        return None;
-    }
-    let ctor = trimmed[..lt].trim();
-    let element = trimmed[lt + 1..trimmed.len() - 1].trim();
-    if ctor.is_empty() || element.is_empty() {
-        return None;
-    }
-    Some((ctor, element))
 }
 
 pub(super) fn dedup_by_name(defs: impl Iterator<Item = Definition>) -> Vec<Definition> {

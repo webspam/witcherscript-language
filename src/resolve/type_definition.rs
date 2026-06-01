@@ -1,11 +1,12 @@
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
+use crate::types::parse_generic_type;
 
 use super::definition::resolve_definition;
 use super::inference::definition_type_name;
 use super::symbol_db::SymbolDb;
-use super::{parse_generic_type, Definition};
+use super::Definition;
 
 pub fn resolve_type_definition(
     uri: &str,

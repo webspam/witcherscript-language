@@ -24,6 +24,8 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 16 | `super_field_access` | error | `super.x` used outside of a method call |
 | 17 | `private_member_access` | error | Private field or method accessed from outside its declaring class |
 | 18 | `type_used_as_value` | error | Type name (class, struct, state, enum) used in a value position |
+| 19 | `type_mismatch` | error | A value's type is not assignable to the target slot |
+| 20 | `string_as_name_default` | info | A `name`/`CName` field default uses a string literal where a name literal is intended |
 
 ## Details
 
@@ -128,3 +130,34 @@ The compiler only resolves the `super.` qualifier for method dispatch. Inherited
 A bare identifier that resolves to a `class`, `struct`, `state`, or `enum` declaration but appears where a value is expected, e.g. `EnumGetMin(ESomeEnum)` or `var x : int; x = MyClass;`. Also fires when a type name is called like a function, e.g. `ESomeEnum()`, except struct constructor calls (`StructName(a, b, ...)`).
 
 Type-position uses (`extends T`, `: T` annotations, `new T in owner`, `(T) value` casts, `@addMethod(T)` annotations) are unaffected. Enum *members* used as values are also unaffected; only the enum's own name triggers the rule.
+
+### 19. Type mismatch
+
+A value flowing into a typed slot whose type is not assignable to the slot's type. Covers direct assignments (`x = value`), compound assignments (`x += value`, ...) on a primitive left-hand side, local `var` initializers (`var x : T = value`), function/method call arguments matched positionally against the callee's parameters, `return` values against the enclosing function's return type, and `default x = value;` / `defaults { x = value; }` field defaults.
+
+Assignability allows:
+
+- an identical type;
+- a derived class into a base slot (upcast, traversed up to depth 32);
+- `NULL` into a class/struct/state slot;
+- an `enum` and `int` in either direction;
+- the implicit primitive conversions listed below.
+
+Everything else is reported, including `string` -> `int` (which the compiler permits only with an explicit cast) and a base class into a derived slot.
+
+#### Implicit primitive conversions
+
+These mirror the conversions the compiler applies without a cast:
+
+- into `string`: from `byte`, `int`, `float`, or `name`;
+- into `bool`: from `byte`, `int`, `float`, or `string`;
+- into `float`: from `byte` or `int`;
+- between `byte` and `int`, in either direction.
+
+The sized engine integer spellings (`Int16`, `Int8`, `Uint16`, `Uint32`, `Uint64`) and `StringAnsi` are their own types. The compiler converts them only with an explicit cast, so they are reported here unless the source and target spellings match.
+
+Sites where either the value's type or the target's type cannot be inferred with confidence emit nothing, as do sites inside a tree-sitter error subtree, to avoid false positives while typing. A target whose name does not resolve to a known type (including the unsubstituted generic element of `array<T>` methods) is treated as unknown and skipped. Calls with more arguments than declared parameters, or with an empty argument slot, are skipped.
+
+### 20. String literal as a name default
+
+A `name`/`CName` field default whose value is a double-quoted string literal, e.g. `default someVar = "Swimming";`. The compiler accepts this as a compile-time constant `name`, so it is not a type error here (unlike a `var` initializer or an assignment, where `string` -> `name` is reported as `type_mismatch`). It is surfaced at info level because a name literal (`'Swimming'`) is the intended form.

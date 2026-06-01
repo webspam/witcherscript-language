@@ -48,5 +48,5 @@ Nested generics (`array<array<int>>`) substitute one level: `Last() : T` becomes
 
 1. Add or edit `builtins/<name>.ws`. Use `T` as the generic placeholder (if needed) and the same conventions as `array.ws`. For an engine class, name the file after the class (`builtins/<ClassName>.ws`).
 2. In `src/builtins.rs`: for an engine class, add a `("witcherscript-builtin:/<ClassName>.ws", include_str!(...))` row to `CLASS_BUILTINS` — nothing else. For other built-ins, add a `const FOO_WS: &str = include_str!("../builtins/<name>.ws")`, a `BUILTIN_<NAME>_URI` constant, an `insert_builtin(...)` call in `load_builtins_index()`, and the URI to `builtin_source()`.
-3. If the type is generic, the substitution layer in `src/resolve/symbol_db/` will work automatically — it keys off `parse_generic_type()` (in `src/resolve/mod.rs`) and is not array-specific.
+3. If the type is generic, the substitution layer in `src/resolve/symbol_db/` will work automatically — it keys off `parse_generic_type()` (in `src/types/`) and is not array-specific.
 4. Add unit tests in `src/resolve/tests/builtin_<name>.rs` and a fixture in `tests/fixtures/valid/`.

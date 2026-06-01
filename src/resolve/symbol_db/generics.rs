@@ -1,7 +1,7 @@
 use crate::resolve::Definition;
 
 pub(super) fn generic_lookup_target(container: &str) -> (&str, Option<&str>) {
-    match super::super::parse_generic_type(container) {
+    match crate::types::parse_generic_type(container) {
         Some((ctor, elem)) => (ctor, Some(elem)),
         None => (container, None),
     }

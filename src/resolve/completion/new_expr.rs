@@ -111,7 +111,7 @@ fn is_class_typed(type_annotation: Option<&str>, db: &SymbolDb) -> bool {
     let Some(name) = type_annotation else {
         return false;
     };
-    let lookup = match super::super::parse_generic_type(name) {
+    let lookup = match crate::types::parse_generic_type(name) {
         Some((ctor, _)) => ctor,
         None => name,
     };

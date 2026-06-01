@@ -8,9 +8,10 @@ use tree_sitter::Node;
 use crate::document::ParsedDocument;
 use crate::resolve::{
     classify_ident_context, infer_expr_type_memo, resolve_definition_at_ident, NameContext,
-    SymbolDb, BUILTIN_TYPES,
+    SymbolDb,
 };
 use crate::symbols::{AccessLevel, SymbolKind};
+use crate::types::is_builtin_type_name;
 
 use super::{
     access_is_inside_declaring_class, collect_nodes_with_error_subtree, declaring_class_of,
@@ -130,7 +131,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
     let result = match role {
         IdentRole::Declaration => None,
         IdentRole::TypeRef => {
-            if BUILTIN_TYPES.contains(&name) {
+            if is_builtin_type_name(name) {
                 return None;
             }
             ctx.telemetry.definition_resolutions += 1;

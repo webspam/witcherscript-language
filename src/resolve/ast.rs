@@ -9,28 +9,6 @@ pub(super) use crate::cst::offsets::{
     is_type_annotation_boundary, nodes_at_offset, significant_node_before_byte,
 };
 
-pub const BUILTIN_TYPES: &[&str] = &[
-    "bool",
-    "byte",
-    "float",
-    "int",
-    "name",
-    "string",
-    "void",
-    "Bool",
-    "Float",
-    "String",
-    "CName",
-    "Int32",
-    "Int16",
-    "Int8",
-    "Uint8",
-    "Uint16",
-    "Uint32",
-    "Uint64",
-    "StringAnsi",
-];
-
 pub const BUILTIN_TYPE_COMPLETIONS: &[&str] =
     &["bool", "byte", "float", "int", "name", "string", "void"];
 
