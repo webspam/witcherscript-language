@@ -148,6 +148,24 @@ impl<'a> SymbolDb<'a> {
         })
     }
 
+    // Class-body declaration only, so a `@wrapMethod` overlay cannot shadow the method it wraps.
+    pub(crate) fn find_class_body_member(&self, container: &str, name: &str) -> Option<Definition> {
+        let (lookup, element) = generic_lookup_target(container);
+        let def = self.try_in_chain(lookup, |container, _depth| {
+            self.workspace
+                .class_body_member_of(container, name)
+                .or_else(|| self.shadowed_base().class_body_member_of(container, name))
+                .or_else(|| {
+                    self.builtins
+                        .and_then(|b| b.class_body_member_of(container, name))
+                })
+        })?;
+        Some(match element {
+            Some(elem) => substitute_in_definition(def, container, elem),
+            None => def,
+        })
+    }
+
     pub fn direct_members_of(
         &self,
         container_name: &str,
@@ -220,7 +238,7 @@ impl<'a> SymbolDb<'a> {
     /// Class-body declaration first, then annotation declarations.
     pub(crate) fn all_member_declarations(&self, container: &str, name: &str) -> Vec<Definition> {
         let mut decls: Vec<Definition> = Vec::new();
-        if let Some(class_body) = self.find_member(container, name, AccessLevel::Private) {
+        if let Some(class_body) = self.find_class_body_member(container, name) {
             decls.push(class_body);
         }
         for def in self

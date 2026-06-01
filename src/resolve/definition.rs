@@ -2,7 +2,7 @@ use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
-use crate::symbols::{AccessLevel, Symbol, SymbolKind};
+use crate::symbols::{Symbol, SymbolKind};
 
 use super::ast::{
     find_ancestor_of_kind, first_named_child, identifier_at, nodes_at_offset,
@@ -85,21 +85,24 @@ fn resolve_wrapped_method(
     byte_offset: usize,
     name: &str,
 ) -> Option<Definition> {
-    if name != WRAPPED_METHOD_MACRO {
-        return None;
-    }
-    // `this.wrappedMethod()` is an ordinary member call, not the macro.
-    if ident
-        .parent()
-        .is_some_and(|p| p.kind() == "member_access_expr")
-    {
+    if !is_wrapped_method_macro(ident, name) {
         return None;
     }
     let callable = document
         .symbols
         .enclosing_symbol_at(byte_offset, &[SymbolKind::Function])?;
     let target = wrap_method_target_class(callable)?;
-    db.find_member(target, &callable.name, AccessLevel::Private)
+    db.find_class_body_member(target, &callable.name)
+}
+
+fn is_wrapped_method_macro(ident: Node, name: &str) -> bool {
+    if name != WRAPPED_METHOD_MACRO {
+        return false;
+    }
+    // `this.wrappedMethod()` is an ordinary member call, not a macro.
+    ident
+        .parent()
+        .is_none_or(|p| p.kind() != "member_access_expr")
 }
 
 fn wrap_method_target_class(symbol: &Symbol) -> Option<&str> {
@@ -148,21 +151,41 @@ pub fn resolve_all_definitions(
     else {
         return Vec::new();
     };
-    let primary = resolve_definition_at_byte(uri, document, db, byte_offset)
-        .or_else(|| resolve_past_trailing_semicolon(uri, document, db, byte_offset));
-    let Some(primary) = primary else {
+    // this/super/parent never wrap, so the macro suppression below does not apply.
+    if let Some(primary) = resolve_self_keyword(uri, document, db, byte_offset) {
+        return all_declarations_of(&primary, db);
+    }
+    let Some(ident) = resolution_ident(document, byte_offset) else {
         return Vec::new();
     };
+    let Some(primary) = resolve_definition_at_ident(uri, document, db, ident) else {
+        return Vec::new();
+    };
+    // Suppression keys off the resolved ident, not the cursor offset, so a trailing-`;` park stays consistent.
+    if ident
+        .utf8_text(document.source.as_bytes())
+        .is_ok_and(|name| is_wrapped_method_macro(ident, name))
+    {
+        return vec![primary];
+    }
     all_declarations_of(&primary, db)
 }
 
-/// Cursor parked past a line-ending `;` resolves nothing, yet the identifier left of it is the obvious intent.
-fn resolve_past_trailing_semicolon(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+fn resolution_ident<'tree>(
+    document: &'tree ParsedDocument,
     byte_offset: usize,
-) -> Option<Definition> {
+) -> Option<Node<'tree>> {
+    let root = document.tree.root_node();
+    identifier_at(root, byte_offset)
+        .or_else(|| ident_before_trailing_semicolon(document, byte_offset))
+}
+
+/// Cursor parked past a line-ending `;` resolves nothing, yet the identifier left of it is the obvious intent.
+/// Must only be used with user-initiated requests, e.g. Go To Definition.
+fn ident_before_trailing_semicolon<'tree>(
+    document: &'tree ParsedDocument,
+    byte_offset: usize,
+) -> Option<Node<'tree>> {
     let source = document.source.as_bytes();
     let rest_of_line = source[byte_offset..].iter().take_while(|&&b| b != b'\n');
     if rest_of_line.clone().any(|b| !b.is_ascii_whitespace()) {
@@ -174,8 +197,7 @@ fn resolve_past_trailing_semicolon(
         return None;
     }
     let before_semicolon = significant_node_before_byte(root, source, semicolon.start_byte())?;
-    let ident = identifier_at(root, before_semicolon.end_byte().checked_sub(1)?)?;
-    resolve_for_ident(uri, document, db, ident, ident.start_byte())
+    identifier_at(root, before_semicolon.end_byte().checked_sub(1)?)
 }
 
 pub(super) fn all_declarations_of(definition: &Definition, db: &SymbolDb) -> Vec<Definition> {

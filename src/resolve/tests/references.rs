@@ -146,6 +146,27 @@ fn private_member_with_wrap_still_searches_other_files() {
     assert!(refs.iter().any(|(u, _)| u == "file:///base.ws"));
 }
 
+// The wrapped class-body declaration counts as a reference even when it is a read-only base script.
+#[test]
+fn wrap_function_name_finds_base_script_declaration() {
+    let t =
+        TestDb::new("@wrapMethod(CR4Player)\nfunction On$0Spawned() {\n  wrappedMethod();\n}\n")
+            .with_base_doc(
+                "file:///base/r4Player.ws",
+                "class CR4Player {\n  public function OnSpawned() {}\n}\n",
+            );
+    let (uri, pos) = t.cursor();
+    let doc = t.doc_for(&uri);
+    let def = resolve_definition(&uri, doc, &t.db(), pos).expect("wrap declaration must resolve");
+
+    let refs = find_references(&def, doc, &t.search_docs(), &t.db(), true);
+    assert!(
+        refs.iter().any(|(u, _)| u == "file:///base/r4Player.ws"),
+        "base-script class-body declaration must be a reference, got {:?}",
+        refs.iter().map(|(u, _)| u).collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn addfield_same_name_different_classes_are_independent_symbols() {
     let t = TestDb::new(concat!(
