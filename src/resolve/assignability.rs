@@ -53,7 +53,9 @@ pub(crate) fn assignability(from: &Type, to: &Type, db: &SymbolDb) -> Assignabil
 
         (Type::Array(fe), Type::Array(te)) => match assignability(fe, te, db) {
             Assignability::Identical => Assignability::Identical,
-            _ => Assignability::Incompatible,
+            Assignability::ImplicitCast(_) | Assignability::Incompatible => {
+                Assignability::Incompatible
+            }
         },
         (Type::Array(_), _) | (_, Type::Array(_)) => Assignability::Incompatible,
 
