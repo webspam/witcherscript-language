@@ -21,8 +21,8 @@ This is a Rust crate (`witcherscript-language`) that produces two binaries:
 | `src/symbols/`                 | `DocumentSymbols`, `Symbol`, `SymbolKind`, `extract_symbols`                   | [symbols.md](docs/agents/symbols.md)                 |
 | `src/builtins.rs` + `builtins/` | Synthetic engine types (`array<T>`) embedded from `.ws` files                  | [builtins.md](docs/agents/builtins.md)               |
 | `src/formatter.rs` + `formatter/` | Document formatter — powers `textDocument/formatting`                        | _no detail doc yet_                                  |
-| `src/resolve/`                 | Resolution + completion split across `mod.rs` (helpers, `Definition`), `workspace_index/` (`WorkspaceIndex`), `symbol_db/` (`SymbolDb`, generic substitution), `definition.rs` (`resolve_definition`), `references.rs` (`find_references`), `inference.rs` (type inference), `signature.rs` (`signature_help`, `hover_text`), `ast.rs` (CST helpers), `completion/{members,types,body_class,body_function,body_script,headers,new_expr}.rs` | [resolution.md](docs/agents/resolution.md)           |
-| `src/resolve/tests/`           | ~3400-line test suite split across 11 focused files — use as pattern reference | [testing.md](docs/agents/testing.md)                 |
+| `src/resolve/`                 | Resolution + completion split across `mod.rs` (helpers, `Definition`), `workspace_index/` (`WorkspaceIndex`), `symbol_db/` (`SymbolDb`, generic substitution), `definition.rs` (`resolve_definition`), `references.rs` (`find_references`), `inference.rs` (type inference), `signature.rs` (`signature_help`, `hover_text`), `ast.rs` (CST helpers), `completion/{body_class,body_function,body_script,comment,globals,headers,members,new_expr,types}.rs` | [resolution.md](docs/agents/resolution.md)           |
+| `src/resolve/tests/`           | Test suite split across many focused files — use as pattern reference | [testing.md](docs/agents/testing.md)                 |
 | `src/semantic_tokens/mod.rs`   | `TOKEN_TYPES`, `collect_semantic_tokens`, classify                             | [semantic_tokens.md](docs/agents/semantic_tokens.md) |
 | `src/semantic_tokens/tests.rs` | Semantic token unit tests                                                      |                                                      |
 | `src/main.rs`                  | CLI binary entry point                                                         | [architecture.md](docs/agents/architecture.md)       |
@@ -91,17 +91,17 @@ These are the non-obvious constraints that will cause silent bugs if violated:
 
 5. **Optional parameters are excluded from `parameters_of()`.** `is_optional = true` symbols are skipped when building completion snippet parameter lists. Do not change this — optional params should not appear as required snippet slots.
 
-6. **Four symbol indexes, plus an override.** The LSP maintains four `WorkspaceIndex` instances: `workspace_index` (user project), `base_scripts_index` (read-only game scripts), `loose_index` (transient compilation for editor-open files belonging to no project root — see invariant 11), and `builtins_index` (embedded engine types). Requests build `SymbolDb::new(workspace, base).with_builtins(builtins)` — for same-name symbols, workspace shadows base shadows builtins. The `workspace` slot is `workspace_index` for project files and `loose_index` for loose files (`db_handles_for_with_snapshot`). The open `documents` map is not an index: it holds editor-open `ParsedDocument`s that take precedence over the indexed copy of the same file.
+6. **Four symbol indexes, plus an override.** The LSP maintains four `WorkspaceIndex` instances: `workspace_index` (user project), `base_scripts_index` (read-only game scripts), `loose_index` (transient compilation for editor-open files belonging to no project root — see invariant 7), and `builtins_index` (embedded engine types). Requests build `SymbolDb::new(workspace, base).with_builtins(builtins)` — for same-name symbols, workspace shadows base shadows builtins. The `workspace` slot is `workspace_index` for project files and `loose_index` for loose files (`db_handles_for_with_snapshot`). The open `documents` map is not an index: it holds editor-open `ParsedDocument`s that take precedence over the indexed copy of the same file.
 
-11. **Loose files compile in isolation.** A file opened outside every workspace root (and outside legacy/additional dirs), or opened with no workspace folder at all, is a *loose* file (`FileScope::OutOfScope`/`SingleFile`). It is indexed into `loose_index` while open and dropped on close. Loose files resolve against `loose_index` + base + builtins only — never `workspace_index` — and project files never see loose symbols. The `file_scope` classifier is the single source of truth for routing and the `witcherscript/fileScopeStatus` notification.
+7. **Loose files compile in isolation.** A file opened outside every workspace root (and outside legacy/additional dirs), or opened with no workspace folder at all, is a *loose* file (`FileScope::OutOfScope`/`SingleFile`). It is indexed into `loose_index` while open and dropped on close. Loose files resolve against `loose_index` + base + builtins only — never `workspace_index` — and project files never see loose symbols. The `file_scope` classifier is the single source of truth for routing and the `witcherscript/fileScopeStatus` notification.
 
-7. **Exec/quest functions excluded from global completions.** `all_top_level_callables()` filters signatures starting with `"exec "` or `"quest "`. These are special engine entry-points, not normal callables.
+8. **Exec/quest functions excluded from global completions.** `all_top_level_callables()` filters signatures starting with `"exec "` or `"quest "`. These are special engine entry-points, not normal callables.
 
-8. **Private members are scoped to their defining file** during `find_references` and semantic token resolution. Do not search or highlight private members across file boundaries.
+9. **Private members are scoped to their defining file** during `find_references` and semantic token resolution. Do not search or highlight private members across file boundaries.
 
-9. **Text sync is INCREMENTAL at the wire and tree-sitter layers.** `did_change` applies range-based diffs to the stored source and feeds each diff into `Tree::edit()` on the prior parse tree; the next parse passes the edited tree to `Parser::parse()` so tree-sitter reuses unchanged subtrees. A full-document replacement (no range in the change event) drops the prior tree and parses from scratch.
+10. **Text sync is INCREMENTAL at the wire and tree-sitter layers.** `did_change` applies range-based diffs to the stored source and feeds each diff into `Tree::edit()` on the prior parse tree; the next parse passes the edited tree to `Parser::parse()` so tree-sitter reuses unchanged subtrees. A full-document replacement (no range in the change event) drops the prior tree and parses from scratch.
 
-10. **Base scripts are read-only.** `prepare_rename()` rejects symbols _declared_ in `base_scripts_index`. That guard only covers the definition — `rename()` must additionally drop any _reference_ that lands in a base script (via `rename_changes`), since a workspace symbol can still be referenced from base scripts (e.g. an `@addMethod` called inside its target class).
+11. **Base scripts are read-only.** `prepare_rename()` rejects symbols _declared_ in `base_scripts_index`. That guard only covers the definition — `rename()` must additionally drop any _reference_ that lands in a base script (via `rename_changes`), since a workspace symbol can still be referenced from base scripts (e.g. an `@addMethod` called inside its target class).
 
 ## Build
 
@@ -117,10 +117,8 @@ just build
 just test
 ```
 
-Tests run via [cargo-nextest](https://nexte.st), which produces a compact per-test
-status table instead of the verbose `cargo test` output. Install locally with
-`cargo binstall cargo-nextest` or `winget install nextest.cargo-nextest`. Config
-lives at `.config/nextest.toml`.
+Tests run via cargo-nextest, which produces a compact per-test status table
+instead of the verbose `cargo test` output.
 
 The test suite includes:
 
@@ -170,15 +168,7 @@ Fix late-local-var rule skipping nop statements
 
 ## Code style
 
-- No comments unless the reason is non-obvious (hidden constraint, workaround, subtle
-  invariant). Never describe _what_ the code does.
-- No `unwrap()` in library code; use `?` or `Option`/`Result` combinators. `unwrap()` is
-  acceptable in tests.
-- No `pub` on symbols that do not need to be visible outside the module.
-- Keep the LSP binary (`src/bin/witcherscript-lsp/`) thin: parse/resolve logic belongs in the
-  library, not in the binary.
-- `LineIndex` positions are always UTF-16 code-unit offsets to stay compatible with the
-  LSP specification.
+See `CODESTYLE.md` for the normative Rust code standard.
 
 ## Adding a validation rule
 
