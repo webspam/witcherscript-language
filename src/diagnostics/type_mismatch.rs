@@ -197,7 +197,7 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         return;
     };
     let target = Type::from_annotation(field_annot);
-    // The compiler accepts a constant string literal as a `name`/`CName` default, but a name literal is the intended form.
+    // The compiler accepts a constant string literal as a `name`/`CName` default
     if value.kind() == "literal_string" && matches!(target, Type::Primitive(Primitive::Name)) {
         emit(
             value,
