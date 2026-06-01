@@ -134,6 +134,25 @@ Type-position uses (`extends T`, `: T` annotations, `new T in owner`, `(T) value
 
 A value flowing into a typed slot whose type is not assignable to the slot's type. Covers direct assignments (`x = value`), compound assignments (`x += value`, ...) on a primitive left-hand side, local `var` initializers (`var x : T = value`), function/method call arguments matched positionally against the callee's parameters, `return` values against the enclosing function's return type, and `default x = value;` / `defaults { x = value; }` field defaults.
 
-Assignability allows: an identical type; a derived class into a base slot (upcast, traversed up to depth 32); `NULL` into a class/struct/state slot; an `enum` and `int` in either direction; and a fixed set of implicit primitive conversions (numeric widening `byte`/`int`/`float`, and stringifying a scalar into a `string` slot, e.g. `float` -> `string`). Everything else, e.g. `string` -> `int` or a base class into a derived slot, is reported.
+Assignability allows:
+
+- an identical type;
+- a derived class into a base slot (upcast, traversed up to depth 32);
+- `NULL` into a class/struct/state slot;
+- an `enum` and `int` in either direction;
+- the implicit primitive conversions listed below.
+
+Everything else is reported, including `string` -> `int` (which the compiler permits only with an explicit cast) and a base class into a derived slot.
+
+#### Implicit primitive conversions
+
+These mirror the conversions the compiler applies without a cast:
+
+- into `string`: from `byte`, `int`, `float`, or `name`;
+- into `bool`: from `byte`, `int`, `float`, or `string`;
+- into `float`: from `byte` or `int`;
+- between `byte` and `int`, in either direction.
+
+The sized engine integer spellings (`Int16`, `Int8`, `Uint16`, `Uint32`, `Uint64`) and `StringAnsi` are their own types. The compiler converts them only with an explicit cast, so they are reported here unless the source and target spellings match.
 
 Sites where either the value's type or the target's type cannot be inferred with confidence emit nothing, as do sites inside a tree-sitter error subtree, to avoid false positives while typing. A target whose name does not resolve to a known type (including the unsubstituted generic element of `array<T>` methods) is treated as unknown and skipped. Calls with more arguments than declared parameters, or with an empty argument slot, are skipped.

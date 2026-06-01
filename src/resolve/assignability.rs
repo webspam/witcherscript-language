@@ -7,10 +7,8 @@ use super::SymbolDb;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CastKind {
-    /// Lossless numeric promotion (`byte`->`int`, `int`->`float`, ...).
-    NumericWidening,
-    /// Scalar stringified into a `string` slot.
-    ToString,
+    /// One primitive implicitly coerced into another, per [`IMPLICIT_PRIMITIVE_CASTS`].
+    Primitive,
     /// `enum` <-> `int` in either direction (enums are int-backed).
     EnumInt,
     /// `NULL` into a reference-typed (`Named`) slot.
@@ -24,15 +22,20 @@ pub(crate) enum Assignability {
     Incompatible,
 }
 
-/// Implicit primitive conversions the language performs silently. Sole tuning point; confirm against the compiler.
+/// Implicit `(from, to)` primitive conversions the compiler performs silently
 const IMPLICIT_PRIMITIVE_CASTS: &[(Primitive, Primitive)] = &[
+    (Primitive::Byte, Primitive::Bool),
+    (Primitive::Int, Primitive::Bool),
+    (Primitive::Float, Primitive::Bool),
+    (Primitive::String, Primitive::Bool),
+    (Primitive::Int, Primitive::Byte),
     (Primitive::Byte, Primitive::Int),
     (Primitive::Byte, Primitive::Float),
     (Primitive::Int, Primitive::Float),
+    (Primitive::Bool, Primitive::String),
+    (Primitive::Byte, Primitive::String),
     (Primitive::Int, Primitive::String),
     (Primitive::Float, Primitive::String),
-    (Primitive::Byte, Primitive::String),
-    (Primitive::Bool, Primitive::String),
     (Primitive::Name, Primitive::String),
 ];
 
@@ -82,12 +85,7 @@ fn named_assignability(from: &str, to: &str, db: &SymbolDb) -> Assignability {
 
 fn primitive_assignability(from: Primitive, to: Primitive) -> Assignability {
     if IMPLICIT_PRIMITIVE_CASTS.contains(&(from, to)) {
-        let kind = if to == Primitive::String {
-            CastKind::ToString
-        } else {
-            CastKind::NumericWidening
-        };
-        Assignability::ImplicitCast(kind)
+        Assignability::ImplicitCast(CastKind::Primitive)
     } else {
         Assignability::Incompatible
     }

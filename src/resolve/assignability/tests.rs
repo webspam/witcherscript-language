@@ -20,52 +20,61 @@ fn identical_primitives_are_identical() {
 }
 
 #[test]
-fn numeric_widening_is_implicit() {
+fn implicit_primitive_casts_match_compiler() {
     let t = TestDb::new(TYPES_SRC);
     for (from, to) in [
         (Primitive::Byte, Primitive::Int),
         (Primitive::Byte, Primitive::Float),
         (Primitive::Int, Primitive::Float),
+        (Primitive::Int, Primitive::Byte),
+        (Primitive::Int, Primitive::Bool),
+        (Primitive::Float, Primitive::Bool),
+        (Primitive::String, Primitive::Bool),
+        (Primitive::Bool, Primitive::String),
+        (Primitive::Name, Primitive::String),
     ] {
         assert_eq!(
             assignability(&prim(from), &prim(to), &t.db()),
-            Assignability::ImplicitCast(CastKind::NumericWidening),
+            Assignability::ImplicitCast(CastKind::Primitive),
             "{from:?} -> {to:?}"
         );
     }
 }
 
 #[test]
-fn to_string_is_implicit() {
-    let t = TestDb::new(TYPES_SRC);
-    for from in [
-        Primitive::Float,
-        Primitive::Int,
-        Primitive::Byte,
-        Primitive::Bool,
-        Primitive::Name,
-    ] {
-        assert_eq!(
-            assignability(&prim(from), &prim(Primitive::String), &t.db()),
-            Assignability::ImplicitCast(CastKind::ToString),
-            "{from:?} -> string"
-        );
-    }
-}
-
-#[test]
-fn narrowing_and_unrelated_primitives_are_incompatible() {
+fn explicit_only_and_unrelated_primitives_are_incompatible() {
     let t = TestDb::new(TYPES_SRC);
     for (from, to) in [
         (Primitive::Float, Primitive::Int),
         (Primitive::String, Primitive::Int),
-        (Primitive::Int, Primitive::Bool),
+        (Primitive::Bool, Primitive::Byte),
         (Primitive::String, Primitive::Name),
     ] {
         assert_eq!(
             assignability(&prim(from), &prim(to), &t.db()),
             Assignability::Incompatible,
             "{from:?} -> {to:?}"
+        );
+    }
+}
+
+#[test]
+fn sized_ints_accept_only_their_own_spelling() {
+    let t = TestDb::new(TYPES_SRC);
+    assert_eq!(
+        assignability(&prim(Primitive::Int16), &prim(Primitive::Int16), &t.db()),
+        Assignability::Identical
+    );
+    for other in [Primitive::Int, Primitive::Int8, Primitive::Uint16] {
+        assert_eq!(
+            assignability(&prim(other), &prim(Primitive::Int16), &t.db()),
+            Assignability::Incompatible,
+            "{other:?} -> Int16"
+        );
+        assert_eq!(
+            assignability(&prim(Primitive::Int16), &prim(other), &t.db()),
+            Assignability::Incompatible,
+            "Int16 -> {other:?}"
         );
     }
 }

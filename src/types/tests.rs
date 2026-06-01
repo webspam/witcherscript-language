@@ -20,16 +20,24 @@ fn canonicalises_engine_aliases() {
         Type::Primitive(Primitive::Int)
     );
     assert_eq!(
-        Type::from_annotation("Uint64"),
-        Type::Primitive(Primitive::Int)
-    );
-    assert_eq!(
         Type::from_annotation("CName"),
         Type::Primitive(Primitive::Name)
     );
+}
+
+#[test]
+fn sized_engine_types_are_distinct_primitives() {
+    assert_eq!(
+        Type::from_annotation("Uint64"),
+        Type::Primitive(Primitive::Uint64)
+    );
+    assert_eq!(
+        Type::from_annotation("Int16"),
+        Type::Primitive(Primitive::Int16)
+    );
     assert_eq!(
         Type::from_annotation("StringAnsi"),
-        Type::Primitive(Primitive::String)
+        Type::Primitive(Primitive::StringAnsi)
     );
 }
 

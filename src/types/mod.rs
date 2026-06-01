@@ -25,9 +25,15 @@ pub(crate) enum Primitive {
     Bool,
     Byte,
     Int,
+    Int16,
+    Int8,
+    Uint16,
+    Uint32,
+    Uint64,
     Float,
     Name,
     String,
+    StringAnsi,
 }
 
 impl Type {
@@ -81,9 +87,15 @@ impl Primitive {
             Primitive::Bool => "bool",
             Primitive::Byte => "byte",
             Primitive::Int => "int",
+            Primitive::Int16 => "Int16",
+            Primitive::Int8 => "Int8",
+            Primitive::Uint16 => "Uint16",
+            Primitive::Uint32 => "Uint32",
+            Primitive::Uint64 => "Uint64",
             Primitive::Float => "float",
             Primitive::Name => "name",
             Primitive::String => "string",
+            Primitive::StringAnsi => "StringAnsi",
         }
     }
 }
