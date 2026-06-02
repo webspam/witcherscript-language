@@ -108,7 +108,7 @@ fn class_body_kw_inner(
                     ctx.saw_decl_keyword = true;
                     break;
                 }
-                // unknown token (partial ident etc.) — ignore, don't affect context
+                // unknown token (partial ident etc.) - ignore, don't affect context
             }
         }
         // cursor after a complete declaration: ctx stays empty, offer all keywords
@@ -212,7 +212,7 @@ fn class_body_kw_candidates(ctx: &ClassBodyCtx) -> Vec<&'static str> {
     }
 
     if !ctx.has_import && !in_func_path && !in_autobind_path {
-        // saved and inlined are terminal — nothing can follow them.
+        // saved and inlined are terminal - nothing can follow them.
         // Valid non-trivial sequences: editable→{saved|inlined}, const→inlined.
         let var_path_done = ctx.has_saved || ctx.has_inlined;
         if !var_path_done {
@@ -225,7 +225,7 @@ fn class_body_kw_candidates(ctx: &ClassBodyCtx) -> Vec<&'static str> {
                 // const can only be followed by inlined
                 kw.push("inlined");
             }
-            // saved alone: terminal — no more var specifiers
+            // saved alone: terminal - no more var specifiers
         }
     }
 

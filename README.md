@@ -5,8 +5,8 @@ Server Protocol (LSP) server built on Tree-sitter.
 
 Two binaries are produced:
 
-- **`witcherscript-check`** — CLI parser / parse-tree inspector.
-- **`witcherscript-lsp`** — LSP server for editor integration.
+- **`witcherscript-check`** - CLI parser / parse-tree inspector.
+- **`witcherscript-lsp`** - LSP server for editor integration.
 
 ## CLI: witcherscript-check
 
@@ -64,7 +64,7 @@ client:
 cargo run --bin witcherscript-lsp -- --listen 9257
 ```
 
-The server binds `127.0.0.1:<port>` (loopback only — never the LAN), accepts a single
+The server binds `127.0.0.1:<port>` (loopback only - never the LAN), accepts a single
 client connection, and serves it until disconnect. Server logs go to stderr in the
 launching terminal; when `--listen` is set and `RUST_LOG` is unset, the default filter
 is `warn,witcherscript_lsp=trace,witcherscript_language=trace` so own-crate trace events
@@ -100,12 +100,12 @@ The server reads the following user-configurable settings:
 |---|---|---|---|
 | `witcherscript.gameDirectory` | `string` | `""` | Absolute path to the Witcher 3 install root (e.g. `C:\GOG Games\The Witcher 3`). The server appends `content\content0\scripts` and indexes the ~1,700 base game scripts. It also loads engine globals from `bin\redscripts.ini`. |
 | `witcherscript.additionalScriptDirectories` | `string[]` | `[]` | Extra root directories to walk recursively for `.ws` files. Each entry is loaded as read-only base scripts: their symbols join the global namespace, but renames are rejected. Use this when writing co-dependent mods that need to see each other's declarations. |
-| `witcherscript.legacyScriptDirectories` | `string[]` | `[]` | Directories holding legacy full-script overrides — copies of base game scripts edited in place. Each base script a legacy file replaces is dropped from the read-only base index, and the legacy file is indexed as a normal (editable) workspace file. Marking a directory here is what silences the `base_script_conflict` diagnostic; the diagnostic's quick fix appends to this list. The editor shows a "legacy script" status-bar indicator only for a legacy file that actually replaces a base game script — not for a brand-new script that merely sits in a legacy directory. |
+| `witcherscript.legacyScriptDirectories` | `string[]` | `[]` | Directories holding legacy full-script overrides - copies of base game scripts edited in place. Each base script a legacy file replaces is dropped from the read-only base index, and the legacy file is indexed as a normal (editable) workspace file. Marking a directory here is what silences the `base_script_conflict` diagnostic; the diagnostic's quick fix appends to this list. The editor shows a "legacy script" status-bar indicator only for a legacy file that actually replaces a base game script - not for a brand-new script that merely sits in a legacy directory. |
 | `witcherscript.autoLoadModSharedImports` | `boolean` | `true` | Auto-load the **Shared Imports** mod (a specific community mod at `<gameDirectory>\Mods\modSharedImports` that most modern Witcher 3 mods depend on to avoid clashes between `import` declarations). When this flag is on and the directory exists, it is loaded automatically - see "Auto-loaded: the Shared Imports mod" below. |
 | `witcherscript.detectProjectManifests` | `boolean` | `true` | When true, the server recursively scans each workspace folder for `witcherscript.toml` files (legacy witcherscript-ide project manifests) and registers each manifest's `scripts_root` as a legacy script directory automatically. Only the `scripts_root` field is read; everything else in the manifest is ignored. `files.exclude` is honored; `.gitignore` is intentionally not, because mod `scripts/` directories are commonly gitignored. |
 | `witcherscript.codeLens.overriddenSymbols` | `boolean` | `true` | Show a "game definition" code lens above each top-level symbol in a legacy override file that shadows a base game symbol. Clicking it jumps to the vanilla definition. The lens appears only on legacy override files (those replacing a specific base game script). |
 | `witcherscript.codeLens.references` | `boolean` | `false` | Show an "N references" code lens above each top-level declaration (classes, structs, enums, functions, states) and class method (`function`/`event`). Clicking it lists the references. The count is resolved lazily, only for lenses the editor shows. |
-| `witcherscript.diagnostics.scope` | `string` | `"workspace"` | Which files are diagnosed. `"workspace"` diagnoses every `.ws` file in the project on startup, so the Problems list is complete and stays stable as you open and close editor tabs. `"openFiles"` diagnoses only the files currently open in the editor — symbols are still indexed project-wide so go-to-definition and completion work everywhere, but the heavy whole-project checking is skipped. `"none"` suppresses all diagnostics. Live-switchable. |
+| `witcherscript.diagnostics.scope` | `string` | `"workspace"` | Which files are diagnosed. `"workspace"` diagnoses every `.ws` file in the project on startup, so the Problems list is complete and stays stable as you open and close editor tabs. `"openFiles"` diagnoses only the files currently open in the editor - symbols are still indexed project-wide so go-to-definition and completion work everywhere, but the heavy whole-project checking is skipped. `"none"` suppresses all diagnostics. Live-switchable. |
 | `witcherscript.logLevel` | `string` | `"warn"` | Server log level (`error`, `warn`, `debug`, `trace`; unknown values fall back to `warn`). Live-toggleable via `workspace/didChangeConfiguration`. |
 | `witcherscript.formatter.lineLimit` | `number` | `100` | Soft wrap width for the formatter. |
 | `witcherscript.formatter.compactColon` | `boolean` | `false` | Drop the space before `:` in type annotations when formatting. |
@@ -128,14 +128,14 @@ To opt out entirely, set `witcherscript.autoLoadModSharedImports` to `false`.
 
 Two complementary LSP mechanisms:
 
-1. **`workspace/configuration`** (primary) — after the `initialized` notification the
+1. **`workspace/configuration`** (primary) - after the `initialized` notification the
    server pulls each setting via a `workspace/configuration` request. The
    `vscode-languageclient` `LanguageClient` fulfils this automatically from the user's
    VS Code settings; no extra client code is needed. The server also handles
    `workspace/didChangeConfiguration` notifications, so changing settings live re-indexes
    when relevant without restarting.
 
-2. **`initializationOptions`** (fallback) — the client may pass any of the above settings
+2. **`initializationOptions`** (fallback) - the client may pass any of the above settings
    in the `initialize` request so the server has values immediately at startup, before
    the `workspace/configuration` round-trip completes.
 
@@ -185,9 +185,9 @@ The library extracts a flat symbol table from each document during parsing. Symb
   Parameter, State, Event)
 - `range` / `selection_range` as UTF-16 line/character positions (LSP-compatible)
 - `byte_range` / `selection_byte_range` for fast cursor queries
-- `container` — parent `SymbolId` for members, `None` for top-level declarations
+- `container` - parent `SymbolId` for members, `None` for top-level declarations
 - `type_annotation`, `signature`, `base_class`, `owner_class`, `flavour`, `annotations`
-  (`@wrapMethod`, `@addMethod`, …) — plus a `display_detail()` helper that renders
+  (`@wrapMethod`, `@addMethod`, …) - plus a `display_detail()` helper that renders
   `extends`/`in` strings for LSP hover
 
 `WorkspaceIndex` in `src/resolve/workspace_index/` maintains a per-URI symbol list and supports

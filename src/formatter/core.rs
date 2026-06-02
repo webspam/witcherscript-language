@@ -274,7 +274,7 @@ impl<'a> Formatter<'a> {
         true
     }
 
-    // Render a subtree to a String (no indentation/newlines) — used for line-length measurement
+    // Render a subtree to a String (no indentation/newlines) - used for line-length measurement
     pub(super) fn render_node(&self, node: Node) -> String {
         if node.is_missing() {
             return String::new();

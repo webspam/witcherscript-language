@@ -1,6 +1,6 @@
 # Resolution and workspace indexing
 
-**Module:** `src/resolve/` — split across `mod.rs` (helpers, `Definition`, `ObservationSet`), `workspace_index/` (`WorkspaceIndex`: `mod`, `indices`, `subscribers`, `lookup`), `symbol_db/` (`SymbolDb`: `mod`, `lookup`, `generics`), `definition.rs` (`resolve_definition` and self/super/this resolution), `references.rs` (`find_references`), `inference.rs` (`infer_expr_type` and type-context helpers), `signature.rs` (`signature_help`, `hover_text`), `ast.rs` (re-exports the shared `cst/` navigation helpers; defines `BUILTIN_TYPES`), and `completion/{members,types,body_function,body_class,body_script,headers}.rs`. Tests live under `src/resolve/tests/`.
+**Module:** `src/resolve/` - split across `mod.rs` (helpers, `Definition`, `ObservationSet`), `workspace_index/` (`WorkspaceIndex`: `mod`, `indices`, `subscribers`, `lookup`), `symbol_db/` (`SymbolDb`: `mod`, `lookup`, `generics`), `definition.rs` (`resolve_definition` and self/super/this resolution), `references.rs` (`find_references`), `inference.rs` (`infer_expr_type` and type-context helpers), `signature.rs` (`signature_help`, `hover_text`), `ast.rs` (re-exports the shared `cst/` navigation helpers; defines `BUILTIN_TYPES`), and `completion/{members,types,body_function,body_class,body_script,headers}.rs`. Tests live under `src/resolve/tests/`.
 
 ## WorkspaceIndex
 
@@ -62,13 +62,13 @@ SymbolDb::new(&workspace_index, &base_scripts_index)
 
 ### Implicit base classes
 
-A class with no `extends` implicitly extends `CObject`; a state with no `extends` implicitly extends `CScriptableState`. The engine enforces this; the workspace doesn't write it in source. `SymbolDb::superclass_of()` synthesises the fallback so every inheritance walk sees the implicit base — callers must go through `superclass_of`, not read `Symbol.base_class` directly, or the fallback is missed (see invariant 4 in [AGENTS.md](../../AGENTS.md)). Cycle protection: `CObject`/`IScriptable`/`ISerializable` and `CScriptableState` itself get no synthesised base.
+A class with no `extends` implicitly extends `CObject`; a state with no `extends` implicitly extends `CScriptableState`. The engine enforces this; the workspace doesn't write it in source. `SymbolDb::superclass_of()` synthesises the fallback so every inheritance walk sees the implicit base - callers must go through `superclass_of`, not read `Symbol.base_class` directly, or the fallback is missed (see invariant 4 in [AGENTS.md](../../AGENTS.md)). Cycle protection: `CObject`/`IScriptable`/`ISerializable` and `CScriptableState` itself get no synthesised base.
 
 ### Generic type lookup (array<T>)
 
 When `find_member` / `members_of_tiered` / `direct_members_of` are called with a container like `array<int>`, `SymbolDb` extracts the constructor (`array`) and element (`int`) via `parse_generic_type()`, looks up members of `array` in the chain, and then substitutes the placeholder ident `T` with `int` in each returned `Definition`'s `type_annotation`, `signature`, `detail`, and `container_name`. Substitution is whole-ident only (`T` and `<T>` match, `TArray` does not). See [docs/agents/builtins.md](builtins.md) for the full story.
 
-`all_types()` deliberately omits the builtins index — we never want `array` to appear as a user-completable type name.
+`all_types()` deliberately omits the builtins index - we never want `array` to appear as a user-completable type name.
 
 ## resolve_definition priority chain
 
@@ -102,13 +102,13 @@ resolve_definition(uri, document, db, position)
 
 `SymbolDb::find_member(container, name, min_access)`:
 1. Walk the inheritance chain starting at `container`. At each level, check direct members in workspace, base, then builtins.
-2. The walk is **first-name-wins**: the first member matching `name` at any depth terminates the walk, regardless of its access level. A `private` declaration in a subclass therefore masks any same-name member further up the chain — you cannot skip past it to reach an accessible ancestor. This matches the WitcherScript compiler.
+2. The walk is **first-name-wins**: the first member matching `name` at any depth terminates the walk, regardless of its access level. A `private` declaration in a subclass therefore masks any same-name member further up the chain - you cannot skip past it to reach an accessible ancestor. This matches the WitcherScript compiler.
 3. After the walk, the found member's access is compared to `min_access`: if it is too low, `find_member` returns `None`.
 4. Hard stop at depth 32 (prevents infinite loops from circular inheritance in malformed code).
 
 Callers that want every visible member regardless of access pass `AccessLevel::Private`. `default x = ...;` / `defaults { x = ...; }` / `hint x = ...;` lookups do exactly that, because a subclass may legitimately override the default or hint of a private inherited field; the diagnostic that catches outside-class access to a private member (`private_member_access`) does the same and then performs its own enclosing-class check.
 
-`SymbolDb::members_of` / `members_of_tiered` follow the same first-name-wins rule for enumeration — the closest declaration wins per name — and then filter the resulting set by `min_access`.
+`SymbolDb::members_of` / `members_of_tiered` follow the same first-name-wins rule for enumeration - the closest declaration wins per name - and then filter the resulting set by `min_access`.
 
 ## infer_expr_type
 
@@ -161,15 +161,15 @@ pub struct StatementCompletions {
 ```
 
 ### `class_body_keyword_completions(document, position)`
-Called in class/struct/state body. Returns `Vec<&'static str>` — the keyword candidates valid at the cursor position given which specifiers have already been written. Returns an empty vec when the cursor is not in a type body or follows a completed declaration keyword.
+Called in class/struct/state body. Returns `Vec<&'static str>` - the keyword candidates valid at the cursor position given which specifiers have already been written. Returns an empty vec when the cursor is not in a type body or follows a completed declaration keyword.
 
 ## signature_help
 
-`signature_help(uri, document, db, position)` powers `textDocument/signatureHelp`. It finds the innermost call site around the cursor — a closed `func_call_expr`, or an unclosed call that tree-sitter recovers as an `ERROR` node containing a callee, `(`, and optional `func_call_args` — resolves the callee via `resolve_definition_at_byte`, and builds a `SignatureHelpInfo`:
+`signature_help(uri, document, db, position)` powers `textDocument/signatureHelp`. It finds the innermost call site around the cursor - a closed `func_call_expr`, or an unclosed call that tree-sitter recovers as an `ERROR` node containing a callee, `(`, and optional `func_call_args` - resolves the callee via `resolve_definition_at_byte`, and builds a `SignatureHelpInfo`:
 
-- `label` — `Name(p1 : T1, optional p2 : T2) : Ret`, built from `db.full_parameters_of()` so **all** parameters (including optional/out, in order) appear.
-- `parameters` — `[start, end)` UTF-16 offsets of each parameter substring within `label`.
-- `active_parameter` — index derived by counting `,` tokens before the cursor, clamped to the last parameter; `None` when the callee takes no parameters.
+- `label` - `Name(p1 : T1, optional p2 : T2) : Ret`, built from `db.full_parameters_of()` so **all** parameters (including optional/out, in order) appear.
+- `parameters` - `[start, end)` UTF-16 offsets of each parameter substring within `label`.
+- `active_parameter` - index derived by counting `,` tokens before the cursor, clamped to the last parameter; `None` when the callee takes no parameters.
 
 ## find_references
 
@@ -208,7 +208,7 @@ Annotations are prepended as `@name(arg), @name2(arg2)`.
 Two `&[&str]` constants live in `ast.rs`, both re-exported from `resolve`:
 
 ```rust
-// Full set of names treated as known types — engine primitives plus their
+// Full set of names treated as known types - engine primitives plus their
 // CamelCase aliases. `unknown_symbol` consults this so it never flags them.
 pub const BUILTIN_TYPES: &[&str] = &[
     "bool", "byte", "float", "int", "name", "string", "void",
@@ -241,19 +241,19 @@ Script globals are the last resort in the priority chain (after workspace and ba
 
 ### Engine-injected overrides
 
-The game engine injects a small, fixed set of globals at runtime independently of `redscripts.ini`. `apply_engine_overrides` adds them after the INI parse, but only when the INI does not already mention them — any existing entry is treated as deliberate customisation and left alone.
+The game engine injects a small, fixed set of globals at runtime independently of `redscripts.ini`. `apply_engine_overrides` adds them after the INI parse, but only when the INI does not already mention them - any existing entry is treated as deliberate customisation and left alone.
 
 | Global | Injected type |
 | --- | --- |
 | `theCamera` | `CCameraDirector` |
 | `theTelemetry` | `CR4TelemetryScriptProxy` |
 
-This list is closed — do not add more entries without confirming the engine actually injects the global.
+This list is closed - do not add more entries without confirming the engine actually injects the global.
 
 ## Key constraints
 
 - Exec/quest functions are **excluded** from `all_top_level_callables()` and therefore from statement completions. Their signatures start with `"exec "` or `"quest "`.
 - `parameters_of()` excludes parameters where `is_optional == true`.
 - The inheritance depth cap is **32** in both `WorkspaceIndex` (single-index chain) and `SymbolDb` (cross-index chain).
-- Superclass is stored in `Symbol.base_class` (used for classes, structs, and states' `extends` clause). It is mirrored into `Symbol.detail` for display as `"extends ClassName"` — never parse `detail` for structural queries, use the typed field.
+- Superclass is stored in `Symbol.base_class` (used for classes, structs, and states' `extends` clause). It is mirrored into `Symbol.detail` for display as `"extends ClassName"` - never parse `detail` for structural queries, use the typed field.
 - State owner is stored in `Symbol.owner_class`; mirrored into `detail` as `"in OwnerClass"` (or `"in OwnerClass extends BaseState"` when the state also extends another state). For `parent` keyword resolution only `Public` members of the owner are accessible.

@@ -42,7 +42,7 @@ impl NameContext {
 
 /// Classify an identifier's CST position into a `NameContext`. Returns `None`
 /// for positions that are not kind-aware top-level lookups (declarations,
-/// member accesses, default/hint members) — those resolve via separate paths.
+/// member accesses, default/hint members) - those resolve via separate paths.
 pub fn classify_ident_context(ident: Node, source: &[u8]) -> Option<NameContext> {
     let parent = ident.parent()?;
 

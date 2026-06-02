@@ -232,7 +232,7 @@ fn collect_comments(root: Node) -> Vec<Node> {
 }
 
 /// Renders the parameter list and return type of a callable declaration node as a
-/// clean, normalised string — comments stripped, whitespace canonical.
+/// clean, normalised string - comments stripped, whitespace canonical.
 /// Returns `None` if the node has no `func_params` child.
 pub fn render_callable_signature(node: Node, source: &str) -> Option<String> {
     let f = Formatter {

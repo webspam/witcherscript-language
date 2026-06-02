@@ -15,7 +15,7 @@ name = "witcherscript-check"
 path = "src/main.rs"
 
 [dependencies]
-# default-features = false drops colour, suggestions, env, wrap_help, unicode — smaller binary and fewer deps
+# default-features = false drops colour, suggestions, env, wrap_help, unicode - smaller binary and fewer deps
 clap = { version = "4.5.51", default-features = false, features = [
     "std",
     "derive",
@@ -91,7 +91,7 @@ opt-level = 3
 # `panic` is per-profile, not per-binary, so this also covers the CLI - fine.
 
 # The bench profile inherits release. iai-callgrind needs symbols to attach
-# callgrind's collection toggle — stripped binaries make every counter read zero.
+# callgrind's collection toggle - stripped binaries make every counter read zero.
 # LTO is dropped so an unrelated edit cannot shift inlining in a benchmarked
 # path and trip the regression gate with phantom instruction-count drift.
 [profile.bench]

@@ -6,20 +6,20 @@
 
 ```rust
 pub const TOKEN_TYPES: &[&str] = &[
-    "class",      // 0  — Class, Struct, State declarations and references
-    "enum",       // 1  — Enum declarations
-    "enumMember", // 2  — EnumMember; also CName literals ('SomeName')
-    "function",   // 3  — Function, Method, Event
-    "parameter",  // 4  — Parameter
-    "variable",   // 5  — Variable (local)
-    "property",   // 6  — Field, autobind_decl
-    "keyword",    // 7  — registered but NEVER emitted (TextMate handles keywords)
-    "comment",    // 8  — comment nodes
-    "string",     // 9  — literal_string
-    "number",     // 10 — literal_int, literal_float, literal_hex
-    "type",       // 11 — registered to preserve indices but NEVER emitted
-    "decorator",  // 12 — annotation_ident (@addField etc.)
-    "modifier",   // 13 — specifier, func_flavour, autobind_single, declaration keywords
+    "class",      // 0  - Class, Struct, State declarations and references
+    "enum",       // 1  - Enum declarations
+    "enumMember", // 2  - EnumMember; also CName literals ('SomeName')
+    "function",   // 3  - Function, Method, Event
+    "parameter",  // 4  - Parameter
+    "variable",   // 5  - Variable (local)
+    "property",   // 6  - Field, autobind_decl
+    "keyword",    // 7  - registered but NEVER emitted (TextMate handles keywords)
+    "comment",    // 8  - comment nodes
+    "string",     // 9  - literal_string
+    "number",     // 10 - literal_int, literal_float, literal_hex
+    "type",       // 11 - registered to preserve indices but NEVER emitted
+    "decorator",  // 12 - annotation_ident (@addField etc.)
+    "modifier",   // 13 - specifier, func_flavour, autobind_single, declaration keywords
 ];
 
 pub const TOKEN_MODIFIERS: &[&str] = &["declaration", "defaultLibrary"];
@@ -39,13 +39,13 @@ The `classify()` function dispatches on `node.kind()`:
 | `annotation_ident` | `decorator` (12) |
 | `comment` | `comment` (8) |
 | `literal_string` | `string` (9) |
-| `literal_name` | `enumMember` (2) — CName literals like `'SomeName'` |
+| `literal_name` | `enumMember` (2) - CName literals like `'SomeName'` |
 | `literal_int`, `literal_float`, `literal_hex` | `number` (10) |
 | `specifier` | `modifier` (13) |
 | `func_flavour`, `autobind_single` | `modifier` (13) |
 | Anonymous node (keyword text) | `modifier` (13) if in keyword list, else skipped |
 
-`literal_bool`, `literal_null`, `this_expr`, `super_expr`, etc. are **not classified** — TextMate grammar handles constant/language keywords.
+`literal_bool`, `literal_null`, `this_expr`, `super_expr`, etc. are **not classified** - TextMate grammar handles constant/language keywords.
 
 ### Keyword list (anonymous nodes → modifier)
 
@@ -122,7 +122,7 @@ When `classify()` returns `Some(type)` for a node, the token covers the whole no
 
 ## Tests
 
-`src/semantic_tokens/tests.rs` — 21 tests covering:
+`src/semantic_tokens/tests.rs` - 21 tests covering:
 - Class/enum/function/field/variable declaration sites
 - Resolved type annotations (only highlighted if the type is defined)
 - Member access with `this.field`, local variable type inference

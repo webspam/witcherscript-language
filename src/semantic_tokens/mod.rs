@@ -268,7 +268,7 @@ fn symbol_kind_to_token_type(kind: SymbolKind) -> u32 {
 
 fn classify_anonymous_keyword(kind: &str) -> Option<u32> {
     match kind {
-        // Control flow and constant.language keywords omitted — TextMate handles all of these.
+        // Control flow and constant.language keywords omitted - TextMate handles all of these.
         // Declaration and modifier keywords: introduce or modify a declaration.
         "class" | "struct" | "enum" | "state" | "function" | "event" | "extends" | "var"
         | "autobind" | "defaults" | "hint" | "abstract" | "statemachine" | "latent" | "import"

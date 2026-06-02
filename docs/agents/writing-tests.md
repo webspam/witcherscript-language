@@ -4,7 +4,7 @@ Style and structure guidelines for test code in this repo. For *where* each kind
 
 ## Prefer table-driven tests over copy/paste
 
-When several tests share setup and only the input/expected output varies, write a single parametrized test — not N near-identical tests.
+When several tests share setup and only the input/expected output varies, write a single parametrized test - not N near-identical tests.
 
 Two forms exist in this repo; both are accepted.
 
@@ -51,12 +51,12 @@ The first failing case short-circuits the rest. Still better than copy/paste; us
 
 ### Rule
 
-**Each case must carry a unique label**, and every assertion must include that label in its message. When the suite fails, the panic output must name which case failed — otherwise you are left guessing which of 12 inputs broke. (rstest's case names cover this for free; the for-loop pattern does it via `c.name` in the message.)
+**Each case must carry a unique label**, and every assertion must include that label in its message. When the suite fails, the panic output must name which case failed - otherwise you are left guessing which of 12 inputs broke. (rstest's case names cover this for free; the for-loop pattern does it via `c.name` in the message.)
 
 Use table-driven form when:
 
 - Setup is identical across cases and only the input/expected output varies.
-- You have three or more analogous cases (two is borderline — judge by clarity).
+- You have three or more analogous cases (two is borderline - judge by clarity).
 - The cases form a logical group ("operator precedence", "edge cases for empty input", "all the visibility modifiers").
 
 Use separate tests when:
@@ -81,9 +81,9 @@ let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).unwrap();
 
 Helpers in `test_support`:
 
-- `TestDb::new(fixture_str)` — parses, indexes, exposes `db()`, `cursor()`, `span(label)`, `doc_for(uri)`, `primary_uri()`, `primary_doc()`, `search_docs()`.
-- `def_names(&[Definition])` / `def_names_tiered(&[(u8, Definition)])` — extract `Vec<&str>` of symbol names.
-- `assert_names_contain(actual, expected)` / `assert_names_exclude(actual, excluded)` — canonical membership assertions for completion-result name lists.
+- `TestDb::new(fixture_str)` - parses, indexes, exposes `db()`, `cursor()`, `span(label)`, `doc_for(uri)`, `primary_uri()`, `primary_doc()`, `search_docs()`.
+- `def_names(&[Definition])` / `def_names_tiered(&[(u8, Definition)])` - extract `Vec<&str>` of symbol names.
+- `assert_names_contain(actual, expected)` / `assert_names_exclude(actual, excluded)` - canonical membership assertions for completion-result name lists.
 
 Prefer these over hand-rolling `parse_document` + `WorkspaceIndex` + `SymbolDb` scaffolds. The `make_doc` / `make_index` helpers in `src/resolve/tests/mod.rs` remain available for low-level resolve tests but are now scaffolding for `TestDb`, not the default entry point.
 
@@ -104,11 +104,11 @@ expect![[r#"
 
 When the formatter changes, regenerate every stale expectation in one go: `UPDATE_EXPECT=1 cargo test`.
 
-For larger or structured snapshots (multi-symbol completion result vectors, full LSP responses) use `insta` instead — see its docs. We have both crates as dev-deps; pick the one that matches the output size.
+For larger or structured snapshots (multi-symbol completion result vectors, full LSP responses) use `insta` instead - see its docs. We have both crates as dev-deps; pick the one that matches the output size.
 
 ## Markers, not magic numbers
 
-When a test needs a cursor, use a `$0` marker in the source — never hand-counted `SourcePosition { line: N, character: M }` literals. A reader must not have to count characters to verify a test, and a 1-character edit to the source must not silently move the cursor onto the wrong token.
+When a test needs a cursor, use a `$0` marker in the source - never hand-counted `SourcePosition { line: N, character: M }` literals. A reader must not have to count characters to verify a test, and a 1-character edit to the source must not silently move the cursor onto the wrong token.
 
 Exception: tests that read a fixture file from `tests/fixtures/` cannot embed `$0` (that would break the parser-fixture suite). For those, keep the hand-counted positions but pull them into a `for` loop or `#[rstest] #[case]` so the positions live alongside their human-readable labels.
 
