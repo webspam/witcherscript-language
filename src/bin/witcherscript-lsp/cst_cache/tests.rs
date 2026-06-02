@@ -118,22 +118,6 @@ fn fingerprint_change_invalidates_all() {
 }
 
 #[test]
-fn closed_docs_evicted_from_cache() {
-    let (idx, doc_a, doc_b) = two_doc_fixture("class A {}\n", "class B {}\n");
-    let base = WorkspaceIndex::default();
-    let db = SymbolDb::new(&idx, &base);
-    let mut documents = docs_map(&doc_a, &doc_b);
-
-    let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
-    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
-    assert_eq!(cache.len(), 2);
-
-    documents.remove("file:///b.ws");
-    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
-    assert_eq!(cache.len(), 1);
-}
-
-#[test]
 fn editing_unobserved_doc_does_not_invalidate_dependents() {
     let mut idx = WorkspaceIndex::default();
     let mut subscriptions = witcherscript_language::resolve::SubscriptionRegistry::default();

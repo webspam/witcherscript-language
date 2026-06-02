@@ -87,10 +87,6 @@ pub(crate) fn cst_diagnostics_with_cache(
         }
     }
 
-    if !cancelled {
-        cache.retain(|uri, _| documents.contains_key(uri));
-    }
-
     CstDiagnosticsResult {
         by_uri: out,
         stats,

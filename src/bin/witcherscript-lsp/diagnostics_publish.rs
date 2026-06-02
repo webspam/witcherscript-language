@@ -305,6 +305,13 @@ impl Backend {
         let compute = self.run_pull_compute(&diag_docs, &loose_uri_strs, version)?;
         let cst_stats = compute.cst.stats;
 
+        // Only a whole-workspace pull sees every file, so only it may drop cache entries for files that vanished.
+        if whole_workspace {
+            self.cst_diag_cache
+                .lock()
+                .retain(|uri, _| diag_docs.contains_key(uri));
+        }
+
         {
             let mut loose_subs = self.loose_subscriptions.lock();
             let mut workspace_subs = self.workspace_subscriptions.lock();

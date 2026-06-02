@@ -14,6 +14,7 @@ use lsp_types::{
 use super::legacy_helpers::{write_script, LocalTempDir};
 use crate::backend::Backend;
 use crate::config::{Config, DiagnosticsScope};
+use crate::cst_cache::{CstCacheEntry, DbFingerprint};
 
 fn make_backend_with(scope: DiagnosticsScope) -> Backend {
     let (_main_loop, client) =
@@ -158,6 +159,119 @@ async fn opening_unchanged_indexed_file_reuses_parse_and_skips_diagnostic_refres
     assert_eq!(
         open_doc.parse_version, indexed_version,
         "opened file must reuse the indexed parse, not a fresh parse_version",
+    );
+}
+
+#[tokio::test]
+async fn body_only_reindex_keeps_subscriber_cache_entries() {
+    let temp = LocalTempDir::new("ws_body_reindex_keeps_subscribers");
+    write_script(
+        temp.path(),
+        "Base.ws",
+        "class CBase {\n  function f() { var x : int; }\n}\n",
+    );
+    write_script(
+        temp.path(),
+        "Derived.ws",
+        "class CDerived extends CBase {\n  var owner : CBase;\n}\n",
+    );
+    let base_url = Url::from_file_path(temp.path().join("Base.ws")).expect("base url");
+    let derived_canonical = witcherscript_language::files::canonical_uri(
+        &Url::from_file_path(temp.path().join("Derived.ws")).expect("derived url"),
+    )
+    .expect("derived canonical");
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+
+    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let _ = backend
+        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .expect("initial pull populates the CST cache");
+    assert!(
+        backend
+            .cst_diag_cache
+            .lock()
+            .contains_key(&derived_canonical),
+        "precondition: the subscriber's diagnostics must be cached after the first pull",
+    );
+
+    // Body-only edit: CBase's outward surface is unchanged, so subscribers must survive.
+    backend.update_open_document(
+        base_url,
+        "class CBase {\n  function f() { var y : int; }\n}\n".to_string(),
+    );
+
+    assert!(
+        backend
+            .cst_diag_cache
+            .lock()
+            .contains_key(&derived_canonical),
+        "a body-only reindex of CBase must not evict CDerived's cached diagnostics",
+    );
+}
+
+#[tokio::test]
+async fn single_file_pull_does_not_evict_other_cached_files() {
+    let temp = LocalTempDir::new("ws_single_pull_keeps_cache");
+    write_script(temp.path(), "A.ws", "class CA {}\n");
+    write_script(temp.path(), "B.ws", "class CB {}\n");
+    let a_url = Url::from_file_path(temp.path().join("A.ws")).expect("a url");
+    let b_canonical = witcherscript_language::files::canonical_uri(
+        &Url::from_file_path(temp.path().join("B.ws")).expect("b url"),
+    )
+    .expect("b canonical");
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+
+    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let _ = backend
+        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .expect("workspace pull populates the cache");
+    assert_eq!(backend.cst_diag_cache.lock().len(), 2);
+
+    let a_doc = witcherscript_language::document::parse_document("class CA {}\n".to_string())
+        .expect("parse");
+    let _ = backend.compute_diagnostics_for_uri(&a_url, &a_doc, version);
+
+    assert!(
+        backend.cst_diag_cache.lock().contains_key(&b_canonical),
+        "a single-file pull must leave other files' cache entries intact",
+    );
+}
+
+#[tokio::test]
+async fn workspace_pull_prunes_cache_entries_for_vanished_files() {
+    let temp = LocalTempDir::new("ws_pull_prunes_vanished");
+    write_script(temp.path(), "A.ws", "class CA {}\n");
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+
+    backend.cst_diag_cache.lock().insert(
+        "file:///gone.ws".to_string(),
+        CstCacheEntry {
+            parse_version: 0,
+            db_fingerprint: DbFingerprint {
+                base_surface: 0,
+                env: 0,
+                legacy_db_generation: 0,
+            },
+            diagnostics: Vec::new(),
+        },
+    );
+
+    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let _ = backend
+        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .expect("workspace pull");
+
+    assert!(
+        !backend
+            .cst_diag_cache
+            .lock()
+            .contains_key("file:///gone.ws"),
+        "a whole-workspace pull must prune cache entries for files no longer in the set",
     );
 }
 
