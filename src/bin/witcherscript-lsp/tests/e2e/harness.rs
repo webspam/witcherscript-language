@@ -164,25 +164,42 @@ impl LspClient {
     }
 
     pub(crate) async fn pull_diagnostics(&mut self, uri: &Url) -> Vec<Diagnostic> {
-        let report = self
-            .request::<DocumentDiagnosticRequest>(DocumentDiagnosticParams {
-                text_document: TextDocumentIdentifier { uri: uri.clone() },
-                identifier: None,
-                previous_result_id: None,
-                work_done_progress_params: WorkDoneProgressParams::default(),
-                partial_result_params: PartialResultParams::default(),
-            })
-            .await;
-        match report {
-            DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) => {
-                full.full_document_diagnostic_report.items
+        // CONTENT_MODIFIED; a real client re-pulls on this, so the harness must too.
+        const CONTENT_MODIFIED: i64 = -32801;
+        let params = serde_json::to_value(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .expect("serialize diagnostic params");
+
+        for _ in 0..50 {
+            let v = self
+                .raw_request(DocumentDiagnosticRequest::METHOD, params.clone())
+                .await;
+            if let Some(err) = v.get("error") {
+                if err.get("code").and_then(|c| c.as_i64()) == Some(CONTENT_MODIFIED) {
+                    continue;
+                }
+                panic!("pull_diagnostics returned error: {err}");
             }
-            DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Unchanged(_)) => {
-                panic!("pull_diagnostics requested without previous_result_id must return Full")
-            }
-            DocumentDiagnosticReportResult::Partial(_) => {
-                panic!("server returned a partial report unexpectedly")
-            }
+            let report: DocumentDiagnosticReportResult =
+                serde_json::from_value(v.get("result").cloned().unwrap_or(Value::Null))
+                    .expect("decode diagnostic report");
+            return match report {
+                DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) => {
+                    full.full_document_diagnostic_report.items
+                }
+                DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Unchanged(_)) => {
+                    panic!("pull_diagnostics requested without previous_result_id must return Full")
+                }
+                DocumentDiagnosticReportResult::Partial(_) => {
+                    panic!("server returned a partial report unexpectedly")
+                }
+            };
         }
+        panic!("pull_diagnostics kept returning CONTENT_MODIFIED");
     }
 }
