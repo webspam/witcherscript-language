@@ -135,7 +135,7 @@ async fn opening_unchanged_indexed_file_reuses_parse_and_skips_diagnostic_refres
     let backend = make_backend_with(DiagnosticsScope::Workspace);
     index_dir(&backend, temp.path()).await;
 
-    let canonical = witcherscript_language::files::canonical_uri(&url).expect("canonical uri");
+    let canonical = witcherscript_language::files::canonical_uri(&url);
     let indexed_version = backend
         .snapshot()
         .workspace_documents
@@ -178,8 +178,7 @@ async fn body_only_reindex_keeps_subscriber_cache_entries() {
     let base_url = Url::from_file_path(temp.path().join("Base.ws")).expect("base url");
     let derived_canonical = witcherscript_language::files::canonical_uri(
         &Url::from_file_path(temp.path().join("Derived.ws")).expect("derived url"),
-    )
-    .expect("derived canonical");
+    );
 
     let backend = make_backend_with(DiagnosticsScope::Workspace);
     index_dir(&backend, temp.path()).await;
@@ -219,8 +218,7 @@ async fn single_file_pull_does_not_evict_other_cached_files() {
     let a_url = Url::from_file_path(temp.path().join("A.ws")).expect("a url");
     let b_canonical = witcherscript_language::files::canonical_uri(
         &Url::from_file_path(temp.path().join("B.ws")).expect("b url"),
-    )
-    .expect("b canonical");
+    );
 
     let backend = make_backend_with(DiagnosticsScope::Workspace);
     index_dir(&backend, temp.path()).await;
@@ -586,5 +584,82 @@ async fn switching_scope_retracts_then_restores_unopened_diagnostics() {
     assert!(
         workspace_report_for(&backend, &url).is_some(),
         "switching back to workspace scope must restore the file in the workspace report",
+    );
+}
+
+// Same file, different string: canonical_uri decodes the encoded byte back.
+fn divergent_spelling(canonical: &Url) -> Url {
+    let s = canonical.as_str();
+    let idx = s.rfind('/').expect("file url has a slash") + 1;
+    let first = s.as_bytes()[idx];
+    let encoded = format!("{}%{:02X}{}", &s[..idx], first, &s[idx + 1..]);
+    Url::parse(&encoded).expect("divergent spelling parses")
+}
+
+#[tokio::test]
+async fn open_under_divergent_uri_indexes_canonically() {
+    let temp = LocalTempDir::new("ws_open_divergent_canonical_index");
+    let path = write_script(temp.path(), "Spell.ws", "class CSpell {}\n");
+    let canonical_url = Url::from_file_path(&path).expect("path -> url");
+    let canonical = witcherscript_language::files::canonical_uri(&canonical_url);
+
+    let raw_url = divergent_spelling(&canonical_url);
+    assert_ne!(
+        raw_url.as_str(),
+        canonical,
+        "precondition: the divergent spelling must differ from canonical",
+    );
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+
+    // Edited bytes route through index_open_document; an unchanged open never re-indexes.
+    backend.update_open_document(
+        raw_url.clone(),
+        "class CSpell { function f() {} }\n".to_string(),
+    );
+
+    let snap = backend.snapshot();
+    let keys: Vec<String> = snap
+        .workspace_index
+        .documents()
+        .map(|(u, _)| u.to_string())
+        .collect();
+    assert!(
+        keys.contains(&canonical),
+        "open file must be indexed under its canonical URI, got {keys:?}",
+    );
+    assert!(
+        !keys.contains(&raw_url.as_str().to_string()),
+        "open file must not be indexed under the raw editor spelling, got {keys:?}",
+    );
+}
+
+#[tokio::test]
+async fn open_under_divergent_uri_keeps_workspace_diagnostic() {
+    let temp = LocalTempDir::new("ws_open_divergent_keeps_diag");
+    write_script(temp.path(), "A.ws", "class CDup {}\n");
+    write_script(temp.path(), "B.ws", "class CDup {}\n");
+    let canonical_a_url = Url::from_file_path(temp.path().join("A.ws")).expect("path -> url");
+    let canonical_a = witcherscript_language::files::canonical_uri(&canonical_a_url);
+
+    let raw_a = divergent_spelling(&canonical_a_url);
+    assert_ne!(
+        raw_a.as_str(),
+        canonical_a,
+        "precondition: the divergent spelling must differ from canonical",
+    );
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+
+    // Unchanged open: the peek path that originally dropped the diagnostic.
+    backend.update_open_document(raw_a.clone(), "class CDup {}\n".to_string());
+
+    let report = workspace_report_for(&backend, &canonical_a_url)
+        .expect("workspace pull must include the open conflicting file");
+    assert!(
+        has_items(&report),
+        "an open file under a divergent URI spelling must keep its duplicate-symbol diagnostic, got {report:?}",
     );
 }

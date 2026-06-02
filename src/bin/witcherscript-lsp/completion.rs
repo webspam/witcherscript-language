@@ -6,6 +6,7 @@ use lsp_types::{
     CompletionTriggerKind, InsertTextFormat,
 };
 use tracing::trace;
+use witcherscript_language::files::canonical_uri;
 use witcherscript_language::resolve::{
     after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
     class_body_keyword_completions, class_header_keyword_completions, completion_members,
@@ -72,6 +73,7 @@ impl Backend {
             let document = document_arc.as_ref();
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
             let db = handles.db();
+            let canonical = canonical_uri(&uri);
 
             let pos = source_position(position);
 
@@ -93,7 +95,7 @@ impl Backend {
             }
 
             let member_items: Vec<CompletionItem> =
-                completion_members(uri.as_str(), document, &db, pos)
+                completion_members(&canonical, document, &db, pos)
                     .iter()
                     .map(|(tier, def)| sorted_completion_item(&db, def, *tier))
                     .collect();
@@ -186,7 +188,7 @@ impl Backend {
                 )));
             }
 
-            let new_types = new_type_completions(uri.as_str(), document, &db, pos);
+            let new_types = new_type_completions(&canonical, document, &db, pos);
             if !new_types.is_empty() {
                 break 'body Ok(Some(CompletionResponse::Array(
                     new_types.iter().map(type_completion_item).collect(),
@@ -223,7 +225,7 @@ impl Backend {
                 )));
             }
 
-            let new_lifetime = new_lifetime_completions(uri.as_str(), document, &db, pos);
+            let new_lifetime = new_lifetime_completions(&canonical, document, &db, pos);
             if !new_lifetime.is_empty() {
                 let items: Vec<CompletionItem> = new_lifetime
                     .iter()
@@ -232,7 +234,7 @@ impl Backend {
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }
 
-            let stmt = statement_completions(uri.as_str(), document, &db, pos);
+            let stmt = statement_completions(&canonical, document, &db, pos);
             if stmt.active {
                 let merged_cache = stmt
                     .needs_globals
@@ -286,7 +288,7 @@ impl Backend {
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }
 
-            if let Some(expr) = expression_completions(uri.as_str(), document, &db, pos) {
+            if let Some(expr) = expression_completions(&canonical, document, &db, pos) {
                 let merged_cache = expr
                     .needs_globals
                     .then(|| self.merged_completion_cache(&uri, &handles));

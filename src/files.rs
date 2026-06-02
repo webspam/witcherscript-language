@@ -7,9 +7,15 @@ use ignore::overrides::{Override, OverrideBuilder};
 use ignore::{Walk, WalkBuilder};
 use lsp_types::Url;
 
-pub fn canonical_uri(uri: &Url) -> Option<String> {
-    let path = uri.to_file_path().ok()?;
-    Url::from_file_path(path).ok().map(|u| u.to_string())
+pub fn canonical_uri(uri: &Url) -> String {
+    // Non-file URIs (the synthetic builtin scheme) have no path to round-trip; they are already canonical.
+    let Ok(path) = uri.to_file_path() else {
+        return uri.to_string();
+    };
+    Url::from_file_path(path)
+        .ok()
+        .map(|u| u.to_string())
+        .unwrap_or_else(|| uri.to_string())
 }
 
 pub fn build_overrides(root: &Path, exclude_globs: &[String]) -> Result<Override, ignore::Error> {

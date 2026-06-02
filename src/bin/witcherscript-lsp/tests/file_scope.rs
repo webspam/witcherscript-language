@@ -23,7 +23,7 @@ fn url(rel: &str) -> Url {
 fn override_map() -> HashMap<String, String> {
     let mut m = HashMap::new();
     m.insert(
-        canonical_uri(&url("legacy/game/r4Player.ws")).expect("canonical override uri"),
+        canonical_uri(&url("legacy/game/r4Player.ws")),
         "game/r4Player.ws".to_string(),
     );
     m

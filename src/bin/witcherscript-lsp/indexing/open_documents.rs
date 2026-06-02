@@ -90,7 +90,7 @@ impl Backend {
                 let (ws, loose) = route_document_to_index(builder, uri, scope, document.as_ref());
                 ws_changed.extend(ws);
                 loose_changed.extend(loose);
-                invalidated.insert(uri.to_string());
+                invalidated.insert(canonical_uri(uri));
             }
         });
         invalidated.extend(self.invalidated_workspace(&ws_changed));
@@ -112,7 +112,7 @@ impl Backend {
             uri = %uri,
             "start",
         );
-        let canonical = canonical_uri(uri).unwrap_or_else(|| uri.to_string());
+        let canonical = canonical_uri(uri);
         let is_base = self.is_base_script_uri(uri);
         let parsed = match uri.to_file_path() {
             Ok(path) => match read_text_file(&path) {
@@ -163,7 +163,7 @@ impl Backend {
     fn reuse_unchanged_open_document(&self, uri: &Url, text: &str) -> bool {
         let snap = self.snapshot();
         let existing = snap.documents.get(uri).cloned().or_else(|| {
-            let canonical = canonical_uri(uri)?;
+            let canonical = canonical_uri(uri);
             snap.workspace_documents
                 .get(&canonical)
                 .or_else(|| snap.base_scripts_documents.get(&canonical))
@@ -288,6 +288,11 @@ impl Backend {
         let document = snap.documents.get(uri)?.clone();
         let handles = self.db_handles_for_with_snapshot(uri, &snap);
         let db = handles.db();
-        resolve_definition(uri.as_str(), &document, &db, source_position(position))
+        resolve_definition(
+            &canonical_uri(uri),
+            &document,
+            &db,
+            source_position(position),
+        )
     }
 }

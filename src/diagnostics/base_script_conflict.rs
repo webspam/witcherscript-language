@@ -182,7 +182,7 @@ fn is_same_file(a: &str, b: &str) -> bool {
 
 fn canonical_uri_from_string(uri: &str) -> Option<String> {
     let url = lsp_types::Url::parse(uri).ok()?;
-    canonical_uri(&url)
+    Some(canonical_uri(&url))
 }
 
 #[cfg(test)]

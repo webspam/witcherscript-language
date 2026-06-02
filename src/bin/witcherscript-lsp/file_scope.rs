@@ -44,9 +44,7 @@ pub(crate) fn classify_file_scope(
     }
     // Legacy dirs are checked before game/additional dirs, matching is_base_script_uri.
     if legacy_script_dirs.iter().any(|dir| path.starts_with(dir)) {
-        let is_override = canonical_uri(uri)
-            .map(|canon| legacy_replacements.contains_key(&canon))
-            .unwrap_or(false);
+        let is_override = legacy_replacements.contains_key(&canonical_uri(uri));
         return if is_override {
             FileScope::LegacyOverride
         } else {
