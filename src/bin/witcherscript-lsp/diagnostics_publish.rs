@@ -39,8 +39,9 @@ pub(crate) struct DiagnosticsBundle {
 // The bundle is a pure function of these inputs; a key match means a cached bundle is still valid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BundleFingerprint {
-    workspace_surface: u64,
-    loose_surface: u64,
+    // Generations, not surface hashes: dup_local/shadow read locals, which surface hashing drops.
+    workspace_generation: u64,
+    loose_generation: u64,
     base_surface: u64,
     env: u64,
     legacy_dirs_hash: u64,
@@ -226,8 +227,8 @@ impl Backend {
 
         let fingerprint = self.db_fingerprint(base, env);
         let bundle_fingerprint = BundleFingerprint {
-            workspace_surface: workspace.surface_hash(),
-            loose_surface: loose.surface_hash(),
+            workspace_generation: workspace.generation(),
+            loose_generation: loose.generation(),
             base_surface: fingerprint.base_surface,
             env: fingerprint.env,
             legacy_dirs_hash: hash_legacy_dirs(&legacy_dirs),
