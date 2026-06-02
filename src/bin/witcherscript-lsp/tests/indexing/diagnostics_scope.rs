@@ -663,3 +663,35 @@ async fn open_under_divergent_uri_keeps_workspace_diagnostic() {
         "an open file under a divergent URI spelling must keep its duplicate-symbol diagnostic, got {report:?}",
     );
 }
+
+#[tokio::test]
+async fn local_only_edit_refreshes_cached_workspace_bundle() {
+    let temp = LocalTempDir::new("ws_local_edit_bundle_refresh");
+    let path = write_script(
+        temp.path(),
+        "Dup.ws",
+        "class C {\n  function f() {\n    var x : int;\n    var x : int;\n  }\n}\n",
+    );
+    let url = Url::from_file_path(&path).expect("path -> url");
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+
+    let report = workspace_report_for(&backend, &url).expect("file present on first pull");
+    assert!(
+        has_items(&report),
+        "duplicate local must be diagnosed initially, got {report:?}",
+    );
+
+    // Renaming the second local changes no externally-visible surface, so only generation keying invalidates.
+    backend.update_open_document(
+        url.clone(),
+        "class C {\n  function f() {\n    var x : int;\n    var y : int;\n  }\n}\n".to_string(),
+    );
+
+    let report = workspace_report_for(&backend, &url).expect("file present after edit");
+    assert!(
+        !has_items(&report),
+        "removing the duplicate local must clear the diagnostic, got {report:?}",
+    );
+}

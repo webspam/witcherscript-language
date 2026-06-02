@@ -102,6 +102,8 @@ pub(crate) struct Backend {
     pub(crate) workspace_subscriptions: Arc<Mutex<SubscriptionRegistry>>,
     pub(crate) loose_subscriptions: Arc<Mutex<SubscriptionRegistry>>,
     pub(crate) cst_diag_cache: Arc<Mutex<HashMap<String, crate::cst_cache::CstCacheEntry>>>,
+    // Whole-workspace diagnostics keyed by surface fingerprint; a key mismatch is the sole invalidation.
+    pub(crate) diag_bundle_cache: Arc<Mutex<Option<crate::diagnostics_publish::CachedBundle>>>,
     pub(crate) merged_completion_cache_workspace: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) merged_completion_cache_loose: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
@@ -192,6 +194,7 @@ impl Backend {
             workspace_subscriptions: Arc::new(Mutex::new(SubscriptionRegistry::default())),
             loose_subscriptions: Arc::new(Mutex::new(SubscriptionRegistry::default())),
             cst_diag_cache: Arc::new(Mutex::new(HashMap::new())),
+            diag_bundle_cache: Arc::new(Mutex::new(None)),
             merged_completion_cache_workspace: Arc::new(Mutex::new(None)),
             merged_completion_cache_loose: Arc::new(Mutex::new(None)),
             initial_index_done: Arc::new(AtomicBool::new(false)),

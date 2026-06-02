@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::backend::{build_symbol_db, diagnostics_document_set, Backend};
@@ -27,11 +28,32 @@ use witcherscript_language::line_index::SourceRange;
 use witcherscript_language::resolve::WorkspaceIndex;
 use witcherscript_language::script_env::ScriptEnvironment;
 
-struct DiagnosticsBundle {
+#[derive(Debug)]
+pub(crate) struct DiagnosticsBundle {
     dup: HashMap<String, Vec<WorkspaceDiagnostic>>,
     shadow: HashMap<String, Vec<WorkspaceDiagnostic>>,
     dup_local: HashMap<String, Vec<WorkspaceDiagnostic>>,
     base_conflict: HashMap<String, Vec<WorkspaceDiagnostic>>,
+}
+
+// The bundle is a pure function of these inputs; a key match means a cached bundle is still valid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BundleFingerprint {
+    // Generations, not surface hashes: dup_local/shadow read locals, which surface hashing drops.
+    workspace_generation: u64,
+    loose_generation: u64,
+    base_surface: u64,
+    env: u64,
+    legacy_dirs_hash: u64,
+}
+
+pub(crate) type CachedBundle = (BundleFingerprint, Arc<DiagnosticsBundle>);
+
+fn hash_legacy_dirs(legacy_dirs: &[PathBuf]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    legacy_dirs.hash(&mut hasher);
+    hasher.finish()
 }
 
 fn collect_workspace_diagnostics(
@@ -146,7 +168,7 @@ pub(crate) fn publish_url(diag_key: &str) -> Option<Url> {
 }
 
 struct PullCompute {
-    bundle: DiagnosticsBundle,
+    bundle: Arc<DiagnosticsBundle>,
     cst: CstDiagnosticsResult,
     workspace_surface: u64,
     base_surface: u64,
@@ -155,6 +177,34 @@ struct PullCompute {
 }
 
 impl Backend {
+    #[allow(clippy::too_many_arguments)]
+    fn workspace_bundle(
+        &self,
+        fingerprint: BundleFingerprint,
+        workspace: &WorkspaceIndex,
+        loose: &WorkspaceIndex,
+        base: &WorkspaceIndex,
+        env: &ScriptEnvironment,
+        legacy_dirs: &[PathBuf],
+        should_continue: &dyn Fn() -> bool,
+    ) -> Option<Arc<DiagnosticsBundle>> {
+        if let Some((cached, bundle)) = self.diag_bundle_cache.lock().as_ref() {
+            if *cached == fingerprint {
+                return Some(bundle.clone());
+            }
+        }
+        let bundle = Arc::new(collect_workspace_diagnostics(
+            workspace,
+            loose,
+            base,
+            env,
+            legacy_dirs,
+            should_continue,
+        )?);
+        *self.diag_bundle_cache.lock() = Some((fingerprint, bundle.clone()));
+        Some(bundle)
+    }
+
     fn run_pull_compute(
         &self,
         diag_docs: &HashMap<String, &ParsedDocument>,
@@ -170,13 +220,21 @@ impl Backend {
         let suppressed = &snap.suppressed_base_uris;
         let filtered = snap.filtered_base_catalogs.as_deref();
 
-        let mut cache = self.cst_diag_cache.lock();
         if self.diagnostic_version.load(Ordering::Acquire) != version {
             return None;
         }
-
         let version_check = || self.diagnostic_version.load(Ordering::Acquire) == version;
-        let bundle = collect_workspace_diagnostics(
+
+        let fingerprint = self.db_fingerprint(base, env);
+        let bundle_fingerprint = BundleFingerprint {
+            workspace_generation: workspace.generation(),
+            loose_generation: loose.generation(),
+            base_surface: fingerprint.base_surface,
+            env: fingerprint.env,
+            legacy_dirs_hash: hash_legacy_dirs(&legacy_dirs),
+        };
+        let bundle = self.workspace_bundle(
+            bundle_fingerprint,
             workspace,
             loose,
             base,
@@ -188,7 +246,6 @@ impl Backend {
             return None;
         }
 
-        let fingerprint = self.db_fingerprint(base, env);
         let ws_db = build_symbol_db(
             workspace,
             base,
@@ -208,14 +265,17 @@ impl Backend {
 
         let diagnostic_version = self.diagnostic_version.clone();
         let should_continue = move || diagnostic_version.load(Ordering::Acquire) == version;
-        let cst = cst_diagnostics_with_cache(
-            diag_docs,
-            &ws_db,
-            Some((&loose_db, loose_uri_strs)),
-            fingerprint,
-            &mut cache,
-            &should_continue,
-        );
+        let cst = {
+            let mut cache = self.cst_diag_cache.lock();
+            cst_diagnostics_with_cache(
+                diag_docs,
+                &ws_db,
+                Some((&loose_db, loose_uri_strs)),
+                fingerprint,
+                &mut cache,
+                &should_continue,
+            )
+        };
         if cst.cancelled {
             return None;
         }
