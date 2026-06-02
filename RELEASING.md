@@ -9,9 +9,9 @@ Releases are cut as GitHub Releases with prebuilt Windows binaries attached.
 
 Semantic versioning (`MAJOR.MINOR.PATCH`):
 
-- **MAJOR** — incompatible CLI or LSP behaviour changes.
-- **MINOR** — new diagnostics, LSP capabilities, or grammar support.
-- **PATCH** — bug fixes and internal changes with no user-visible feature change.
+- **MAJOR** - incompatible CLI or LSP behaviour changes.
+- **MINOR** - new diagnostics, LSP capabilities, or grammar support.
+- **PATCH** - bug fixes and internal changes with no user-visible feature change.
 
 ## Steps
 
@@ -34,17 +34,17 @@ Semantic versioning (`MAJOR.MINOR.PATCH`):
    Version X.Y.Z
    ```
 
-   Keep the bump in its own commit — no unrelated changes.
+   Keep the bump in its own commit - no unrelated changes.
 
 5. Push the bump to `master` (via PR or direct push, per repo policy).
 
 6. Trigger the `Create Release` workflow ([.github/workflows/release.yml](.github/workflows/release.yml))
    from the Actions tab:
 
-   - **tag** — `vX.Y.Z` (must match the version in `Cargo.toml`)
-   - **title** — leave blank to use the tag
-   - **summary** — optional prose to prepend above the auto-generated notes
-   - **prerelease** — leave unchecked for a normal release
+   - **tag** - `vX.Y.Z` (must match the version in `Cargo.toml`)
+   - **title** - leave blank to use the tag
+   - **summary** - optional prose to prepend above the auto-generated notes
+   - **prerelease** - leave unchecked for a normal release
 
    The workflow builds release binaries on `windows-latest`, packages
    `witcherscript-check.exe` + `witcherscript-lsp.exe` (plus `README.md`) into

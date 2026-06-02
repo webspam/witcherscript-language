@@ -96,7 +96,7 @@ fn collect_script_ctx(node: Node, source: &[u8], limit: usize, ctx: &mut ScriptB
             "cleanup" | "entry" | "exec" | "quest" | "reward" | "storyscene" | "timer" => {
                 ctx.has_flavour = true;
             }
-            // @addField/@addMethod inject a class member — member specifiers follow.
+            // @addField/@addMethod inject a class member - member specifiers follow.
             "annotation" => {
                 let name = ch
                     .children(&mut ch.walk())

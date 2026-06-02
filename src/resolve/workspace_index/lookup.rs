@@ -51,7 +51,7 @@ impl WorkspaceIndex {
         self.callables_catalog().iter().cloned().collect()
     }
 
-    /// Unlike `top_level_by_name`, does not dedup by name — name collisions stay visible.
+    /// Unlike `top_level_by_name`, does not dedup by name - name collisions stay visible.
     pub fn all_top_level(&self) -> impl Iterator<Item = (&str, &Symbol)> {
         self.documents.iter().flat_map(|(uri, symbols)| {
             symbols

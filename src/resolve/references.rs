@@ -201,7 +201,7 @@ pub fn find_references(
         if scan_range.is_none() {
             if db.workspace.is_indexed(uri) || db.base.is_indexed(uri) {
                 // Document is in the index: use it. If the name isn't present,
-                // both calls return None and byte_ranges stays empty — no tree scan.
+                // both calls return None and byte_ranges stays empty - no tree scan.
                 if let Some(ranges) = db
                     .workspace
                     .ident_ranges_in_doc(uri, name)

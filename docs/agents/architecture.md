@@ -90,8 +90,8 @@ tests/
 ## Module dependency graph
 
 ```
-cst        leaf — shared tree-sitter CST traversal primitives
-line_index leaf — byte ↔ UTF-16 position mapping
+cst        leaf - shared tree-sitter CST traversal primitives
+line_index leaf - byte ↔ UTF-16 position mapping
 
 document ──► diagnostics ──► cst
          ──► line_index
@@ -109,7 +109,7 @@ semantic_tokens ──► line_index
                 ──► resolve
                 ──► symbols
 
-lib      ──► declares all of the above (no curated re-exports — bare `pub mod`s)
+lib      ──► declares all of the above (no curated re-exports - bare `pub mod`s)
 
 bin/witcherscript-lsp/ ──► witcherscript_language::* (all library modules)
 main                  ──► witcherscript_language::* (document, files, diagnostics)
@@ -147,7 +147,7 @@ The LSP server maintains three separate `WorkspaceIndex` symbol indexes, plus th
 | `workspace_index` | `WorkspaceIndex` | user project .ws files |
 | `base_scripts_index` | `WorkspaceIndex` | Witcher 3 game scripts (read-only) |
 | `builtins_index` | `Arc<WorkspaceIndex>` | embedded builtin types (never mutated) |
-| open `documents` | `HashMap<Url, ParsedDocument>` | editor-open files (not an index — overrides the indexed copy) |
+| open `documents` | `HashMap<Url, ParsedDocument>` | editor-open files (not an index - overrides the indexed copy) |
 
 `workspace_documents` and `base_scripts_documents` hold the `ParsedDocument` cache for background-indexed files so semantic tokens / references can read their trees without re-parsing.
 
@@ -170,14 +170,14 @@ When constructing a `SymbolDb` for a request:
 
 ## Binary entry points
 
-**`src/main.rs`** — CLI validator
+**`src/main.rs`** - CLI validator
 - Accepts file/directory paths, recursively finds .ws files
 - Parses each with `parse_document_with_parser()` (reusing one Parser instance)
 - Optionally dumps tree via `format_tree()`
 - Exit code: 0 (ok), 1 (diagnostics found), 2 (runtime error)
 - Flags: `--dump-tree`, `--max-diagnostics N`
 
-**`src/bin/witcherscript-lsp/`** — LSP server (module split across `main.rs`, `backend.rs` + the per-concern handler files `lifecycle.rs` / `text_sync.rs` / `completion.rs` / `queries.rs` / `references_rename.rs`, plus `convert/`, `cst_cache.rs`, `indexing/`, `config.rs`, `diagnostics_publish.rs`, `file_scope.rs`, `file_scope_status.rs`, `legacy_status.rs`, `watcher.rs`, `logging.rs`, and `tests.rs` + per-feature files under `tests/`)
+**`src/bin/witcherscript-lsp/`** - LSP server (module split across `main.rs`, `backend.rs` + the per-concern handler files `lifecycle.rs` / `text_sync.rs` / `completion.rs` / `queries.rs` / `references_rename.rs`, plus `convert/`, `cst_cache.rs`, `indexing/`, `config.rs`, `diagnostics_publish.rs`, `file_scope.rs`, `file_scope_status.rs`, `legacy_status.rs`, `watcher.rs`, `logging.rs`, and `tests.rs` + per-feature files under `tests/`)
 - Async Tokio runtime; async-lsp framework over stdin/stdout
 - `Backend` struct holds all shared state behind `Arc<Mutex<>>`
 - All parse/resolve logic lives in the library; the binary only orchestrates

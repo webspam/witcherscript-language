@@ -1,4 +1,4 @@
-# WitcherScript class body — valid specifiers and flavours
+# WitcherScript class body - valid specifiers and flavours
 
 Derived from compiler testing against `scratch/class_body_specifiers.ws`.
 Lines that caused the compiler to halt (parse error) are marked **INVALID**.
@@ -98,7 +98,7 @@ Lines that produced a semantic error are noted with the error message.
 
 ---
 
-## Function flavours — class body context
+## Function flavours - class body context
 
 | Flavour      | Valid in class | Notes                                                           |
 | ------------ | -------------- | --------------------------------------------------------------- |
@@ -140,7 +140,7 @@ The current `specifier` rule is a flat choice over all specifiers. The compiler 
 
 ### 3. Encode the `import`-first ordering constraint
 
-`import` must be the first specifier when present; access modifiers and other specifiers may follow it. The game corpus confirms `import public var`, `import private function`, `import public final latent function` etc. are all valid — the constraint is purely positional.
+`import` must be the first specifier when present; access modifiers and other specifiers may follow it. The game corpus confirms `import public var`, `import private function`, `import public final latent function` etc. are all valid - the constraint is purely positional.
 
 One approach: replace `repeat($.specifier)` with a choice between `seq('import', repeat(non_import_specifier))` and `seq(repeat(non_import_specifier))` (where `non_import_specifier` includes access modifiers, `final`, `latent`, etc.).
 
@@ -153,7 +153,7 @@ The grammar can express this by using separate flavour rules for `class_def` vs 
 
 ### 5. `timer` parameter requirement
 
-`timer function` requires exactly `(id : int, deltaTime : float)` — this is a semantic rule, not easily expressible in the grammar, but worth noting in diagnostics.
+`timer function` requires exactly `(id : int, deltaTime : float)` - this is a semantic rule, not easily expressible in the grammar, but worth noting in diagnostics.
 
 ### 6. `event` naming convention
 

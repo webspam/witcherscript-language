@@ -59,7 +59,7 @@ fn wrap_method_body_sees_members_and_super() {
         .collect();
     assert!(
         result.has_super,
-        "has_super must be true — target extends CBase"
+        "has_super must be true - target extends CBase"
     );
     assert!(
         members.contains(&"OnSpawned"),
@@ -272,7 +272,7 @@ fn add_method_unknown_class_no_panic() {
     let result = statement_completions(&uri, t.doc_for(&uri), &t.db(), pos);
     assert!(
         result.has_this,
-        "has_this is still true — the context name is set"
+        "has_this is still true - the context name is set"
     );
     assert!(!result.has_super, "unknown class has no known base");
 }

@@ -9,4 +9,4 @@ about: Report a bug or request a change
 
 ### Expectation
 
-<!-- What should happen instead. Keep it brief — no plan, no acceptance criteria. -->
+<!-- What should happen instead. Keep it brief - no plan, no acceptance criteria. -->

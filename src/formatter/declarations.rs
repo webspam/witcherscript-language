@@ -408,7 +408,7 @@ impl<'a> Formatter<'a> {
 
     fn format_enum_def(&mut self, node: Node) {
         let children = child_nodes(node);
-        // Exhaustive: all named children — enum_decl_variant AND comment extras.
+        // Exhaustive: all named children - enum_decl_variant AND comment extras.
         // Anonymous tokens ({, ,, }) are excluded by is_named() and handled directly.
         let members: Vec<Node> = children.iter().filter(|n| n.is_named()).cloned().collect();
         let open = children.iter().find(|n| n.kind() == "{");
@@ -597,7 +597,7 @@ impl<'a> Formatter<'a> {
 
     fn format_defaults_block(&mut self, node: Node) {
         let children = child_nodes(node);
-        // Exhaustive: all named children — member_default_val_block_assign AND
+        // Exhaustive: all named children - member_default_val_block_assign AND
         // comment extras. The `defaults` keyword and {/} braces are anonymous
         // tokens and are excluded by is_named(), then handled directly below.
         let members: Vec<Node> = children.iter().filter(|n| n.is_named()).cloned().collect();

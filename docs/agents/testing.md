@@ -6,15 +6,15 @@ For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writ
 
 | Location | What it tests |
 |---|---|
-| `src/diagnostics/mod.rs` `#[cfg(test)]` | `collect_diagnostics()` — late vars, incomplete exprs, ternary |
+| `src/diagnostics/mod.rs` `#[cfg(test)]` | `collect_diagnostics()` - late vars, incomplete exprs, ternary |
 | `src/diagnostics/<rule>/tests.rs` | One file per diagnostic rule (see `unknown_symbol/tests.rs` as the cleanest pattern) |
 | `src/symbols/tests.rs` | `extract_symbols()` |
-| `src/line_index.rs` `#[cfg(test)]` | `LineIndex` — byte↔position conversions, UTF-16 |
+| `src/line_index.rs` `#[cfg(test)]` | `LineIndex` - byte↔position conversions, UTF-16 |
 | `src/script_env.rs` `#[cfg(test)]` | INI parsing, globals section, symbol positions |
-| `src/resolve/tests/` | `resolve/` submodules — definition, references, completion, inheritance, signature help, builtins |
-| `src/semantic_tokens/tests.rs` | `collect_semantic_tokens()` — classify, resolve, encode |
+| `src/resolve/tests/` | `resolve/` submodules - definition, references, completion, inheritance, signature help, builtins |
+| `src/semantic_tokens/tests.rs` | `collect_semantic_tokens()` - classify, resolve, encode |
 | `src/bin/witcherscript-lsp/tests/` | LSP handler unit tests (`completion.rs`, `diagnostics.rs`, `hover.rs`, `indexing/*.rs`, `refactoring.rs`) |
-| `src/bin/witcherscript-lsp/tests/e2e/` | Wire-level E2E — framed JSON-RPC against a real `Backend` over `tokio::io::duplex` |
+| `src/bin/witcherscript-lsp/tests/e2e/` | Wire-level E2E - framed JSON-RPC against a real `Backend` over `tokio::io::duplex` |
 | `src/test_support/` | Shared toolkit: `TestDb`, `Fixture` marker parser, name assertion helpers |
 | `tests/parser_fixtures.rs` | Auto-discovers `tests/fixtures/{valid,invalid}/*.ws` and asserts parse-clean / diagnostic-emitted |
 | `tests/language_features.rs` | Cross-cutting integration: symbol extraction + resolution over a known fixture file |
@@ -24,15 +24,15 @@ For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writ
 | File | Covers |
 |---|---|
 | `definition.rs` | `resolve_definition` + `resolve_all_definitions` |
-| `references.rs` | `find_references` — scoping, include_declaration flag, private member scoping |
+| `references.rs` | `find_references` - scoping, include_declaration flag, private member scoping |
 | `inheritance.rs` | `this`/`super`/`parent`, access levels, inherited method resolution |
 | `chaining.rs` | Method-on-return-value, multi-level chained calls |
 | `script_globals.rs` | INI globals, redirect to class, local shadows global |
 | `parameters.rs` | `parameters_of`, `wrap_method_snippet` |
-| `completion_members.rs` | `completion_members` — dot-access, tier ordering |
-| `completion_statement.rs` | `statement_completions` — locals, members, globals, has_this/has_super, in_loop/in_switch |
+| `completion_members.rs` | `completion_members` - dot-access, tier ordering |
+| `completion_statement.rs` | `statement_completions` - locals, members, globals, has_this/has_super, in_loop/in_switch |
 | `completion_type.rs` | `type_completions`, `extends_completions`, `state_owner_completions`, `class_header_keyword_completions` |
-| `completion_keywords.rs` | `class_body_keyword_completions` — specifier state machine |
+| `completion_keywords.rs` | `class_body_keyword_completions` - specifier state machine |
 | `completion_script_keywords.rs` | Script-level keyword completions |
 | `completion_annotation_name.rs` | `annotation_name_completions` |
 | `completion_annotation_arg.rs` | `annotation_arg_completions` |
@@ -41,8 +41,8 @@ For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writ
 | `completion_default_hint.rs` | `default_or_hint_member_completions` |
 | `builtin_array.rs` | Built-in `array<T>` resolution, `parse_generic_type`, members/hover via `load_builtins_index` |
 | `builtin_classes.rs` / `builtin_enums.rs` | Other embedded engine types |
-| `index.rs` | `WorkspaceIndex::all_top_level` — multi-document iteration |
-| `signature_help.rs` | `signature_help` — parameter hints + active param tracking |
+| `index.rs` | `WorkspaceIndex::all_top_level` - multi-document iteration |
+| `signature_help.rs` | `signature_help` - parameter hints + active param tracking |
 | `mod.rs` | `make_doc`, `make_index`, `make_env`, `index_docs` helpers shared across this module |
 
 ## Canonical examples
@@ -60,16 +60,16 @@ When writing a new test, copy the closest existing pattern instead of re-derivin
 
 `TestDb::new(fixture_str)` and the e2e `Fixture::parse(fixture_str)` accept the same string format:
 
-- `$0` — exactly one cursor (stripped before parsing).
-- `//^^^ label` — annotates a span on the **previous content line**; retrievable via `t.span("label")`.
-- `//- /path.ws` — starts a new virtual file; without any `//-`, content lands under `file:///main.ws`.
+- `$0` - exactly one cursor (stripped before parsing).
+- `//^^^ label` - annotates a span on the **previous content line**; retrievable via `t.span("label")`.
+- `//- /path.ws` - starts a new virtual file; without any `//-`, content lands under `file:///main.ws`.
 - Annotation lines are stripped before the source reaches the parser, so positions reference the *stripped* line numbering.
 
 Positions are UTF-16 code units (LSP-compatible).
 
 ## Parse-fixture directory
 
-`tests/fixtures/valid/` — all `.ws` files must parse with zero diagnostics. `tests/fixtures/invalid/` — all must produce at least one diagnostic. `tests/parser_fixtures.rs` discovers and runs both. When adding a grammar feature, add a fixture rather than relying solely on unit tests.
+`tests/fixtures/valid/` - all `.ws` files must parse with zero diagnostics. `tests/fixtures/invalid/` - all must produce at least one diagnostic. `tests/parser_fixtures.rs` discovers and runs both. When adding a grammar feature, add a fixture rather than relying solely on unit tests.
 
 ## Running tests
 

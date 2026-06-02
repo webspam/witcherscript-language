@@ -82,10 +82,10 @@ pub struct Annotation {
 ```
 
 Common annotations in WitcherScript modding:
-- `@addField(ClassName)` — inject a field into an existing class
-- `@addMethod(ClassName)` — inject a method
-- `@wrapMethod(ClassName)` — wrap an existing method
-- `@replaceMethod(ClassName)` — replace an existing method
+- `@addField(ClassName)` - inject a field into an existing class
+- `@addMethod(ClassName)` - inject a method
+- `@wrapMethod(ClassName)` - wrap an existing method
+- `@replaceMethod(ClassName)` - replace an existing method
 
 Annotations on a declaration node appear as siblings immediately before it in the AST. The extractor accumulates them in `pending_annotations` and attaches them to the next non-annotation symbol.
 

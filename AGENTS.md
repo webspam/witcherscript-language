@@ -4,8 +4,8 @@
 
 This is a Rust crate (`witcherscript-language`) that produces two binaries:
 
-- `witcherscript-check` — CLI syntax validator (`src/main.rs`)
-- `witcherscript-lsp` — LSP server (`src/bin/witcherscript-lsp/`)
+- `witcherscript-check` - CLI syntax validator (`src/main.rs`)
+- `witcherscript-lsp` - LSP server (`src/bin/witcherscript-lsp/`)
 
 ## Module quick reference
 
@@ -13,25 +13,25 @@ This is a Rust crate (`witcherscript-language`) that produces two binaries:
 | ------------------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------- |
 | `src/lib.rs`                   | Module declarations                                                             |                                                      |
 | `src/document.rs`              | `ParsedDocument`, parse entry points                                           |                                                      |
-| `src/cst/`                     | Shared tree-sitter CST traversal primitives — use these, never hand-roll a walk | _no detail doc yet_                                  |
+| `src/cst/`                     | Shared tree-sitter CST traversal primitives - use these, never hand-roll a walk | _no detail doc yet_                                  |
 | `src/diagnostics/`             | `ParseDiagnostic`/`collect_diagnostics` (syntactic), `WorkspaceDiagnostic` (cross-file) | [diagnostics.md](docs/agents/diagnostics.md)         |
 | `src/files.rs`                 | Recursive `.ws` file collection via the `ignore` crate; `canonical_uri` URI normalisation | [lsp_server.md](docs/agents/lsp_server.md#uri-handling) |
 | `src/line_index.rs`            | Byte ↔ UTF-16 position mapping (LSP-compatible)                                |                                                      |
 | `src/script_env.rs`            | Script globals from `redscripts.ini`                                           |                                                      |
 | `src/symbols/`                 | `DocumentSymbols`, `Symbol`, `SymbolKind`, `extract_symbols`                   | [symbols.md](docs/agents/symbols.md)                 |
 | `src/builtins.rs` + `builtins/` | Synthetic engine types (`array<T>`) embedded from `.ws` files                  | [builtins.md](docs/agents/builtins.md)               |
-| `src/formatter.rs` + `formatter/` | Document formatter — powers `textDocument/formatting`                        | _no detail doc yet_                                  |
+| `src/formatter.rs` + `formatter/` | Document formatter - powers `textDocument/formatting`                        | _no detail doc yet_                                  |
 | `src/resolve/`                 | Resolution + completion split across `mod.rs` (helpers, `Definition`), `workspace_index/` (`WorkspaceIndex`), `symbol_db/` (`SymbolDb`, generic substitution), `definition.rs` (`resolve_definition`), `references.rs` (`find_references`), `inference.rs` (type inference), `signature.rs` (`signature_help`, `hover_text`), `ast.rs` (CST helpers), `completion/{body_class,body_function,body_script,comment,globals,headers,members,new_expr,types}.rs` | [resolution.md](docs/agents/resolution.md)           |
-| `src/resolve/tests/`           | Test suite split across many focused files — use as pattern reference | [testing.md](docs/agents/testing.md)                 |
+| `src/resolve/tests/`           | Test suite split across many focused files - use as pattern reference | [testing.md](docs/agents/testing.md)                 |
 | `src/semantic_tokens/mod.rs`   | `TOKEN_TYPES`, `collect_semantic_tokens`, classify                             | [semantic_tokens.md](docs/agents/semantic_tokens.md) |
 | `src/semantic_tokens/tests.rs` | Semantic token unit tests                                                      |                                                      |
 | `src/main.rs`                  | CLI binary entry point                                                         | [architecture.md](docs/agents/architecture.md)       |
-| `src/bin/witcherscript-lsp/`   | LSP server — `Backend` struct + thin `LanguageServer` trait impl (`backend.rs`); handler bodies grouped by LSP concern across `completion.rs`, `queries.rs` (hover/definition/symbols/signature-help/semantic-tokens/formatting/code-action), `references_rename.rs`, `text_sync.rs` (did_open/change/close + workspace folder events), `lifecycle.rs` (initialize/initialized/configuration); `main` (`main.rs`), LSP↔internal conversion (`convert/`), CST cache (`cst_cache.rs`), workspace/base-script indexing (`indexing/`), config fetch (`config.rs`), diagnostic publish (`diagnostics_publish.rs`), file watcher (`watcher.rs`), tracing layer (`logging.rs`), tests (`tests.rs` + per-feature files under `tests/`, wire-level E2E under `tests/e2e/`, shared `JsonRpcClient` at `tests/jsonrpc_client.rs`) | [lsp_server.md](docs/agents/lsp_server.md)           |
+| `src/bin/witcherscript-lsp/`   | LSP server - `Backend` struct + thin `LanguageServer` trait impl (`backend.rs`); handler bodies grouped by LSP concern across `completion.rs`, `queries.rs` (hover/definition/symbols/signature-help/semantic-tokens/formatting/code-action), `references_rename.rs`, `text_sync.rs` (did_open/change/close + workspace folder events), `lifecycle.rs` (initialize/initialized/configuration); `main` (`main.rs`), LSP↔internal conversion (`convert/`), CST cache (`cst_cache.rs`), workspace/base-script indexing (`indexing/`), config fetch (`config.rs`), diagnostic publish (`diagnostics_publish.rs`), file watcher (`watcher.rs`), tracing layer (`logging.rs`), tests (`tests.rs` + per-feature files under `tests/`, wire-level E2E under `tests/e2e/`, shared `JsonRpcClient` at `tests/jsonrpc_client.rs`) | [lsp_server.md](docs/agents/lsp_server.md)           |
 | `benches/`                     | Perf benches: criterion `lib_*.rs` (local wall-clock), `iai_lib.rs` (iai-callgrind, CI regression gate), `lsp_smoke.rs` (local LSP-binary smoke); shared synth in `common/synth.rs` | [testing.md](docs/agents/testing.md#benchmarks)      |
 
 Full architecture diagram and data flow: [docs/agents/architecture.md](docs/agents/architecture.md)
 
-## Task guide — what to touch for a given task
+## Task guide - what to touch for a given task
 
 | Task                                        | Files to modify                                                                                                                                                                                    |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -64,10 +64,10 @@ Full architecture diagram and data flow: [docs/agents/architecture.md](docs/agen
 
 **Common modding annotations:**
 
-- `@addField(ClassName)` — inject field into existing class
-- `@addMethod(ClassName)` — inject method
-- `@wrapMethod(ClassName)` — wrap existing method
-- `@replaceMethod(ClassName)` — replace existing method
+- `@addField(ClassName)` - inject field into existing class
+- `@addMethod(ClassName)` - inject method
+- `@wrapMethod(ClassName)` - wrap existing method
+- `@replaceMethod(ClassName)` - replace existing method
 
 **State machines:** `statemachine class X extends Y { }` / `state S in X { entry function Run() { } }`
 
@@ -75,7 +75,7 @@ Full architecture diagram and data flow: [docs/agents/architecture.md](docs/agen
 
 **`autobind` declarations** bind game-engine objects into class fields at runtime.
 
-**`CName` literals** use single quotes: `'SomeName'` — classified as `enumMember` in semantic tokens.
+**`CName` literals** use single quotes: `'SomeName'` - classified as `enumMember` in semantic tokens.
 
 ## Key invariants
 
@@ -87,13 +87,13 @@ These are the non-obvious constraints that will cause silent bugs if violated:
 
 3. **Inheritance traversal hard-caps at depth 32.** The `MAX_INHERITANCE_DEPTH` const in `src/resolve/mod.rs` bounds every chain walk (`symbol_db/lookup.rs`, `completion/headers.rs`). This prevents infinite loops from circular or missing base class declarations.
 
-4. **Base/owner class stored in typed fields.** `Symbol.base_class` holds the raw superclass name for classes/structs/states (states use it for `extends`); `Symbol.owner_class` holds the raw owner class name for states. The human-readable `"extends ClassName"` / `"in OwnerClass"` / `"in OwnerClass extends BaseState"` string is rendered on demand by `Symbol::display_detail()` for LSP display only — there is no cached detail field to parse.
+4. **Base/owner class stored in typed fields.** `Symbol.base_class` holds the raw superclass name for classes/structs/states (states use it for `extends`); `Symbol.owner_class` holds the raw owner class name for states. The human-readable `"extends ClassName"` / `"in OwnerClass"` / `"in OwnerClass extends BaseState"` string is rendered on demand by `Symbol::display_detail()` for LSP display only - there is no cached detail field to parse.
 
-5. **Optional parameters are excluded from `parameters_of()`.** `is_optional = true` symbols are skipped when building completion snippet parameter lists. Do not change this — optional params should not appear as required snippet slots.
+5. **Optional parameters are excluded from `parameters_of()`.** `is_optional = true` symbols are skipped when building completion snippet parameter lists. Do not change this - optional params should not appear as required snippet slots.
 
-6. **Four symbol indexes, plus an override.** The LSP maintains four `WorkspaceIndex` instances: `workspace_index` (user project), `base_scripts_index` (read-only game scripts), `loose_index` (transient compilation for editor-open files belonging to no project root — see invariant 7), and `builtins_index` (embedded engine types). Requests build `SymbolDb::new(workspace, base).with_builtins(builtins)` — for same-name symbols, workspace shadows base shadows builtins. The `workspace` slot is `workspace_index` for project files and `loose_index` for loose files (`db_handles_for_with_snapshot`). The open `documents` map is not an index: it holds editor-open `ParsedDocument`s that take precedence over the indexed copy of the same file.
+6. **Four symbol indexes, plus an override.** The LSP maintains four `WorkspaceIndex` instances: `workspace_index` (user project), `base_scripts_index` (read-only game scripts), `loose_index` (transient compilation for editor-open files belonging to no project root - see invariant 7), and `builtins_index` (embedded engine types). Requests build `SymbolDb::new(workspace, base).with_builtins(builtins)` - for same-name symbols, workspace shadows base shadows builtins. The `workspace` slot is `workspace_index` for project files and `loose_index` for loose files (`db_handles_for_with_snapshot`). The open `documents` map is not an index: it holds editor-open `ParsedDocument`s that take precedence over the indexed copy of the same file.
 
-7. **Loose files compile in isolation.** A file opened outside every workspace root (and outside legacy/additional dirs), or opened with no workspace folder at all, is a *loose* file (`FileScope::OutOfScope`/`SingleFile`). It is indexed into `loose_index` while open and dropped on close. Loose files resolve against `loose_index` + base + builtins only — never `workspace_index` — and project files never see loose symbols. The `file_scope` classifier is the single source of truth for routing and the `witcherscript/fileScopeStatus` notification.
+7. **Loose files compile in isolation.** A file opened outside every workspace root (and outside legacy/additional dirs), or opened with no workspace folder at all, is a *loose* file (`FileScope::OutOfScope`/`SingleFile`). It is indexed into `loose_index` while open and dropped on close. Loose files resolve against `loose_index` + base + builtins only - never `workspace_index` - and project files never see loose symbols. The `file_scope` classifier is the single source of truth for routing and the `witcherscript/fileScopeStatus` notification.
 
 8. **Exec/quest functions excluded from global completions.** `all_top_level_callables()` filters signatures starting with `"exec "` or `"quest "`. These are special engine entry-points, not normal callables.
 
@@ -101,7 +101,7 @@ These are the non-obvious constraints that will cause silent bugs if violated:
 
 10. **Text sync is INCREMENTAL at the wire and tree-sitter layers.** `did_change` applies range-based diffs to the stored source and feeds each diff into `Tree::edit()` on the prior parse tree; the next parse passes the edited tree to `Parser::parse()` so tree-sitter reuses unchanged subtrees. A full-document replacement (no range in the change event) drops the prior tree and parses from scratch.
 
-11. **Base scripts are read-only.** `prepare_rename()` rejects symbols _declared_ in `base_scripts_index`. That guard only covers the definition — `rename()` must additionally drop any _reference_ that lands in a base script (via `rename_changes`), since a workspace symbol can still be referenced from base scripts (e.g. an `@addMethod` called inside its target class).
+11. **Base scripts are read-only.** `prepare_rename()` rejects symbols _declared_ in `base_scripts_index`. That guard only covers the definition - `rename()` must additionally drop any _reference_ that lands in a base script (via `rename_changes`), since a workspace symbol can still be referenced from base scripts (e.g. an `@addMethod` called inside its target class).
 
 ## Build
 
@@ -124,10 +124,10 @@ The test suite includes:
 
 - Embedded `#[cfg(test)]` modules in `diagnostics/`, `symbols/`, `line_index.rs`,
   `script_env.rs`, `resolve/tests/`, `semantic_tokens/tests.rs`, and `src/bin/witcherscript-lsp/tests.rs`.
-- `tests/parser_fixtures.rs` — fixture-driven parse tests; discovers every `.ws` file
+- `tests/parser_fixtures.rs` - fixture-driven parse tests; discovers every `.ws` file
   under `tests/fixtures/valid/` (must parse cleanly) and `tests/fixtures/invalid/`
   (must produce at least one tree-sitter diagnostic).
-- `tests/language_features.rs` — integration tests for symbol extraction and definition
+- `tests/language_features.rs` - integration tests for symbol extraction and definition
   resolution.
 
 See [docs/agents/testing.md](docs/agents/testing.md) for the full breakdown of what lives where and when to add each kind of test.
@@ -137,14 +137,14 @@ fixture file and a targeted unit test.
 
 ## Committing changes
 
-Commit each logical change as a separate commit as soon as it is complete — do not
+Commit each logical change as a separate commit as soon as it is complete - do not
 accumulate unrelated edits into a single commit. This keeps `git bisect` useful and
 makes the history easy to read.
 
 Before committing:
 
 1. Run `just test` and confirm all tests pass (runs fmt and clippy automatically).
-2. Stage only the files relevant to the change — avoid `git add .` when unrelated files
+2. Stage only the files relevant to the change - avoid `git add .` when unrelated files
    are dirty.
 
 ### Commit messages
