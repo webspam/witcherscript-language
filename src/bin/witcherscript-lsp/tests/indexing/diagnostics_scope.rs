@@ -695,3 +695,28 @@ async fn local_only_edit_refreshes_cached_workspace_bundle() {
         "removing the duplicate local must clear the diagnostic, got {report:?}",
     );
 }
+
+#[tokio::test]
+async fn new_file_after_initial_index_is_not_excluded() {
+    let temp = LocalTempDir::new("ws_new_file_not_excluded");
+    write_script(temp.path(), "Existing.ws", "class CExisting {}\n");
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+
+    // Created after the startup walk, so it is absent from workspace_known_files.
+    let new_path = write_script(temp.path(), "Fresh.ws", "class CFresh {}\n");
+    let new_url = Url::from_file_path(&new_path).expect("path -> url");
+    assert!(
+        !backend.is_uri_excluded(&new_url),
+        "a newly created in-root file must not be treated as excluded",
+    );
+
+    *backend.files_exclude.lock() = vec!["**/generated/**".to_string()];
+    let ignored_path = write_script(temp.path(), "generated/Gen.ws", "class CGen {}\n");
+    let ignored_url = Url::from_file_path(&ignored_path).expect("path -> url");
+    assert!(
+        backend.is_uri_excluded(&ignored_url),
+        "a file matching files.exclude must stay excluded",
+    );
+}
