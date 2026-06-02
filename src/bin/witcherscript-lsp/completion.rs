@@ -40,15 +40,7 @@ fn sorted_completion_item(db: &SymbolDb, def: &Definition, tier: u8) -> Completi
 }
 
 impl Backend {
-    pub(crate) async fn _completion(
-        &self,
-        params: CompletionParams,
-    ) -> Result<Option<CompletionResponse>> {
-        self.spawn_compute(move |b| b._completion_blocking(params))
-            .await
-    }
-
-    pub(crate) fn _completion_blocking(
+    pub(crate) fn _completion(
         &self,
         params: CompletionParams,
     ) -> Result<Option<CompletionResponse>> {

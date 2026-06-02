@@ -97,15 +97,7 @@ fn reference_lens(symbol: &Symbol, uri: &Url) -> CodeLens {
 }
 
 impl Backend {
-    pub(crate) async fn _document_diagnostic(
-        &self,
-        params: DocumentDiagnosticParams,
-    ) -> Result<DocumentDiagnosticReportResult> {
-        self.spawn_compute(move |b| b._document_diagnostic_blocking(params))
-            .await
-    }
-
-    pub(crate) fn _document_diagnostic_blocking(
+    pub(crate) fn _document_diagnostic(
         &self,
         params: DocumentDiagnosticParams,
     ) -> Result<DocumentDiagnosticReportResult> {
@@ -184,15 +176,7 @@ impl Backend {
         result
     }
 
-    pub(crate) async fn _workspace_diagnostic(
-        &self,
-        params: WorkspaceDiagnosticParams,
-    ) -> Result<WorkspaceDiagnosticReportResult> {
-        self.spawn_compute(move |b| b._workspace_diagnostic_blocking(params))
-            .await
-    }
-
-    pub(crate) fn _workspace_diagnostic_blocking(
+    pub(crate) fn _workspace_diagnostic(
         &self,
         params: WorkspaceDiagnosticParams,
     ) -> Result<WorkspaceDiagnosticReportResult> {
@@ -228,7 +212,7 @@ impl Backend {
         result
     }
 
-    pub(crate) async fn _code_action(
+    pub(crate) fn _code_action(
         &self,
         params: CodeActionParams,
     ) -> Result<Option<CodeActionResponse>> {
@@ -246,15 +230,7 @@ impl Backend {
         Ok((!actions.is_empty()).then_some(actions))
     }
 
-    pub(crate) async fn _definition(
-        &self,
-        params: GotoDefinitionParams,
-    ) -> Result<Option<GotoDefinitionResponse>> {
-        self.spawn_compute(move |b| b._definition_blocking(params))
-            .await
-    }
-
-    pub(crate) fn _definition_blocking(
+    pub(crate) fn _definition(
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
@@ -298,15 +274,7 @@ impl Backend {
         result
     }
 
-    pub(crate) async fn _type_definition(
-        &self,
-        params: GotoDefinitionParams,
-    ) -> Result<Option<GotoDefinitionResponse>> {
-        self.spawn_compute(move |b| b._type_definition_blocking(params))
-            .await
-    }
-
-    pub(crate) fn _type_definition_blocking(
+    pub(crate) fn _type_definition(
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
@@ -346,11 +314,7 @@ impl Backend {
         result
     }
 
-    pub(crate) async fn _hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        self.spawn_compute(move |b| b._hover_blocking(params)).await
-    }
-
-    pub(crate) fn _hover_blocking(&self, params: HoverParams) -> Result<Option<Hover>> {
+    pub(crate) fn _hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         let started_at = Instant::now();
@@ -386,15 +350,7 @@ impl Backend {
         result
     }
 
-    pub(crate) async fn _signature_help(
-        &self,
-        params: SignatureHelpParams,
-    ) -> Result<Option<SignatureHelp>> {
-        self.spawn_compute(move |b| b._signature_help_blocking(params))
-            .await
-    }
-
-    pub(crate) fn _signature_help_blocking(
+    pub(crate) fn _signature_help(
         &self,
         params: SignatureHelpParams,
     ) -> Result<Option<SignatureHelp>> {
@@ -430,7 +386,7 @@ impl Backend {
         result
     }
 
-    pub(crate) async fn _document_symbol(
+    pub(crate) fn _document_symbol(
         &self,
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
@@ -457,15 +413,7 @@ impl Backend {
         result
     }
 
-    pub(crate) async fn _code_lens(&self, params: CodeLensParams) -> Result<Option<Vec<CodeLens>>> {
-        self.spawn_compute(move |b| b._code_lens_blocking(params))
-            .await
-    }
-
-    pub(crate) fn _code_lens_blocking(
-        &self,
-        params: CodeLensParams,
-    ) -> Result<Option<Vec<CodeLens>>> {
+    pub(crate) fn _code_lens(&self, params: CodeLensParams) -> Result<Option<Vec<CodeLens>>> {
         let uri = params.text_document.uri;
         let started_at = Instant::now();
         trace!(op = "code_lens", uri = %uri, "start");
@@ -572,15 +520,7 @@ impl Backend {
         Ok(lens)
     }
 
-    pub(crate) async fn _semantic_tokens_full(
-        &self,
-        params: SemanticTokensParams,
-    ) -> Result<Option<SemanticTokensResult>> {
-        self.spawn_compute(move |b| b._semantic_tokens_full_blocking(params))
-            .await
-    }
-
-    pub(crate) fn _semantic_tokens_full_blocking(
+    pub(crate) fn _semantic_tokens_full(
         &self,
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
@@ -637,15 +577,7 @@ impl Backend {
         result
     }
 
-    pub(crate) async fn _formatting(
-        &self,
-        params: DocumentFormattingParams,
-    ) -> Result<Option<Vec<TextEdit>>> {
-        self.spawn_compute(move |b| b._formatting_blocking(params))
-            .await
-    }
-
-    pub(crate) fn _formatting_blocking(
+    pub(crate) fn _formatting(
         &self,
         params: DocumentFormattingParams,
     ) -> Result<Option<Vec<TextEdit>>> {

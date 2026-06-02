@@ -575,7 +575,7 @@ impl LanguageServer for Backend {
         params: GotoDefinitionParams,
     ) -> BoxFuture<'static, Result<Option<GotoDefinitionResponse>>> {
         let backend = self.clone();
-        Box::pin(async move { backend._definition(params).await })
+        Box::pin(async move { backend.spawn_compute(move |b| b._definition(params)).await })
     }
 
     fn type_definition(
@@ -583,7 +583,11 @@ impl LanguageServer for Backend {
         params: GotoDefinitionParams,
     ) -> BoxFuture<'static, Result<Option<GotoDefinitionResponse>>> {
         let backend = self.clone();
-        Box::pin(async move { backend._type_definition(params).await })
+        Box::pin(async move {
+            backend
+                .spawn_compute(move |b| b._type_definition(params))
+                .await
+        })
     }
 
     fn code_lens(
@@ -591,7 +595,7 @@ impl LanguageServer for Backend {
         params: CodeLensParams,
     ) -> BoxFuture<'static, Result<Option<Vec<CodeLens>>>> {
         let backend = self.clone();
-        Box::pin(async move { backend._code_lens(params).await })
+        Box::pin(async move { backend.spawn_compute(move |b| b._code_lens(params)).await })
     }
 
     fn code_lens_resolve(&mut self, params: CodeLens) -> BoxFuture<'static, Result<CodeLens>> {
@@ -601,7 +605,7 @@ impl LanguageServer for Backend {
 
     fn hover(&mut self, params: HoverParams) -> BoxFuture<'static, Result<Option<Hover>>> {
         let backend = self.clone();
-        Box::pin(async move { backend._hover(params).await })
+        Box::pin(async move { backend.spawn_compute(move |b| b._hover(params)).await })
     }
 
     fn signature_help(
@@ -609,7 +613,11 @@ impl LanguageServer for Backend {
         params: SignatureHelpParams,
     ) -> BoxFuture<'static, Result<Option<SignatureHelp>>> {
         let backend = self.clone();
-        Box::pin(async move { backend._signature_help(params).await })
+        Box::pin(async move {
+            backend
+                .spawn_compute(move |b| b._signature_help(params))
+                .await
+        })
     }
 
     fn document_symbol(
@@ -617,7 +625,7 @@ impl LanguageServer for Backend {
         params: DocumentSymbolParams,
     ) -> BoxFuture<'static, Result<Option<DocumentSymbolResponse>>> {
         let backend = self.clone();
-        Box::pin(async move { backend._document_symbol(params).await })
+        Box::pin(async move { backend._document_symbol(params) })
     }
 
     fn semantic_tokens_full(
@@ -625,7 +633,11 @@ impl LanguageServer for Backend {
         params: SemanticTokensParams,
     ) -> BoxFuture<'static, Result<Option<SemanticTokensResult>>> {
         let backend = self.clone();
-        Box::pin(async move { backend._semantic_tokens_full(params).await })
+        Box::pin(async move {
+            backend
+                .spawn_compute(move |b| b._semantic_tokens_full(params))
+                .await
+        })
     }
 
     fn references(
@@ -633,7 +645,7 @@ impl LanguageServer for Backend {
         params: ReferenceParams,
     ) -> BoxFuture<'static, Result<Option<Vec<Location>>>> {
         let backend = self.clone();
-        Box::pin(async move { backend._references(params).await })
+        Box::pin(async move { backend.spawn_compute(move |b| b._references(params)).await })
     }
 
     fn prepare_rename(
@@ -641,7 +653,11 @@ impl LanguageServer for Backend {
         params: TextDocumentPositionParams,
     ) -> BoxFuture<'static, Result<Option<PrepareRenameResponse>>> {
         let backend = self.clone();
-        Box::pin(async move { backend._prepare_rename(params).await })
+        Box::pin(async move {
+            backend
+                .spawn_compute(move |b| b._prepare_rename(params))
+                .await
+        })
     }
 
     fn rename(
@@ -649,7 +665,7 @@ impl LanguageServer for Backend {
         params: RenameParams,
     ) -> BoxFuture<'static, Result<Option<WorkspaceEdit>>> {
         let backend = self.clone();
-        Box::pin(async move { backend._rename(params).await })
+        Box::pin(async move { backend.spawn_compute(move |b| b._rename(params)).await })
     }
 
     fn completion(
@@ -657,7 +673,7 @@ impl LanguageServer for Backend {
         params: CompletionParams,
     ) -> BoxFuture<'static, Result<Option<CompletionResponse>>> {
         let backend = self.clone();
-        Box::pin(async move { backend._completion(params).await })
+        Box::pin(async move { backend.spawn_compute(move |b| b._completion(params)).await })
     }
 
     fn formatting(
@@ -665,7 +681,7 @@ impl LanguageServer for Backend {
         params: DocumentFormattingParams,
     ) -> BoxFuture<'static, Result<Option<Vec<TextEdit>>>> {
         let backend = self.clone();
-        Box::pin(async move { backend._formatting(params).await })
+        Box::pin(async move { backend.spawn_compute(move |b| b._formatting(params)).await })
     }
 
     fn code_action(
@@ -673,7 +689,7 @@ impl LanguageServer for Backend {
         params: CodeActionParams,
     ) -> BoxFuture<'static, Result<Option<CodeActionResponse>>> {
         let backend = self.clone();
-        Box::pin(async move { backend._code_action(params).await })
+        Box::pin(async move { backend._code_action(params) })
     }
 
     fn document_diagnostic(
@@ -681,7 +697,11 @@ impl LanguageServer for Backend {
         params: DocumentDiagnosticParams,
     ) -> BoxFuture<'static, Result<DocumentDiagnosticReportResult>> {
         let backend = self.clone();
-        Box::pin(async move { backend._document_diagnostic(params).await })
+        Box::pin(async move {
+            backend
+                .spawn_compute(move |b| b._document_diagnostic(params))
+                .await
+        })
     }
 
     fn workspace_diagnostic(
@@ -689,6 +709,10 @@ impl LanguageServer for Backend {
         params: WorkspaceDiagnosticParams,
     ) -> BoxFuture<'static, Result<WorkspaceDiagnosticReportResult>> {
         let backend = self.clone();
-        Box::pin(async move { backend._workspace_diagnostic(params).await })
+        Box::pin(async move {
+            backend
+                .spawn_compute(move |b| b._workspace_diagnostic(params))
+                .await
+        })
     }
 }

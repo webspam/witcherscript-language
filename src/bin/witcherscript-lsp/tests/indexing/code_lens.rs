@@ -36,7 +36,6 @@ async fn lens_links_legacy_override_to_base_definition() {
 
     let lenses = backend
         ._code_lens(code_lens_params(&override_url))
-        .await
         .expect("code_lens ok")
         .expect("overriding symbol yields a lens");
 
@@ -73,7 +72,6 @@ async fn lens_suppressed_when_feature_disabled() {
 
     let result = backend
         ._code_lens(code_lens_params(&override_url))
-        .await
         .expect("code_lens ok");
     assert!(result.is_none(), "disabled feature yields no lenses");
 }
@@ -91,7 +89,6 @@ async fn lens_shown_for_override_inside_workspace_root() {
 
     let lenses = backend
         ._code_lens(code_lens_params(&override_url))
-        .await
         .expect("code_lens ok")
         .expect("override inside the workspace still yields a lens");
     assert_eq!(lenses.len(), 1, "one overriding top-level symbol");
@@ -105,7 +102,6 @@ async fn no_lens_for_brand_new_legacy_file() {
 
     let result = backend
         ._code_lens(code_lens_params(&new_url))
-        .await
         .expect("code_lens ok");
     assert!(
         result.is_none(),
@@ -125,7 +121,6 @@ async fn references_lens_emits_unresolved_data_lens() {
 
     let lenses = backend
         ._code_lens(code_lens_params(&uri))
-        .await
         .expect("code_lens ok")
         .expect("references lenses present");
 
@@ -160,7 +155,6 @@ async fn reference_lens_count_waits_for_initial_index() {
 
     let lenses = backend
         ._code_lens(code_lens_params(&uri))
-        .await
         .expect("code_lens ok")
         .expect("references lenses present");
     let foo_lens = lenses
@@ -205,7 +199,6 @@ async fn references_lens_resolve_fills_count() {
 
     let lenses = backend
         ._code_lens(code_lens_params(&uri))
-        .await
         .expect("code_lens ok")
         .expect("references lenses present");
 
@@ -307,7 +300,6 @@ async fn references_lens_suppressed_when_disabled() {
 
     let result = backend
         ._code_lens(code_lens_params(&uri))
-        .await
         .expect("code_lens ok");
     assert!(
         result.is_none(),
@@ -327,7 +319,6 @@ async fn references_lens_precedes_game_definition_lens() {
 
     let lenses = backend
         ._code_lens(code_lens_params(&override_url))
-        .await
         .expect("code_lens ok")
         .expect("both lenses present");
 
@@ -360,7 +351,6 @@ async fn references_lens_appears_on_non_override_file() {
 
     let lenses = backend
         ._code_lens(code_lens_params(&uri))
-        .await
         .expect("code_lens ok")
         .expect("a plain file still gets reference lenses");
     assert_eq!(lenses.len(), 1, "one eligible top-level function");
