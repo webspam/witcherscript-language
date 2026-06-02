@@ -14,8 +14,9 @@ use crate::compilation::CompilationBuilder;
 use crate::convert::source_position;
 use crate::file_scope::{classify_file_scope, FileScope};
 
-use super::helpers::{reindex_into, remove_document_all_spellings};
+use super::helpers::{index_open_document, reindex_into, remove_document_all_spellings};
 
+// index_open_document updates the target in place, keeping its diff baseline so an unchanged reopen evicts nothing.
 fn route_document_to_index(
     builder: &mut CompilationBuilder,
     uri: &Url,
@@ -24,22 +25,22 @@ fn route_document_to_index(
 ) -> (Vec<ObservedKey>, Vec<ObservedKey>) {
     match scope {
         FileScope::AdditionalBase => {
-            let _ = builder
-                .base_scripts_index_mut()
-                .update_document(uri.as_str(), document);
-            (Vec::new(), Vec::new())
+            let ws = remove_document_all_spellings(builder.workspace_index_mut(), uri);
+            let loose = remove_document_all_spellings(builder.loose_index_mut(), uri);
+            let _ = index_open_document(builder.base_scripts_index_mut(), uri, document);
+            (ws, loose)
         }
         FileScope::OutOfScope | FileScope::SingleFile => {
-            let loose = builder
-                .loose_index_mut()
-                .update_document(uri.as_str(), document);
-            (Vec::new(), loose)
+            let ws = remove_document_all_spellings(builder.workspace_index_mut(), uri);
+            let _ = remove_document_all_spellings(builder.base_scripts_index_mut(), uri);
+            let loose = index_open_document(builder.loose_index_mut(), uri, document);
+            (ws, loose)
         }
         _ => {
-            let ws = builder
-                .workspace_index_mut()
-                .update_document(uri.as_str(), document);
-            (ws, Vec::new())
+            let _ = remove_document_all_spellings(builder.base_scripts_index_mut(), uri);
+            let loose = remove_document_all_spellings(builder.loose_index_mut(), uri);
+            let ws = index_open_document(builder.workspace_index_mut(), uri, document);
+            (ws, loose)
         }
     }
 }
@@ -82,19 +83,6 @@ impl Backend {
         let mut invalidated: HashSet<String> = HashSet::new();
         self.publish_compilation(|builder| {
             let docs = builder.base.documents.clone();
-            let workspace = builder.workspace_index_mut();
-            for (uri, _) in &scopes {
-                ws_changed.extend(remove_document_all_spellings(workspace, uri));
-            }
-            let loose = builder.loose_index_mut();
-            for (uri, _) in &scopes {
-                loose_changed.extend(remove_document_all_spellings(loose, uri));
-            }
-            let base = builder.base_scripts_index_mut();
-            for (uri, _) in &scopes {
-                // Base scripts have no editor subscribers, so the returned keys go unused.
-                let _ = remove_document_all_spellings(base, uri);
-            }
             for (uri, scope) in &scopes {
                 let Some(document) = docs.get(uri) else {
                     continue;
@@ -275,17 +263,6 @@ impl Backend {
         let mut ws_changed: Vec<ObservedKey> = Vec::new();
         let mut loose_changed: Vec<ObservedKey> = Vec::new();
         self.publish_compilation(|builder| {
-            ws_changed.extend(remove_document_all_spellings(
-                builder.workspace_index_mut(),
-                uri,
-            ));
-            // Base scripts have no editor subscribers, so the returned keys go unused.
-            let _ = remove_document_all_spellings(builder.base_scripts_index_mut(), uri);
-            loose_changed.extend(remove_document_all_spellings(
-                builder.loose_index_mut(),
-                uri,
-            ));
-
             let (ws, loose) = route_document_to_index(builder, uri, &scope, document.as_ref());
             ws_changed.extend(ws);
             loose_changed.extend(loose);

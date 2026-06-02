@@ -162,6 +162,55 @@ async fn opening_unchanged_indexed_file_reuses_parse_and_skips_diagnostic_refres
 }
 
 #[tokio::test]
+async fn body_only_reindex_keeps_subscriber_cache_entries() {
+    let temp = LocalTempDir::new("ws_body_reindex_keeps_subscribers");
+    write_script(
+        temp.path(),
+        "Base.ws",
+        "class CBase {\n  function f() { var x : int; }\n}\n",
+    );
+    write_script(
+        temp.path(),
+        "Derived.ws",
+        "class CDerived extends CBase {\n  var owner : CBase;\n}\n",
+    );
+    let base_url = Url::from_file_path(temp.path().join("Base.ws")).expect("base url");
+    let derived_canonical = witcherscript_language::files::canonical_uri(
+        &Url::from_file_path(temp.path().join("Derived.ws")).expect("derived url"),
+    )
+    .expect("derived canonical");
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+
+    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let _ = backend
+        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .expect("initial pull populates the CST cache");
+    assert!(
+        backend
+            .cst_diag_cache
+            .lock()
+            .contains_key(&derived_canonical),
+        "precondition: the subscriber's diagnostics must be cached after the first pull",
+    );
+
+    // Body-only edit: CBase's outward surface is unchanged, so subscribers must survive.
+    backend.update_open_document(
+        base_url,
+        "class CBase {\n  function f() { var y : int; }\n}\n".to_string(),
+    );
+
+    assert!(
+        backend
+            .cst_diag_cache
+            .lock()
+            .contains_key(&derived_canonical),
+        "a body-only reindex of CBase must not evict CDerived's cached diagnostics",
+    );
+}
+
+#[tokio::test]
 async fn open_files_mode_skips_unopened_files_but_still_indexes_symbols() {
     let temp = LocalTempDir::new("ws_scope_openfiles_skips_unopened");
     let path = write_script(temp.path(), "Bad.ws", "class CBad {\n");
