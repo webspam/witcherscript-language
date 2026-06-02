@@ -496,7 +496,6 @@ async fn workspace_pull_matches_previous_result_ids_in_client_uri_form() {
     };
     let WorkspaceDiagnosticReportResult::Report(initial) = backend
         ._workspace_diagnostic(empty_params())
-        .await
         .expect("initial workspace pull must not bail")
     else {
         panic!("initial workspace pull must return a complete report");
@@ -532,7 +531,6 @@ async fn workspace_pull_matches_previous_result_ids_in_client_uri_form() {
             }],
             ..empty_params()
         })
-        .await
         .expect("second workspace pull must not bail")
     else {
         panic!("second workspace pull must return a complete report");

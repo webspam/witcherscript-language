@@ -290,8 +290,7 @@ fn semantic_tokens_full_bails_when_pending_edit_outranks_snapshot() {
         "pending target must outrank the snapshot's parse_version"
     );
 
-    let result =
-        futures::executor::block_on(backend._semantic_tokens_full(semantic_tokens_params(&uri)));
+    let result = backend._semantic_tokens_full(semantic_tokens_params(&uri));
     let Err(err) = result else {
         panic!("expected CONTENT_MODIFIED, got Ok");
     };
@@ -314,8 +313,7 @@ fn semantic_tokens_full_unrelated_uri_unaffected_by_pending_edit_elsewhere() {
 
     backend._did_change(change_params(&main, 2, (0, 9), (0, 12), "Renamed"));
 
-    let result =
-        futures::executor::block_on(backend._semantic_tokens_full(semantic_tokens_params(&utils)));
+    let result = backend._semantic_tokens_full(semantic_tokens_params(&utils));
     assert!(
         matches!(result, Ok(Some(_))),
         "an edit to main.ws must not CONTENT_MODIFIED a read on utils.ws",
@@ -331,8 +329,7 @@ fn document_diagnostic_bails_when_pending_edit_outranks_snapshot() {
     backend._did_open(open_params(&uri, "class CDiag {}\n"));
     backend._did_change(change_params(&uri, 2, (0, 6), (0, 11), "CRenamed"));
 
-    let result =
-        futures::executor::block_on(backend._document_diagnostic(document_diagnostic_params(&uri)));
+    let result = backend._document_diagnostic(document_diagnostic_params(&uri));
     let Err(err) = result else {
         panic!("expected CONTENT_MODIFIED, got Ok");
     };
@@ -350,9 +347,9 @@ fn document_diagnostic_under_none_scope_returns_empty_for_open_broken_file() {
     let uri: Url = "file:///none_scope.ws".parse().unwrap();
     backend._did_open(open_params(&uri, "class CBroken {\n"));
 
-    let report =
-        futures::executor::block_on(backend._document_diagnostic(document_diagnostic_params(&uri)))
-            .expect("None scope must produce a successful response, not an error");
+    let report = backend
+        ._document_diagnostic(document_diagnostic_params(&uri))
+        .expect("None scope must produce a successful response, not an error");
     let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) = report
     else {
         panic!("None scope must return a Full report, got {report:?}");
@@ -380,9 +377,7 @@ fn document_diagnostic_unrelated_uri_unaffected_by_pending_edit_elsewhere() {
 
     backend._did_change(change_params(&main, 2, (0, 6), (0, 11), "CRenamed"));
 
-    let result = futures::executor::block_on(
-        backend._document_diagnostic(document_diagnostic_params(&utils)),
-    );
+    let result = backend._document_diagnostic(document_diagnostic_params(&utils));
     assert!(
         result.is_ok(),
         "an edit to main_diag.ws must not CONTENT_MODIFIED a diagnostic on utils_diag.ws",
@@ -411,7 +406,8 @@ fn formatting_reflects_queued_edit_instead_of_bailing() {
         "pending edit must outrank the published snapshot",
     );
 
-    let edits = futures::executor::block_on(backend._formatting(formatting_params(&uri)))
+    let edits = backend
+        ._formatting(formatting_params(&uri))
         .expect("formatting must succeed against the queued text, not bail")
         .expect("formatting returns an edit set");
     let new_text = edits
@@ -465,7 +461,8 @@ fn completion_reflects_queued_edit_instead_of_bailing() {
         "the dot edit must still be queued for this test to be meaningful",
     );
 
-    let resp = futures::executor::block_on(backend._completion(dot_completion_params(&uri, 5, 6)))
+    let resp = backend
+        ._completion(dot_completion_params(&uri, 5, 6))
         .expect("completion must succeed against the queued text, not bail")
         .expect("a member access must produce completions");
     let labels: Vec<String> = match resp {
@@ -490,7 +487,7 @@ fn formatting_unrelated_uri_unaffected_by_pending_edit_elsewhere() {
 
     backend._did_change(change_params(&main, 2, (0, 9), (0, 12), "Renamed"));
 
-    let result = futures::executor::block_on(backend._formatting(formatting_params(&utils)));
+    let result = backend._formatting(formatting_params(&utils));
     assert!(
         result.is_ok(),
         "an edit to main_fmt.ws must not CONTENT_MODIFIED a format on utils_fmt.ws",

@@ -157,10 +157,7 @@ impl Backend {
         )
     }
 
-    pub(crate) async fn _references(
-        &self,
-        params: ReferenceParams,
-    ) -> Result<Option<Vec<Location>>> {
+    pub(crate) fn _references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
         let include_declaration = params.context.include_declaration;
@@ -176,7 +173,7 @@ impl Backend {
         result
     }
 
-    pub(crate) async fn _prepare_rename(
+    pub(crate) fn _prepare_rename(
         &self,
         params: TextDocumentPositionParams,
     ) -> Result<Option<PrepareRenameResponse>> {
@@ -206,7 +203,7 @@ impl Backend {
         result
     }
 
-    pub(crate) async fn _rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+    pub(crate) fn _rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri;
         let new_name = params.new_name;
         let started_at = Instant::now();

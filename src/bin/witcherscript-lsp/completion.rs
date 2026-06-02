@@ -40,7 +40,7 @@ fn sorted_completion_item(db: &SymbolDb, def: &Definition, tier: u8) -> Completi
 }
 
 impl Backend {
-    pub(crate) async fn _completion(
+    pub(crate) fn _completion(
         &self,
         params: CompletionParams,
     ) -> Result<Option<CompletionResponse>> {
