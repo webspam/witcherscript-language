@@ -110,13 +110,13 @@ async fn index_base_scripts_records_only_real_legacy_overrides() {
         indexed_legacy_override("ws_legacy_replacements_map").await;
 
     let map = backend.legacy_replacements.lock();
-    let override_key = canonical_uri(&override_url).expect("canonical override uri");
+    let override_key = canonical_uri(&override_url);
     assert_eq!(
         map.get(&override_key).map(String::as_str),
         Some("game/r4Player.ws"),
         "a legacy file overriding a base script must record the replaced path",
     );
-    let new_key = canonical_uri(&new_url).expect("canonical new uri");
+    let new_key = canonical_uri(&new_url);
     assert!(
         !map.contains_key(&new_key),
         "a brand-new script in a legacy folder must not be recorded as a replacement",

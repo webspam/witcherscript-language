@@ -142,10 +142,7 @@ where
 // A file is published under its canonical URI so its key is stable whether or not it is open.
 pub(crate) fn publish_url(diag_key: &str) -> Option<Url> {
     let parsed = Url::parse(diag_key).ok()?;
-    match canonical_uri(&parsed) {
-        Some(canonical) => Url::parse(&canonical).ok(),
-        None => Some(parsed),
-    }
+    Url::parse(&canonical_uri(&parsed)).ok()
 }
 
 struct PullCompute {
@@ -392,8 +389,7 @@ impl Backend {
             let mut sent = self.sent_legacy_status.lock();
             let mut list = Vec::new();
             for uri in documents.keys() {
-                let replaced =
-                    canonical_uri(uri).and_then(|canon| replacements.get(&canon).cloned());
+                let replaced = replacements.get(&canonical_uri(uri)).cloned();
                 let params = LegacyScriptStatusParams::new(uri.to_string(), replaced);
                 if sent.get(uri) == Some(&params) {
                     continue;
@@ -429,7 +425,7 @@ impl Backend {
                     &additional,
                 );
                 let replaced_script_path = if matches!(scope, FileScope::LegacyOverride) {
-                    canonical_uri(uri).and_then(|canon| replacements.get(&canon).cloned())
+                    replacements.get(&canonical_uri(uri)).cloned()
                 } else {
                     None
                 };

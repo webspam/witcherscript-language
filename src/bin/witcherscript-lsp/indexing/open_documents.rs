@@ -112,7 +112,7 @@ impl Backend {
             uri = %uri,
             "start",
         );
-        let canonical = canonical_uri(uri).unwrap_or_else(|| uri.to_string());
+        let canonical = canonical_uri(uri);
         let is_base = self.is_base_script_uri(uri);
         let parsed = match uri.to_file_path() {
             Ok(path) => match read_text_file(&path) {
@@ -163,7 +163,7 @@ impl Backend {
     fn reuse_unchanged_open_document(&self, uri: &Url, text: &str) -> bool {
         let snap = self.snapshot();
         let existing = snap.documents.get(uri).cloned().or_else(|| {
-            let canonical = canonical_uri(uri)?;
+            let canonical = canonical_uri(uri);
             snap.workspace_documents
                 .get(&canonical)
                 .or_else(|| snap.base_scripts_documents.get(&canonical))

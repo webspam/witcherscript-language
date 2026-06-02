@@ -57,9 +57,7 @@ pub(crate) fn diagnostics_document_set<'a>(
         }
     }
     for (url, doc) in open_documents.iter() {
-        if let Some(canonical) = canonical_uri(url) {
-            merged.remove(&canonical);
-        }
+        merged.remove(&canonical_uri(url));
         merged.insert(url.to_string(), doc.as_ref());
     }
     merged
@@ -267,10 +265,10 @@ impl Backend {
         if !self.initial_index_done.load(Ordering::Acquire) {
             return false;
         }
-        let Some(canonical) = canonical_uri(uri) else {
-            return false;
-        };
-        !self.workspace_known_files.lock().contains(&canonical)
+        !self
+            .workspace_known_files
+            .lock()
+            .contains(&canonical_uri(uri))
     }
 
     pub(crate) fn file_scope_of(&self, uri: &Url) -> FileScope {
@@ -291,7 +289,9 @@ impl Backend {
 
     // Holds even for an override inside a workspace root, which `file_scope_of` reports as `InProject`, not `LegacyOverride`.
     pub(crate) fn replaces_base_script(&self, uri: &Url) -> bool {
-        canonical_uri(uri).is_some_and(|canon| self.legacy_replacements.lock().contains_key(&canon))
+        self.legacy_replacements
+            .lock()
+            .contains_key(&canonical_uri(uri))
     }
 
     pub(crate) fn loose_open_uris(

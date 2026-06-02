@@ -135,7 +135,7 @@ async fn opening_unchanged_indexed_file_reuses_parse_and_skips_diagnostic_refres
     let backend = make_backend_with(DiagnosticsScope::Workspace);
     index_dir(&backend, temp.path()).await;
 
-    let canonical = witcherscript_language::files::canonical_uri(&url).expect("canonical uri");
+    let canonical = witcherscript_language::files::canonical_uri(&url);
     let indexed_version = backend
         .snapshot()
         .workspace_documents
@@ -178,8 +178,7 @@ async fn body_only_reindex_keeps_subscriber_cache_entries() {
     let base_url = Url::from_file_path(temp.path().join("Base.ws")).expect("base url");
     let derived_canonical = witcherscript_language::files::canonical_uri(
         &Url::from_file_path(temp.path().join("Derived.ws")).expect("derived url"),
-    )
-    .expect("derived canonical");
+    );
 
     let backend = make_backend_with(DiagnosticsScope::Workspace);
     index_dir(&backend, temp.path()).await;
@@ -219,8 +218,7 @@ async fn single_file_pull_does_not_evict_other_cached_files() {
     let a_url = Url::from_file_path(temp.path().join("A.ws")).expect("a url");
     let b_canonical = witcherscript_language::files::canonical_uri(
         &Url::from_file_path(temp.path().join("B.ws")).expect("b url"),
-    )
-    .expect("b canonical");
+    );
 
     let backend = make_backend_with(DiagnosticsScope::Workspace);
     index_dir(&backend, temp.path()).await;

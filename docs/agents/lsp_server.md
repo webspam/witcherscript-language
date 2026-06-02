@@ -78,7 +78,7 @@ struct DbHandles<'a> {
 
 Every document request arrives with a `Url`. The catch is that the same file can reach the server under two different spellings. On Windows, VS Code sends `file:///c%3A/mod/script.ws` (percent-encoded drive colon, lowercase letter), while `Url::from_file_path` - used when the indexer walks the disk - produces `file:///C:/mod/script.ws`. Those two strings are unequal, so a map keyed by one spelling misses a lookup made with the other, which surfaces as duplicate-symbol diagnostics or an open file that resolution can't find.
 
-`files::canonical_uri(uri: &Url) -> Option<String>` settles this. It round-trips the `Url` through `to_file_path()` / `from_file_path()`, letting the OS pick one spelling. It returns `None` for any URI that is not a `file://` path - builtins use a synthetic scheme - so callers handle that with `?` or `filter_map` rather than unwrapping.
+`files::canonical_uri(uri: &Url) -> String` settles this. It round-trips the `Url` through `to_file_path()` / `from_file_path()`, letting the OS pick one spelling. A non-`file://` URI (builtins use a synthetic scheme) has no path to round-trip and is already canonical, so it is returned unchanged - the function is total and callers key on its result directly.
 
 Because of this, `Backend`'s document maps fall into two groups:
 

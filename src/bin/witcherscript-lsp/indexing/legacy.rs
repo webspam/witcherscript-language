@@ -150,8 +150,7 @@ impl Backend {
             return;
         }
         let snap = self.snapshot();
-        let open_canonical: HashSet<String> =
-            snap.documents.keys().filter_map(canonical_uri).collect();
+        let open_canonical: HashSet<String> = snap.documents.keys().map(canonical_uri).collect();
         let stale: Vec<String> = snap
             .workspace_documents
             .keys()
@@ -189,7 +188,7 @@ impl Backend {
             .snapshot()
             .documents
             .keys()
-            .filter_map(canonical_uri)
+            .map(canonical_uri)
             .collect();
         let mut current = HashSet::new();
         let filtered: Vec<(String, std::sync::Arc<ParsedDocument>)> = parsed

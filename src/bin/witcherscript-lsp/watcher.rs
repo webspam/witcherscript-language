@@ -50,7 +50,7 @@ pub(crate) fn classify_watched_event(
     if !is_witcherscript_file(&path) {
         return None;
     }
-    let canonical = canonical_uri(&event.uri)?;
+    let canonical = canonical_uri(&event.uri);
     match event.typ {
         // A delete must drop the file even while it is open: the file is gone.
         FileChangeType::DELETED => Some(WatchedEvent::Remove { canonical }),
@@ -115,7 +115,7 @@ impl Backend {
             .snapshot()
             .documents
             .keys()
-            .filter_map(canonical_uri)
+            .map(canonical_uri)
             .collect();
         let filter = self.exclude_filter();
         let legacy_dirs = self.effective_legacy_dirs();

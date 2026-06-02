@@ -147,8 +147,7 @@ fn skips_event_for_non_ws_extension() {
 #[cfg(windows)]
 fn canonicalises_percent_encoded_uri_for_open_file_skip() {
     let opened = Url::parse("file:///c%3A/proj/foo.ws").expect("client uri parses");
-    let canonical_opened =
-        witcherscript_language::files::canonical_uri(&opened).expect("canonical uri builds");
+    let canonical_opened = witcherscript_language::files::canonical_uri(&opened);
     assert_ne!(canonical_opened, opened.as_str());
 
     let watcher_url =

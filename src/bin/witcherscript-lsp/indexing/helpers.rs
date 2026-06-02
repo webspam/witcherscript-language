@@ -10,9 +10,7 @@ use witcherscript_language::files::canonical_uri;
 use witcherscript_language::resolve::{ObservedKey, WorkspaceIndex};
 
 pub(super) fn path_to_canonical_uri(path: &Path) -> Option<String> {
-    Url::from_file_path(path)
-        .ok()
-        .and_then(|u| canonical_uri(&u))
+    Url::from_file_path(path).ok().map(|u| canonical_uri(&u))
 }
 
 pub(crate) fn legacy_replaces_base(base_uri: &str, legacy_uri: &str) -> bool {
@@ -42,7 +40,7 @@ pub(crate) fn legacy_base_replacements(
         };
         let canonical = Url::parse(legacy_uri)
             .ok()
-            .and_then(|u| canonical_uri(&u))
+            .map(|u| canonical_uri(&u))
             .unwrap_or_else(|| legacy_uri.clone());
         for base_uri in candidates {
             if legacy_replaces_base(base_uri, legacy_uri) {
@@ -97,10 +95,9 @@ pub(crate) fn index_open_document(
     document: &ParsedDocument,
 ) -> Vec<ObservedKey> {
     let mut changed = Vec::new();
-    if let Some(canonical) = canonical_uri(uri) {
-        if canonical != uri.as_str() {
-            changed.extend(index.remove_document(&canonical));
-        }
+    let canonical = canonical_uri(uri);
+    if canonical != uri.as_str() {
+        changed.extend(index.remove_document(&canonical));
     }
     changed.extend(index.update_document(uri.as_str(), document));
     changed
@@ -111,10 +108,9 @@ pub(crate) fn remove_document_all_spellings(
     uri: &Url,
 ) -> Vec<ObservedKey> {
     let mut changed = index.remove_document(uri.as_str());
-    if let Some(canonical) = canonical_uri(uri) {
-        if canonical != uri.as_str() {
-            changed.extend(index.remove_document(&canonical));
-        }
+    let canonical = canonical_uri(uri);
+    if canonical != uri.as_str() {
+        changed.extend(index.remove_document(&canonical));
     }
     changed
 }

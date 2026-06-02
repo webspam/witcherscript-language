@@ -124,7 +124,7 @@ impl Backend {
             .snapshot()
             .documents
             .keys()
-            .filter_map(canonical_uri)
+            .map(canonical_uri)
             .collect();
 
         let filtered: Vec<(String, Arc<ParsedDocument>)> = parsed
