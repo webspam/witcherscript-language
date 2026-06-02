@@ -242,7 +242,7 @@ impl Backend {
             uri = %uri,
             "start",
         );
-        let key = uri.to_string();
+        let key = canonical_uri(uri);
         let mut diag_docs: HashMap<String, &ParsedDocument> = HashMap::new();
         diag_docs.insert(key.clone(), document);
         let mut loose_uri_strs: HashSet<String> = HashSet::new();
@@ -294,7 +294,7 @@ impl Backend {
         let loose_uri_strs: HashSet<String> = self
             .loose_open_uris(&snap.documents)
             .iter()
-            .map(|u| u.to_string())
+            .map(canonical_uri)
             .collect();
         let diag_docs =
             diagnostics_document_set(&snap.workspace_documents, &snap.documents, whole_workspace);

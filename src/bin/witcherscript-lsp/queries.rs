@@ -17,6 +17,7 @@ use lsp_types::{
 use crate::config::DiagnosticsScope;
 use tracing::{trace, warn};
 use witcherscript_language::builtins::builtin_source;
+use witcherscript_language::files::canonical_uri;
 use witcherscript_language::formatter::{format_document, FormatOptions};
 use witcherscript_language::resolve::{
     overridden_top_level, resolve_all_definitions, resolve_definition, resolve_type_definition,
@@ -246,8 +247,12 @@ impl Backend {
             let document = document_arc.as_ref();
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
             let db = handles.db();
-            let definitions =
-                resolve_all_definitions(uri.as_str(), document, &db, source_position(position));
+            let definitions = resolve_all_definitions(
+                &canonical_uri(&uri),
+                document,
+                &db,
+                source_position(position),
+            );
 
             let locations: Vec<Location> = definitions
                 .into_iter()
@@ -291,9 +296,12 @@ impl Backend {
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
             let db = handles.db();
 
-            let Some(type_def) =
-                resolve_type_definition(uri.as_str(), document, &db, source_position(position))
-            else {
+            let Some(type_def) = resolve_type_definition(
+                &canonical_uri(&uri),
+                document,
+                &db,
+                source_position(position),
+            ) else {
                 break 'body Ok(None);
             };
 
@@ -327,9 +335,12 @@ impl Backend {
             let document = document_arc.as_ref();
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
             let db = handles.db();
-            let Some(definition) =
-                resolve_definition(uri.as_str(), document, &db, source_position(position))
-            else {
+            let Some(definition) = resolve_definition(
+                &canonical_uri(&uri),
+                document,
+                &db,
+                source_position(position),
+            ) else {
                 break 'body Ok(None);
             };
 
@@ -369,7 +380,7 @@ impl Backend {
             let compact_colon = self.config.load().formatter_compact_colon;
 
             Ok(signature_help(
-                uri.as_str(),
+                &canonical_uri(&uri),
                 document,
                 &db,
                 source_position(position),
@@ -545,9 +556,12 @@ impl Backend {
             let version = self.diagnostic_version.load(Ordering::Acquire);
             let diagnostic_version = self.diagnostic_version.clone();
             let should_continue = || diagnostic_version.load(Ordering::Acquire) == version;
-            let Some(data) =
-                collect_semantic_tokens_cancellable(uri.as_str(), document, &db, &should_continue)
-            else {
+            let Some(data) = collect_semantic_tokens_cancellable(
+                &canonical_uri(&uri),
+                document,
+                &db,
+                &should_continue,
+            ) else {
                 break 'body Err(ResponseError::new(
                     ErrorCode::CONTENT_MODIFIED,
                     "document changed while computing semantic tokens",

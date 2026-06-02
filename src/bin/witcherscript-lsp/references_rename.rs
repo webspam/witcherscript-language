@@ -10,6 +10,7 @@ use lsp_types::{
 use tracing::{debug, trace};
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::document::ParsedDocument;
+use witcherscript_language::files::canonical_uri;
 use witcherscript_language::resolve::{find_references, resolve_definition};
 
 use crate::backend::Backend;
@@ -39,7 +40,7 @@ pub(crate) fn merge_documents<'a>(
     }
     for (url, doc) in open_documents.iter() {
         if open_loose_uris.contains(url) == target_is_loose {
-            merged.insert(url.to_string(), doc.as_ref());
+            merged.insert(canonical_uri(url), doc.as_ref());
         }
     }
     merged
@@ -116,9 +117,12 @@ impl Backend {
             "ident index memory"
         );
 
-        let Some(definition) =
-            resolve_definition(uri.as_str(), document, &db, source_position(position))
-        else {
+        let Some(definition) = resolve_definition(
+            &canonical_uri(uri),
+            document,
+            &db,
+            source_position(position),
+        ) else {
             return Some(Vec::new());
         };
 

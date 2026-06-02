@@ -90,7 +90,7 @@ impl Backend {
                 let (ws, loose) = route_document_to_index(builder, uri, scope, document.as_ref());
                 ws_changed.extend(ws);
                 loose_changed.extend(loose);
-                invalidated.insert(uri.to_string());
+                invalidated.insert(canonical_uri(uri));
             }
         });
         invalidated.extend(self.invalidated_workspace(&ws_changed));
@@ -288,6 +288,11 @@ impl Backend {
         let document = snap.documents.get(uri)?.clone();
         let handles = self.db_handles_for_with_snapshot(uri, &snap);
         let db = handles.db();
-        resolve_definition(uri.as_str(), &document, &db, source_position(position))
+        resolve_definition(
+            &canonical_uri(uri),
+            &document,
+            &db,
+            source_position(position),
+        )
     }
 }

@@ -94,12 +94,12 @@ pub(crate) fn index_open_document(
     uri: &Url,
     document: &ParsedDocument,
 ) -> Vec<ObservedKey> {
-    let mut changed = Vec::new();
     let canonical = canonical_uri(uri);
+    let mut changed = Vec::new();
     if canonical != uri.as_str() {
-        changed.extend(index.remove_document(&canonical));
+        changed.extend(index.remove_document(uri.as_str()));
     }
-    changed.extend(index.update_document(uri.as_str(), document));
+    changed.extend(index.update_document(&canonical, document));
     changed
 }
 

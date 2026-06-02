@@ -57,8 +57,7 @@ pub(crate) fn diagnostics_document_set<'a>(
         }
     }
     for (url, doc) in open_documents.iter() {
-        merged.remove(&canonical_uri(url));
-        merged.insert(url.to_string(), doc.as_ref());
+        merged.insert(canonical_uri(url), doc.as_ref());
     }
     merged
 }
