@@ -161,6 +161,14 @@ impl Backend {
         &self,
         params: ReferenceParams,
     ) -> Result<Option<Vec<Location>>> {
+        self.spawn_compute(move |b| b._references_blocking(params))
+            .await
+    }
+
+    pub(crate) fn _references_blocking(
+        &self,
+        params: ReferenceParams,
+    ) -> Result<Option<Vec<Location>>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
         let include_declaration = params.context.include_declaration;
@@ -177,6 +185,14 @@ impl Backend {
     }
 
     pub(crate) async fn _prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        self.spawn_compute(move |b| b._prepare_rename_blocking(params))
+            .await
+    }
+
+    pub(crate) fn _prepare_rename_blocking(
         &self,
         params: TextDocumentPositionParams,
     ) -> Result<Option<PrepareRenameResponse>> {
@@ -207,6 +223,11 @@ impl Backend {
     }
 
     pub(crate) async fn _rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        self.spawn_compute(move |b| b._rename_blocking(params))
+            .await
+    }
+
+    pub(crate) fn _rename_blocking(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri;
         let new_name = params.new_name;
         let started_at = Instant::now();

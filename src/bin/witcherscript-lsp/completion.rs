@@ -44,6 +44,14 @@ impl Backend {
         &self,
         params: CompletionParams,
     ) -> Result<Option<CompletionResponse>> {
+        self.spawn_compute(move |b| b._completion_blocking(params))
+            .await
+    }
+
+    pub(crate) fn _completion_blocking(
+        &self,
+        params: CompletionParams,
+    ) -> Result<Option<CompletionResponse>> {
         let dot_triggered = triggered_by_dot(&params);
         let trigger_kind = params.context.as_ref().map(|c| c.trigger_kind);
         let trigger_char = params

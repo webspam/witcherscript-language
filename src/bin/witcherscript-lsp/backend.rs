@@ -478,6 +478,25 @@ impl Backend {
         });
     }
 
+    // Offload to a blocking thread so the single async-lsp run task is not frozen by CPU-bound compute.
+    pub(crate) async fn spawn_compute<T, F>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(&Backend) -> Result<T> + Send + 'static,
+        T: Send + 'static,
+    {
+        let backend = self.clone();
+        match tokio::task::spawn_blocking(move || f(&backend)).await {
+            Ok(result) => result,
+            Err(join_err) => {
+                tracing::error!(error = %join_err, "compute task panicked");
+                Err(ResponseError::new(
+                    ErrorCode::INTERNAL_ERROR,
+                    format!("compute task failed: {join_err}"),
+                ))
+            }
+        }
+    }
+
     pub(crate) async fn handle_builtin_source(&self, params: Value) -> Result<Value> {
         let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("");
         let started_at = std::time::Instant::now();

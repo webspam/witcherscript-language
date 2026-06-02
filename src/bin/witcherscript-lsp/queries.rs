@@ -101,6 +101,14 @@ impl Backend {
         &self,
         params: DocumentDiagnosticParams,
     ) -> Result<DocumentDiagnosticReportResult> {
+        self.spawn_compute(move |b| b._document_diagnostic_blocking(params))
+            .await
+    }
+
+    pub(crate) fn _document_diagnostic_blocking(
+        &self,
+        params: DocumentDiagnosticParams,
+    ) -> Result<DocumentDiagnosticReportResult> {
         let uri = params.text_document.uri.clone();
         let started_at = Instant::now();
         trace!(op = "document_diagnostic", uri = %uri, "start");
@@ -180,6 +188,14 @@ impl Backend {
         &self,
         params: WorkspaceDiagnosticParams,
     ) -> Result<WorkspaceDiagnosticReportResult> {
+        self.spawn_compute(move |b| b._workspace_diagnostic_blocking(params))
+            .await
+    }
+
+    pub(crate) fn _workspace_diagnostic_blocking(
+        &self,
+        params: WorkspaceDiagnosticParams,
+    ) -> Result<WorkspaceDiagnosticReportResult> {
         let started_at = Instant::now();
         trace!(op = "workspace_diagnostic", "start");
         let version = self.diagnostic_version.load(Ordering::Acquire);
@@ -234,6 +250,14 @@ impl Backend {
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
+        self.spawn_compute(move |b| b._definition_blocking(params))
+            .await
+    }
+
+    pub(crate) fn _definition_blocking(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         let started_at = Instant::now();
@@ -278,6 +302,14 @@ impl Backend {
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
+        self.spawn_compute(move |b| b._type_definition_blocking(params))
+            .await
+    }
+
+    pub(crate) fn _type_definition_blocking(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         let started_at = Instant::now();
@@ -315,6 +347,10 @@ impl Backend {
     }
 
     pub(crate) async fn _hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        self.spawn_compute(move |b| b._hover_blocking(params)).await
+    }
+
+    pub(crate) fn _hover_blocking(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         let started_at = Instant::now();
@@ -351,6 +387,14 @@ impl Backend {
     }
 
     pub(crate) async fn _signature_help(
+        &self,
+        params: SignatureHelpParams,
+    ) -> Result<Option<SignatureHelp>> {
+        self.spawn_compute(move |b| b._signature_help_blocking(params))
+            .await
+    }
+
+    pub(crate) fn _signature_help_blocking(
         &self,
         params: SignatureHelpParams,
     ) -> Result<Option<SignatureHelp>> {
@@ -414,6 +458,14 @@ impl Backend {
     }
 
     pub(crate) async fn _code_lens(&self, params: CodeLensParams) -> Result<Option<Vec<CodeLens>>> {
+        self.spawn_compute(move |b| b._code_lens_blocking(params))
+            .await
+    }
+
+    pub(crate) fn _code_lens_blocking(
+        &self,
+        params: CodeLensParams,
+    ) -> Result<Option<Vec<CodeLens>>> {
         let uri = params.text_document.uri;
         let started_at = Instant::now();
         trace!(op = "code_lens", uri = %uri, "start");
@@ -478,9 +530,19 @@ impl Backend {
                 format!("malformed reference code-lens data: {err}"),
             )
         })?;
+        self.await_initial_index().await;
+        self.spawn_compute(move |b| b._code_lens_resolve_blocking(lens, uri, position))
+            .await
+    }
+
+    pub(crate) fn _code_lens_resolve_blocking(
+        &self,
+        mut lens: CodeLens,
+        uri: Url,
+        position: Position,
+    ) -> Result<CodeLens> {
         let started_at = Instant::now();
         trace!(op = "code_lens_resolve", uri = %uri, "start");
-        self.await_initial_index().await;
         let locations = self
             .reference_locations(&uri, position, false)
             .unwrap_or_default();
@@ -511,6 +573,14 @@ impl Backend {
     }
 
     pub(crate) async fn _semantic_tokens_full(
+        &self,
+        params: SemanticTokensParams,
+    ) -> Result<Option<SemanticTokensResult>> {
+        self.spawn_compute(move |b| b._semantic_tokens_full_blocking(params))
+            .await
+    }
+
+    pub(crate) fn _semantic_tokens_full_blocking(
         &self,
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
@@ -568,6 +638,14 @@ impl Backend {
     }
 
     pub(crate) async fn _formatting(
+        &self,
+        params: DocumentFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        self.spawn_compute(move |b| b._formatting_blocking(params))
+            .await
+    }
+
+    pub(crate) fn _formatting_blocking(
         &self,
         params: DocumentFormattingParams,
     ) -> Result<Option<Vec<TextEdit>>> {
