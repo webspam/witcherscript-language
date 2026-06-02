@@ -267,10 +267,16 @@ impl Backend {
         if !self.initial_index_done.load(Ordering::Acquire) {
             return false;
         }
-        !self
-            .workspace_known_files
-            .lock()
-            .contains(&canonical_uri(uri))
+        let canonical = canonical_uri(uri);
+        if self.workspace_known_files.lock().contains(&canonical) {
+            return false;
+        }
+        // Absent from the startup walk means gitignored or created since; the walk can't tell those apart, so ask the ignore rules directly.
+        if self.exclude_filter().matches(&path) {
+            return true;
+        }
+        self.workspace_known_files.lock().insert(canonical);
+        false
     }
 
     pub(crate) fn file_scope_of(&self, uri: &Url) -> FileScope {
