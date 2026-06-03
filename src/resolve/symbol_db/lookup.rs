@@ -87,13 +87,11 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn has_state_named(&self, name: &str) -> bool {
-        self.workspace.has_state_named(name)
-            || self.base.has_state_named(name)
-            || self.builtins.is_some_and(|b| b.has_state_named(name))
+        self.workspace.has_state_named(name) || self.base.has_state_named(name)
     }
 
     /// Workspace shadows base; builtins hold no states so they are not consulted.
-    pub fn find_state_backing_class(&self, name: &str) -> Option<StateBackingClass<'_>> {
+    pub(crate) fn find_state_backing_class(&self, name: &str) -> Option<StateBackingClass<'_>> {
         self.workspace
             .find_state_backing_class(name)
             .or_else(|| self.base.find_state_backing_class(name))

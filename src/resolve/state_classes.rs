@@ -3,8 +3,7 @@
 //! A `state S in Owner [extends Base]` is compiled by the engine into a class
 //! named `OwnerStateS` that has no declaration in source: its base is the
 //! state's `extends` (or the implicit `CScriptableState`), its members are the
-//! state's members, and `parent` inside it refers to `Owner`. This module names
-//! that class and exposes a lightweight view over the state it derives from.
+//! state's members, and `parent` inside it refers to `Owner`.
 
 use crate::symbols::SymbolKind;
 
@@ -23,51 +22,21 @@ pub(crate) fn state_backing_class_name(owner: &str, state: &str) -> String {
 /// Borrows from the index it was looked up in; the live state `Definition`
 /// stays single-sourced in `states_by_owner`.
 #[derive(Debug, Clone, Copy)]
-pub struct StateBackingClass<'a> {
+pub(crate) struct StateBackingClass<'a> {
     name: &'a str,
-    owner: &'a str,
     declaration: &'a Definition,
 }
 
 impl<'a> StateBackingClass<'a> {
-    pub(crate) fn new(name: &'a str, owner: &'a str, declaration: &'a Definition) -> Self {
-        Self {
-            name,
-            owner,
-            declaration,
-        }
+    pub(crate) fn new(name: &'a str, declaration: &'a Definition) -> Self {
+        Self { name, declaration }
     }
 
-    /// Synthetic class name, e.g. `OwnerStateS`.
-    pub fn name(&self) -> &str {
-        self.name
-    }
-
-    /// Owner class the state is declared `in` - target of `parent` and the
-    /// subject of owner-exists checks.
-    pub fn owner_class(&self) -> &str {
-        self.owner
-    }
-
-    /// The state's own short name - the key its members live under in
-    /// `member_by_type`, distinct from the synthetic class name.
-    pub fn state_name(&self) -> &str {
+    pub(crate) fn state_name(&self) -> &str {
         &self.declaration.symbol.name
     }
 
-    /// The state's explicit `extends` base, if any. `None` means the engine's
-    /// implicit `CScriptableState`, resolved by consumers rather than stored.
-    pub fn base_class(&self) -> Option<&str> {
-        self.declaration.symbol.base_class.as_deref()
-    }
-
-    /// The state declaration this backing class derives from - the go-to
-    /// target and the source of the state's members.
-    pub fn declaration(&self) -> &Definition {
-        self.declaration
-    }
-
-    // A known `Class` extending the state, so the normal inheritance walk yields the state's members.
+    /// Base is the state itself, so the inheritance walk reaches the state's members.
     pub(crate) fn as_class_definition(&self) -> Definition {
         let mut symbol = self.declaration.symbol.clone();
         symbol.name = self.name.to_string();

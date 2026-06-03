@@ -11,25 +11,20 @@ fn index(uri: &str, source: &str) -> WorkspaceIndex {
 }
 
 #[test]
-fn resolves_synthetic_name_to_owner_and_state() {
+fn resolves_synthetic_name_to_class_extending_state() {
     let idx = index("file:///a.ws", "statemachine class C {}\nstate S in C {}\n");
     let backing = idx
         .find_state_backing_class("CStateS")
         .expect("backing class for state S in C");
-    assert_eq!(backing.name(), "CStateS");
-    assert_eq!(backing.owner_class(), "C");
     assert_eq!(backing.state_name(), "S");
-    assert_eq!(backing.base_class(), None, "no extends => no stored base");
-}
-
-#[test]
-fn base_class_reflects_extends_clause() {
-    let idx = index(
-        "file:///a.ws",
-        "statemachine class C {}\nstate BaseS in C {}\nstate S in C extends BaseS {}\n",
+    let def = backing.as_class_definition();
+    assert_eq!(def.symbol.name, "CStateS");
+    assert_eq!(def.symbol.kind, SymbolKind::Class);
+    assert_eq!(
+        def.symbol.base_class.as_deref(),
+        Some("S"),
+        "the backing class extends its state"
     );
-    let backing = idx.find_state_backing_class("CStateS").expect("backing");
-    assert_eq!(backing.base_class(), Some("BaseS"));
 }
 
 #[test]
@@ -37,20 +32,6 @@ fn returns_none_for_unknown_name() {
     let idx = index("file:///a.ws", "statemachine class C {}\nstate S in C {}\n");
     assert!(idx.find_state_backing_class("CStateMissing").is_none());
     assert!(idx.find_state_backing_class("S").is_none());
-}
-
-#[test]
-fn iterator_yields_every_backing_class() {
-    let idx = index(
-        "file:///a.ws",
-        "statemachine class C {}\nstate A in C {}\nstate B in C {}\n",
-    );
-    let mut names: Vec<String> = idx
-        .state_backing_classes()
-        .map(|b| b.name().to_string())
-        .collect();
-    names.sort();
-    assert_eq!(names, vec!["CStateA".to_string(), "CStateB".to_string()]);
 }
 
 #[test]
@@ -89,8 +70,8 @@ fn symbol_db_prefers_workspace_then_falls_back_to_base() {
         .find_state_backing_class("CStateS")
         .expect("workspace wins");
     assert_eq!(
-        shadowed.base_class(),
-        Some("Only"),
+        shadowed.as_class_definition().uri,
+        "file:///mod.ws",
         "workspace state shadows the base-only one"
     );
 
