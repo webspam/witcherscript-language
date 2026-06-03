@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use lsp_types::Url;
 use rayon::prelude::*;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 use witcherscript_language::document::{parse_document, ParsedDocument};
 use witcherscript_language::files::{canonical_uri, collect_witcherscript_files, read_text_file};
 use witcherscript_language::resolve::WorkspaceIndex;
@@ -81,6 +81,7 @@ impl Backend {
                 }
             };
             let file_count = files.len();
+            trace!(op = "index_workspace", file_count, files = ?files, "workspace files");
             let known_uris: HashSet<String> = files
                 .iter()
                 .filter_map(|p| Url::from_file_path(p).ok())
