@@ -271,11 +271,18 @@ impl<'a> SymbolDb<'a> {
         dedup_definitions(decls)
     }
 
+    // A synthetic state class (`OwnerStateS`) walks under the state's own name: same members and base.
+    fn canonical_walk_start(&self, name: &str) -> String {
+        self.find_state_backing_class(name)
+            .map(|sbc| sbc.state_name().to_string())
+            .unwrap_or_else(|| name.to_string())
+    }
+
     fn try_in_chain<T, F>(&self, start: &str, mut visit: F) -> Option<T>
     where
         F: FnMut(&str, usize) -> Option<T>,
     {
-        let mut current: String = start.to_string();
+        let mut current: String = self.canonical_walk_start(start);
         let mut depth: usize = 0;
         loop {
             if depth > MAX_INHERITANCE_DEPTH {

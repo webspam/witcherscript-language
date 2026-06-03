@@ -1,5 +1,7 @@
 use crate::document::parse_document;
-use crate::resolve::{SymbolDb, WorkspaceIndex};
+use crate::resolve::{resolve_definition, SymbolDb, WorkspaceIndex};
+use crate::symbols::SymbolKind;
+use crate::test_support::TestDb;
 
 fn index(uri: &str, source: &str) -> WorkspaceIndex {
     let doc = parse_document(source).expect("parse");
@@ -96,4 +98,28 @@ fn symbol_db_prefers_workspace_then_falls_back_to_base() {
         .find_state_backing_class("CStateOnly")
         .expect("base-only backing class still resolves");
     assert_eq!(base_only.state_name(), "Only");
+}
+
+#[test]
+fn synthetic_type_name_resolves_to_state_declaration() {
+    let t = TestDb::new(
+        "statemachine class C {}\nstate Sleep in C {}\nfunction F() { var s : $0CStateSleep; }\n",
+    );
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
+        .expect("CStateSleep resolves to its state");
+    assert_eq!(def.symbol.kind, SymbolKind::State);
+    assert_eq!(def.symbol.name, "Sleep");
+}
+
+#[test]
+fn member_access_through_synthetic_type_resolves() {
+    let t = TestDb::new(
+        "statemachine class C {}\nstate Sleep in C { function Doze() {} }\nfunction F() { var s : CStateSleep; s.$0Doze(); }\n",
+    );
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
+        .expect("member of a synthetic-state-typed receiver resolves");
+    assert_eq!(def.symbol.kind, SymbolKind::Method);
+    assert_eq!(def.symbol.name, "Doze");
 }
