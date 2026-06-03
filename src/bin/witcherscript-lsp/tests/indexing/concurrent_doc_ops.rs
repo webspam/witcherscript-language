@@ -4,13 +4,13 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use async_lsp::router::Router;
-use async_lsp::{ClientSocket, ErrorCode, ResponseError};
+use async_lsp::{ClientSocket, ErrorCode};
 use lsp_types::{
     CompletionContext, CompletionParams, CompletionResponse, CompletionTriggerKind,
-    DiagnosticServerCancellationData, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-    DocumentFormattingParams, FormattingOptions, PartialResultParams, Position, Range,
-    SemanticTokensParams, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
+    DocumentDiagnosticReport, DocumentDiagnosticReportResult, DocumentFormattingParams,
+    FormattingOptions, PartialResultParams, Position, Range, SemanticTokensParams,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, Url, VersionedTextDocumentIdentifier, WorkDoneProgressParams,
     WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
 };
@@ -551,60 +551,57 @@ fn workspace_diagnostic_params() -> WorkspaceDiagnosticParams {
     }
 }
 
-fn retrigger_requested(err: &ResponseError) -> bool {
-    err.data
-        .as_ref()
-        .and_then(|d| serde_json::from_value::<DiagnosticServerCancellationData>(d.clone()).ok())
-        .is_some_and(|d| d.retrigger_request)
+// Asserts the pull parks (not busy-loops on ServerCancelled): Pending until index-ready notify.
+async fn ready_after_notify<F>(backend: &Backend, mut fut: std::pin::Pin<Box<F>>) -> F::Output
+where
+    F: std::future::Future,
+{
+    use std::future::Future;
+    use std::task::Poll;
+
+    let pending = std::future::poll_fn(|cx| Poll::Ready(Future::poll(fut.as_mut(), cx))).await;
+    assert!(
+        matches!(pending, Poll::Pending),
+        "pull must park while base scripts are still indexing",
+    );
+    backend.initial_index_done.store(true, Ordering::Release);
+    backend.index_ready_notify.notify_waiters();
+    fut.await
 }
 
-#[test]
-fn document_diagnostic_cancels_until_initial_index() {
-    let backend = workspace_scope_backend_indexing_pending();
+#[tokio::test]
+async fn document_diagnostic_parks_until_initial_index() {
+    use async_lsp::LanguageServer;
+
+    let mut backend = workspace_scope_backend_indexing_pending();
     let uri: Url = "file:///diag_gate.ws".parse().unwrap();
     backend._did_open(open_params(&uri, "class CGate {}\n"));
 
-    let err = backend
-        ._document_diagnostic(document_diagnostic_params(&uri))
-        .expect_err("pre-index document pull must cancel, not report against an empty base index");
-    assert_eq!(err.code, ErrorCode::SERVER_CANCELLED);
-    assert!(
-        retrigger_requested(&err),
-        "cancellation must tell the client to re-trigger once indexing completes",
-    );
-
-    backend.initial_index_done.store(true, Ordering::Release);
-    let report = backend
-        ._document_diagnostic(document_diagnostic_params(&uri))
+    let fut = Box::pin(backend.document_diagnostic(document_diagnostic_params(&uri)));
+    let report = ready_after_notify(&backend, fut)
+        .await
         .expect("post-index document pull must produce a report");
     assert!(
         matches!(report, DocumentDiagnosticReportResult::Report(_)),
-        "once the index is ready the pull returns a report",
+        "once the index is ready the parked pull returns a report",
     );
 }
 
-#[test]
-fn workspace_diagnostic_cancels_until_initial_index() {
-    let backend = workspace_scope_backend_indexing_pending();
+#[tokio::test]
+async fn workspace_diagnostic_parks_until_initial_index() {
+    use async_lsp::LanguageServer;
+
+    let mut backend = workspace_scope_backend_indexing_pending();
     let uri: Url = "file:///ws_diag_gate.ws".parse().unwrap();
     backend._did_open(open_params(&uri, "class CGate {}\n"));
 
-    let err = backend
-        ._workspace_diagnostic(workspace_diagnostic_params())
-        .expect_err("pre-index workspace pull must cancel, not report against an empty base index");
-    assert_eq!(err.code, ErrorCode::SERVER_CANCELLED);
-    assert!(
-        retrigger_requested(&err),
-        "cancellation must tell the client to re-trigger once indexing completes",
-    );
-
-    backend.initial_index_done.store(true, Ordering::Release);
-    let report = backend
-        ._workspace_diagnostic(workspace_diagnostic_params())
+    let fut = Box::pin(backend.workspace_diagnostic(workspace_diagnostic_params()));
+    let report = ready_after_notify(&backend, fut)
+        .await
         .expect("post-index workspace pull must produce a report");
     assert!(
         matches!(report, WorkspaceDiagnosticReportResult::Report(_)),
-        "once the index is ready the pull returns a report",
+        "once the index is ready the parked pull returns a report",
     );
 }
 
