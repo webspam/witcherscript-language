@@ -3,8 +3,7 @@
 //! A `state S in Owner [extends Base]` is compiled by the engine into a class
 //! named `OwnerStateS` that has no declaration in source: its base is the
 //! state's `extends` (or the implicit `CScriptableState`), its members are the
-//! state's members, and `parent` inside it refers to `Owner`. This module names
-//! that class and exposes a lightweight view over the state it derives from.
+//! state's members, and `parent` inside it refers to `Owner`.
 
 use crate::symbols::SymbolKind;
 
