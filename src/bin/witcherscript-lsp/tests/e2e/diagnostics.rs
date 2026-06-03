@@ -59,7 +59,7 @@ async fn pull_diagnostics_returns_full_then_unchanged_then_full_after_edit() {
         let mut prev: Option<String> = None;
         loop {
             let report = client
-                .request::<DocumentDiagnosticRequest>(request(prev.clone()))
+                .request_when_ready::<DocumentDiagnosticRequest>(request(prev.clone()))
                 .await;
             let (items, id) = match report {
                 DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) => (
@@ -80,7 +80,7 @@ async fn pull_diagnostics_returns_full_then_unchanged_then_full_after_edit() {
 
     client.change_full(&uri, 2, "class Foo {}\n").await;
     let third = client
-        .request::<DocumentDiagnosticRequest>(request(Some(stable_id)))
+        .request_when_ready::<DocumentDiagnosticRequest>(request(Some(stable_id)))
         .await;
     match third {
         DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) => {
@@ -116,7 +116,7 @@ async fn closing_a_file_in_open_files_scope_clears_its_client_side_diagnostics()
     );
 
     let workspace = client
-        .request::<WorkspaceDiagnosticRequest>(WorkspaceDiagnosticParams {
+        .request_when_ready::<WorkspaceDiagnosticRequest>(WorkspaceDiagnosticParams {
             identifier: None,
             previous_result_ids: Vec::new(),
             work_done_progress_params: WorkDoneProgressParams::default(),
@@ -139,7 +139,7 @@ async fn closing_a_file_in_open_files_scope_clears_its_client_side_diagnostics()
 
     client.close(&uri).await;
     let after_close = client
-        .request::<WorkspaceDiagnosticRequest>(WorkspaceDiagnosticParams {
+        .request_when_ready::<WorkspaceDiagnosticRequest>(WorkspaceDiagnosticParams {
             identifier: None,
             previous_result_ids: vec![PreviousResultId {
                 uri: uri.clone(),

@@ -4,14 +4,15 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use async_lsp::router::Router;
-use async_lsp::{ClientSocket, ErrorCode};
+use async_lsp::{ClientSocket, ErrorCode, ResponseError};
 use lsp_types::{
     CompletionContext, CompletionParams, CompletionResponse, CompletionTriggerKind,
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
-    DocumentDiagnosticReport, DocumentDiagnosticReportResult, DocumentFormattingParams,
-    FormattingOptions, PartialResultParams, Position, Range, SemanticTokensParams,
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    DiagnosticServerCancellationData, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+    DocumentFormattingParams, FormattingOptions, PartialResultParams, Position, Range,
+    SemanticTokensParams, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
     TextDocumentPositionParams, Url, VersionedTextDocumentIdentifier, WorkDoneProgressParams,
+    WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens;
 
@@ -28,14 +29,18 @@ fn make_backend() -> Backend {
     Backend::new(client, config)
 }
 
-fn make_workspace_backend() -> Backend {
+fn workspace_scope_backend_indexing_pending() -> Backend {
     let (_main_loop, client) =
         async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
     let config = Arc::new(ArcSwap::from_pointee(Config {
         diagnostics_scope: DiagnosticsScope::Workspace,
         ..Config::default()
     }));
-    let backend = Backend::new(client, config);
+    Backend::new(client, config)
+}
+
+fn make_workspace_backend() -> Backend {
+    let backend = workspace_scope_backend_indexing_pending();
     backend.initial_index_done.store(true, Ordering::Release);
     backend
 }
@@ -534,6 +539,72 @@ fn completion_reflects_queued_edit_instead_of_bailing() {
     assert!(
         labels.contains(&"DoThing".to_string()),
         "completion must resolve members from the queued dot edit, got {labels:?}",
+    );
+}
+
+fn workspace_diagnostic_params() -> WorkspaceDiagnosticParams {
+    WorkspaceDiagnosticParams {
+        identifier: None,
+        previous_result_ids: Vec::new(),
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    }
+}
+
+fn retrigger_requested(err: &ResponseError) -> bool {
+    err.data
+        .as_ref()
+        .and_then(|d| serde_json::from_value::<DiagnosticServerCancellationData>(d.clone()).ok())
+        .is_some_and(|d| d.retrigger_request)
+}
+
+#[test]
+fn document_diagnostic_cancels_until_initial_index() {
+    let backend = workspace_scope_backend_indexing_pending();
+    let uri: Url = "file:///diag_gate.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "class CGate {}\n"));
+
+    let err = backend
+        ._document_diagnostic(document_diagnostic_params(&uri))
+        .expect_err("pre-index document pull must cancel, not report against an empty base index");
+    assert_eq!(err.code, ErrorCode::SERVER_CANCELLED);
+    assert!(
+        retrigger_requested(&err),
+        "cancellation must tell the client to re-trigger once indexing completes",
+    );
+
+    backend.initial_index_done.store(true, Ordering::Release);
+    let report = backend
+        ._document_diagnostic(document_diagnostic_params(&uri))
+        .expect("post-index document pull must produce a report");
+    assert!(
+        matches!(report, DocumentDiagnosticReportResult::Report(_)),
+        "once the index is ready the pull returns a report",
+    );
+}
+
+#[test]
+fn workspace_diagnostic_cancels_until_initial_index() {
+    let backend = workspace_scope_backend_indexing_pending();
+    let uri: Url = "file:///ws_diag_gate.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "class CGate {}\n"));
+
+    let err = backend
+        ._workspace_diagnostic(workspace_diagnostic_params())
+        .expect_err("pre-index workspace pull must cancel, not report against an empty base index");
+    assert_eq!(err.code, ErrorCode::SERVER_CANCELLED);
+    assert!(
+        retrigger_requested(&err),
+        "cancellation must tell the client to re-trigger once indexing completes",
+    );
+
+    backend.initial_index_done.store(true, Ordering::Release);
+    let report = backend
+        ._workspace_diagnostic(workspace_diagnostic_params())
+        .expect("post-index workspace pull must produce a report");
+    assert!(
+        matches!(report, WorkspaceDiagnosticReportResult::Report(_)),
+        "once the index is ready the pull returns a report",
     );
 }
 

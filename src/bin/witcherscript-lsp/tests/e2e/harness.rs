@@ -6,7 +6,7 @@ use async_lsp::panic::CatchUnwindLayer;
 use async_lsp::router::Router;
 use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
-use async_lsp::{ClientSocket, MainLoop};
+use async_lsp::{ClientSocket, ErrorCode, MainLoop};
 use lsp_types::notification::{DidSaveTextDocument, Initialized};
 use lsp_types::request::{DocumentDiagnosticRequest, Initialize, Request};
 use lsp_types::{
@@ -31,6 +31,26 @@ impl Request for PanicRequest {
     type Params = Value;
     type Result = Value;
     const METHOD: &'static str = "test/panic";
+}
+
+const CANCELLATION_RETRY_LIMIT: usize = 200;
+const PULL_RETRY_LIMIT: usize = 50;
+const RETRY_BACKOFF: std::time::Duration = std::time::Duration::from_millis(5);
+
+fn error_code(err: &Value) -> Option<ErrorCode> {
+    err.get("code")
+        .and_then(|c| c.as_i64())
+        .map(|c| ErrorCode(c as i32))
+}
+
+// A ServerCancelled the client should re-trigger: retriggerRequest defaults to true when absent.
+fn is_retriggerable_cancellation(err: &Value) -> bool {
+    if error_code(err) != Some(ErrorCode::SERVER_CANCELLED) {
+        return false;
+    }
+    err.pointer("/data/retriggerRequest")
+        .and_then(|r| r.as_bool())
+        .unwrap_or(true)
 }
 
 pub(crate) struct LspClient {
@@ -155,6 +175,25 @@ impl LspClient {
         self.rpc.request::<R>(params).await
     }
 
+    // Re-triggers a ServerCancelled pull, as a real client does, until the report is ready.
+    pub(crate) async fn request_when_ready<R: Request>(&mut self, params: R::Params) -> R::Result {
+        let params = serde_json::to_value(params).expect("serialize request params");
+        for _ in 0..CANCELLATION_RETRY_LIMIT {
+            let v = self.raw_request(R::METHOD, params.clone()).await;
+            if let Some(err) = v.get("error") {
+                if !is_retriggerable_cancellation(err) {
+                    panic!("request {} returned error: {err}", R::METHOD);
+                }
+                tokio::time::sleep(RETRY_BACKOFF).await;
+                continue;
+            }
+            let result = v.get("result").cloned().unwrap_or(Value::Null);
+            return serde_json::from_value(result)
+                .unwrap_or_else(|e| panic!("decode failed for {}: {e}", R::METHOD));
+        }
+        panic!("request {} kept returning ServerCancelled", R::METHOD);
+    }
+
     pub(crate) async fn raw_request(&mut self, method: &str, params: Value) -> Value {
         self.rpc.raw_request(method, params).await
     }
@@ -164,8 +203,8 @@ impl LspClient {
     }
 
     pub(crate) async fn pull_diagnostics(&mut self, uri: &Url) -> Vec<Diagnostic> {
-        // CONTENT_MODIFIED; a real client re-pulls on this, so the harness must too.
-        const CONTENT_MODIFIED: i64 = -32801;
+        // A real client re-pulls on CONTENT_MODIFIED (mid-edit) and on a retriggerable
+        // ServerCancelled (base scripts still indexing), so the harness must too.
         let params = serde_json::to_value(DocumentDiagnosticParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
             identifier: None,
@@ -175,12 +214,16 @@ impl LspClient {
         })
         .expect("serialize diagnostic params");
 
-        for _ in 0..50 {
+        for _ in 0..PULL_RETRY_LIMIT {
             let v = self
                 .raw_request(DocumentDiagnosticRequest::METHOD, params.clone())
                 .await;
             if let Some(err) = v.get("error") {
-                if err.get("code").and_then(|c| c.as_i64()) == Some(CONTENT_MODIFIED) {
+                if error_code(err) == Some(ErrorCode::CONTENT_MODIFIED) {
+                    continue;
+                }
+                if is_retriggerable_cancellation(err) {
+                    tokio::time::sleep(RETRY_BACKOFF).await;
                     continue;
                 }
                 panic!("pull_diagnostics returned error: {err}");
@@ -200,6 +243,6 @@ impl LspClient {
                 }
             };
         }
-        panic!("pull_diagnostics kept returning CONTENT_MODIFIED");
+        panic!("pull_diagnostics kept returning a retryable error");
     }
 }
