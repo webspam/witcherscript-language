@@ -74,6 +74,12 @@ impl<'a> SymbolDb<'a> {
         }
     }
 
+    pub fn has_state_named(&self, name: &str) -> bool {
+        self.workspace.has_state_named(name)
+            || self.base.has_state_named(name)
+            || self.builtins.is_some_and(|b| b.has_state_named(name))
+    }
+
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
         self.record_enum_member(name);
         self.workspace

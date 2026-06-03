@@ -35,6 +35,12 @@ impl WorkspaceIndex {
         self.states_by_owner.get(owner)?.get(name)?.last().cloned()
     }
 
+    pub fn has_state_named(&self, name: &str) -> bool {
+        self.states_by_owner
+            .values()
+            .any(|states| states.contains_key(name))
+    }
+
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
         self.enum_member_by_name.get(name)?.last().cloned()
     }
