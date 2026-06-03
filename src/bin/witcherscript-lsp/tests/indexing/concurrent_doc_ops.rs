@@ -366,6 +366,68 @@ fn document_diagnostic_under_none_scope_returns_empty_for_open_broken_file() {
 }
 
 #[test]
+fn document_diagnostic_serves_unopened_workspace_file_under_workspace_scope() {
+    use witcherscript_language::document::parse_document;
+    use witcherscript_language::files::canonical_uri;
+
+    let backend = make_workspace_backend();
+    let uri: Url = "file:///unopened_ws.ws".parse().unwrap();
+    let document = Arc::new(parse_document("class CBroken {\n").expect("fixture parses"));
+    backend.publish_compilation(|builder| {
+        let (index, docs) = builder.workspace_index_and_docs_mut();
+        index.update_document(uri.as_str(), document.as_ref());
+        docs.insert(canonical_uri(&uri), document.clone());
+    });
+
+    let report = backend
+        ._document_diagnostic(document_diagnostic_params(&uri))
+        .expect("a workspace-scope pull for an indexed file must succeed");
+    let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) = report
+    else {
+        panic!("expected a Full report, got {report:?}");
+    };
+    assert!(
+        !full.full_document_diagnostic_report.items.is_empty(),
+        "a restored-but-unopened workspace tab must receive diagnostics from the indexed copy",
+    );
+}
+
+#[test]
+fn document_diagnostic_skips_unopened_workspace_file_under_open_files_scope() {
+    use witcherscript_language::document::parse_document;
+    use witcherscript_language::files::canonical_uri;
+
+    let (_main_loop, client) =
+        async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
+    let config = Arc::new(ArcSwap::from_pointee(Config {
+        diagnostics_scope: DiagnosticsScope::OpenFiles,
+        ..Config::default()
+    }));
+    let backend = Backend::new(client, config);
+    backend.initial_index_done.store(true, Ordering::Release);
+
+    let uri: Url = "file:///unopened_open_scope.ws".parse().unwrap();
+    let document = Arc::new(parse_document("class CBroken {\n").expect("fixture parses"));
+    backend.publish_compilation(|builder| {
+        let (index, docs) = builder.workspace_index_and_docs_mut();
+        index.update_document(uri.as_str(), document.as_ref());
+        docs.insert(canonical_uri(&uri), document.clone());
+    });
+
+    let report = backend
+        ._document_diagnostic(document_diagnostic_params(&uri))
+        .expect("open-files scope must still produce a successful response");
+    let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) = report
+    else {
+        panic!("expected a Full report, got {report:?}");
+    };
+    assert!(
+        full.full_document_diagnostic_report.items.is_empty(),
+        "open-files scope must not diagnose a workspace file that is not open",
+    );
+}
+
+#[test]
 fn document_diagnostic_unrelated_uri_unaffected_by_pending_edit_elsewhere() {
     let backend = make_workspace_backend();
     backend.edit_writer_spawned.store(true, Ordering::Release);
