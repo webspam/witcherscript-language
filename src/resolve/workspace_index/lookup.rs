@@ -42,7 +42,7 @@ impl WorkspaceIndex {
             .any(|states| states.contains_key(name))
     }
 
-    pub fn find_state_backing_class(&self, name: &str) -> Option<StateBackingClass<'_>> {
+    pub(crate) fn find_state_backing_class(&self, name: &str) -> Option<StateBackingClass<'_>> {
         let (synthetic, (owner, state)) = self.state_backing_by_name.get_key_value(name)?;
         let declaration = self.states_by_owner.get(owner)?.get(state)?.last()?;
         Some(StateBackingClass::new(synthetic, declaration))

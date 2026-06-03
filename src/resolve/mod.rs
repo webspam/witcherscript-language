@@ -45,7 +45,6 @@ pub use name_context::{classify_ident_context, NameContext};
 pub use overrides::{overridden_top_level, OverriddenSymbol};
 pub use references::find_references;
 pub use signature::{hover_text, signature_help, SignatureHelpInfo};
-pub use state_classes::StateBackingClass;
 pub use subscription_registry::SubscriptionRegistry;
 pub use symbol_db::{FilteredBaseCatalogs, SymbolDb};
 pub use type_definition::resolve_type_definition;

@@ -23,7 +23,7 @@ pub(crate) fn state_backing_class_name(owner: &str, state: &str) -> String {
 /// Borrows from the index it was looked up in; the live state `Definition`
 /// stays single-sourced in `states_by_owner`.
 #[derive(Debug, Clone, Copy)]
-pub struct StateBackingClass<'a> {
+pub(crate) struct StateBackingClass<'a> {
     name: &'a str,
     declaration: &'a Definition,
 }
@@ -33,7 +33,7 @@ impl<'a> StateBackingClass<'a> {
         Self { name, declaration }
     }
 
-    pub fn state_name(&self) -> &str {
+    pub(crate) fn state_name(&self) -> &str {
         &self.declaration.symbol.name
     }
 
