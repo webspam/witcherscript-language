@@ -38,36 +38,27 @@ impl<'a> StateBackingClass<'a> {
         }
     }
 
-    /// Synthetic class name, e.g. `OwnerStateS`.
     pub fn name(&self) -> &str {
         self.name
     }
 
-    /// Owner class the state is declared `in` - target of `parent` and the
-    /// subject of owner-exists checks.
     pub fn owner_class(&self) -> &str {
         self.owner
     }
 
-    /// The state's own short name - the key its members live under in
-    /// `member_by_type`, distinct from the synthetic class name.
     pub fn state_name(&self) -> &str {
         &self.declaration.symbol.name
     }
 
-    /// The state's explicit `extends` base, if any. `None` means the engine's
-    /// implicit `CScriptableState`, resolved by consumers rather than stored.
     pub fn base_class(&self) -> Option<&str> {
         self.declaration.symbol.base_class.as_deref()
     }
 
-    /// The state declaration this backing class derives from - the go-to
-    /// target and the source of the state's members.
     pub fn declaration(&self) -> &Definition {
         self.declaration
     }
 
-    // A known `Class` extending the state, so the normal inheritance walk yields the state's members.
+    /// Base is the state itself, so the inheritance walk reaches the state's members.
     pub(crate) fn as_class_definition(&self) -> Definition {
         let mut symbol = self.declaration.symbol.clone();
         symbol.name = self.name.to_string();
