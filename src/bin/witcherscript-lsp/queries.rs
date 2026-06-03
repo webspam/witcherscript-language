@@ -139,11 +139,6 @@ impl Backend {
             );
             return empty_full();
         }
-        if !self.initial_index_done.load(Ordering::Acquire) {
-            return Err(diagnostics_server_cancelled(
-                "base script indexing in progress",
-            ));
-        }
         let version = self.diagnostic_version.load(Ordering::Acquire);
         let whole_workspace = matches!(scope, DiagnosticsScope::Workspace);
         let result = 'body: {
@@ -207,11 +202,6 @@ impl Backend {
     ) -> Result<WorkspaceDiagnosticReportResult> {
         let started_at = Instant::now();
         trace!(op = "workspace_diagnostic", "start");
-        if !self.initial_index_done.load(Ordering::Acquire) {
-            return Err(diagnostics_server_cancelled(
-                "base script indexing in progress",
-            ));
-        }
         let version = self.diagnostic_version.load(Ordering::Acquire);
         let previous = params
             .previous_result_ids
