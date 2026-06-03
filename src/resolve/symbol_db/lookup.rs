@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
 use super::super::completion_catalog::{merge_ws_base, merge_ws_base_three};
+use super::super::state_classes::StateBackingClass;
 use super::super::{dedup_by_name, dedup_definitions, MAX_INHERITANCE_DEPTH};
 use super::generics::{generic_lookup_target, substitute_in_definition};
 use super::SymbolDb;
@@ -34,6 +35,7 @@ impl<'a> SymbolDb<'a> {
             .find_top_level(name)
             .or_else(|| self.shadowed_base().find_top_level(name))
             .or_else(|| self.builtins.and_then(|b| b.find_top_level(name)))
+            .or_else(|| self.synthetic_state_class(name))
     }
 
     pub fn find_top_level_filtered(&self, name: &str, ctx: &NameContext) -> Option<Definition> {
@@ -45,6 +47,16 @@ impl<'a> SymbolDb<'a> {
                 self.builtins
                     .and_then(|b| b.find_top_level_filtered(name, ctx))
             })
+            .or_else(|| {
+                self.synthetic_state_class(name)
+                    .filter(|d| ctx.accepts(d.symbol.kind))
+            })
+    }
+
+    // Resolvable by name yet absent from `top_level_by_name`, so it never reaches the completion catalog.
+    fn synthetic_state_class(&self, name: &str) -> Option<Definition> {
+        self.find_state_backing_class(name)
+            .map(|sbc| sbc.as_class_definition())
     }
 
     /// Find a state named `name` declared in `start_owner` or any statemachine
@@ -74,6 +86,19 @@ impl<'a> SymbolDb<'a> {
         }
     }
 
+    pub fn has_state_named(&self, name: &str) -> bool {
+        self.workspace.has_state_named(name)
+            || self.base.has_state_named(name)
+            || self.builtins.is_some_and(|b| b.has_state_named(name))
+    }
+
+    /// Workspace shadows base; builtins hold no states so they are not consulted.
+    pub fn find_state_backing_class(&self, name: &str) -> Option<StateBackingClass<'_>> {
+        self.workspace
+            .find_state_backing_class(name)
+            .or_else(|| self.base.find_state_backing_class(name))
+    }
+
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
         self.record_enum_member(name);
         self.workspace
@@ -92,6 +117,10 @@ impl<'a> SymbolDb<'a> {
             .superclass_of(class_name)
             .or_else(|| self.shadowed_base().superclass_of(class_name))
             .or_else(|| self.builtins.and_then(|b| b.superclass_of(class_name)))
+            .or_else(|| {
+                self.find_state_backing_class(class_name)
+                    .map(|sbc| sbc.state_name().to_string())
+            })
             .or_else(|| self.virtual_object_base(class_name))
     }
 

@@ -137,6 +137,9 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             ctx.telemetry.definition_resolutions += 1;
             let r = if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
                 None
+            } else if is_annotation_arg(ident) && ctx.db.has_state_named(name) {
+                // Bandaid: annotations legally target states, which we cannot yet resolve from an annotation.
+                None
             } else {
                 push(ctx, ident, "unknown_type", format!("Unknown type '{name}'"));
                 Some(())
@@ -354,6 +357,10 @@ fn resolves_as_local<'tree>(ctx: &CstRuleCtx<'_, 'tree>, ident: Node<'tree>, nam
         .symbols
         .local_at_byte(callable.id, name, byte)
         .is_some()
+}
+
+fn is_annotation_arg(ident: Node) -> bool {
+    ident.parent().is_some_and(|p| p.kind() == "annotation")
 }
 
 fn is_inside_wrap_method<'tree>(ident: Node<'tree>, ctx: &CstRuleCtx<'_, 'tree>) -> bool {

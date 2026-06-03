@@ -144,6 +144,21 @@ fn kinds(diags: &[super::WorkspaceDiagnostic]) -> Vec<&str> {
      function BaseState() {} \
      function F() { BaseState(); }\n"
 )]
+#[case::add_method_on_state_not_flagged(
+    "statemachine class C {} \
+     state Sleep in C {} \
+     @addMethod(Sleep) function Extra() {}\n"
+)]
+#[case::wrap_method_on_state_not_flagged(
+    "statemachine class C {} \
+     state Sleep in C {} \
+     @wrapMethod(Sleep) function Extra() {}\n"
+)]
+#[case::synthetic_state_class_in_annotation(
+    "statemachine class C {} \
+     state Sleep in C {} \
+     function F() { var s : CStateSleep; }\n"
+)]
 fn produces_no_diagnostics(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     let result = collect_unknown_symbol_diagnostics(&t.search_docs(), &t.db());

@@ -1,5 +1,6 @@
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
+use super::super::state_classes::StateBackingClass;
 use super::super::NameContext;
 use super::{Definition, WorkspaceIndex};
 
@@ -33,6 +34,27 @@ impl WorkspaceIndex {
 
     pub fn find_state_in_owner(&self, owner: &str, name: &str) -> Option<Definition> {
         self.states_by_owner.get(owner)?.get(name)?.last().cloned()
+    }
+
+    pub fn has_state_named(&self, name: &str) -> bool {
+        self.states_by_owner
+            .values()
+            .any(|states| states.contains_key(name))
+    }
+
+    pub fn find_state_backing_class(&self, name: &str) -> Option<StateBackingClass<'_>> {
+        let (synthetic, (owner, state)) = self.state_backing_by_name.get_key_value(name)?;
+        let declaration = self.states_by_owner.get(owner)?.get(state)?.last()?;
+        Some(StateBackingClass::new(synthetic, owner, declaration))
+    }
+
+    pub fn state_backing_classes(&self) -> impl Iterator<Item = StateBackingClass<'_>> {
+        self.state_backing_by_name
+            .iter()
+            .filter_map(|(synthetic, (owner, state))| {
+                let declaration = self.states_by_owner.get(owner)?.get(state)?.last()?;
+                Some(StateBackingClass::new(synthetic, owner, declaration))
+            })
     }
 
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
