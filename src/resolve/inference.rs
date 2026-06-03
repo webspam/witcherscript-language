@@ -234,11 +234,7 @@ pub(super) fn resolve_name_in_context(
 ) -> Option<Definition> {
     match ctx {
         NameContext::Type => resolve_document_top_level_filtered(uri, document, name, ctx)
-            .or_else(|| db.find_top_level_filtered(name, ctx))
-            .or_else(|| {
-                db.find_state_backing_class(name)
-                    .map(|sbc| sbc.declaration().clone())
-            }),
+            .or_else(|| db.find_top_level_filtered(name, ctx)),
         NameContext::StateExtends { owner_class } => {
             db.find_state_in_owner_chain(owner_class, name)
         }

@@ -35,6 +35,7 @@ impl<'a> SymbolDb<'a> {
             .find_top_level(name)
             .or_else(|| self.shadowed_base().find_top_level(name))
             .or_else(|| self.builtins.and_then(|b| b.find_top_level(name)))
+            .or_else(|| self.synthetic_state_class(name))
     }
 
     pub fn find_top_level_filtered(&self, name: &str, ctx: &NameContext) -> Option<Definition> {
@@ -46,6 +47,16 @@ impl<'a> SymbolDb<'a> {
                 self.builtins
                     .and_then(|b| b.find_top_level_filtered(name, ctx))
             })
+            .or_else(|| {
+                self.synthetic_state_class(name)
+                    .filter(|d| ctx.accepts(d.symbol.kind))
+            })
+    }
+
+    // Resolvable by name yet absent from `top_level_by_name`, so it never reaches the completion catalog.
+    fn synthetic_state_class(&self, name: &str) -> Option<Definition> {
+        self.find_state_backing_class(name)
+            .map(|sbc| sbc.as_class_definition())
     }
 
     /// Find a state named `name` declared in `start_owner` or any statemachine
@@ -106,6 +117,10 @@ impl<'a> SymbolDb<'a> {
             .superclass_of(class_name)
             .or_else(|| self.shadowed_base().superclass_of(class_name))
             .or_else(|| self.builtins.and_then(|b| b.superclass_of(class_name)))
+            .or_else(|| {
+                self.find_state_backing_class(class_name)
+                    .map(|sbc| sbc.state_name().to_string())
+            })
             .or_else(|| self.virtual_object_base(class_name))
     }
 
@@ -271,18 +286,11 @@ impl<'a> SymbolDb<'a> {
         dedup_definitions(decls)
     }
 
-    // A synthetic state class (`OwnerStateS`) walks under the state's own name: same members and base.
-    fn canonical_walk_start(&self, name: &str) -> String {
-        self.find_state_backing_class(name)
-            .map(|sbc| sbc.state_name().to_string())
-            .unwrap_or_else(|| name.to_string())
-    }
-
     fn try_in_chain<T, F>(&self, start: &str, mut visit: F) -> Option<T>
     where
         F: FnMut(&str, usize) -> Option<T>,
     {
-        let mut current: String = self.canonical_walk_start(start);
+        let mut current: String = start.to_string();
         let mut depth: usize = 0;
         loop {
             if depth > MAX_INHERITANCE_DEPTH {

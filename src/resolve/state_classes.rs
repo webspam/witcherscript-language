@@ -6,6 +6,8 @@
 //! state's members, and `parent` inside it refers to `Owner`. This module names
 //! that class and exposes a lightweight view over the state it derives from.
 
+use crate::symbols::SymbolKind;
+
 use super::Definition;
 
 /// Engine-synthesised backing class name for `state {state} in {owner}`.
@@ -63,5 +65,19 @@ impl<'a> StateBackingClass<'a> {
     /// target and the source of the state's members.
     pub fn declaration(&self) -> &Definition {
         self.declaration
+    }
+
+    // A known `Class` extending the state, so the normal inheritance walk yields the state's members.
+    pub(crate) fn as_class_definition(&self) -> Definition {
+        let mut symbol = self.declaration.symbol.clone();
+        symbol.name = self.name.to_string();
+        symbol.kind = SymbolKind::Class;
+        symbol.base_class = Some(self.declaration.symbol.name.clone());
+        symbol.owner_class = None;
+        symbol.annotations = Vec::new();
+        Definition {
+            uri: self.declaration.uri.clone(),
+            symbol,
+        }
     }
 }

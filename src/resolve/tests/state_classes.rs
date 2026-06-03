@@ -101,15 +101,36 @@ fn symbol_db_prefers_workspace_then_falls_back_to_base() {
 }
 
 #[test]
-fn synthetic_type_name_resolves_to_state_declaration() {
+fn synthetic_class_resolves_by_name_but_stays_out_of_type_completions() {
+    let workspace = index("file:///a.ws", "statemachine class C {}\nstate Sleep in C {}\n");
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&workspace, &base);
+
+    assert!(
+        db.find_top_level("CStateSleep").is_some(),
+        "resolvable by name"
+    );
+    assert!(
+        db.all_types().iter().all(|d| d.symbol.name != "CStateSleep"),
+        "synthetic class must not appear in the type-completion catalog"
+    );
+}
+
+#[test]
+fn synthetic_type_name_resolves_as_class_extending_the_state() {
     let t = TestDb::new(
         "statemachine class C {}\nstate Sleep in C {}\nfunction F() { var s : $0CStateSleep; }\n",
     );
     let (uri, pos) = t.cursor();
     let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
-        .expect("CStateSleep resolves to its state");
-    assert_eq!(def.symbol.kind, SymbolKind::State);
-    assert_eq!(def.symbol.name, "Sleep");
+        .expect("CStateSleep resolves as a known type");
+    assert_eq!(def.symbol.kind, SymbolKind::Class);
+    assert_eq!(def.symbol.name, "CStateSleep");
+    assert_eq!(
+        def.symbol.base_class.as_deref(),
+        Some("Sleep"),
+        "the backing class extends its state"
+    );
 }
 
 #[test]
