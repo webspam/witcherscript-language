@@ -26,7 +26,7 @@ use witcherscript_language::resolve::{
 use witcherscript_language::semantic_tokens::collect_semantic_tokens_cancellable;
 use witcherscript_language::symbols::{Symbol, SymbolKind};
 
-use crate::backend::Backend;
+use crate::backend::{diagnostics_document_for, Backend};
 use crate::convert::{
     base_script_conflict_code_actions, document_symbols, hover_markdown, lsp_range,
     signature_help_response, source_position,
@@ -116,7 +116,8 @@ impl Backend {
                 }),
             ))
         };
-        if matches!(self.config.load().diagnostics_scope, DiagnosticsScope::None) {
+        let scope = self.config.load().diagnostics_scope;
+        if matches!(scope, DiagnosticsScope::None) {
             trace!(
                 op = "document_diagnostic",
                 uri = %uri,
@@ -127,10 +128,16 @@ impl Backend {
             return empty_full();
         }
         let version = self.diagnostic_version.load(Ordering::Acquire);
+        let whole_workspace = matches!(scope, DiagnosticsScope::Workspace);
         let result = 'body: {
             let computed = {
                 let snap = self.snapshot();
-                let Some(document) = snap.documents.get(&uri).cloned() else {
+                let Some(document) = diagnostics_document_for(
+                    &snap.workspace_documents,
+                    &snap.documents,
+                    &uri,
+                    whole_workspace,
+                ) else {
                     break 'body empty_full();
                 };
                 let target = self.pending_target_for(&uri).unwrap_or(0);

@@ -62,6 +62,22 @@ pub(crate) fn diagnostics_document_set<'a>(
     merged
 }
 
+// Single-URI form of `diagnostics_document_set`; the index fallback is what lets a restored-but-unopened tab get diagnostics.
+pub(crate) fn diagnostics_document_for(
+    workspace_docs: &HashMap<String, Arc<ParsedDocument>>,
+    open_documents: &HashMap<Url, Arc<ParsedDocument>>,
+    uri: &Url,
+    whole_workspace: bool,
+) -> Option<Arc<ParsedDocument>> {
+    if let Some(doc) = open_documents.get(uri) {
+        return Some(doc.clone());
+    }
+    if whole_workspace {
+        return workspace_docs.get(&canonical_uri(uri)).cloned();
+    }
+    None
+}
+
 pub(crate) fn builtin_source_response(uri: &str) -> Result<Value> {
     if uri.is_empty() {
         return Err(ResponseError::new(
