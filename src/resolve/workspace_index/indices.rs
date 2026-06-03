@@ -6,6 +6,7 @@ use crate::symbols::{Symbol, SymbolKind};
 
 use super::super::annotation_target_class;
 use super::super::ast::is_type_like;
+use super::super::state_classes::state_backing_class_name;
 use super::{Definition, WorkspaceIndex};
 
 fn retain_and_prune<K, V, Q>(
@@ -60,6 +61,14 @@ impl WorkspaceIndex {
                         retain_and_prune_nested(&mut self.states_by_owner, owner, &sym.name, |d| {
                             d.uri != uri
                         });
+                        let still_declared = self
+                            .states_by_owner
+                            .get(owner)
+                            .is_some_and(|states| states.contains_key(&sym.name));
+                        if !still_declared {
+                            self.state_backing_by_name
+                                .remove(&state_backing_class_name(owner, &sym.name));
+                        }
                     }
                 }
                 if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field) {
@@ -110,6 +119,9 @@ impl WorkspaceIndex {
                                 uri: uri.to_string(),
                                 symbol: sym.clone(),
                             });
+                        self.state_backing_by_name
+                            .entry(state_backing_class_name(owner, &sym.name))
+                            .or_insert_with(|| (owner.clone(), sym.name.clone()));
                     }
                 }
                 if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field) {

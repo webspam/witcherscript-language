@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
 use super::super::completion_catalog::{merge_ws_base, merge_ws_base_three};
+use super::super::state_classes::StateBackingClass;
 use super::super::{dedup_by_name, dedup_definitions, MAX_INHERITANCE_DEPTH};
 use super::generics::{generic_lookup_target, substitute_in_definition};
 use super::SymbolDb;
@@ -78,6 +79,13 @@ impl<'a> SymbolDb<'a> {
         self.workspace.has_state_named(name)
             || self.base.has_state_named(name)
             || self.builtins.is_some_and(|b| b.has_state_named(name))
+    }
+
+    /// Workspace shadows base; builtins hold no states so they are not consulted.
+    pub fn find_state_backing_class(&self, name: &str) -> Option<StateBackingClass<'_>> {
+        self.workspace
+            .find_state_backing_class(name)
+            .or_else(|| self.base.find_state_backing_class(name))
     }
 
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
