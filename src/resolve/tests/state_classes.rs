@@ -102,7 +102,10 @@ fn symbol_db_prefers_workspace_then_falls_back_to_base() {
 
 #[test]
 fn synthetic_class_resolves_by_name_but_stays_out_of_type_completions() {
-    let workspace = index("file:///a.ws", "statemachine class C {}\nstate Sleep in C {}\n");
+    let workspace = index(
+        "file:///a.ws",
+        "statemachine class C {}\nstate Sleep in C {}\n",
+    );
     let base = WorkspaceIndex::default();
     let db = SymbolDb::new(&workspace, &base);
 
@@ -111,7 +114,9 @@ fn synthetic_class_resolves_by_name_but_stays_out_of_type_completions() {
         "resolvable by name"
     );
     assert!(
-        db.all_types().iter().all(|d| d.symbol.name != "CStateSleep"),
+        db.all_types()
+            .iter()
+            .all(|d| d.symbol.name != "CStateSleep"),
         "synthetic class must not appear in the type-completion catalog"
     );
 }
