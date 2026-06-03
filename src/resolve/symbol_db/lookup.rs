@@ -87,9 +87,7 @@ impl<'a> SymbolDb<'a> {
     }
 
     pub fn has_state_named(&self, name: &str) -> bool {
-        self.workspace.has_state_named(name)
-            || self.base.has_state_named(name)
-            || self.builtins.is_some_and(|b| b.has_state_named(name))
+        self.workspace.has_state_named(name) || self.base.has_state_named(name)
     }
 
     /// Workspace shadows base; builtins hold no states so they are not consulted.
