@@ -14,6 +14,7 @@ class CGUID {}
 class CGuiManager {}
 class CLayer {}
 class CMeshComponent extends CDrawableComponent {}
+class CStaticMeshComponent extends CMeshComponent {}
 class CMeshTypeComponent extends CMeshComponent {}
 class CMoveSteeringBehavior {}
 class CPhysicalCollision {}

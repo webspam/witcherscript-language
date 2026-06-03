@@ -14,7 +14,6 @@ class CR4PlayerStateSwimming extends Swimming {}
 class CR4PlayerStateUnconscious extends Unconscious {}
 class CR4PlayerStateUseGenericVehicle extends UseGenericVehicle {}
 class CRiftEntityStateOpened extends Opened {}
-class CStaticMeshComponent extends CMeshComponent {}
 class W3BoatSpawnerStateSpawnBoatLatentHack extends SpawnBoatLatentHack {}
 class W3PlayerWitcherStateApproachInteractionState extends ApproachInteractionState {}
 class W3PlayerWitcherStateCombatFists extends CombatFists {}
