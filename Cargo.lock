@@ -1725,7 +1725,7 @@ dependencies = [
 
 [[package]]
 name = "witcherscript-language"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "arc-swap",
  "async-lsp",
