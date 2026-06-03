@@ -155,6 +155,26 @@ impl LspClient {
         self.rpc.request::<R>(params).await
     }
 
+    // Retries on ServerCancelled/retriggerRequest, returned while base scripts are still indexing.
+    pub(crate) async fn request_when_ready<R: Request>(&mut self, params: R::Params) -> R::Result {
+        const SERVER_CANCELLED: i64 = -32802;
+        let params = serde_json::to_value(params).expect("serialize request params");
+        for _ in 0..200 {
+            let v = self.raw_request(R::METHOD, params.clone()).await;
+            if let Some(err) = v.get("error") {
+                if err.get("code").and_then(|c| c.as_i64()) == Some(SERVER_CANCELLED) {
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                    continue;
+                }
+                panic!("request {} returned error: {err}", R::METHOD);
+            }
+            let result = v.get("result").cloned().unwrap_or(Value::Null);
+            return serde_json::from_value(result)
+                .unwrap_or_else(|e| panic!("decode failed for {}: {e}", R::METHOD));
+        }
+        panic!("request {} kept returning ServerCancelled", R::METHOD);
+    }
+
     pub(crate) async fn raw_request(&mut self, method: &str, params: Value) -> Value {
         self.rpc.raw_request(method, params).await
     }
@@ -164,8 +184,10 @@ impl LspClient {
     }
 
     pub(crate) async fn pull_diagnostics(&mut self, uri: &Url) -> Vec<Diagnostic> {
-        // CONTENT_MODIFIED; a real client re-pulls on this, so the harness must too.
+        // A real client re-pulls on both, so the harness must too: CONTENT_MODIFIED (mid-edit)
+        // and SERVER_CANCELLED/retriggerRequest (base scripts still indexing).
         const CONTENT_MODIFIED: i64 = -32801;
+        const SERVER_CANCELLED: i64 = -32802;
         let params = serde_json::to_value(DocumentDiagnosticParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
             identifier: None,
@@ -180,7 +202,12 @@ impl LspClient {
                 .raw_request(DocumentDiagnosticRequest::METHOD, params.clone())
                 .await;
             if let Some(err) = v.get("error") {
-                if err.get("code").and_then(|c| c.as_i64()) == Some(CONTENT_MODIFIED) {
+                let code = err.get("code").and_then(|c| c.as_i64());
+                if code == Some(CONTENT_MODIFIED) {
+                    continue;
+                }
+                if code == Some(SERVER_CANCELLED) {
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
                     continue;
                 }
                 panic!("pull_diagnostics returned error: {err}");
@@ -200,6 +227,6 @@ impl LspClient {
                 }
             };
         }
-        panic!("pull_diagnostics kept returning CONTENT_MODIFIED");
+        panic!("pull_diagnostics kept returning a retryable error");
     }
 }

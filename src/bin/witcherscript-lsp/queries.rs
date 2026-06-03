@@ -97,6 +97,18 @@ fn reference_lens(symbol: &Symbol, uri: &Url) -> CodeLens {
     }
 }
 
+// LSP's "can't compute yet" signal; retrigger_request asks the client to re-pull once ready.
+fn diagnostics_server_cancelled(message: &str) -> ResponseError {
+    ResponseError::new_with_data(
+        ErrorCode::SERVER_CANCELLED,
+        message,
+        serde_json::to_value(DiagnosticServerCancellationData {
+            retrigger_request: true,
+        })
+        .expect("DiagnosticServerCancellationData serializes"),
+    )
+}
+
 impl Backend {
     pub(crate) fn _document_diagnostic(
         &self,
@@ -126,6 +138,11 @@ impl Backend {
                 "complete",
             );
             return empty_full();
+        }
+        if !self.initial_index_done.load(Ordering::Acquire) {
+            return Err(diagnostics_server_cancelled(
+                "base script indexing in progress",
+            ));
         }
         let version = self.diagnostic_version.load(Ordering::Acquire);
         let whole_workspace = matches!(scope, DiagnosticsScope::Workspace);
@@ -190,6 +207,11 @@ impl Backend {
     ) -> Result<WorkspaceDiagnosticReportResult> {
         let started_at = Instant::now();
         trace!(op = "workspace_diagnostic", "start");
+        if !self.initial_index_done.load(Ordering::Acquire) {
+            return Err(diagnostics_server_cancelled(
+                "base script indexing in progress",
+            ));
+        }
         let version = self.diagnostic_version.load(Ordering::Acquire);
         let previous = params
             .previous_result_ids
@@ -203,13 +225,8 @@ impl Backend {
             .collect();
         let result = match self.compute_workspace_diagnostic_report(previous, version) {
             Some(report) => Ok(WorkspaceDiagnosticReportResult::Report(report)),
-            None => Err(ResponseError::new_with_data(
-                ErrorCode::SERVER_CANCELLED,
+            None => Err(diagnostics_server_cancelled(
                 "workspace state changed while computing diagnostics",
-                serde_json::to_value(DiagnosticServerCancellationData {
-                    retrigger_request: true,
-                })
-                .expect("DiagnosticServerCancellationData serializes"),
             )),
         };
         trace!(
