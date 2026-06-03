@@ -25,37 +25,16 @@ pub(crate) fn state_backing_class_name(owner: &str, state: &str) -> String {
 #[derive(Debug, Clone, Copy)]
 pub struct StateBackingClass<'a> {
     name: &'a str,
-    owner: &'a str,
     declaration: &'a Definition,
 }
 
 impl<'a> StateBackingClass<'a> {
-    pub(crate) fn new(name: &'a str, owner: &'a str, declaration: &'a Definition) -> Self {
-        Self {
-            name,
-            owner,
-            declaration,
-        }
-    }
-
-    pub fn name(&self) -> &str {
-        self.name
-    }
-
-    pub fn owner_class(&self) -> &str {
-        self.owner
+    pub(crate) fn new(name: &'a str, declaration: &'a Definition) -> Self {
+        Self { name, declaration }
     }
 
     pub fn state_name(&self) -> &str {
         &self.declaration.symbol.name
-    }
-
-    pub fn base_class(&self) -> Option<&str> {
-        self.declaration.symbol.base_class.as_deref()
-    }
-
-    pub fn declaration(&self) -> &Definition {
-        self.declaration
     }
 
     /// Base is the state itself, so the inheritance walk reaches the state's members.

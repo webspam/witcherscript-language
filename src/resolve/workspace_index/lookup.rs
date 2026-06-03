@@ -45,16 +45,7 @@ impl WorkspaceIndex {
     pub fn find_state_backing_class(&self, name: &str) -> Option<StateBackingClass<'_>> {
         let (synthetic, (owner, state)) = self.state_backing_by_name.get_key_value(name)?;
         let declaration = self.states_by_owner.get(owner)?.get(state)?.last()?;
-        Some(StateBackingClass::new(synthetic, owner, declaration))
-    }
-
-    pub fn state_backing_classes(&self) -> impl Iterator<Item = StateBackingClass<'_>> {
-        self.state_backing_by_name
-            .iter()
-            .filter_map(|(synthetic, (owner, state))| {
-                let declaration = self.states_by_owner.get(owner)?.get(state)?.last()?;
-                Some(StateBackingClass::new(synthetic, owner, declaration))
-            })
+        Some(StateBackingClass::new(synthetic, declaration))
     }
 
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
