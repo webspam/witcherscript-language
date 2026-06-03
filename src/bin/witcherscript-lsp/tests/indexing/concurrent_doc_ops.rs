@@ -29,14 +29,18 @@ fn make_backend() -> Backend {
     Backend::new(client, config)
 }
 
-fn make_workspace_backend() -> Backend {
+fn workspace_scope_backend_indexing_pending() -> Backend {
     let (_main_loop, client) =
         async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
     let config = Arc::new(ArcSwap::from_pointee(Config {
         diagnostics_scope: DiagnosticsScope::Workspace,
         ..Config::default()
     }));
-    let backend = Backend::new(client, config);
+    Backend::new(client, config)
+}
+
+fn make_workspace_backend() -> Backend {
+    let backend = workspace_scope_backend_indexing_pending();
     backend.initial_index_done.store(true, Ordering::Release);
     backend
 }
@@ -536,16 +540,6 @@ fn completion_reflects_queued_edit_instead_of_bailing() {
         labels.contains(&"DoThing".to_string()),
         "completion must resolve members from the queued dot edit, got {labels:?}",
     );
-}
-
-fn workspace_scope_backend_indexing_pending() -> Backend {
-    let (_main_loop, client) =
-        async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-    let config = Arc::new(ArcSwap::from_pointee(Config {
-        diagnostics_scope: DiagnosticsScope::Workspace,
-        ..Config::default()
-    }));
-    Backend::new(client, config)
 }
 
 fn workspace_diagnostic_params() -> WorkspaceDiagnosticParams {
