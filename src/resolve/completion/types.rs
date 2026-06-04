@@ -199,12 +199,41 @@ pub fn override_completions(
         (prev, true)
     };
 
-    let (class_name, body) = class_override_target(anchor, &document.source)?;
+    let (methods, body) = match override_target(anchor, byte_offset, &document.source)? {
+        OverrideTarget::ClassMethods { class, body } => (direct_methods_of_class(class, db)?, body),
+        OverrideTarget::GlobalFunctions => (db.all_top_level_callables(), OverrideBody::Replace),
+    };
     Some(OverrideCompletion {
-        methods: direct_methods_of_class(class_name, db)?,
+        methods,
         needs_function_keyword,
         body,
     })
+}
+
+enum OverrideTarget<'a> {
+    ClassMethods { class: &'a str, body: OverrideBody },
+    GlobalFunctions,
+}
+
+fn override_target<'a>(
+    anchor: Node,
+    byte_offset: usize,
+    source: &'a str,
+) -> Option<OverrideTarget<'a>> {
+    if anchor.kind() == ")" {
+        let (class, body) = class_override_target(anchor, source)?;
+        return Some(OverrideTarget::ClassMethods { class, body });
+    }
+    // `@replaceMethod` without `()` replaces a global; cursor past it (whitespace) rules out still typing the annotation.
+    if is_replace_method_ident(anchor, source) && byte_offset > anchor.end_byte() {
+        return Some(OverrideTarget::GlobalFunctions);
+    }
+    None
+}
+
+fn is_replace_method_ident(node: Node, source: &str) -> bool {
+    node.kind() == "annotation_ident"
+        && &source[node.start_byte()..node.end_byte()] == "@replaceMethod"
 }
 
 fn direct_methods_of_class(class_name: &str, db: &SymbolDb) -> Option<Vec<Definition>> {

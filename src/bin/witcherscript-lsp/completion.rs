@@ -15,6 +15,7 @@ use witcherscript_language::resolve::{
     statement_completions, type_completions_arc, Definition, OverrideBody, SymbolDb,
     BUILTIN_TYPE_COMPLETIONS,
 };
+use witcherscript_language::symbols::SymbolKind;
 
 use crate::backend::Backend;
 use crate::convert::{
@@ -154,9 +155,13 @@ impl Backend {
                         } else {
                             snippet
                         };
+                        let item_kind = match def.symbol.kind {
+                            SymbolKind::Function => CompletionItemKind::FUNCTION,
+                            _ => CompletionItemKind::METHOD,
+                        };
                         CompletionItem {
                             label: def.symbol.name.clone(),
-                            kind: Some(CompletionItemKind::METHOD),
+                            kind: Some(item_kind),
                             detail: def.symbol.signature.clone(),
                             insert_text: Some(insert_text),
                             insert_text_format: Some(InsertTextFormat::SNIPPET),
