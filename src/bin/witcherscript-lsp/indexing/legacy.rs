@@ -134,6 +134,7 @@ impl Backend {
         });
         *self.legacy_replacements.lock() = replacements;
         self.rebuild_filtered_base_catalogs();
+        self.request_semantic_tokens_refresh();
         self.request_code_lens_refresh();
     }
 

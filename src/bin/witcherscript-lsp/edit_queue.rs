@@ -69,6 +69,7 @@ impl Backend {
             trace!(op = "enqueue_edit", uri = %uri, path = "sync", target_parse_version, "enter");
             self.process_pending_edit(uri, edit);
             self.notify_diagnostics_changed();
+            self.request_semantic_tokens_refresh();
             self.request_code_lens_refresh();
             return;
         }
@@ -139,6 +140,7 @@ impl Backend {
                 })
                 .await;
                 self.request_workspace_diagnostic_refresh();
+                self.request_semantic_tokens_refresh();
                 self.request_code_lens_refresh();
             }
         }

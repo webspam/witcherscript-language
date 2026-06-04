@@ -8,7 +8,9 @@ use std::time::Duration;
 use arc_swap::ArcSwap;
 use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
 use futures::future::BoxFuture;
-use lsp_types::request::{CodeLensRefresh, WorkspaceDiagnosticRefresh};
+use lsp_types::request::{
+    CodeLensRefresh, Request as LspRequest, SemanticTokensRefresh, WorkspaceDiagnosticRefresh,
+};
 use lsp_types::{
     CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, CompletionParams,
     CompletionResponse, DidChangeConfigurationParams, DidChangeTextDocumentParams,
@@ -127,6 +129,7 @@ pub(crate) struct Backend {
     pub(crate) diagnostic_version: Arc<AtomicU64>,
     pub(crate) client_supports_pull_diagnostics: Arc<AtomicBool>,
     pub(crate) client_supports_code_lens_refresh: Arc<AtomicBool>,
+    pub(crate) client_supports_semantic_tokens_refresh: Arc<AtomicBool>,
     pub(crate) refresh_pending: Arc<AtomicBool>,
     pub(crate) pending_edits: Arc<Mutex<HashMap<Url, PendingEdit>>>,
     pub(crate) edit_notify: Arc<tokio::sync::Notify>,
@@ -218,6 +221,7 @@ impl Backend {
             diagnostic_version: Arc::new(AtomicU64::new(0)),
             client_supports_pull_diagnostics: Arc::new(AtomicBool::new(false)),
             client_supports_code_lens_refresh: Arc::new(AtomicBool::new(false)),
+            client_supports_semantic_tokens_refresh: Arc::new(AtomicBool::new(false)),
             refresh_pending: Arc::new(AtomicBool::new(false)),
             pending_edits: Arc::new(Mutex::new(HashMap::new())),
             edit_notify: Arc::new(tokio::sync::Notify::new()),
@@ -464,7 +468,7 @@ impl Backend {
             tokio::time::sleep(REFRESH_COALESCE_WINDOW).await;
             let started_at = std::time::Instant::now();
             trace!(op = "workspace_diagnostic_refresh", "start");
-            let _ = client.request::<WorkspaceDiagnosticRefresh>(()).await;
+            Self::send_refresh::<WorkspaceDiagnosticRefresh>(&client).await;
             pending.store(false, Ordering::Release);
             trace!(
                 op = "workspace_diagnostic_refresh",
@@ -479,27 +483,53 @@ impl Backend {
         self.request_workspace_diagnostic_refresh();
     }
 
-    // Ask the client to re-pull code lenses for open editors (e.g. after the feature is toggled).
-    pub(crate) fn request_code_lens_refresh(&self) {
-        if !self
-            .client_supports_code_lens_refresh
-            .load(Ordering::Acquire)
-        {
-            trace!(
-                op = "code_lens_refresh",
-                reason = "client_unsupported",
-                "skip"
-            );
+    async fn send_refresh<R: LspRequest<Params = ()>>(client: &ClientSocket)
+    where
+        R::Result: Send,
+    {
+        // A refresh is a best-effort nudge to re-pull; if the client declines there is nothing to do, so drop the Err.
+        let _ = client.request::<R>(()).await;
+    }
+
+    fn request_refresh<R: LspRequest<Params = ()>>(
+        &self,
+        supported: &AtomicBool,
+        op: &'static str,
+        label: &'static str,
+    ) where
+        R::Result: Send,
+    {
+        if !supported.load(Ordering::Acquire) {
+            trace!(op, reason = "client_unsupported", "skip");
             return;
         }
+        // Reached only from synchronous tests that drive handlers off-runtime; spawn_logged would panic.
         if tokio::runtime::Handle::try_current().is_err() {
             return;
         }
         let client = self.client.clone();
-        crate::spawn_logged("workspace/codeLens/refresh", async move {
-            trace!(op = "code_lens_refresh", "send");
-            let _ = client.request::<CodeLensRefresh>(()).await;
+        crate::spawn_logged(label, async move {
+            trace!(op, "send");
+            Self::send_refresh::<R>(&client).await;
         });
+    }
+
+    // The first request races ahead of indexing, resolving idents against an empty index; re-pull now.
+    pub(crate) fn request_semantic_tokens_refresh(&self) {
+        self.request_refresh::<SemanticTokensRefresh>(
+            &self.client_supports_semantic_tokens_refresh,
+            "semantic_tokens_refresh",
+            "workspace/semanticTokens/refresh",
+        );
+    }
+
+    // Ask the client to re-pull code lenses for open editors (e.g. after the feature is toggled).
+    pub(crate) fn request_code_lens_refresh(&self) {
+        self.request_refresh::<CodeLensRefresh>(
+            &self.client_supports_code_lens_refresh,
+            "code_lens_refresh",
+            "workspace/codeLens/refresh",
+        );
     }
 
     // Offload to a blocking thread so the single async-lsp run task is not frozen by CPU-bound compute.
