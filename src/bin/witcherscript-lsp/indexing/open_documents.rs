@@ -104,8 +104,8 @@ impl Backend {
         );
     }
 
-    // Closing a non-loose file reverts it from buffer to on-disk content in the workspace/base index.
-    pub(crate) fn reindex_closed_file(&self, uri: &Url) {
+    // When an edited buffer is closed, any unsaved changes need to be reverted to the on-disk content.
+    pub(crate) fn reindex_closed_file(&self, uri: &Url, prior_source: Option<&str>) -> bool {
         let started_at = Instant::now();
         debug!(
             op = "reindex_closed_file",
@@ -114,11 +114,9 @@ impl Backend {
         );
         let canonical = canonical_uri(uri);
         let is_base = self.is_base_script_uri(uri);
-        let parsed = match uri.to_file_path() {
+        let disk_text = match uri.to_file_path() {
             Ok(path) => match read_text_file(&path) {
-                Ok(text) => parse_document(text)
-                    .map_err(|e| warn!(uri = %uri, error = %e, "failed to parse closed file"))
-                    .ok(),
+                Ok(text) => Some(text),
                 Err(e) => {
                     warn!(uri = %uri, error = %e, "failed to read closed file");
                     None
@@ -128,6 +126,20 @@ impl Backend {
                 warn!(uri = %uri, "closed file URI is not a file path");
                 None
             }
+        };
+
+        if let (Some(prior), Some(disk)) = (prior_source, disk_text.as_deref()) {
+            if prior == disk {
+                debug!(op = "reindex_closed_file", uri = %uri, "unedited buffer; skipped reindex");
+                return false;
+            }
+        }
+
+        let parsed = match disk_text {
+            Some(text) => parse_document(text)
+                .map_err(|e| warn!(uri = %uri, error = %e, "failed to parse closed file"))
+                .ok(),
+            None => None,
         };
 
         let mut changed: Vec<ObservedKey> = Vec::new();
@@ -152,6 +164,7 @@ impl Backend {
             elapsed_us = started_at.elapsed().as_micros(),
             "complete",
         );
+        true
     }
 
     pub(crate) fn update_open_document(&self, uri: Url, text: String) -> bool {

@@ -163,6 +163,47 @@ async fn opening_unchanged_indexed_file_reuses_parse_and_skips_diagnostic_refres
 }
 
 #[tokio::test]
+async fn closing_unchanged_file_skips_diagnostic_refresh() {
+    let temp = LocalTempDir::new("ws_close_unchanged_no_refresh");
+    let text = "class CExample {\n  function Foo() {}\n}\n";
+    let path = write_script(temp.path(), "Example.ws", text);
+    let url = Url::from_file_path(&path).expect("path -> url");
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+    backend.update_open_document(url.clone(), text.to_string());
+
+    let version_before = backend.diagnostic_version.load(Ordering::Acquire);
+    backend._did_close(close_params(&url));
+
+    assert_eq!(
+        backend.diagnostic_version.load(Ordering::Acquire),
+        version_before,
+        "closing a byte-identical file must not bump diagnostic_version",
+    );
+}
+
+#[tokio::test]
+async fn closing_edited_file_bumps_diagnostic_version() {
+    let temp = LocalTempDir::new("ws_close_edited_refresh");
+    let path = write_script(temp.path(), "Good.ws", "class CGood {}\n");
+    let url = Url::from_file_path(&path).expect("path -> url");
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+    backend.update_open_document(url.clone(), "class CGood {\n".to_string());
+
+    let version_before = backend.diagnostic_version.load(Ordering::Acquire);
+    backend._did_close(close_params(&url));
+
+    assert_ne!(
+        backend.diagnostic_version.load(Ordering::Acquire),
+        version_before,
+        "closing an edited file reverts the index to disk and must bump diagnostic_version",
+    );
+}
+
+#[tokio::test]
 async fn body_only_reindex_keeps_subscriber_cache_entries() {
     let temp = LocalTempDir::new("ws_body_reindex_keeps_subscribers");
     write_script(
