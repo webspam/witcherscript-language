@@ -1,38 +1,41 @@
+use expect_test::expect;
+
 use super::{fmt, fmt_limit};
 
 #[test]
 fn long_call_stmt_splits_args() {
     let src =
         "function F() { SetupEnemiesCollection(enemyCollectionDist, findMoveTargetDist, 10); }";
-    let out = fmt_limit(src, 60);
-    assert!(
-        out.contains("SetupEnemiesCollection(\n"),
-        "long call should split, got:\n{out}"
-    );
-    assert!(out.contains("enemyCollectionDist,\n"), "got:\n{out}");
-    assert!(out.contains("findMoveTargetDist,\n"), "got:\n{out}");
-    assert!(out.contains(");\n"), "got:\n{out}");
+    expect![[r#"
+        function F() {
+            SetupEnemiesCollection(
+                enemyCollectionDist,
+                findMoveTargetDist,
+                10
+            );
+        }
+    "#]]
+    .assert_eq(&fmt_limit(src, 60));
 }
 
 #[test]
 fn short_call_stmt_stays_inline() {
-    let src = "function F() { Foo(a, b); }";
-    let out = fmt(src);
-    assert!(
-        !out.contains("Foo(\n"),
-        "short call should stay inline, got:\n{out}"
-    );
-    assert!(out.contains("Foo(a, b);"), "got:\n{out}");
+    expect![[r#"
+        function F() {
+            Foo(a, b);
+        }
+    "#]]
+    .assert_eq(&fmt("function F() { Foo(a, b); }"));
 }
 
 #[test]
 fn empty_call_arg_keeps_space_between_commas() {
-    let src = "function F() { someVar.Func(true, , \"test\"); }";
-    let out = fmt(src);
-    assert!(
-        out.contains("Func(true, , \"test\");"),
-        "empty param should render as a single space, got:\n{out}"
-    );
+    expect![[r#"
+        function F() {
+            someVar.Func(true, , "test");
+        }
+    "#]]
+    .assert_eq(&fmt("function F() { someVar.Func(true, , \"test\"); }"));
 }
 
 #[test]
