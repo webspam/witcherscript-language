@@ -36,7 +36,7 @@ For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writ
 | `completion_script_keywords.rs` | Script-level keyword completions |
 | `completion_annotation_name.rs` | `annotation_name_completions` |
 | `completion_annotation_arg.rs` | `annotation_arg_completions` |
-| `completion_annotation_wrap.rs` | `after_wrap_method_completions` (overridable-method list after `@wrapMethod`/`@replaceMethod`) |
+| `completion_annotation_wrap.rs` | `override_completions` (overridable-method list after `@wrapMethod`/`@replaceMethod`) |
 | `completion_annotation_body.rs` | Inside `@addMethod` / `@wrapMethod` bodies: statement, member, definition resolution |
 | `completion_default_hint.rs` | `default_or_hint_member_completions` |
 | `builtin_array.rs` | Built-in `array<T>` resolution, `parse_generic_type`, members/hover via `load_builtins_index` |

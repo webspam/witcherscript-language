@@ -6,8 +6,8 @@ mod symbols;
 
 pub(crate) use completions::{
     annotation_name_items, builtin_type_item, class_body_kw_item, completion_item,
-    keyword_snippet_item, script_body_item, signature_help_response, this_super_item,
-    type_completion_item, wrap_method_snippet,
+    keyword_snippet_item, replace_method_snippet, script_body_item, signature_help_response,
+    this_super_item, type_completion_item, wrap_method_snippet,
 };
 pub(crate) use diagnostics::{
     base_script_conflict_code_actions, lsp_diagnostics, lsp_workspace_diagnostic,

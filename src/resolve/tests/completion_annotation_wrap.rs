@@ -1,12 +1,12 @@
 use rstest::rstest;
 
-use super::super::{after_wrap_method_completions, AfterWrapMethodCompletions};
+use super::super::{override_completions, OverrideCompletion};
 use crate::test_support::{def_names, TestDb};
 
-fn run(fixture: &str) -> Option<AfterWrapMethodCompletions> {
+fn run(fixture: &str) -> Option<OverrideCompletion> {
     let t = TestDb::new(fixture);
     let (uri, pos) = t.cursor();
-    after_wrap_method_completions(t.doc_for(&uri), &t.db(), pos)
+    override_completions(t.doc_for(&uri), &t.db(), pos)
 }
 
 #[test]
