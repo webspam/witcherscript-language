@@ -154,8 +154,6 @@ impl Backend {
             elapsed_ms = start.elapsed().as_millis(),
             "complete"
         );
-
-        self.notify_diagnostics_changed();
     }
 
     pub(crate) async fn index_base_scripts(&self) {
@@ -173,7 +171,6 @@ impl Backend {
             self.legacy_replacements.lock().clear();
             self.rebuild_filtered_base_catalogs();
             self.prune_stale_legacy_workspace_files(&HashSet::new());
-            self.notify_diagnostics_changed();
             self.publish_legacy_script_status();
             self.publish_file_scope_status();
             info!(
@@ -347,7 +344,6 @@ impl Backend {
             "complete"
         );
 
-        self.notify_diagnostics_changed();
         self.publish_legacy_script_status();
         self.publish_file_scope_status();
     }

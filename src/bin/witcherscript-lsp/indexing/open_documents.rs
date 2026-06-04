@@ -249,15 +249,10 @@ impl Backend {
         let publish_at = Instant::now();
         self.publish_open_document_indices(&uri, &document);
         let publish_us = publish_at.elapsed().as_micros();
-        self.notify_diagnostics_changed();
-        let version = self
-            .diagnostic_version
-            .load(std::sync::atomic::Ordering::Acquire);
         trace!(
             op = "update_open_document",
             uri = %uri,
             bytes,
-            version,
             had_prior_tree,
             parse_us,
             publish_us,

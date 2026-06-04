@@ -264,6 +264,7 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "initialized", "start");
         self.spawn_edit_writer();
+        self.spawn_view_refresher();
         self.fetch_config().await;
         self.index_workspace().await;
         self.refresh_manifest_legacy_dirs();
@@ -271,10 +272,6 @@ impl Backend {
         self.index_base_scripts().await;
         self.initial_index_done.store(true, Ordering::Release);
         self.index_ready_notify.notify_waiters();
-        self.request_semantic_tokens_refresh();
-        self.notify_diagnostics_changed();
-        // The client's first codeLens request raced ahead of index_base_scripts above; re-pull now that override maps exist.
-        self.request_code_lens_refresh();
         trace!(
             op = "initialized",
             elapsed_us = started_at.elapsed().as_micros(),
@@ -302,12 +299,9 @@ impl Backend {
             self.index_base_scripts().await;
             self.reindex_open_documents();
         }
-        if change.needs_reindex || change.diagnostics_changed {
-            self.notify_diagnostics_changed();
-        }
-        if change.code_lens_changed || change.needs_reindex {
-            self.request_semantic_tokens_refresh();
-            self.request_code_lens_refresh();
+        // A scope/diagnostics/code-lens toggle changes `config`, not `compilation`, so publish_compilation never fired.
+        if change.needs_reindex || change.diagnostics_changed || change.code_lens_changed {
+            self.mark_state_changed();
         }
         self.publish_file_scope_status();
         trace!(

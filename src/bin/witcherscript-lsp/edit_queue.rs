@@ -68,14 +68,10 @@ impl Backend {
         if !self.edit_writer_spawned.load(Ordering::Acquire) {
             trace!(op = "enqueue_edit", uri = %uri, path = "sync", target_parse_version, "enter");
             self.process_pending_edit(uri, edit);
-            self.notify_diagnostics_changed();
-            self.request_semantic_tokens_refresh();
-            self.request_code_lens_refresh();
             return;
         }
         self.pending_edits.lock().insert(uri.clone(), edit);
-        let version = self.diagnostic_version.fetch_add(1, Ordering::AcqRel) + 1;
-        trace!(op = "enqueue_edit", uri = %uri, path = "async", version, target_parse_version, "queued");
+        trace!(op = "enqueue_edit", uri = %uri, path = "async", target_parse_version, "queued");
         self.edit_notify.notify_one();
     }
 
@@ -139,9 +135,6 @@ impl Backend {
                     }
                 })
                 .await;
-                self.request_workspace_diagnostic_refresh();
-                self.request_semantic_tokens_refresh();
-                self.request_code_lens_refresh();
             }
         }
     }

@@ -175,9 +175,9 @@ fn compute_workspace_diagnostic_report_bails_when_version_advanced() {
     let uri: Url = "file:///stale.ws".parse().unwrap();
     backend._did_open(open_params(&uri, "class CBroken {\n"));
 
-    let stale_version = backend.diagnostic_version.load(Ordering::Acquire);
+    let stale_version = backend.state_version.load(Ordering::Acquire);
     backend
-        .diagnostic_version
+        .state_version
         .store(stale_version + 100, Ordering::Release);
 
     let result = backend.compute_workspace_diagnostic_report(HashMap::new(), stale_version);
@@ -200,9 +200,9 @@ fn compute_diagnostics_for_uri_bails_when_version_advanced() {
         .expect("document present after open")
         .clone();
 
-    let stale_version = backend.diagnostic_version.load(Ordering::Acquire);
+    let stale_version = backend.state_version.load(Ordering::Acquire);
     backend
-        .diagnostic_version
+        .state_version
         .store(stale_version + 100, Ordering::Release);
 
     let result = backend.compute_diagnostics_for_uri(&uri, document.as_ref(), stale_version);
@@ -484,6 +484,30 @@ fn formatting_reflects_queued_edit_instead_of_bailing() {
     assert_eq!(
         new_text, "function Renamed() {}\n",
         "formatting must reformat the queued text, including the rename",
+    );
+}
+
+#[test]
+fn publish_compilation_skips_version_bump_for_overlay_only_swap() {
+    let backend = make_backend();
+    let before = backend.state_version.load(Ordering::Acquire);
+
+    backend.publish_compilation(|builder| {
+        builder.documents_mut();
+    });
+    assert_eq!(
+        backend.state_version.load(Ordering::Acquire),
+        before,
+        "an overlay-only swap (open-document map) must not bump state_version",
+    );
+
+    backend.publish_compilation(|builder| {
+        builder.workspace_index_mut();
+    });
+    assert_eq!(
+        backend.state_version.load(Ordering::Acquire),
+        before + 1,
+        "a view-relevant swap must bump state_version exactly once",
     );
 }
 

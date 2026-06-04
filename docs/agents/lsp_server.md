@@ -54,7 +54,8 @@ struct Backend {
     script_env: Arc<Mutex<ScriptEnvironment>>,                               // INI-loaded globals
     cst_diag_cache: Arc<Mutex<HashMap<Url, cst_cache::CstCacheEntry>>>,      // cached CST diagnostics per document
     initial_index_done: Arc<AtomicBool>,                                     // set true once the startup index completes
-    diagnostic_version: Arc<AtomicU64>,                                      // bumped on every notify_diagnostics_changed(); in-flight pull computes bail when this advances
+    state_version: Arc<AtomicU64>,                                          // bumped by every view-relevant publish_compilation swap; in-flight pull computes bail when this advances
+    views_dirty: Arc<Notify>,                                                // signalled with each state_version bump; the view-refresher task coalesces these into client refreshes
     client_supports_pull_diagnostics: Arc<AtomicBool>,                       // captured from initialize; gates whether workspace/diagnostic/refresh is sent
 }
 ```
@@ -117,16 +118,13 @@ did_open() / did_change()
     ↓
 update_open_document(uri, text)
     parse_document(text) → ParsedDocument
-    workspace_index.update_document(uri, &doc)
-    documents.insert(uri, doc)
-    notify_diagnostics_changed()               // bumps diagnostic_version + pings pull clients via workspace/diagnostic/refresh
+    publish_compilation(...)                   // indexes the doc; the swap bumps state_version + signals views_dirty
 
 Editor closes file
     ↓
 did_close()
-    documents.remove(uri)                      // drop the editor buffer
-    reindex_closed_file(uri)                   // revert the index to on-disk content
-    notify_diagnostics_changed()               // workspace scope keeps it; openFiles scope drops it from the next workspace pull
+    publish_compilation(...)                   // drop the editor buffer; loose files also leave the loose index
+    reindex_closed_file(uri)                   // revert the index to on-disk content (publishes only if it changed)
 ```
 
 ## Diagnostics scope
@@ -145,7 +143,7 @@ Diagnostics are pull-only (LSP 3.17). The server advertises `diagnosticProvider`
 
 - **`textDocument/diagnostic`** - `_document_diagnostic` calls `compute_diagnostics_for_uri(uri, document)` which runs the cross-file passes, runs CST for that URI, and returns `(items, result_id)`. The `result_id` is a stable hash of `(parse_version, workspace.surface_hash, base.surface_hash, env.version, legacy_db_generation)`. If the client sends back a matching `previous_result_id`, the server replies with `Unchanged`. A stale-version compute returns `ContentModified` so the client retries.
 - **`workspace/diagnostic`** - `_workspace_diagnostic` calls `compute_workspace_diagnostic_report(previous, version)` which iterates `diagnostics_document_set`, doing the cross-file pass once and reusing the per-document CST cache. Each per-URI report is `Full` (with diagnostics + a `result_id`) or `Unchanged` (when `previous` matches). A stale-version compute returns `ServerCancelled` with `DiagnosticServerCancellationData { retriggerRequest: true }`, the spec-recommended form for "can't compute now."
-- **Refresh** - `request_workspace_diagnostic_refresh()` sends `workspace/diagnostic/refresh` so pull clients retrigger. `notify_diagnostics_changed()` is the single state-change signal: it bumps `diagnostic_version` (in-flight stale computes self-cancel against this) and fires refresh.
+- **Refresh** - all three client refreshes (semantic tokens, code lens, diagnostics) hang off one signal. `publish_compilation` bumps `state_version` and signals `views_dirty` whenever a view-relevant field changes; the long-lived `run_view_refresher` task wakes on `views_dirty`, and (once per advanced version) sends `workspace/semanticTokens/refresh`, then `workspace/codeLens/refresh`, then `workspace/diagnostic/refresh`. Coalescing is structural: `Notify` holds one permit, so a burst of swaps folds into one wake, no timer. A change that bypasses `publish_compilation` (a diagnostics/scope toggle mutating `config`) calls `mark_state_changed()` to drive the same signal. In-flight stale computes self-cancel against `state_version`.
 
 ## Legacy script status notification
 
