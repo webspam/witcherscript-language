@@ -162,6 +162,16 @@ impl Backend {
         self.client_supports_code_lens_refresh
             .store(supports_code_lens_refresh, Ordering::Release);
 
+        let supports_semantic_tokens_refresh = params
+            .capabilities
+            .workspace
+            .as_ref()
+            .and_then(|ws| ws.semantic_tokens.as_ref())
+            .and_then(|st| st.refresh_support)
+            .unwrap_or(false);
+        self.client_supports_semantic_tokens_refresh
+            .store(supports_semantic_tokens_refresh, Ordering::Release);
+
         let roots = workspace_roots(params);
         let game_dir = self.base_scripts_path.lock().clone();
         info!(roots = ?roots, game_dir = ?game_dir, supports_pull, "LSP initialize");
@@ -261,6 +271,7 @@ impl Backend {
         self.index_base_scripts().await;
         self.initial_index_done.store(true, Ordering::Release);
         self.index_ready_notify.notify_waiters();
+        self.request_semantic_tokens_refresh();
         self.notify_diagnostics_changed();
         // The client's first codeLens request raced ahead of index_base_scripts above; re-pull now that override maps exist.
         self.request_code_lens_refresh();

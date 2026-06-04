@@ -8,7 +8,7 @@ use std::time::Duration;
 use arc_swap::ArcSwap;
 use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
 use futures::future::BoxFuture;
-use lsp_types::request::{CodeLensRefresh, WorkspaceDiagnosticRefresh};
+use lsp_types::request::{CodeLensRefresh, SemanticTokensRefresh, WorkspaceDiagnosticRefresh};
 use lsp_types::{
     CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, CompletionParams,
     CompletionResponse, DidChangeConfigurationParams, DidChangeTextDocumentParams,
@@ -127,6 +127,7 @@ pub(crate) struct Backend {
     pub(crate) diagnostic_version: Arc<AtomicU64>,
     pub(crate) client_supports_pull_diagnostics: Arc<AtomicBool>,
     pub(crate) client_supports_code_lens_refresh: Arc<AtomicBool>,
+    pub(crate) client_supports_semantic_tokens_refresh: Arc<AtomicBool>,
     pub(crate) refresh_pending: Arc<AtomicBool>,
     pub(crate) pending_edits: Arc<Mutex<HashMap<Url, PendingEdit>>>,
     pub(crate) edit_notify: Arc<tokio::sync::Notify>,
@@ -218,6 +219,7 @@ impl Backend {
             diagnostic_version: Arc::new(AtomicU64::new(0)),
             client_supports_pull_diagnostics: Arc::new(AtomicBool::new(false)),
             client_supports_code_lens_refresh: Arc::new(AtomicBool::new(false)),
+            client_supports_semantic_tokens_refresh: Arc::new(AtomicBool::new(false)),
             refresh_pending: Arc::new(AtomicBool::new(false)),
             pending_edits: Arc::new(Mutex::new(HashMap::new())),
             edit_notify: Arc::new(tokio::sync::Notify::new()),
@@ -477,6 +479,29 @@ impl Backend {
     pub(crate) fn notify_diagnostics_changed(&self) {
         self.diagnostic_version.fetch_add(1, Ordering::AcqRel);
         self.request_workspace_diagnostic_refresh();
+    }
+
+    // The first request races ahead of indexing, resolving idents against an empty index; re-pull now.
+    pub(crate) fn request_semantic_tokens_refresh(&self) {
+        if !self
+            .client_supports_semantic_tokens_refresh
+            .load(Ordering::Acquire)
+        {
+            trace!(
+                op = "semantic_tokens_refresh",
+                reason = "client_unsupported",
+                "skip"
+            );
+            return;
+        }
+        if tokio::runtime::Handle::try_current().is_err() {
+            return;
+        }
+        let client = self.client.clone();
+        crate::spawn_logged("workspace/semanticTokens/refresh", async move {
+            trace!(op = "semantic_tokens_refresh", "send");
+            let _ = client.request::<SemanticTokensRefresh>(()).await;
+        });
     }
 
     // Ask the client to re-pull code lenses for open editors (e.g. after the feature is toggled).
