@@ -306,6 +306,7 @@ impl Backend {
             self.notify_diagnostics_changed();
         }
         if change.code_lens_changed || change.needs_reindex {
+            self.request_semantic_tokens_refresh();
             self.request_code_lens_refresh();
         }
         self.publish_file_scope_status();

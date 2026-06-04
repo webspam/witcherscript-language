@@ -243,6 +243,7 @@ impl Backend {
 
         if had_updates || had_removals || legacy_map_refresh || manifest_set_changed {
             self.notify_diagnostics_changed();
+            self.request_semantic_tokens_refresh();
             self.request_code_lens_refresh();
         }
         debug!(
