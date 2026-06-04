@@ -9,7 +9,7 @@ use witcherscript_language::resolve::{
 use witcherscript_language::symbols::AccessLevel;
 use witcherscript_language::test_support::TestDb;
 
-use crate::convert::wrap_method_snippet;
+use crate::convert::{replace_method_snippet, wrap_method_snippet};
 
 #[test]
 fn rename_returns_edits_for_all_occurrences() {
@@ -133,4 +133,22 @@ fn wrap_method_snippet_shapes(
         .unwrap_or_else(|| panic!("{method_name} should be a member of CPlayer"));
     let snippet = wrap_method_snippet(&method, &t.db());
     assert_eq!(snippet, expected);
+}
+
+#[test]
+fn replace_method_snippet_omits_wrapped_method() {
+    let t = TestDb::new(
+        "class CPlayer {\n  public function CanParry(damage : int, attacker : CObject) : bool {}\n}\n",
+    );
+    let method = t
+        .db()
+        .members_of("CPlayer", AccessLevel::Public)
+        .into_iter()
+        .find(|d| d.symbol.name == "CanParry")
+        .expect("CanParry should be a member of CPlayer");
+    let snippet = replace_method_snippet(&method, &t.db());
+    assert_eq!(
+        snippet,
+        "CanParry(damage : int, attacker : CObject) {\n\t$0\n}"
+    );
 }

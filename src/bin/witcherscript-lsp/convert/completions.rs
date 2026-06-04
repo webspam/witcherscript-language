@@ -4,7 +4,7 @@ use lsp_types::{
     SignatureHelp, SignatureInformation, TextEdit,
 };
 use witcherscript_language::resolve::{Definition, SignatureHelpInfo, SymbolDb};
-use witcherscript_language::symbols::SymbolKind;
+use witcherscript_language::symbols::{Symbol, SymbolKind};
 
 use super::symbols::hover_markdown;
 
@@ -87,8 +87,7 @@ pub(crate) fn signature_help_response(info: SignatureHelpInfo) -> SignatureHelp 
     }
 }
 
-pub(crate) fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String {
-    let params = db.full_parameters_of(&method.uri, method.symbol.id);
+fn method_signature(name: &str, params: &[Symbol]) -> String {
     let param_list = params
         .iter()
         .map(|p| {
@@ -108,6 +107,12 @@ pub(crate) fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String 
         })
         .collect::<Vec<_>>()
         .join(", ");
+    format!("{name}({param_list})")
+}
+
+pub(crate) fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String {
+    let params = db.full_parameters_of(&method.uri, method.symbol.id);
+    let signature = method_signature(&method.symbol.name, &params);
     let call_args = params
         .iter()
         .map(|p| p.name.as_str())
@@ -124,7 +129,15 @@ pub(crate) fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String 
     } else {
         format!("{{\n\twrappedMethod({});\n\n\t$0\n}}", call_args)
     };
-    format!("{}({}) {}", method.symbol.name, param_list, body)
+    format!("{signature} {body}")
+}
+
+pub(crate) fn replace_method_snippet(method: &Definition, db: &SymbolDb) -> String {
+    let params = db.full_parameters_of(&method.uri, method.symbol.id);
+    format!(
+        "{} {{\n\t$0\n}}",
+        method_signature(&method.symbol.name, &params)
+    )
 }
 
 pub(crate) fn type_completion_item(definition: &Definition) -> CompletionItem {

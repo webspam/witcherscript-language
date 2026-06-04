@@ -20,7 +20,7 @@ pub use headers::class_header_keyword_completions;
 pub use members::completion_members;
 pub use new_expr::{new_lifetime_completions, new_type_completions};
 pub use types::{
-    after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
-    extends_completions, state_owner_completions, type_completions, type_completions_arc,
-    AfterWrapMethodCompletions,
+    annotation_arg_completions, annotation_name_completions, extends_completions,
+    override_completions, state_owner_completions, type_completions, type_completions_arc,
+    OverrideBody, OverrideCompletion,
 };

@@ -8,19 +8,20 @@ use lsp_types::{
 use tracing::trace;
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::resolve::{
-    after_wrap_method_completions, annotation_arg_completions, annotation_name_completions,
-    class_body_keyword_completions, class_header_keyword_completions, completion_members,
-    default_or_hint_member_completions, expression_completions, extends_completions,
-    new_lifetime_completions, new_type_completions, position_in_comment, script_body_completions,
-    state_owner_completions, statement_completions, type_completions_arc, Definition, SymbolDb,
+    annotation_arg_completions, annotation_name_completions, class_body_keyword_completions,
+    class_header_keyword_completions, completion_members, default_or_hint_member_completions,
+    expression_completions, extends_completions, new_lifetime_completions, new_type_completions,
+    override_completions, position_in_comment, script_body_completions, state_owner_completions,
+    statement_completions, type_completions_arc, Definition, OverrideBody, SymbolDb,
     BUILTIN_TYPE_COMPLETIONS,
 };
+use witcherscript_language::symbols::SymbolKind;
 
 use crate::backend::Backend;
 use crate::convert::{
     annotation_name_items, builtin_type_item, class_body_kw_item, completion_item,
-    keyword_snippet_item, lsp_range, script_body_item, source_position, source_range,
-    this_super_item, type_completion_item, wrap_method_snippet,
+    keyword_snippet_item, lsp_range, replace_method_snippet, script_body_item, source_position,
+    source_range, this_super_item, type_completion_item, wrap_method_snippet,
 };
 
 type Result<T> = std::result::Result<T, ResponseError>;
@@ -140,20 +141,27 @@ impl Backend {
                 ))));
             }
 
-            if let Some(wrap) = after_wrap_method_completions(document, &db, pos) {
-                let items = wrap
+            if let Some(ov) = override_completions(document, &db, pos) {
+                let items = ov
                     .methods
                     .iter()
                     .map(|def| {
-                        let snippet = wrap_method_snippet(def, &db);
-                        let insert_text = if wrap.needs_function_keyword {
+                        let snippet = match ov.body {
+                            OverrideBody::Wrap => wrap_method_snippet(def, &db),
+                            OverrideBody::Replace => replace_method_snippet(def, &db),
+                        };
+                        let insert_text = if ov.needs_function_keyword {
                             format!("function {snippet}")
                         } else {
                             snippet
                         };
+                        let item_kind = match def.symbol.kind {
+                            SymbolKind::Function => CompletionItemKind::FUNCTION,
+                            _ => CompletionItemKind::METHOD,
+                        };
                         CompletionItem {
                             label: def.symbol.name.clone(),
-                            kind: Some(CompletionItemKind::METHOD),
+                            kind: Some(item_kind),
                             detail: def.symbol.signature.clone(),
                             insert_text: Some(insert_text),
                             insert_text_format: Some(InsertTextFormat::SNIPPET),

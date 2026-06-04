@@ -6,6 +6,7 @@ mod chaining;
 mod completion_annotation_arg;
 mod completion_annotation_body;
 mod completion_annotation_name;
+mod completion_annotation_replace_global;
 mod completion_annotation_wrap;
 mod completion_comment;
 mod completion_default_hint;
