@@ -74,7 +74,7 @@ impl Backend {
             return;
         }
         self.pending_edits.lock().insert(uri.clone(), edit);
-        let version = self.diagnostic_version.fetch_add(1, Ordering::AcqRel) + 1;
+        let version = self.state_version.fetch_add(1, Ordering::AcqRel) + 1;
         trace!(op = "enqueue_edit", uri = %uri, path = "async", version, target_parse_version, "queued");
         self.edit_notify.notify_one();
     }

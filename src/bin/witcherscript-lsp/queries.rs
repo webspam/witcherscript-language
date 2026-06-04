@@ -139,7 +139,7 @@ impl Backend {
             );
             return empty_full();
         }
-        let version = self.diagnostic_version.load(Ordering::Acquire);
+        let version = self.state_version.load(Ordering::Acquire);
         let whole_workspace = matches!(scope, DiagnosticsScope::Workspace);
         let result = 'body: {
             let computed = {
@@ -202,7 +202,7 @@ impl Backend {
     ) -> Result<WorkspaceDiagnosticReportResult> {
         let started_at = Instant::now();
         trace!(op = "workspace_diagnostic", "start");
-        let version = self.diagnostic_version.load(Ordering::Acquire);
+        let version = self.state_version.load(Ordering::Acquire);
         let previous = params
             .previous_result_ids
             .into_iter()
@@ -567,9 +567,9 @@ impl Backend {
             }
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
             let db = handles.db();
-            let version = self.diagnostic_version.load(Ordering::Acquire);
-            let diagnostic_version = self.diagnostic_version.clone();
-            let should_continue = || diagnostic_version.load(Ordering::Acquire) == version;
+            let version = self.state_version.load(Ordering::Acquire);
+            let state_version = self.state_version.clone();
+            let should_continue = || state_version.load(Ordering::Acquire) == version;
             let Some(data) = collect_semantic_tokens_cancellable(
                 &canonical_uri(&uri),
                 document,

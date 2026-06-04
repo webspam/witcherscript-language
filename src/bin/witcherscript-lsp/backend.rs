@@ -126,7 +126,7 @@ pub(crate) struct Backend {
     pub(crate) merged_completion_cache_loose: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
     pub(crate) legacy_db_generation: Arc<AtomicU64>,
-    pub(crate) diagnostic_version: Arc<AtomicU64>,
+    pub(crate) state_version: Arc<AtomicU64>,
     pub(crate) client_supports_pull_diagnostics: Arc<AtomicBool>,
     pub(crate) client_supports_code_lens_refresh: Arc<AtomicBool>,
     pub(crate) client_supports_semantic_tokens_refresh: Arc<AtomicBool>,
@@ -218,7 +218,7 @@ impl Backend {
             merged_completion_cache_loose: Arc::new(Mutex::new(None)),
             initial_index_done: Arc::new(AtomicBool::new(false)),
             legacy_db_generation: Arc::new(AtomicU64::new(0)),
-            diagnostic_version: Arc::new(AtomicU64::new(0)),
+            state_version: Arc::new(AtomicU64::new(0)),
             client_supports_pull_diagnostics: Arc::new(AtomicBool::new(false)),
             client_supports_code_lens_refresh: Arc::new(AtomicBool::new(false)),
             client_supports_semantic_tokens_refresh: Arc::new(AtomicBool::new(false)),
@@ -479,7 +479,7 @@ impl Backend {
     }
 
     pub(crate) fn notify_diagnostics_changed(&self) {
-        self.diagnostic_version.fetch_add(1, Ordering::AcqRel);
+        self.state_version.fetch_add(1, Ordering::AcqRel);
         self.request_workspace_diagnostic_refresh();
     }
 

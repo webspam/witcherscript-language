@@ -40,7 +40,7 @@ fn close_params(uri: &Url) -> DidCloseTextDocumentParams {
 }
 
 fn workspace_report_for(backend: &Backend, url: &Url) -> Option<WorkspaceDocumentDiagnosticReport> {
-    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let version = backend.state_version.load(Ordering::Acquire);
     let report = backend
         .compute_workspace_diagnostic_report(HashMap::new(), version)
         .expect("workspace pull must not bail in tests with a stable version");
@@ -67,7 +67,7 @@ async fn none_scope_workspace_pull_returns_no_items_when_client_has_no_prior_sta
     let backend = make_backend_with(DiagnosticsScope::None);
     index_dir(&backend, temp.path()).await;
 
-    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let version = backend.state_version.load(Ordering::Acquire);
     let report = backend
         .compute_workspace_diagnostic_report(HashMap::new(), version)
         .expect("workspace pull must not bail");
@@ -86,7 +86,7 @@ async fn none_scope_workspace_pull_clears_prior_client_state() {
     let backend = make_backend_with(DiagnosticsScope::None);
     index_dir(&backend, temp.path()).await;
 
-    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let version = backend.state_version.load(Ordering::Acquire);
     let mut previous = HashMap::new();
     previous.insert(url.to_string(), "prior-id".to_string());
     let report = backend
@@ -143,13 +143,13 @@ async fn opening_unchanged_indexed_file_reuses_parse_and_skips_diagnostic_refres
         .expect("file must be indexed on disk")
         .parse_version;
 
-    let version_before = backend.diagnostic_version.load(Ordering::Acquire);
+    let version_before = backend.state_version.load(Ordering::Acquire);
     backend.update_open_document(url.clone(), text.to_string());
 
     assert_eq!(
-        backend.diagnostic_version.load(Ordering::Acquire),
+        backend.state_version.load(Ordering::Acquire),
         version_before,
-        "opening a byte-identical indexed file must not bump diagnostic_version",
+        "opening a byte-identical indexed file must not bump state_version",
     );
     let snap = backend.snapshot();
     let open_doc = snap
@@ -173,18 +173,18 @@ async fn closing_unchanged_file_skips_diagnostic_refresh() {
     index_dir(&backend, temp.path()).await;
     backend.update_open_document(url.clone(), text.to_string());
 
-    let version_before = backend.diagnostic_version.load(Ordering::Acquire);
+    let version_before = backend.state_version.load(Ordering::Acquire);
     backend._did_close(close_params(&url));
 
     assert_eq!(
-        backend.diagnostic_version.load(Ordering::Acquire),
+        backend.state_version.load(Ordering::Acquire),
         version_before,
-        "closing a byte-identical file must not bump diagnostic_version",
+        "closing a byte-identical file must not bump state_version",
     );
 }
 
 #[tokio::test]
-async fn closing_edited_file_bumps_diagnostic_version() {
+async fn closing_edited_file_bumps_state_version() {
     let temp = LocalTempDir::new("ws_close_edited_refresh");
     let path = write_script(temp.path(), "Good.ws", "class CGood {}\n");
     let url = Url::from_file_path(&path).expect("path -> url");
@@ -193,13 +193,13 @@ async fn closing_edited_file_bumps_diagnostic_version() {
     index_dir(&backend, temp.path()).await;
     backend.update_open_document(url.clone(), "class CGood {\n".to_string());
 
-    let version_before = backend.diagnostic_version.load(Ordering::Acquire);
+    let version_before = backend.state_version.load(Ordering::Acquire);
     backend._did_close(close_params(&url));
 
     assert_ne!(
-        backend.diagnostic_version.load(Ordering::Acquire),
+        backend.state_version.load(Ordering::Acquire),
         version_before,
-        "closing an edited file reverts the index to disk and must bump diagnostic_version",
+        "closing an edited file reverts the index to disk and must bump state_version",
     );
 }
 
@@ -224,7 +224,7 @@ async fn body_only_reindex_keeps_subscriber_cache_entries() {
     let backend = make_backend_with(DiagnosticsScope::Workspace);
     index_dir(&backend, temp.path()).await;
 
-    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let version = backend.state_version.load(Ordering::Acquire);
     let _ = backend
         .compute_workspace_diagnostic_report(HashMap::new(), version)
         .expect("initial pull populates the CST cache");
@@ -264,7 +264,7 @@ async fn single_file_pull_does_not_evict_other_cached_files() {
     let backend = make_backend_with(DiagnosticsScope::Workspace);
     index_dir(&backend, temp.path()).await;
 
-    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let version = backend.state_version.load(Ordering::Acquire);
     let _ = backend
         .compute_workspace_diagnostic_report(HashMap::new(), version)
         .expect("workspace pull populates the cache");
@@ -300,7 +300,7 @@ async fn workspace_pull_prunes_cache_entries_for_vanished_files() {
         },
     );
 
-    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let version = backend.state_version.load(Ordering::Acquire);
     let _ = backend
         .compute_workspace_diagnostic_report(HashMap::new(), version)
         .expect("workspace pull");
@@ -421,7 +421,7 @@ async fn workspace_pull_returns_unchanged_for_open_file_when_client_echoes_emitt
     index_dir(&backend, temp.path()).await;
     backend.update_open_document(url.clone(), "class CBad {\n".to_string());
 
-    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let version = backend.state_version.load(Ordering::Acquire);
     let initial = backend
         .compute_workspace_diagnostic_report(HashMap::new(), version)
         .expect("initial workspace pull must not bail");
@@ -440,7 +440,7 @@ async fn workspace_pull_returns_unchanged_for_open_file_when_client_echoes_emitt
 
     let mut previous = HashMap::new();
     previous.insert(emitted_uri.to_string(), emitted_result_id);
-    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let version = backend.state_version.load(Ordering::Acquire);
     let second = backend
         .compute_workspace_diagnostic_report(previous, version)
         .expect("second workspace pull must not bail");
@@ -467,7 +467,7 @@ async fn workspace_pull_explicitly_clears_files_that_left_the_diagnosed_set() {
     let backend = make_backend_with(DiagnosticsScope::Workspace);
     index_dir(&backend, temp.path()).await;
 
-    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let version = backend.state_version.load(Ordering::Acquire);
     let initial = backend
         .compute_workspace_diagnostic_report(HashMap::new(), version)
         .expect("initial workspace pull must not bail");
@@ -487,7 +487,7 @@ async fn workspace_pull_explicitly_clears_files_that_left_the_diagnosed_set() {
     backend.config.store(Arc::new(cfg));
     backend.notify_diagnostics_changed();
 
-    let version = backend.diagnostic_version.load(Ordering::Acquire);
+    let version = backend.state_version.load(Ordering::Acquire);
     let mut previous = HashMap::new();
     previous.insert(url.to_string(), prior_result_id);
     let cleared = backend

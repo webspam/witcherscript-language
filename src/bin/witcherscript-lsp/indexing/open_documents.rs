@@ -251,7 +251,7 @@ impl Backend {
         let publish_us = publish_at.elapsed().as_micros();
         self.notify_diagnostics_changed();
         let version = self
-            .diagnostic_version
+            .state_version
             .load(std::sync::atomic::Ordering::Acquire);
         trace!(
             op = "update_open_document",

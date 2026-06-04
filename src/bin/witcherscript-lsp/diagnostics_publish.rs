@@ -220,10 +220,10 @@ impl Backend {
         let suppressed = &snap.suppressed_base_uris;
         let filtered = snap.filtered_base_catalogs.as_deref();
 
-        if self.diagnostic_version.load(Ordering::Acquire) != version {
+        if self.state_version.load(Ordering::Acquire) != version {
             return None;
         }
-        let version_check = || self.diagnostic_version.load(Ordering::Acquire) == version;
+        let version_check = || self.state_version.load(Ordering::Acquire) == version;
 
         let fingerprint = self.db_fingerprint(base, env);
         let bundle_fingerprint = BundleFingerprint {
@@ -263,8 +263,8 @@ impl Backend {
             filtered,
         );
 
-        let diagnostic_version = self.diagnostic_version.clone();
-        let should_continue = move || diagnostic_version.load(Ordering::Acquire) == version;
+        let state_version = self.state_version.clone();
+        let should_continue = move || state_version.load(Ordering::Acquire) == version;
         let cst = {
             let mut cache = self.cst_diag_cache.lock();
             cst_diagnostics_with_cache(
