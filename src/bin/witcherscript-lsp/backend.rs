@@ -503,6 +503,7 @@ impl Backend {
             trace!(op, reason = "client_unsupported", "skip");
             return;
         }
+        // Reached only from synchronous tests that drive handlers off-runtime; spawn_logged would panic.
         if tokio::runtime::Handle::try_current().is_err() {
             return;
         }
