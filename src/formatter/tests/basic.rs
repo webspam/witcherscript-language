@@ -1,86 +1,109 @@
+use expect_test::{expect, Expect};
+use rstest::rstest;
+
 use super::{fmt, fmt_with_annotation_placement, fmt_with_default_placement, AnnotationPlacement};
 
 #[test]
 fn error_recovery_formats_valid_stmts_around_invalid() {
     // var b has extra whitespace but is valid; var a is invalid (missing type annotation)
-    let input = "function Test() {\n             var    b  : int;\n    var  a;\n}";
-    let output = fmt(input);
-    assert!(
-        output.contains("var b : int;"),
-        "valid stmt should be formatted, got:\n{output}"
-    );
-    assert!(
-        output.contains("var  a;"),
-        "invalid stmt should be preserved verbatim including semicolon, got:\n{output}"
-    );
+    expect![[r#"
+        function Test() {
+            var b : int;
+            var  a;
+        }
+    "#]]
+    .assert_eq(&fmt(
+        "function Test() {\n             var    b  : int;\n    var  a;\n}",
+    ));
 }
 
 #[test]
 fn formats_simple_function() {
-    let input = "function Foo(x:int):bool{return true;}";
-    let output = fmt(input);
-    assert!(output.contains("function Foo(x : int) : bool {"));
-    assert!(output.contains("    return true;"));
-    assert!(output.contains('}'));
+    expect![[r#"
+        function Foo(x : int) : bool {
+            return true;
+        }
+    "#]]
+    .assert_eq(&fmt("function Foo(x:int):bool{return true;}"));
 }
 
 #[test]
 fn add_field_annotation_stays_on_own_line() {
-    let output = fmt_with_annotation_placement(
+    expect![[r#"
+        @addField(CR4Player)
+        var foo : int;
+    "#]]
+    .assert_eq(&fmt_with_annotation_placement(
         "@addField(CR4Player) var foo : int;",
         AnnotationPlacement::OwnLine,
-    );
-    assert_eq!(output, "@addField(CR4Player)\nvar foo : int;\n");
+    ));
 }
 
-#[test]
-fn preserve_annotation_line_break() {
-    let same = fmt("@addField(CClass) public var someField : bool;");
-    assert_eq!(same, "@addField(CClass) public var someField : bool;\n");
-
-    let messy = fmt("@addField(  CClass  )   public   var   someField   :  bool  ;");
-    assert_eq!(messy, "@addField(CClass) public var someField : bool;\n");
-
-    let split = fmt("@addField(CClass)\npublic var someField : bool;");
-    assert_eq!(split, "@addField(CClass)\npublic var someField : bool;\n");
+#[rstest]
+#[case::same("@addField(CClass) public var someField : bool;", expect![[r#"
+    @addField(CClass) public var someField : bool;
+"#]])]
+#[case::messy("@addField(  CClass  )   public   var   someField   :  bool  ;", expect![[r#"
+    @addField(CClass) public var someField : bool;
+"#]])]
+#[case::split("@addField(CClass)\npublic var someField : bool;", expect![[r#"
+    @addField(CClass)
+    public var someField : bool;
+"#]])]
+fn preserve_annotation_line_break(#[case] input: &str, #[case] expected: Expect) {
+    expected.assert_eq(&fmt(input));
 }
 
-#[test]
-fn same_line_annotation_placement() {
-    let cases = [
-        "@addField(CClass) public var someField : bool;",
-        "@addField(  CClass  )   public   var   someField   :  bool  ;",
-        "@addField(CClass)\npublic var someField : bool;",
-    ];
-    for input in cases {
-        let output = fmt_with_annotation_placement(input, AnnotationPlacement::SameLine);
-        assert_eq!(
-            output, "@addField(CClass) public var someField : bool;\n",
-            "input:\n{input}"
-        );
-    }
+#[rstest]
+#[case::same("@addField(CClass) public var someField : bool;", expect![[r#"
+    @addField(CClass) public var someField : bool;
+"#]])]
+#[case::messy("@addField(  CClass  )   public   var   someField   :  bool  ;", expect![[r#"
+    @addField(CClass) public var someField : bool;
+"#]])]
+#[case::split("@addField(CClass)\npublic var someField : bool;", expect![[r#"
+    @addField(CClass) public var someField : bool;
+"#]])]
+fn same_line_annotation_placement(#[case] input: &str, #[case] expected: Expect) {
+    expected.assert_eq(&fmt_with_annotation_placement(
+        input,
+        AnnotationPlacement::SameLine,
+    ));
 }
 
 #[test]
 fn annotation_sits_directly_above_declaration() {
-    let field = fmt_with_annotation_placement(
+    expect![[r#"
+        @addField(CR4Player)
+        var foo : int;
+    "#]]
+    .assert_eq(&fmt_with_annotation_placement(
         "@addField(CR4Player)\n\n\nvar foo : int;",
         AnnotationPlacement::OwnLine,
-    );
-    assert_eq!(field, "@addField(CR4Player)\nvar foo : int;\n");
-
-    let method = fmt("@addMethod(CR4Player)\n\n\nfunction Foo() {}");
-    assert_eq!(method, "@addMethod(CR4Player)\nfunction Foo() {}\n");
+    ));
+    expect![[r#"
+        @addMethod(CR4Player)
+        function Foo() {}
+    "#]]
+    .assert_eq(&fmt("@addMethod(CR4Player)\n\n\nfunction Foo() {}"));
 }
 
 #[test]
 fn add_method_annotation_ignores_placement_setting() {
     let input = "@addMethod(CR4Player) function Foo() {}";
-    assert_eq!(
-        fmt_with_annotation_placement(input, AnnotationPlacement::SameLine),
-        "@addMethod(CR4Player)\nfunction Foo() {}\n"
-    );
-    assert_eq!(fmt(input), "@addMethod(CR4Player)\nfunction Foo() {}\n");
+    expect![[r#"
+        @addMethod(CR4Player)
+        function Foo() {}
+    "#]]
+    .assert_eq(&fmt_with_annotation_placement(
+        input,
+        AnnotationPlacement::SameLine,
+    ));
+    expect![[r#"
+        @addMethod(CR4Player)
+        function Foo() {}
+    "#]]
+    .assert_eq(&fmt(input));
 }
 
 #[test]
@@ -91,149 +114,206 @@ fn idempotent_on_valid_fixture() {
     assert_eq!(first, second, "formatter should be idempotent");
 }
 
-#[test]
-fn preserve_default_placement() {
-    let same = fmt("class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }");
-    assert!(
-        same.contains("private const var RESET_TIME : float;  default RESET_TIME = 0.750;"),
-        "got:\n{same}"
-    );
-
-    let split = fmt(
-        "class C {\n    private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;\n}",
-    );
-    assert!(
-        split.contains("private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;"),
-        "got:\n{split}"
-    );
+#[rstest]
+#[case::same(
+    "class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }",
+    expect![[r#"
+        class C {
+            private const var RESET_TIME : float;  default RESET_TIME = 0.750;
+        }
+    "#]]
+)]
+#[case::split(
+    "class C {\n    private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;\n}",
+    expect![[r#"
+        class C {
+            private const var RESET_TIME : float;
+            default RESET_TIME = 0.750;
+        }
+    "#]]
+)]
+fn preserve_default_placement(#[case] input: &str, #[case] expected: Expect) {
+    expected.assert_eq(&fmt(input));
 }
 
-#[test]
-fn same_line_default_placement() {
-    let cases = [
-        "class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }",
-        "class C {\n    private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;\n}",
-    ];
-    for input in cases {
-        let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);
-        assert!(
-            output.contains("private const var RESET_TIME : float;  default RESET_TIME = 0.750;"),
-            "input:\n{input}\ngot:\n{output}"
-        );
-    }
+#[rstest]
+#[case::same(
+    "class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }",
+    expect![[r#"
+        class C {
+            private const var RESET_TIME : float;  default RESET_TIME = 0.750;
+        }
+    "#]]
+)]
+#[case::split(
+    "class C {\n    private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;\n}",
+    expect![[r#"
+        class C {
+            private const var RESET_TIME : float;  default RESET_TIME = 0.750;
+        }
+    "#]]
+)]
+fn same_line_default_placement(#[case] input: &str, #[case] expected: Expect) {
+    expected.assert_eq(&fmt_with_default_placement(
+        input,
+        AnnotationPlacement::SameLine,
+    ));
 }
 
 #[test]
 fn own_line_default_placement() {
-    let input = "class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }";
-    let output = fmt_with_default_placement(input, AnnotationPlacement::OwnLine);
-    assert!(
-        output.contains("private const var RESET_TIME : float;\n    default RESET_TIME = 0.750;"),
-        "got:\n{output}"
-    );
+    expect![[r#"
+        class C {
+            private const var RESET_TIME : float;
+            default RESET_TIME = 0.750;
+        }
+    "#]]
+    .assert_eq(&fmt_with_default_placement(
+        "class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }",
+        AnnotationPlacement::OwnLine,
+    ));
 }
 
 #[test]
 fn default_only_merges_when_ident_matches() {
-    let input = "class C {\n    private const var RESET_TIME : float;\n    default OTHER = 1;\n}";
-    let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);
-    assert!(
-        output.contains("private const var RESET_TIME : float;\n    default OTHER = 1;"),
-        "mismatched default name must stay on its own line, got:\n{output}"
-    );
+    expect![[r#"
+        class C {
+            private const var RESET_TIME : float;
+            default OTHER = 1;
+        }
+    "#]]
+    .assert_eq(&fmt_with_default_placement(
+        "class C {\n    private const var RESET_TIME : float;\n    default OTHER = 1;\n}",
+        AnnotationPlacement::SameLine,
+    ));
 }
 
 #[test]
 fn annotated_field_default_merges_under_same_line() {
-    let input = "class C {\n    @addField(CClass)\n    public var x : int;\n    default x = 1;\n}";
-    let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);
-    assert!(
-        output.contains("public var x : int;  default x = 1;"),
-        "an annotated field must still honor same-line default placement, got:\n{output}"
-    );
+    expect![[r#"
+        class C {
+            @addField(CClass)
+            public var x : int;  default x = 1;
+        }
+    "#]]
+    .assert_eq(&fmt_with_default_placement(
+        "class C {\n    @addField(CClass)\n    public var x : int;\n    default x = 1;\n}",
+        AnnotationPlacement::SameLine,
+    ));
 }
 
 #[test]
 fn commented_field_with_same_line_default_not_merged() {
-    let input = "class C {\n    var x /* c */ : int;\n    default x = 1;\n}";
-    let output = fmt_with_default_placement(input, AnnotationPlacement::SameLine);
-    assert!(
-        output.contains("/* c */"),
-        "inline comment in field must be preserved, got:\n{output}"
-    );
-    assert!(
-        output.contains("var x /* c */ : int;\n    default x = 1;"),
-        "a commented field is emitted verbatim, so its default must not merge onto its line, got:\n{output}"
-    );
+    expect![[r#"
+        class C {
+            var x /* c */ : int;
+            default x = 1;
+        }
+    "#]]
+    .assert_eq(&fmt_with_default_placement(
+        "class C {\n    var x /* c */ : int;\n    default x = 1;\n}",
+        AnnotationPlacement::SameLine,
+    ));
 }
 
 #[test]
 fn member_default_val_with_ident_value_preserved() {
-    let input = "class C extends B {\n    default isPotato = OT_None;\n}";
-    let output = fmt(input);
-    assert!(
-        output.contains("default isPotato = OT_None;"),
-        "default value that is an identifier must be preserved, got:\n{output}"
-    );
+    expect![[r#"
+        class C extends B {
+            default isPotato = OT_None;
+        }
+    "#]]
+    .assert_eq(&fmt(
+        "class C extends B {\n    default isPotato = OT_None;\n}",
+    ));
 }
 
 #[test]
 fn local_var_init_with_ident_value_preserved() {
-    let input = "function F() { var x : EOrientationTarget = OT_None; }";
-    let output = fmt(input);
-    assert!(
-        output.contains("var x : EOrientationTarget = OT_None;"),
-        "var initializer that is an identifier must be preserved, got:\n{output}"
-    );
+    expect![[r#"
+        function F() {
+            var x : EOrientationTarget = OT_None;
+        }
+    "#]]
+    .assert_eq(&fmt(
+        "function F() { var x : EOrientationTarget = OT_None; }",
+    ));
 }
 
-#[test]
-fn unary_not_has_no_space_before_operand() {
-    let cases = [
-        "function F() { if (!thePlayer) return; }",
-        "function F() { if (! thePlayer) return; }",
-        "function F() { if (  ! thePlayer) return; }",
-        "function F() { if (!thePlayer  ) return; }",
-        "function F() { if (  !   thePlayer  ) return; }",
-        "function F() { if (\n!thePlayer\n) return; }",
-    ];
-    for input in cases {
-        let output = fmt(input);
-        assert!(
-            output.contains("if (!thePlayer)"),
-            "unary `!` should have no space before its operand, got:\n{output}"
-        );
+#[rstest]
+#[case::no_space("function F() { if (!thePlayer) return; }", expect![[r#"
+    function F() {
+        if (!thePlayer) return;
     }
+"#]])]
+#[case::space_after("function F() { if (! thePlayer) return; }", expect![[r#"
+    function F() {
+        if (!thePlayer) return;
+    }
+"#]])]
+#[case::leading_space("function F() { if (  ! thePlayer) return; }", expect![[r#"
+    function F() {
+        if (!thePlayer) return;
+    }
+"#]])]
+#[case::trailing_space("function F() { if (!thePlayer  ) return; }", expect![[r#"
+    function F() {
+        if (!thePlayer) return;
+    }
+"#]])]
+#[case::spaces_both("function F() { if (  !   thePlayer  ) return; }", expect![[r#"
+    function F() {
+        if (!thePlayer) return;
+    }
+"#]])]
+#[case::newlines("function F() { if (\n!thePlayer\n) return; }", expect![[r#"
+    function F() {
+        if (!thePlayer) return;
+    }
+"#]])]
+fn unary_not_has_no_space_before_operand(#[case] input: &str, #[case] expected: Expect) {
+    expected.assert_eq(&fmt(input));
 }
 
-#[test]
-fn generic_type_has_no_space_around_angle_brackets() {
-    let cases = [
-        "var x : array<CComponent>;",
-        "var x : array   <   CComponent   >;",
-        "var x : array <CComponent>;",
-    ];
-    for input in cases {
-        let output = fmt(input);
-        assert!(
-            output.contains("array<CComponent>"),
-            "generic type should have no spaces around angle brackets, got:\n{output}"
-        );
-    }
+#[rstest]
+#[case::tight("var x : array<CComponent>;", expect![[r#"
+    var x : array<CComponent>;
+"#]])]
+#[case::spaced("var x : array   <   CComponent   >;", expect![[r#"
+    var x : array<CComponent>;
+"#]])]
+#[case::single_space("var x : array <CComponent>;", expect![[r#"
+    var x : array<CComponent>;
+"#]])]
+fn generic_type_has_no_space_around_angle_brackets(#[case] input: &str, #[case] expected: Expect) {
+    expected.assert_eq(&fmt(input));
 }
 
-#[test]
-fn cast_has_no_space_between_paren_and_value() {
-    let cases = [
-        "function F() { var x : SomeType; x = (SomeType)      someVar; }",
-        "function F() { var x : SomeType; x = (  SomeType  )  someVar   ; }",
-        "function F() { var x : SomeType; x = (SomeType)someVar; }",
-    ];
-    for input in cases {
-        let output = fmt(input);
-        assert!(
-            output.contains("(SomeType)someVar;"),
-            "cast should have no space between `)` and value, got:\n{output}"
-        );
+#[rstest]
+#[case::spaces_after(
+    "function F() { var x : SomeType; x = (SomeType)      someVar; }",
+    expect![[r#"
+        function F() {
+            var x : SomeType;
+            x = (SomeType)someVar;
+        }
+    "#]]
+)]
+#[case::spaces_around(
+    "function F() { var x : SomeType; x = (  SomeType  )  someVar   ; }",
+    expect![[r#"
+        function F() {
+            var x : SomeType;
+            x = (SomeType)someVar;
+        }
+    "#]]
+)]
+#[case::tight("function F() { var x : SomeType; x = (SomeType)someVar; }", expect![[r#"
+    function F() {
+        var x : SomeType;
+        x = (SomeType)someVar;
     }
+"#]])]
+fn cast_has_no_space_between_paren_and_value(#[case] input: &str, #[case] expected: Expect) {
+    expected.assert_eq(&fmt(input));
 }
