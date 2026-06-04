@@ -135,6 +135,18 @@ impl CompilationBuilder {
         self.base_scripts_documents = Some(docs);
     }
 
+    // `documents` is excluded: the views derive from indices, so an overlay-only swap must not refresh.
+    pub(crate) fn changes_views(&self) -> bool {
+        self.workspace_index.is_some()
+            || self.loose_index.is_some()
+            || self.base_scripts_index.is_some()
+            || self.script_env.is_some()
+            || self.suppressed_base_uris.is_some()
+            || !matches!(self.filtered_base_catalogs, SetTo::Unset)
+            || self.workspace_documents.is_some()
+            || self.base_scripts_documents.is_some()
+    }
+
     pub(crate) fn finish(self) -> Compilation {
         Compilation {
             workspace_index: resolve(self.workspace_index, &self.base.workspace_index),

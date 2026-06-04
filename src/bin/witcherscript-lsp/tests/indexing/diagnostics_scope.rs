@@ -485,7 +485,7 @@ async fn workspace_pull_explicitly_clears_files_that_left_the_diagnosed_set() {
     let mut cfg = (**backend.config.load()).clone();
     cfg.diagnostics_scope = DiagnosticsScope::OpenFiles;
     backend.config.store(Arc::new(cfg));
-    backend.notify_diagnostics_changed();
+    backend.mark_state_changed();
 
     let version = backend.state_version.load(Ordering::Acquire);
     let mut previous = HashMap::new();
@@ -614,14 +614,14 @@ async fn switching_scope_retracts_then_restores_unopened_diagnostics() {
     };
 
     switch(DiagnosticsScope::OpenFiles);
-    backend.notify_diagnostics_changed();
+    backend.mark_state_changed();
     assert!(
         workspace_report_for(&backend, &url).is_none(),
         "switching to open-files scope must drop the unopened file from the workspace report",
     );
 
     switch(DiagnosticsScope::Workspace);
-    backend.notify_diagnostics_changed();
+    backend.mark_state_changed();
     assert!(
         workspace_report_for(&backend, &url).is_some(),
         "switching back to workspace scope must restore the file in the workspace report",

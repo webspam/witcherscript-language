@@ -42,8 +42,6 @@ impl Backend {
         }
         self.publish_legacy_script_status();
         self.publish_file_scope_status();
-        self.request_semantic_tokens_refresh();
-        self.request_code_lens_refresh();
         trace!(
             op = "did_open",
             uri = %uri,
@@ -133,26 +131,15 @@ impl Backend {
                 ));
             }
         });
-        let diagnostics_changed = if scope.is_loose() {
+        if scope.is_loose() {
             // A loose file is a transient compilation member: closing it drops it from the index entirely.
             let invalidated = self.invalidated_loose(&loose_changed);
             self.evict_cache_entries(&invalidated);
-            true
-        } else {
-            let changed = self.reindex_closed_file(&uri, prior_source.as_deref());
-            if changed {
-                self.refresh_legacy_override_maps_if_legacy_uri(&uri);
-            }
-            changed
-        };
-        // A needless re-pull throws away the user's scroll position in the Problems list.
-        if diagnostics_changed {
-            self.notify_diagnostics_changed();
+        } else if self.reindex_closed_file(&uri, prior_source.as_deref()) {
+            self.refresh_legacy_override_maps_if_legacy_uri(&uri);
         }
         self.publish_file_scope_status();
         self.sent_file_scope_status.lock().remove(&uri);
-        self.request_semantic_tokens_refresh();
-        self.request_code_lens_refresh();
         trace!(
             op = "did_close",
             uri = %uri,
@@ -237,10 +224,7 @@ impl Backend {
             self.index_base_scripts().await;
         }
         self.reindex_open_documents();
-        self.notify_diagnostics_changed();
         self.publish_file_scope_status();
-        self.request_semantic_tokens_refresh();
-        self.request_code_lens_refresh();
         trace!(
             op = "did_change_workspace_folders",
             elapsed_us = started_at.elapsed().as_micros(),

@@ -134,8 +134,6 @@ impl Backend {
         });
         *self.legacy_replacements.lock() = replacements;
         self.rebuild_filtered_base_catalogs();
-        self.request_semantic_tokens_refresh();
-        self.request_code_lens_refresh();
     }
 
     pub(crate) fn refresh_legacy_override_maps_if_legacy_uri(&self, uri: &Url) {

@@ -3,14 +3,11 @@ use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 use arc_swap::ArcSwap;
 use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
 use futures::future::BoxFuture;
-use lsp_types::request::{
-    CodeLensRefresh, Request as LspRequest, SemanticTokensRefresh, WorkspaceDiagnosticRefresh,
-};
+use lsp_types::request::Request as LspRequest;
 use lsp_types::{
     CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, CompletionParams,
     CompletionResponse, DidChangeConfigurationParams, DidChangeTextDocumentParams,
@@ -43,8 +40,6 @@ use crate::file_scope_status::FileScopeStatusParams;
 use crate::legacy_status::LegacyScriptStatusParams;
 
 type Result<T> = std::result::Result<T, ResponseError>;
-
-const REFRESH_COALESCE_WINDOW: Duration = Duration::from_millis(50);
 
 // The diagnosed set excludes read-only base scripts, so it cannot reuse merge_documents.
 pub(crate) fn diagnostics_document_set<'a>(
@@ -130,10 +125,12 @@ pub(crate) struct Backend {
     pub(crate) client_supports_pull_diagnostics: Arc<AtomicBool>,
     pub(crate) client_supports_code_lens_refresh: Arc<AtomicBool>,
     pub(crate) client_supports_semantic_tokens_refresh: Arc<AtomicBool>,
-    pub(crate) refresh_pending: Arc<AtomicBool>,
     pub(crate) pending_edits: Arc<Mutex<HashMap<Url, PendingEdit>>>,
     pub(crate) edit_notify: Arc<tokio::sync::Notify>,
     pub(crate) edit_writer_spawned: Arc<AtomicBool>,
+    // Raised by every view-relevant swap; the refresher coalesces these (single-permit Notify folds a burst).
+    pub(crate) views_dirty: Arc<tokio::sync::Notify>,
+    pub(crate) view_refresher_spawned: Arc<AtomicBool>,
     // Wakes handlers blocked in `await_initial_index`; paired with `initial_index_done`.
     pub(crate) index_ready_notify: Arc<tokio::sync::Notify>,
 }
@@ -222,10 +219,11 @@ impl Backend {
             client_supports_pull_diagnostics: Arc::new(AtomicBool::new(false)),
             client_supports_code_lens_refresh: Arc::new(AtomicBool::new(false)),
             client_supports_semantic_tokens_refresh: Arc::new(AtomicBool::new(false)),
-            refresh_pending: Arc::new(AtomicBool::new(false)),
             pending_edits: Arc::new(Mutex::new(HashMap::new())),
             edit_notify: Arc::new(tokio::sync::Notify::new()),
             edit_writer_spawned: Arc::new(AtomicBool::new(false)),
+            views_dirty: Arc::new(tokio::sync::Notify::new()),
+            view_refresher_spawned: Arc::new(AtomicBool::new(false)),
             index_ready_notify: Arc::new(tokio::sync::Notify::new()),
         }
     }
@@ -245,7 +243,12 @@ impl Backend {
         let current = self.compilation.load_full();
         let mut builder = CompilationBuilder::new(current);
         edit(&mut builder);
+        let changed = builder.changes_views();
         self.compilation.store(Arc::new(builder.finish()));
+        if changed {
+            self.state_version.fetch_add(1, Ordering::AcqRel);
+            self.views_dirty.notify_one();
+        }
     }
 
     pub(crate) fn invalidated_workspace(&self, keys: &[ObservedKey]) -> HashSet<String> {
@@ -447,89 +450,18 @@ impl Backend {
         fresh
     }
 
-    // Pull clients drive their own cadence; this tells them their cached diagnostics are stale.
-    // Coalesced so a burst of edits produces one refresh, not one per edit.
-    pub(crate) fn request_workspace_diagnostic_refresh(&self) {
-        if !self
-            .client_supports_pull_diagnostics
-            .load(Ordering::Acquire)
-        {
-            return;
-        }
-        if tokio::runtime::Handle::try_current().is_err() {
-            return;
-        }
-        if self.refresh_pending.swap(true, Ordering::AcqRel) {
-            return;
-        }
-        let client = self.client.clone();
-        let pending = self.refresh_pending.clone();
-        crate::spawn_logged("workspace/diagnostic/refresh", async move {
-            tokio::time::sleep(REFRESH_COALESCE_WINDOW).await;
-            let started_at = std::time::Instant::now();
-            trace!(op = "workspace_diagnostic_refresh", "start");
-            Self::send_refresh::<WorkspaceDiagnosticRefresh>(&client).await;
-            pending.store(false, Ordering::Release);
-            trace!(
-                op = "workspace_diagnostic_refresh",
-                elapsed_us = started_at.elapsed().as_micros(),
-                "complete",
-            );
-        });
-    }
-
-    pub(crate) fn notify_diagnostics_changed(&self) {
+    // For a change that bypasses publish_compilation: a config/scope toggle mutates `config`, a separate ArcSwap.
+    pub(crate) fn mark_state_changed(&self) {
         self.state_version.fetch_add(1, Ordering::AcqRel);
-        self.request_workspace_diagnostic_refresh();
+        self.views_dirty.notify_one();
     }
 
-    async fn send_refresh<R: LspRequest<Params = ()>>(client: &ClientSocket)
+    pub(crate) async fn send_refresh<R: LspRequest<Params = ()>>(client: &ClientSocket)
     where
         R::Result: Send,
     {
         // A refresh is a best-effort nudge to re-pull; if the client declines there is nothing to do, so drop the Err.
         let _ = client.request::<R>(()).await;
-    }
-
-    fn request_refresh<R: LspRequest<Params = ()>>(
-        &self,
-        supported: &AtomicBool,
-        op: &'static str,
-        label: &'static str,
-    ) where
-        R::Result: Send,
-    {
-        if !supported.load(Ordering::Acquire) {
-            trace!(op, reason = "client_unsupported", "skip");
-            return;
-        }
-        // Reached only from synchronous tests that drive handlers off-runtime; spawn_logged would panic.
-        if tokio::runtime::Handle::try_current().is_err() {
-            return;
-        }
-        let client = self.client.clone();
-        crate::spawn_logged(label, async move {
-            trace!(op, "send");
-            Self::send_refresh::<R>(&client).await;
-        });
-    }
-
-    // The first request races ahead of indexing, resolving idents against an empty index; re-pull now.
-    pub(crate) fn request_semantic_tokens_refresh(&self) {
-        self.request_refresh::<SemanticTokensRefresh>(
-            &self.client_supports_semantic_tokens_refresh,
-            "semantic_tokens_refresh",
-            "workspace/semanticTokens/refresh",
-        );
-    }
-
-    // Ask the client to re-pull code lenses for open editors (e.g. after the feature is toggled).
-    pub(crate) fn request_code_lens_refresh(&self) {
-        self.request_refresh::<CodeLensRefresh>(
-            &self.client_supports_code_lens_refresh,
-            "code_lens_refresh",
-            "workspace/codeLens/refresh",
-        );
     }
 
     // Offload to a blocking thread so the single async-lsp run task is not frozen by CPU-bound compute.

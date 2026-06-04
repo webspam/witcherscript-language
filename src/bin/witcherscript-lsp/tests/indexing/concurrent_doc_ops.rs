@@ -487,6 +487,30 @@ fn formatting_reflects_queued_edit_instead_of_bailing() {
     );
 }
 
+#[test]
+fn publish_compilation_skips_version_bump_for_overlay_only_swap() {
+    let backend = make_backend();
+    let before = backend.state_version.load(Ordering::Acquire);
+
+    backend.publish_compilation(|builder| {
+        builder.documents_mut();
+    });
+    assert_eq!(
+        backend.state_version.load(Ordering::Acquire),
+        before,
+        "an overlay-only swap (open-document map) must not bump state_version",
+    );
+
+    backend.publish_compilation(|builder| {
+        builder.workspace_index_mut();
+    });
+    assert_eq!(
+        backend.state_version.load(Ordering::Acquire),
+        before + 1,
+        "a view-relevant swap must bump state_version exactly once",
+    );
+}
+
 fn dot_completion_params(uri: &Url, line: u32, character: u32) -> CompletionParams {
     CompletionParams {
         text_document_position: TextDocumentPositionParams {
