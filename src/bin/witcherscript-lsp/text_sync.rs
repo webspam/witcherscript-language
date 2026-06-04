@@ -114,6 +114,14 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "did_close", uri = %uri, "start");
         let scope = self.file_scope_of(&uri);
+        let prior_source = if scope.is_loose() {
+            None
+        } else {
+            self.snapshot()
+                .documents
+                .get(&uri)
+                .map(|doc| doc.source.clone())
+        };
         let mut loose_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
         self.publish_compilation(|builder| {
             builder.documents_mut().remove(&uri);
@@ -124,15 +132,22 @@ impl Backend {
                 ));
             }
         });
-        if scope.is_loose() {
+        let diagnostics_changed = if scope.is_loose() {
             // A loose file is a transient compilation member: closing it drops it from the index entirely.
             let invalidated = self.invalidated_loose(&loose_changed);
             self.evict_cache_entries(&invalidated);
+            true
         } else {
-            self.reindex_closed_file(&uri);
-            self.refresh_legacy_override_maps_if_legacy_uri(&uri);
+            let changed = self.reindex_closed_file(&uri, prior_source.as_deref());
+            if changed {
+                self.refresh_legacy_override_maps_if_legacy_uri(&uri);
+            }
+            changed
+        };
+        // A needless re-pull throws away the user's scroll position in the Problems list.
+        if diagnostics_changed {
+            self.notify_diagnostics_changed();
         }
-        self.notify_diagnostics_changed();
         self.publish_file_scope_status();
         self.sent_file_scope_status.lock().remove(&uri);
         self.request_code_lens_refresh();
