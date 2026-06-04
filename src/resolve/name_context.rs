@@ -117,13 +117,8 @@ fn type_reference_context(ident: Node, parent: Node, source: &[u8]) -> Option<Na
             .then_some(NameContext::Type),
         "annotation" => (parent.child_by_field_name("arg").map(|n| n.id()) == Some(ident.id()))
             .then_some(NameContext::Type),
-        "cast_expr" => {
-            let mut cursor = parent.walk();
-            let found = parent
-                .children_by_field_name("type", &mut cursor)
-                .any(|n| n.id() == ident.id());
-            found.then_some(NameContext::Type)
-        }
+        "cast_expr" => (parent.child_by_field_name("type").map(|n| n.id()) == Some(ident.id()))
+            .then_some(NameContext::Type),
         _ => None,
     }
 }
