@@ -17,10 +17,11 @@ impl<'a> Formatter<'a> {
         let mut prev_node: Option<Node> = None;
         for child in &children {
             let child_row = child.start_position().row;
-            let trailing = child.kind() == "comment" && self.is_trailing_comment(prev_node, *child);
+            let child_is_comment = child.kind() == "comment";
+            let trailing = child_is_comment && self.is_trailing_comment(prev_node, *child);
             if let Some(prev) = prev_end_row {
                 let source_gap = child_row.saturating_sub(prev);
-                if !trailing && (source_gap >= 2 || !prev_was_comment) {
+                if !trailing && (source_gap >= 2 || (!prev_was_comment && !child_is_comment)) {
                     self.nl();
                 }
             }
