@@ -12,6 +12,8 @@ Engine classes get one file each, named after the class (`builtins/CR4HudModule.
 
 `builtins/unknown-classes.ws`, `unknown-enums.ws`, `unknown-interfaces.ws`, and `unknown-structs.ws` are bulk catch-all files: minimal declarations for engine types that exist at runtime but have no declaration in any shipped script, so the LSP would otherwise emit "unknown type" diagnostics. They are deliberately bare (empty bodies, shallow hierarchies) - their job is to silence false diagnostics, not to model the real API. They may be filled in over time from user submissions. Each is one `include_str!` row in `BUILTIN_SOURCES`.
 
+`builtins/native-types.ws` holds the native engine value-types (`CBehTreeVal*`): C++ primitives with no script declaration. They are written as bare `class` stubs (no native-type syntax exists), but `insert_builtin` re-tags symbols from this file to `SymbolKind::NativeType` via `DocumentSymbols::retag_top_level`. That kind keeps them usable as type annotations while excluding them from class behaviour (object-to-bool/string casts, `new`, `extends`); their per-type `default`-value acceptance lives in `NATIVE_TYPE_ACCEPTS` in `src/types/parse.rs`.
+
 ## Source of truth
 
 `builtins/array.ws` is a real `.ws` file embedded at build time via `include_str!`. To change the array API, edit that file and rebuild - no Rust changes required.
