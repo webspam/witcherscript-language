@@ -25,7 +25,7 @@ pub fn build_callables(
         .values()
         .flat_map(|defs| defs.iter())
         .filter(|d| {
-            matches!(d.symbol.kind, SymbolKind::Function | SymbolKind::Event)
+            matches!(d.symbol.kind, SymbolKind::Function)
                 && !matches!(d.symbol.flavour.as_deref(), Some("exec") | Some("quest"))
         })
         .cloned()
