@@ -26,6 +26,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 18 | `type_used_as_value` | error | Type name (class, struct, state, enum) used in a value position |
 | 19 | `type_mismatch` | error | A value's type is not assignable to the target slot |
 | 20 | `string_as_name_default` | info | A `name`/`CName` field default uses a string literal where a name literal is intended |
+| 21 | `native_instantiation` | error | `new T` on a native engine type (`CBehTreeVal*`), which cannot be instantiated |
 
 ## Details
 
@@ -162,6 +163,12 @@ Sites where either the value's type or the target's type cannot be inferred with
 
 The native wrapper types `CBehTreeValBool`, `CBehTreeValInt`, `CBehTreeValFloat`, `CBehTreeValString`, and `CBehTreeValCName` receive a value only through a `default` initializer (or a native `out` parameter). In a `default`, each accepts its matching primitive literal - `bool`, `int`, `float` (also `int`), `string`, and `name` respectively - and a mismatched literal is reported as `type_mismatch`. Outside a `default` (e.g. `wrapper = value;`) they accept nothing, matching the compiler. The two info leniencies below also apply: a float literal for a `CBehTreeValInt` default is `float_as_int_default`, and a double-quoted string for a `CBehTreeValCName` default is `string_as_name_default`.
 
+These five are modelled as a distinct `NativeType` kind, not classes: they take no object-to-bool / to-string / `NULL` casts and cannot be `new`-instantiated (see `native_instantiation`).
+
 ### 20. String literal as a name default
 
 A `name`/`CName` field default whose value is a double-quoted string literal, e.g. `default someVar = "Swimming";`. The compiler accepts this as a compile-time constant `name`, so it is not a type error here (unlike a `var` initializer or an assignment, where `string` -> `name` is reported as `type_mismatch`). It is surfaced at info level because a name literal (`'Swimming'`) is the intended form. The same applies to a `CBehTreeValCName` field default.
+
+### 21. Native type instantiation
+
+A `new T` expression where `T` is a native engine type (`CBehTreeValBool`, `CBehTreeValInt`, `CBehTreeValFloat`, `CBehTreeValString`, `CBehTreeValCName`). These are C++ value types with no script constructor, so they cannot be instantiated from WitcherScript; a value reaches them only through a `default` initializer or a native `out` parameter.

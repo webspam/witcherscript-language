@@ -64,9 +64,17 @@ fn check_new_expr<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> 
     }
     let name = class_ident.utf8_text(ctx.document.source.as_bytes()).ok()?;
     let def = ctx.db.find_top_level(name)?;
-    if def.symbol.kind != SymbolKind::Class || !def.symbol.is_abstract {
-        return None;
-    }
+    let (kind, message) = match def.symbol.kind {
+        SymbolKind::NativeType => (
+            "native_instantiation",
+            format!("Cannot instantiate native type '{name}'."),
+        ),
+        SymbolKind::Class if def.symbol.is_abstract => (
+            "abstract_instantiation",
+            format!("Cannot instantiate abstract class '{name}'."),
+        ),
+        _ => return None,
+    };
 
     let range = ctx.document.line_index.byte_range_to_range(
         &ctx.document.source,
@@ -74,8 +82,8 @@ fn check_new_expr<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> 
         class_ident.end_byte(),
     );
     ctx.diagnostics.push(WorkspaceDiagnostic {
-        kind: "abstract_instantiation".to_string(),
-        message: format!("Cannot instantiate abstract class '{name}'."),
+        kind: kind.to_string(),
+        message,
         severity: Severity::Error,
         range,
         related: vec![],

@@ -60,6 +60,25 @@ fn explicit_only_and_unrelated_primitives_are_incompatible() {
 }
 
 #[test]
+fn null_assigns_to_object_references_only() {
+    let t = TestDb::new(TYPES_SRC).with_builtins_index();
+    assert_eq!(
+        assignability(&Type::Null, &Type::Named("Base".to_string()), &t.db()),
+        Assignability::ImplicitCast(CastKind::NullToRef),
+        "NULL assigns to a class reference"
+    );
+    assert_eq!(
+        assignability(
+            &Type::Null,
+            &Type::Named("CBehTreeValBool".to_string()),
+            &t.db()
+        ),
+        Assignability::Incompatible,
+        "NULL does not assign to a native value type"
+    );
+}
+
+#[test]
 fn native_types_are_not_object_like() {
     let t = TestDb::new("").with_builtins_index();
     let native = Type::Named("CBehTreeValBool".to_string());
