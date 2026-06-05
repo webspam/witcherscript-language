@@ -124,6 +124,21 @@ use super::fmt;
         function g() {}
     "#]]
 )]
+#[case::no_blank_line_forced_between_adjacent_add_field_decls(
+    "@addField(CR4Player) public var a : bool;\n@addField(CR4Player) public var b : LRDebug_LabelManager;",
+    expect![[r#"
+        @addField(CR4Player) public var a : bool;
+        @addField(CR4Player) public var b : LRDebug_LabelManager;
+    "#]]
+)]
+#[case::blank_line_between_add_field_decls_preserved(
+    "@addField(CR4Player) public var a : bool;\n\n@addField(CR4Player) public var b : bool;",
+    expect![[r#"
+        @addField(CR4Player) public var a : bool;
+
+        @addField(CR4Player) public var b : bool;
+    "#]]
+)]
 fn blank_line_handling(#[case] input: &str, #[case] expected: Expect) {
     expected.assert_eq(&fmt(input));
 }
