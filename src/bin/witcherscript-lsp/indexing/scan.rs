@@ -88,7 +88,7 @@ impl Backend {
                 .map(|u| u.to_string())
                 .collect();
             let parsed: Vec<(String, ParsedDocument)> = files
-                .iter()
+                .par_iter()
                 .filter_map(|path| {
                     let source = read_text_file(path)
                         .map_err(|e| warn!(path = %path.display(), error = %e, "failed to read workspace file"))
