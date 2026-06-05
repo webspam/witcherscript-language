@@ -107,6 +107,23 @@ use super::fmt;
         }
     "#]]
 )]
+#[case::top_level_comment_hugging_next_decl_keeps_no_blank(
+    "function f() {}\n// note\nfunction g() {}",
+    expect![[r#"
+        function f() {}
+        // note
+        function g() {}
+    "#]]
+)]
+#[case::top_level_comment_blank_line_preserved(
+    "function f() {}\n\n// note\nfunction g() {}",
+    expect![[r#"
+        function f() {}
+
+        // note
+        function g() {}
+    "#]]
+)]
 fn blank_line_handling(#[case] input: &str, #[case] expected: Expect) {
     expected.assert_eq(&fmt(input));
 }
