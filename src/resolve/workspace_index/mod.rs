@@ -3,6 +3,7 @@ mod lookup;
 mod subscribers;
 
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::Arc;
 
 use crate::document::ParsedDocument;
@@ -31,7 +32,7 @@ pub struct WorkspaceIndex {
     state_backing_by_name: HashMap<String, (String, String)>,
     member_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
     annotated_members_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
-    doc_idents: HashMap<String, HashMap<String, Vec<std::ops::Range<usize>>>>,
+    doc_idents: HashMap<String, HashMap<String, Vec<Range<usize>>>>,
     doc_surface_hashes: HashMap<String, u64>,
     surface_hash: u64,
     generation: u64,
@@ -43,7 +44,7 @@ pub struct WorkspaceIndex {
 
 pub struct DocContribution {
     symbols: Vec<Symbol>,
-    idents: HashMap<String, Vec<std::ops::Range<usize>>>,
+    idents: HashMap<String, Vec<Range<usize>>>,
     surface_hash: u64,
     outward: HashMap<ObservedKey, u64>,
 }
@@ -184,7 +185,7 @@ impl WorkspaceIndex {
             total += uri.capacity();
             for (name, ranges) in name_map {
                 total += name.capacity();
-                total += ranges.capacity() * size_of::<std::ops::Range<usize>>();
+                total += ranges.capacity() * size_of::<Range<usize>>();
             }
             total += name_map.capacity() * HASHMAP_ENTRY_BYTES;
         }
@@ -192,11 +193,7 @@ impl WorkspaceIndex {
         total
     }
 
-    pub(super) fn ident_ranges_in_doc(
-        &self,
-        uri: &str,
-        name: &str,
-    ) -> Option<&[std::ops::Range<usize>]> {
+    pub(super) fn ident_ranges_in_doc(&self, uri: &str, name: &str) -> Option<&[Range<usize>]> {
         self.doc_idents.get(uri)?.get(name).map(Vec::as_slice)
     }
 }
