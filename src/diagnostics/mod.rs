@@ -22,10 +22,9 @@ pub use base_script_conflict::{
     basename_of, collect_base_script_conflict_diagnostics, relative_from_scripts,
     KIND as BASE_SCRIPT_CONFLICT_KIND,
 };
-pub use cst_walker::PassMode;
 pub(crate) use cst_walker::{
     access_is_inside_declaring_class, collect_nodes_with_error_subtree, declaring_class_of,
-    run_pass, run_rules_on_document, CstRule, CstRuleCtx, ParallelRuleShard,
+    run_parallel_pass, run_rules_on_document, CstRule, CstRuleCtx, ParallelRuleShard,
 };
 pub use duplicate_local::collect_duplicate_local_diagnostics;
 pub use duplicate_symbols::collect_duplicate_symbol_diagnostics;
@@ -42,14 +41,13 @@ use abstract_instantiation::AbstractInstantiationRule;
 use super_field_access::SuperFieldAccessRule;
 use type_mismatch::TypeMismatchRule;
 use unknown_method::UnknownMethodRule;
-use unknown_symbol::run_unknown_symbol;
+use unknown_symbol::run_unknown_symbol_parallel;
 use wrapped_method::WrappedMethodRule;
 
 pub fn collect_cst_diagnostics_for_document(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
-    unknown_pass: PassMode,
 ) -> Vec<WorkspaceDiagnostic> {
     let method_rule = UnknownMethodRule;
     let wrapped_rule = WrappedMethodRule;
@@ -65,7 +63,7 @@ pub fn collect_cst_diagnostics_for_document(
     ];
     let mut diagnostics = run_rules_on_document(uri, document, db, &rules);
 
-    let shard = run_unknown_symbol(uri, document, db, unknown_pass);
+    let shard = run_unknown_symbol_parallel(uri, document, db);
     db.merge_observations(shard.observer);
     diagnostics.extend(shard.diagnostics);
     diagnostics.sort_by(|a, b| {

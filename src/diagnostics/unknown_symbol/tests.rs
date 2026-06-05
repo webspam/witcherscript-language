@@ -1,7 +1,7 @@
 use rstest::rstest;
 
 use super::collect_unknown_symbol_diagnostics;
-use crate::diagnostics::{collect_cst_diagnostics_for_document, PassMode};
+use crate::diagnostics::collect_cst_diagnostics_for_document;
 use crate::document::parse_document;
 use crate::resolve::{SymbolDb, WorkspaceIndex};
 use crate::test_support::{script_env, TestDb};
@@ -22,10 +22,8 @@ fn parallel_run_is_deterministic() {
     let base = WorkspaceIndex::default();
     let db = SymbolDb::new(&idx, &base);
 
-    let first =
-        collect_cst_diagnostics_for_document("file:///big.ws", &doc, &db, PassMode::Parallel);
-    let second =
-        collect_cst_diagnostics_for_document("file:///big.ws", &doc, &db, PassMode::Parallel);
+    let first = collect_cst_diagnostics_for_document("file:///big.ws", &doc, &db);
+    let second = collect_cst_diagnostics_for_document("file:///big.ws", &doc, &db);
 
     assert!(!first.is_empty(), "fixture should produce diagnostics");
     assert_eq!(

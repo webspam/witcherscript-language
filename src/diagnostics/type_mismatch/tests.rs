@@ -314,7 +314,6 @@ fn surfaces_through_aggregate_pipeline() {
         t.primary_uri(),
         t.primary_doc(),
         &t.db(),
-        crate::diagnostics::PassMode::Parallel,
     );
     assert!(
         diags.iter().any(|d| d.kind == "type_mismatch"),

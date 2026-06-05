@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use witcherscript_language::diagnostics::{
-    collect_cst_diagnostics_for_document, PassMode, WorkspaceDiagnostic,
+    collect_cst_diagnostics_for_document, WorkspaceDiagnostic,
 };
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::resolve::{ObservationSet, SymbolDb};
@@ -85,8 +85,9 @@ pub(crate) fn cst_diagnostics_with_cache(
         };
     }
 
+    // Set by any worker that sees the state version advance; the whole result is then discarded.
     let cancelled = AtomicBool::new(false);
-    let compute_one = |uri: &String, document: &ParsedDocument, pass: PassMode| {
+    let compute_one = |uri: &String, document: &ParsedDocument| {
         if !should_continue() {
             cancelled.store(true, Ordering::Relaxed);
             return None;
@@ -100,12 +101,7 @@ pub(crate) fn cst_diagnostics_with_cache(
         let diagnostics =
             tracing::trace_span!("cst_doc", uri = uri.as_str(), bytes = document.source.len())
                 .in_scope(|| {
-                    collect_cst_diagnostics_for_document(
-                        uri.as_str(),
-                        document,
-                        &recording_db,
-                        pass,
-                    )
+                    collect_cst_diagnostics_for_document(uri.as_str(), document, &recording_db)
                 });
         Some(ComputedDoc {
             uri: uri.clone(),
@@ -115,18 +111,10 @@ pub(crate) fn cst_diagnostics_with_cache(
         })
     };
 
-    // A lone miss has nothing to parallelize across, so it keeps the intra-file parallel pass.
-    let computed: Vec<ComputedDoc> = if miss_count > 1 {
-        misses
-            .par_iter()
-            .filter_map(|&(uri, document)| compute_one(uri, document, PassMode::Serial))
-            .collect()
-    } else {
-        misses
-            .iter()
-            .filter_map(|&(uri, document)| compute_one(uri, document, PassMode::Parallel))
-            .collect()
-    };
+    let computed: Vec<ComputedDoc> = misses
+        .par_iter()
+        .filter_map(|&(uri, document)| compute_one(uri, document))
+        .collect();
     let cancelled = cancelled.load(Ordering::Relaxed);
 
     {
