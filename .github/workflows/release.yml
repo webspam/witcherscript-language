@@ -60,22 +60,28 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $releaseTitle = "${{ inputs.title }}"
-          if ([string]::IsNullOrWhiteSpace($releaseTitle)) { $releaseTitle = "${{ steps.version.outputs.tag }}" }
+          # Read inputs from env, never via inline GitHub expressions: PowerShell treats backtick
+          # as its escape char, so interpolated summaries lose every backtick (and it is injection-prone).
+          $releaseTitle = $env:RELEASE_TITLE
+          if ([string]::IsNullOrWhiteSpace($releaseTitle)) { $releaseTitle = $env:RELEASE_TAG }
 
           $releaseArgs = @()
-          if ("${{ inputs.prerelease }}" -eq "true") { $releaseArgs += "--prerelease" }
+          if ($env:RELEASE_PRERELEASE -eq "true") { $releaseArgs += "--prerelease" }
 
-          if (-not [string]::IsNullOrWhiteSpace("${{ inputs.summary }}")) {
-            "${{ inputs.summary }}" | Out-File -FilePath "summary.md" -Encoding utf8
+          if (-not [string]::IsNullOrWhiteSpace($env:RELEASE_SUMMARY)) {
+            $env:RELEASE_SUMMARY | Out-File -FilePath "summary.md" -Encoding utf8
             $releaseArgs += "--notes-file", "summary.md"
           }
 
-          gh release create "${{ steps.version.outputs.tag }}" `
+          gh release create $env:RELEASE_TAG `
             --title $releaseTitle `
             --draft `
             @releaseArgs `
             --generate-notes `
-            "witcherscript-language-${{ steps.version.outputs.tag }}-windows-x64.zip"
+            "witcherscript-language-$($env:RELEASE_TAG)-windows-x64.zip"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_TITLE: ${{ inputs.title }}
+          RELEASE_SUMMARY: ${{ inputs.summary }}
+          RELEASE_PRERELEASE: ${{ inputs.prerelease }}
