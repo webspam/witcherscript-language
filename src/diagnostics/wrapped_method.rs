@@ -23,6 +23,7 @@ impl CstRule for WrappedMethodRule {
     }
 
     fn visit<'tree>(&self, node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
+        // Option is only a `?` early-return vehicle; diagnostics are pushed via ctx, and None means "nothing to flag".
         let _ = check_func_decl(node, ctx);
     }
 }

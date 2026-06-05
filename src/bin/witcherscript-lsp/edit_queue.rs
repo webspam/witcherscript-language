@@ -118,7 +118,8 @@ impl Backend {
                     break;
                 }
                 let backend = self.clone();
-                let _ = tokio::task::spawn_blocking(move || {
+                let queued = uris.len();
+                let join = tokio::task::spawn_blocking(move || {
                     for uri in uris {
                         // Keep the entry until publish so a racing did_change sees it via latest_edit_state.
                         let Some(edit) = backend.clone_pending_for(&uri) else {
@@ -135,6 +136,9 @@ impl Backend {
                     }
                 })
                 .await;
+                if let Err(join_err) = join {
+                    error!(error = %join_err, files = queued, "Failed to process recent edits to open files");
+                }
             }
         }
     }

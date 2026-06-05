@@ -93,6 +93,7 @@ impl<S: tracing::Subscriber> Layer<S> for LspLogSender {
         } else {
             visitor.finish()
         };
+        // Err only if the forwarding task is gone (shutdown); we are inside the tracing layer, so logging it would recurse.
         let _ = self.sender.send((msg_type, message));
     }
 }
