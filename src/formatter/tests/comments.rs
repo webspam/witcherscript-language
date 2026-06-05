@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use expect_test::expect;
+use expect_test::{expect, Expect};
 use rstest::rstest;
 
 use super::fmt;
@@ -83,188 +83,131 @@ fn comments_around_return_type_keep_source_order() {
     assert_eq!(output, fmt(&output), "formatting must be idempotent");
 }
 
-#[test]
-fn trailing_comment_on_error_member_var_preserved() {
-    let input = "class C {\n    var x : int // trailing comment\n}";
-    let output = fmt(input);
-    assert!(
-        output.contains("// trailing comment"),
-        "trailing comment on error member_var_decl must be preserved, got:\n{output}"
-    );
-    assert!(
-        !output.contains("// trailing comment;"),
-        "spurious semicolon must not be appended after the comment, got:\n{output}"
-    );
-}
-
-#[test]
-fn trailing_comment_on_member_default_val_preserved() {
-    let input = "class C {\n    var x : int;\n    default x = OT_None // keep me\n    ;\n}";
-    let output = fmt(input);
-    assert!(
-        output.contains("// keep me"),
-        "trailing comment on member_default_val must be preserved, got:\n{output}"
-    );
-}
-
-#[test]
-fn comment_before_param_preserved() {
-    let input = "function lossy(/* comment */ param1 : bool) {}";
-    let output = fmt(input);
-    assert!(
-        output.contains("/* comment */"),
-        "leading comment inside param list must be preserved, got:\n{output}"
-    );
-    assert!(
-        output.contains("param1"),
-        "param name must still be present, got:\n{output}"
-    );
-}
-
-#[test]
-fn comment_between_params_preserved() {
-    let input = "function F(a : int, /* mid */ b : bool) {}";
-    let output = fmt(input);
-    assert!(
-        output.contains("/* mid */"),
-        "inter-param comment must be preserved, got:\n{output}"
-    );
-}
-
-#[test]
-fn comment_in_enum_body_preserved() {
-    let input = "enum EKind {\n    // a comment\n    A,\n    B\n}";
-    let output = fmt(input);
-    assert!(
-        output.contains("// a comment"),
-        "comment inside enum body must be preserved, got:\n{output}"
-    );
-}
-
-#[test]
-fn comment_in_defaults_block_preserved() {
-    let input = "class C {\n    defaults {\n        // a comment\n        x = 1;\n    }\n}";
-    let output = fmt(input);
-    assert!(
-        output.contains("// a comment"),
-        "comment inside defaults block must be preserved, got:\n{output}"
-    );
-}
-
-#[test]
-fn comment_trailing_param_preserved() {
-    let input = "function F(a : int /* trailing */) {}";
-    let output = fmt(input);
-    assert!(
-        output.contains("/* trailing */"),
-        "trailing comment after last param must be preserved, got:\n{output}"
-    );
-}
-
-#[test]
-fn comment_between_params_comma_position() {
-    let input = "function F(a : bool /*b*/,/*a*/ i : int) {}";
-    let output = fmt(input);
-    assert!(
-        output.contains("/*b*/"),
-        "first comment dropped, got:\n{output}"
-    );
-    assert!(
-        output.contains("/*a*/"),
-        "second comment dropped, got:\n{output}"
-    );
-    assert!(
-        !output.contains("bool,"),
-        "comma must not appear immediately after type (before trailing comments), got:\n{output}"
-    );
-}
-
-#[test]
-fn comment_between_params_keeps_source_comma_position() {
-    // /*f*/ appears before the comma in source; /*g*/ appears after. The formatter
-    // must not collapse both onto one side of the comma.
-    let input = "function lossy(   /*a*/   a   /*b*/  /*c*/  :/*d*//*e*/bool/*f*/,/*g*/i:int) {}";
-    let output = fmt(input);
-    assert!(
-        output.contains("/*f*/, /*g*/"),
-        "comma must sit between /*f*/ and /*g*/ as in source, got:\n{output}"
-    );
-}
-
-#[test]
-fn line_comment_between_statements_does_not_swallow_next() {
-    let input = "function f() {\n    var y : int = a // c\n        + b;\n}";
-    let output = fmt(input);
-    assert!(
-        output.contains("// c\n"),
-        "line comment must be newline-terminated, got:\n{output}"
-    );
-    assert!(
-        output.contains("+ b"),
-        "following tokens must survive the comment, got:\n{output}"
-    );
-    assert!(
-        !output.contains("// c +"),
-        "comment must not swallow the operator, got:\n{output}"
-    );
-}
-
-#[test]
-fn trailing_line_comment_after_statement_stays_and_terminates() {
-    let input = "function f() {\n    doSomething(); // explain\n    other();\n}";
-    let output = fmt(input);
-    assert!(
-        output.contains("doSomething(); // explain\n"),
-        "trailing line comment must stay on the statement line and terminate, got:\n{output}"
-    );
-    assert!(
-        output.contains("other();"),
-        "next statement must survive, got:\n{output}"
-    );
-}
-
-#[test]
-fn trailing_comment_after_class_member_stays_trailing() {
-    let input = "class C {\n    var x : int; // trailing\n    var y : int;\n}";
-    let output = fmt(input);
-    assert!(
-        output.contains("var x : int; // trailing\n"),
-        "trailing comment must stay on the member line, got:\n{output}"
-    );
-    assert!(
-        output.contains("var y : int;"),
-        "following member must survive, got:\n{output}"
-    );
-}
-
-#[test]
-fn trailing_comment_after_enum_variant_keeps_comma_order() {
-    let input = "enum E {\n    A, // first\n    B\n}";
-    let output = fmt(input);
-    assert!(
-        output.contains("A, // first"),
-        "comma must precede the trailing comment, got:\n{output}"
-    );
-}
-
-#[test]
-fn trailing_comment_in_defaults_block_stays_trailing() {
-    let input = "class C {\n    defaults {\n        x = 1; // trailing\n    }\n}";
-    let output = fmt(input);
-    assert!(
-        output.contains("x = 1; // trailing"),
-        "trailing comment in defaults block must stay trailing, got:\n{output}"
-    );
-}
-
-#[test]
-fn own_line_comment_in_nested_block_is_indented() {
-    let input = "function f() {\n    if (x) {\n        // note\n        a();\n    }\n}";
-    let output = fmt(input);
-    assert!(
-        output.contains("        // note\n"),
-        "own-line comment must be indented to its block depth, got:\n{output}"
-    );
+#[rstest]
+#[case::trailing_comment_on_error_member_var_preserved(
+    "class C {\n    var x : int // trailing comment\n}",
+    expect![[r#"
+        class C {
+            var x : int // trailing comment
+        }
+    "#]]
+)]
+#[case::trailing_comment_on_member_default_val_preserved(
+    "class C {\n    var x : int;\n    default x = OT_None // keep me\n    ;\n}",
+    expect![[r#"
+        class C {
+            var x : int;
+            default x = OT_None // keep me
+            ;
+        }
+    "#]]
+)]
+#[case::comment_before_param_preserved(
+    "function lossy(/* comment */ param1 : bool) {}",
+    expect![[r#"
+        function lossy(/* comment */ param1 : bool) {}
+    "#]]
+)]
+#[case::comment_between_params_preserved(
+    "function F(a : int, /* mid */ b : bool) {}",
+    expect![[r#"
+        function F(a : int, /* mid */ b : bool) {}
+    "#]]
+)]
+#[case::comment_in_enum_body_preserved("enum EKind {\n    // a comment\n    A,\n    B\n}", expect![[r#"
+    enum EKind {
+        // a comment
+        A,
+        B
+    }
+"#]])]
+#[case::comment_in_defaults_block_preserved(
+    "class C {\n    defaults {\n        // a comment\n        x = 1;\n    }\n}",
+    expect![[r#"
+        class C {
+            defaults {
+                // a comment
+                x = 1;
+            }
+        }
+    "#]]
+)]
+#[case::comment_trailing_param_preserved("function F(a : int /* trailing */) {}", expect![[r#"
+    function F(a : int /* trailing */) {}
+"#]])]
+#[case::comment_between_params_comma_position(
+    "function F(a : bool /*b*/,/*a*/ i : int) {}",
+    expect![[r#"
+        function F(a : bool /*b*/, /*a*/ i : int) {}
+    "#]]
+)]
+// /*f*/ appears before the comma in source; /*g*/ appears after. The formatter
+// must not collapse both onto one side of the comma.
+#[case::comment_between_params_keeps_source_comma_position(
+    "function lossy(   /*a*/   a   /*b*/  /*c*/  :/*d*//*e*/bool/*f*/,/*g*/i:int) {}",
+    expect![[r#"
+        function lossy(/*a*/ a /*b*/ /*c*/ : /*d*/ /*e*/ bool /*f*/, /*g*/ i : int) {}
+    "#]]
+)]
+#[case::line_comment_between_statements_does_not_swallow_next(
+    "function f() {\n    var y : int = a // c\n        + b;\n}",
+    expect![[r#"
+        function f() {
+            var y : int = a // c
+        + b;
+        }
+    "#]]
+)]
+#[case::trailing_line_comment_after_statement_stays_and_terminates(
+    "function f() {\n    doSomething(); // explain\n    other();\n}",
+    expect![[r#"
+        function f() {
+            doSomething(); // explain
+            other();
+        }
+    "#]]
+)]
+#[case::trailing_comment_after_class_member_stays_trailing(
+    "class C {\n    var x : int; // trailing\n    var y : int;\n}",
+    expect![[r#"
+        class C {
+            var x : int; // trailing
+            var y : int;
+        }
+    "#]]
+)]
+#[case::trailing_comment_after_enum_variant_keeps_comma_order(
+    "enum E {\n    A, // first\n    B\n}",
+    expect![[r#"
+        enum E {
+            A, // first
+            B
+        }
+    "#]]
+)]
+#[case::trailing_comment_in_defaults_block_stays_trailing(
+    "class C {\n    defaults {\n        x = 1; // trailing\n    }\n}",
+    expect![[r#"
+        class C {
+            defaults {
+                x = 1; // trailing
+            }
+        }
+    "#]]
+)]
+#[case::own_line_comment_in_nested_block_is_indented(
+    "function f() {\n    if (x) {\n        // note\n        a();\n    }\n}",
+    expect![[r#"
+        function f() {
+            if (x) {
+                // note
+                a();
+            }
+        }
+    "#]]
+)]
+fn comment_preservation(#[case] input: &str, #[case] expected: Expect) {
+    expected.assert_eq(&fmt(input));
 }
 
 #[test]

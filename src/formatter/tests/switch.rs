@@ -126,9 +126,16 @@ fn blank_line_is_preserved_but_does_not_break_run() {
 #[test]
 fn comment_inside_arm_forces_block() {
     let src = "function F() {\nswitch (x) {\ncase 1: /* note */ Foo(); break;\n}\n}\n";
-    let out = fmt(src);
-    assert!(out.contains("/* note */"), "comment must survive: {out}");
-    assert!(out.contains("Foo();"), "statement must survive: {out}");
+    expect![[r#"
+        function F() {
+            switch (x) {
+                case 1: /* note */
+                    Foo();
+                    break;
+            }
+        }
+    "#]]
+    .assert_eq(&fmt(src));
 }
 
 #[test]
