@@ -72,6 +72,7 @@ impl Backend {
         info!(op = "index_workspace", roots = ?roots, "start");
         let start = Instant::now();
 
+        let parse_start = Instant::now();
         let join_result = tokio::task::spawn_blocking(move || {
             let files = match collect_witcherscript_files(&roots, &exclude_globs) {
                 Ok(f) => f,
@@ -117,6 +118,7 @@ impl Backend {
                 return;
             }
         };
+        let parse_ms = parse_start.elapsed().as_millis();
 
         *self.workspace_known_files.lock() = known_uris;
 
@@ -134,6 +136,7 @@ impl Backend {
             .map(|(uri, doc)| (uri, Arc::new(doc)))
             .collect();
         let indexed = filtered.len();
+        let build_start = Instant::now();
         self.publish_compilation(|builder| {
             let index = builder.workspace_index_mut();
             index.begin_bulk_catalog_update();
@@ -146,11 +149,14 @@ impl Backend {
                 docs.insert(uri, document);
             }
         });
+        let build_ms = build_start.elapsed().as_millis();
 
         info!(
             op = "index_workspace",
             indexed,
             file_count,
+            parse_ms,
+            build_ms,
             elapsed_ms = start.elapsed().as_millis(),
             "complete"
         );
@@ -227,6 +233,8 @@ impl Backend {
             let mut base_index = WorkspaceIndex::default();
             let mut base_docs: HashMap<String, ParsedDocument> = HashMap::new();
             let mut base_total: usize = 0;
+            let mut parse_ms: u128 = 0;
+            let mut build_ms: u128 = 0;
             base_index.begin_bulk_catalog_update();
 
             for (label, root) in &base_segments {
@@ -236,13 +244,16 @@ impl Backend {
                     continue;
                 };
                 let parsed = parse_script_files(&files, "base");
+                parse_ms += seg_start.elapsed().as_millis();
 
                 let count = parsed.len();
                 base_total += count;
+                let build_start = Instant::now();
                 for (uri, doc) in parsed {
                     base_index.update_document(uri.as_str(), &doc);
                     base_docs.insert(uri, doc);
                 }
+                build_ms += build_start.elapsed().as_millis();
                 let elapsed_ms = seg_start.elapsed().as_millis();
                 info!(
                     op = "index_base_scripts",
@@ -263,6 +274,7 @@ impl Backend {
                     continue;
                 };
                 let parsed = parse_script_files(&files, "legacy");
+                parse_ms += seg_start.elapsed().as_millis();
                 let count = parsed.len();
                 let elapsed_ms = seg_start.elapsed().as_millis();
                 info!(
@@ -282,9 +294,15 @@ impl Backend {
                 legacy_parsed.iter().map(|(uri, _)| uri.clone()).collect();
             let (suppressed_base, legacy_replacements) =
                 legacy_base_replacements(&base_uris, &legacy_uris);
+            let catalog_start = Instant::now();
             base_index.end_bulk_catalog_update();
+            build_ms += catalog_start.elapsed().as_millis();
             let matched_count = suppressed_base.len();
             let legacy_total = legacy_parsed.len();
+            debug!(
+                op = "index_base_scripts",
+                parse_ms, build_ms, "index phase timing"
+            );
 
             (
                 base_index,
