@@ -29,6 +29,15 @@ pub enum SymbolKind {
     Event,
 }
 
+impl SymbolKind {
+    pub fn is_callable(self) -> bool {
+        matches!(
+            self,
+            SymbolKind::Function | SymbolKind::Event | SymbolKind::Method
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Annotation {
     pub name: String,
@@ -255,10 +264,7 @@ pub(crate) fn enclosing_callable_id(symbols: &[Symbol], sym: &Symbol) -> Option<
     let mut current = sym.container?;
     loop {
         let owner = symbols.get(current.0)?;
-        if matches!(
-            owner.kind,
-            SymbolKind::Function | SymbolKind::Method | SymbolKind::Event
-        ) {
+        if owner.kind.is_callable() {
             return Some(current);
         }
         current = owner.container?;

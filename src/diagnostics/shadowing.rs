@@ -129,13 +129,11 @@ fn is_in_exempt_callable(sym: &Symbol, doc_symbols: &[Symbol]) -> bool {
         let Some(parent) = doc_symbols.get(id.0) else {
             return false;
         };
-        if matches!(
-            parent.kind,
-            SymbolKind::Function | SymbolKind::Method | SymbolKind::Event
-        ) && parent
-            .annotations
-            .iter()
-            .any(|a| EXEMPT_ANNOTATIONS.contains(&a.name.as_str()))
+        if parent.kind.is_callable()
+            && parent
+                .annotations
+                .iter()
+                .any(|a| EXEMPT_ANNOTATIONS.contains(&a.name.as_str()))
         {
             return true;
         }

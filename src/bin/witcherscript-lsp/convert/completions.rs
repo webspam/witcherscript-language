@@ -10,10 +10,7 @@ use super::symbols::hover_markdown;
 
 pub(crate) fn completion_item(definition: &Definition, params: &[String]) -> CompletionItem {
     let symbol = &definition.symbol;
-    let is_callable = matches!(
-        symbol.kind,
-        SymbolKind::Method | SymbolKind::Event | SymbolKind::Function
-    );
+    let is_callable = symbol.kind.is_callable();
     let kind = Some(match symbol.kind {
         SymbolKind::Method | SymbolKind::Event => CompletionItemKind::METHOD,
         SymbolKind::Field => CompletionItemKind::FIELD,
