@@ -273,6 +273,8 @@ fn aligns_colons_and_defaults_on_same_line_pairs() {
         x_default - x_semi >= 3,
         "at least two spaces between `;` and `default`, got:\n{output}"
     );
+    let second = fmt_aligned_with_default_placement(&output, AnnotationPlacement::SameLine);
+    assert_eq!(output, second, "default alignment should be idempotent");
 }
 
 #[test]
@@ -300,16 +302,6 @@ fn aligns_three_same_line_default_pairs() {
     let a_col = default_keyword_col(a, "a");
     assert_eq!(a_col, default_keyword_col(bb, "bb"), "got:\n{output}");
     assert_eq!(a_col, default_keyword_col(ccc, "ccc"), "got:\n{output}");
-}
-
-#[test]
-fn aligned_same_line_defaults_are_idempotent() {
-    let src = "class C {\n    \
-               var x : int; default x = 1;\n    \
-               var someLongName : string; default someLongName = \"\";\n}";
-    let first = fmt_aligned_with_default_placement(src, AnnotationPlacement::SameLine);
-    let second = fmt_aligned_with_default_placement(&first, AnnotationPlacement::SameLine);
-    assert_eq!(first, second, "default alignment should be idempotent");
 }
 
 #[test]

@@ -6,6 +6,7 @@ use super::{fmt, fmt_limit};
 fn long_call_stmt_splits_args() {
     let src =
         "function F() { SetupEnemiesCollection(enemyCollectionDist, findMoveTargetDist, 10); }";
+    let output = fmt_limit(src, 60);
     expect![[r#"
         function F() {
             SetupEnemiesCollection(
@@ -15,7 +16,12 @@ fn long_call_stmt_splits_args() {
             );
         }
     "#]]
-    .assert_eq(&fmt_limit(src, 60));
+    .assert_eq(&output);
+    assert_eq!(
+        output,
+        fmt_limit(&output, 60),
+        "split call stmt should be idempotent"
+    );
 }
 
 #[test]
@@ -36,13 +42,4 @@ fn empty_call_arg_keeps_space_between_commas() {
         }
     "#]]
     .assert_eq(&fmt("function F() { someVar.Func(true, , \"test\"); }"));
-}
-
-#[test]
-fn split_call_stmt_is_idempotent() {
-    let src =
-        "function F() { SetupEnemiesCollection(enemyCollectionDist, findMoveTargetDist, 10); }";
-    let first = fmt_limit(src, 60);
-    let second = fmt_limit(&first, 60);
-    assert_eq!(first, second, "split call stmt should be idempotent");
 }

@@ -91,7 +91,13 @@ fn long_line_forces_block_form() {
     "#]]
 )]
 fn line_limited_breaking(#[case] input: &str, #[case] limit: u32, #[case] expected: Expect) {
-    expected.assert_eq(&fmt_limit(input, limit));
+    let output = fmt_limit(input, limit);
+    expected.assert_eq(&output);
+    assert_eq!(
+        output,
+        fmt_limit(&output, limit),
+        "line-limited formatting should be idempotent"
+    );
 }
 
 #[test]
@@ -193,35 +199,7 @@ fn class_method_params_wrapped_when_body_has_error() {
     "#]]
 )]
 fn default_limit_line_breaking(#[case] input: &str, #[case] expected: Expect) {
-    expected.assert_eq(&fmt(input));
-}
-
-#[test]
-fn split_signature_is_idempotent() {
-    let src = "function LongFuncName(paramOne:int,paramTwo:bool,paramThree:string):bool{}";
-    let first = fmt_limit(src, 60);
-    let second = fmt_limit(&first, 60);
-    assert_eq!(first, second, "split-param formatting should be idempotent");
-}
-
-#[test]
-fn multiline_if_condition_is_idempotent() {
-    let src = "function F() { if (alpha || beta || gamma) return; }";
-    let first = fmt_limit(src, 30);
-    let second = fmt_limit(&first, 30);
-    assert_eq!(
-        first, second,
-        "multiline if condition formatting should be idempotent"
-    );
-}
-
-#[test]
-fn preserved_return_chain_is_idempotent() {
-    let src = "function F() : bool {\n    return StrFindFirst(entity.ToString(), \"candle\") != -1\n        && StrFindFirst(entity.ToString(), \"candle_holder\") == -1;\n}";
-    let first = fmt(src);
-    let second = fmt(&first);
-    assert_eq!(
-        first, second,
-        "preserved-break formatting should be idempotent"
-    );
+    let output = fmt(input);
+    expected.assert_eq(&output);
+    assert_eq!(output, fmt(&output), "line breaking should be idempotent");
 }

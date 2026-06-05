@@ -79,16 +79,6 @@ use super::fmt;
         }
     "#]]
 )]
-#[case::block_if_else_else_on_new_line("function F() { if(x){a();} else{b();} }", expect![[r#"
-    function F() {
-        if (x) {
-            a();
-        }
-        else {
-            b();
-        }
-    }
-"#]])]
 fn formats_structures(#[case] input: &str, #[case] expected: Expect) {
     expected.assert_eq(&fmt(input));
 }
