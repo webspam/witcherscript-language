@@ -158,6 +158,10 @@ The sized engine integer spellings (`Int16`, `Int8`, `Uint16`, `Uint32`, `Uint64
 
 Sites where either the value's type or the target's type cannot be inferred with confidence emit nothing, as do sites inside a tree-sitter error subtree, to avoid false positives while typing. A target whose name does not resolve to a known type (including the unsubstituted generic element of `array<T>` methods) is treated as unknown and skipped. Calls with more arguments than declared parameters, or with an empty argument slot, are skipped.
 
+#### Engine `CBehTreeVal*` wrappers
+
+The native wrapper types `CBehTreeValBool`, `CBehTreeValInt`, `CBehTreeValFloat`, `CBehTreeValString`, and `CBehTreeValCName` receive a value only through a `default` initializer (or a native `out` parameter). In a `default`, each accepts its matching primitive literal - `bool`, `int`, `float` (also `int`), `string`, and `name` respectively - and a mismatched literal is reported as `type_mismatch`. Outside a `default` (e.g. `wrapper = value;`) they accept nothing, matching the compiler. The two info leniencies below also apply: a float literal for a `CBehTreeValInt` default is `float_as_int_default`, and a double-quoted string for a `CBehTreeValCName` default is `string_as_name_default`.
+
 ### 20. String literal as a name default
 
-A `name`/`CName` field default whose value is a double-quoted string literal, e.g. `default someVar = "Swimming";`. The compiler accepts this as a compile-time constant `name`, so it is not a type error here (unlike a `var` initializer or an assignment, where `string` -> `name` is reported as `type_mismatch`). It is surfaced at info level because a name literal (`'Swimming'`) is the intended form.
+A `name`/`CName` field default whose value is a double-quoted string literal, e.g. `default someVar = "Swimming";`. The compiler accepts this as a compile-time constant `name`, so it is not a type error here (unlike a `var` initializer or an assignment, where `string` -> `name` is reported as `type_mismatch`). It is surfaced at info level because a name literal (`'Swimming'`) is the intended form. The same applies to a `CBehTreeValCName` field default.

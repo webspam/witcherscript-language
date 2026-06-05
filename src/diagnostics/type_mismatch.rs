@@ -222,6 +222,9 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         );
         return;
     }
+    if check_behtree_val_default(&target, value, &value_type, ctx) {
+        return;
+    }
     if is_incompatible(&value_type, &target, ctx.db) {
         emit(
             value,
@@ -231,6 +234,59 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
             ctx,
         );
     }
+}
+
+/// `CBehTreeVal*` wrappers accept a matching primitive literal only as a `default`, not via assignment.
+fn check_behtree_val_default<'tree>(
+    target: &Type,
+    value: Node<'tree>,
+    value_type: &Type,
+    ctx: &mut CstRuleCtx<'_, 'tree>,
+) -> bool {
+    let Type::Named(name) = target else {
+        return false;
+    };
+    let name = name.as_str();
+    let accepted: &[Primitive] = match name {
+        "CBehTreeValBool" => &[Primitive::Bool],
+        "CBehTreeValInt" => &[Primitive::Int],
+        "CBehTreeValFloat" => &[Primitive::Int, Primitive::Float],
+        "CBehTreeValString" => &[Primitive::String],
+        "CBehTreeValCName" => &[Primitive::Name],
+        _ => return false,
+    };
+    // Mirror the real `CName` default: a double-quoted string literal is accepted but flagged.
+    if name == "CBehTreeValCName" && value.kind() == "literal_string" {
+        emit(
+            value,
+            "string_as_name_default",
+            format!("String literal (double quotes) used for a '{target}' (single quotes) default"),
+            Severity::Info,
+            ctx,
+        );
+        return true;
+    }
+    // Mirror the real `int` default: a float literal is accepted but flagged.
+    if name == "CBehTreeValInt" && matches!(value_type, Type::Primitive(Primitive::Float)) {
+        emit(
+            value,
+            "float_as_int_default",
+            format!("Float value used for an '{target}' default"),
+            Severity::Info,
+            ctx,
+        );
+        return true;
+    }
+    if !matches!(value_type, Type::Primitive(p) if accepted.contains(p)) {
+        emit(
+            value,
+            "type_mismatch",
+            format!("Cannot assign value of type '{value_type}' to '{target}'"),
+            Severity::Error,
+            ctx,
+        );
+    }
+    true
 }
 
 /// Argument slots of a call. `None` if no args or any slot is empty (`f(a,,b)`), which breaks positional alignment.
