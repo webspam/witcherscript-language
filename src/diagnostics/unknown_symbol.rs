@@ -15,20 +15,22 @@ use crate::types::is_builtin_type_name;
 
 use super::{
     access_is_inside_declaring_class, collect_nodes_with_error_subtree, declaring_class_of,
-    run_parallel_pass, CstRuleCtx, ParallelRuleShard, Severity, WorkspaceDiagnostic,
+    run_pass, CstRuleCtx, ParallelRuleShard, PassMode, Severity, WorkspaceDiagnostic,
 };
 
-pub(crate) fn run_unknown_symbol_parallel(
+pub(crate) fn run_unknown_symbol(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb<'_>,
+    mode: PassMode,
 ) -> ParallelRuleShard {
     let items = collect_nodes_with_error_subtree(document.tree.root_node(), |k| k == "ident");
     let visits = items.len();
     let start = Instant::now();
-    let shard = run_parallel_pass(
+    let shard = run_pass(
         &items,
         db,
+        mode,
         |node, in_err, local_db, memo, telemetry, diagnostics| {
             let mut ctx = CstRuleCtx {
                 uri,
@@ -83,7 +85,7 @@ pub fn collect_unknown_symbol_diagnostics(
     let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
 
     for (uri, document) in documents {
-        let shard = run_unknown_symbol_parallel(uri, document, db);
+        let shard = run_unknown_symbol(uri, document, db, PassMode::Parallel);
         db.merge_observations(shard.observer);
         if !shard.diagnostics.is_empty() {
             debug!(

@@ -233,6 +233,7 @@ impl Backend {
             env: fingerprint.env,
             legacy_dirs_hash: hash_legacy_dirs(&legacy_dirs),
         };
+        let bundle_start = Instant::now();
         let bundle = self.workspace_bundle(
             bundle_fingerprint,
             workspace,
@@ -242,6 +243,7 @@ impl Backend {
             &legacy_dirs,
             &version_check,
         )?;
+        let bundle_ms = bundle_start.elapsed().as_millis();
         if !version_check() {
             return None;
         }
@@ -265,20 +267,27 @@ impl Backend {
 
         let state_version = self.state_version.clone();
         let should_continue = move || state_version.load(Ordering::Acquire) == version;
-        let cst = {
-            let mut cache = self.cst_diag_cache.lock();
-            cst_diagnostics_with_cache(
-                diag_docs,
-                &ws_db,
-                Some((&loose_db, loose_uri_strs)),
-                fingerprint,
-                &mut cache,
-                &should_continue,
-            )
-        };
+        let cst_start = Instant::now();
+        let cst = cst_diagnostics_with_cache(
+            diag_docs,
+            &ws_db,
+            Some((&loose_db, loose_uri_strs)),
+            fingerprint,
+            &self.cst_diag_cache,
+            &should_continue,
+        );
         if cst.cancelled {
             return None;
         }
+        debug!(
+            op = "run_pull_compute",
+            docs = diag_docs.len(),
+            cache_hits = cst.stats.hits,
+            cache_misses = cst.stats.misses,
+            bundle_ms,
+            cst_ms = cst_start.elapsed().as_millis(),
+            "diagnostics compute phases"
+        );
 
         Some(PullCompute {
             bundle,

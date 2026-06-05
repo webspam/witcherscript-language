@@ -288,6 +288,69 @@ where
         .reduce(ParallelRuleShard::default, merge_shards)
 }
 
+// Serial avoids nested rayon when the caller already parallelizes across files.
+#[derive(Debug, Clone, Copy)]
+pub enum PassMode {
+    Serial,
+    Parallel,
+}
+
+pub(crate) fn run_pass<'tree, F>(
+    items: &[(Node<'tree>, bool)],
+    db: &SymbolDb<'_>,
+    mode: PassMode,
+    visit: F,
+) -> ParallelRuleShard
+where
+    F: Fn(
+            Node<'tree>,
+            bool,
+            &SymbolDb<'_>,
+            &mut TypeMemo,
+            &mut RuleTelemetry,
+            &mut Vec<WorkspaceDiagnostic>,
+        ) + Sync,
+{
+    match mode {
+        PassMode::Serial => run_serial_pass(items, db, visit),
+        PassMode::Parallel => run_parallel_pass(items, db, visit),
+    }
+}
+
+fn run_serial_pass<'tree, F>(
+    items: &[(Node<'tree>, bool)],
+    db: &SymbolDb<'_>,
+    visit: F,
+) -> ParallelRuleShard
+where
+    F: Fn(
+        Node<'tree>,
+        bool,
+        &SymbolDb<'_>,
+        &mut TypeMemo,
+        &mut RuleTelemetry,
+        &mut Vec<WorkspaceDiagnostic>,
+    ),
+{
+    let mut shard = ParallelRuleShard::default();
+    let observer = Mutex::new(ObservationSet::default());
+    {
+        let local_db = db.with_observer(&observer);
+        for &(node, in_err) in items {
+            visit(
+                node,
+                in_err,
+                &local_db,
+                &mut shard.memo,
+                &mut shard.telemetry,
+                &mut shard.diagnostics,
+            );
+        }
+    }
+    shard.observer = observer.into_inner();
+    shard
+}
+
 fn merge_shards(mut a: ParallelRuleShard, b: ParallelRuleShard) -> ParallelRuleShard {
     a.telemetry = a.telemetry + b.telemetry;
     a.diagnostics.extend(b.diagnostics);

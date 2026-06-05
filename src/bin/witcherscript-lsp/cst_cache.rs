@@ -1,8 +1,10 @@
 use parking_lot::Mutex;
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use witcherscript_language::diagnostics::{
-    collect_cst_diagnostics_for_document, WorkspaceDiagnostic,
+    collect_cst_diagnostics_for_document, PassMode, WorkspaceDiagnostic,
 };
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::resolve::{ObservationSet, SymbolDb};
@@ -34,62 +36,127 @@ pub(crate) struct CstDiagnosticsResult {
     pub cancelled: bool,
 }
 
+struct ComputedDoc {
+    uri: String,
+    parse_version: u64,
+    diagnostics: Vec<WorkspaceDiagnostic>,
+    observations: ObservationSet,
+}
+
+// Misses compute off-lock and in parallel across files; the lock only guards read and commit.
 pub(crate) fn cst_diagnostics_with_cache(
     documents: &HashMap<String, &ParsedDocument>,
     db: &SymbolDb,
     loose: Option<(&SymbolDb, &HashSet<String>)>,
     fingerprint: DbFingerprint,
-    cache: &mut HashMap<String, CstCacheEntry>,
-    should_continue: &dyn Fn() -> bool,
+    cache: &Mutex<HashMap<String, CstCacheEntry>>,
+    should_continue: &(dyn Fn() -> bool + Sync),
 ) -> CstDiagnosticsResult {
     let mut out: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
-    let mut stats = CstCacheStats::default();
-    let mut new_subscriptions: Vec<(String, ObservationSet)> = Vec::new();
-    let mut cancelled = false;
-
-    for (uri, document) in documents.iter() {
-        if !should_continue() {
-            cancelled = true;
-            break;
+    let mut hits = 0usize;
+    let mut misses: Vec<(&String, &ParsedDocument)> = Vec::new();
+    {
+        let cache = cache.lock();
+        for (uri, document) in documents.iter() {
+            let cached = cache.get(uri).filter(|e| {
+                e.parse_version == document.parse_version && e.db_fingerprint == fingerprint
+            });
+            if let Some(entry) = cached {
+                hits += 1;
+                if !entry.diagnostics.is_empty() {
+                    out.insert(uri.clone(), entry.diagnostics.clone());
+                }
+            } else {
+                misses.push((uri, *document));
+            }
         }
-        let cached = cache.get(uri).filter(|e| {
-            e.parse_version == document.parse_version && e.db_fingerprint == fingerprint
-        });
-        let diagnostics = if let Some(entry) = cached {
-            stats.hits += 1;
-            entry.diagnostics.clone()
-        } else {
-            stats.misses += 1;
-            let observations = Mutex::new(ObservationSet::default());
-            let doc_db = match loose {
-                Some((loose_db, loose_uris)) if loose_uris.contains(uri.as_str()) => loose_db,
-                _ => db,
-            };
-            let recording_db = doc_db.with_observer(&observations);
-            let d =
-                tracing::trace_span!("cst_doc", uri = uri.as_str(), bytes = document.source.len())
-                    .in_scope(|| {
-                        collect_cst_diagnostics_for_document(uri.as_str(), document, &recording_db)
-                    });
+    }
+    let miss_count = misses.len();
+
+    if !should_continue() {
+        return CstDiagnosticsResult {
+            by_uri: out,
+            stats: CstCacheStats {
+                hits,
+                misses: miss_count,
+            },
+            new_subscriptions: Vec::new(),
+            cancelled: true,
+        };
+    }
+
+    let cancelled = AtomicBool::new(false);
+    let compute_one = |uri: &String, document: &ParsedDocument, pass: PassMode| {
+        if !should_continue() {
+            cancelled.store(true, Ordering::Relaxed);
+            return None;
+        }
+        let observations = Mutex::new(ObservationSet::default());
+        let doc_db = match loose {
+            Some((loose_db, loose_uris)) if loose_uris.contains(uri.as_str()) => loose_db,
+            _ => db,
+        };
+        let recording_db = doc_db.with_observer(&observations);
+        let diagnostics =
+            tracing::trace_span!("cst_doc", uri = uri.as_str(), bytes = document.source.len())
+                .in_scope(|| {
+                    collect_cst_diagnostics_for_document(
+                        uri.as_str(),
+                        document,
+                        &recording_db,
+                        pass,
+                    )
+                });
+        Some(ComputedDoc {
+            uri: uri.clone(),
+            parse_version: document.parse_version,
+            diagnostics,
+            observations: observations.into_inner(),
+        })
+    };
+
+    // A lone miss has nothing to parallelize across, so it keeps the intra-file parallel pass.
+    let computed: Vec<ComputedDoc> = if miss_count > 1 {
+        misses
+            .par_iter()
+            .filter_map(|&(uri, document)| compute_one(uri, document, PassMode::Serial))
+            .collect()
+    } else {
+        misses
+            .iter()
+            .filter_map(|&(uri, document)| compute_one(uri, document, PassMode::Parallel))
+            .collect()
+    };
+    let cancelled = cancelled.load(Ordering::Relaxed);
+
+    {
+        let mut cache = cache.lock();
+        for c in &computed {
             cache.insert(
-                uri.clone(),
+                c.uri.clone(),
                 CstCacheEntry {
-                    parse_version: document.parse_version,
+                    parse_version: c.parse_version,
                     db_fingerprint: fingerprint,
-                    diagnostics: d.clone(),
+                    diagnostics: c.diagnostics.clone(),
                 },
             );
-            new_subscriptions.push((uri.clone(), observations.into_inner()));
-            d
-        };
-        if !diagnostics.is_empty() {
-            out.insert(uri.clone(), diagnostics);
         }
+    }
+
+    let mut new_subscriptions: Vec<(String, ObservationSet)> = Vec::with_capacity(computed.len());
+    for c in computed {
+        if !c.diagnostics.is_empty() {
+            out.insert(c.uri.clone(), c.diagnostics);
+        }
+        new_subscriptions.push((c.uri, c.observations));
     }
 
     CstDiagnosticsResult {
         by_uri: out,
-        stats,
+        stats: CstCacheStats {
+            hits,
+            misses: miss_count,
+        },
         new_subscriptions,
         cancelled,
     }
