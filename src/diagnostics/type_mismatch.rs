@@ -199,13 +199,7 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     let target = Type::from_annotation(field_annot);
     // The compiler accepts a constant string literal as a `name`/`CName` default
     if value.kind() == "literal_string" && matches!(target, Type::Primitive(Primitive::Name)) {
-        emit(
-            value,
-            "string_as_name_default",
-            format!("String literal (double quotes) used for a '{target}' (single quotes) default"),
-            Severity::Info,
-            ctx,
-        );
+        emit_string_as_name_default(value, &target, ctx);
         return;
     }
     let value_type = infer_type(ctx.uri, ctx.document, ctx.db, value, value.start_byte());
@@ -213,13 +207,7 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     if matches!(value_type, Type::Primitive(Primitive::Float))
         && matches!(target, Type::Primitive(Primitive::Int))
     {
-        emit(
-            value,
-            "float_as_int_default",
-            format!("Float value used for an '{target}' default"),
-            Severity::Info,
-            ctx,
-        );
+        emit_float_as_int_default(value, &target, ctx);
         return;
     }
     if check_native_type_default(&target, value, &value_type, ctx) {
@@ -252,24 +240,12 @@ fn check_native_type_default<'tree>(
     };
     // Mirror the real `CName` default: a double-quoted string literal is accepted but flagged.
     if name == "CBehTreeValCName" && value.kind() == "literal_string" {
-        emit(
-            value,
-            "string_as_name_default",
-            format!("String literal (double quotes) used for a '{target}' (single quotes) default"),
-            Severity::Info,
-            ctx,
-        );
+        emit_string_as_name_default(value, target, ctx);
         return true;
     }
     // Mirror the real `int` default: a float literal is accepted but flagged.
     if name == "CBehTreeValInt" && matches!(value_type, Type::Primitive(Primitive::Float)) {
-        emit(
-            value,
-            "float_as_int_default",
-            format!("Float value used for an '{target}' default"),
-            Severity::Info,
-            ctx,
-        );
+        emit_float_as_int_default(value, target, ctx);
         return true;
     }
     if !matches!(value_type, Type::Primitive(p) if accepted.contains(p)) {
@@ -282,6 +258,34 @@ fn check_native_type_default<'tree>(
         );
     }
     true
+}
+
+fn emit_string_as_name_default<'tree>(
+    value: Node<'tree>,
+    target: &Type,
+    ctx: &mut CstRuleCtx<'_, 'tree>,
+) {
+    emit(
+        value,
+        "string_as_name_default",
+        format!("String literal (double quotes) used for a '{target}' (single quotes) default"),
+        Severity::Info,
+        ctx,
+    );
+}
+
+fn emit_float_as_int_default<'tree>(
+    value: Node<'tree>,
+    target: &Type,
+    ctx: &mut CstRuleCtx<'_, 'tree>,
+) {
+    emit(
+        value,
+        "float_as_int_default",
+        format!("Float value used for an '{target}' default"),
+        Severity::Info,
+        ctx,
+    );
 }
 
 /// Argument slots of a call. `None` if no args or any slot is empty (`f(a,,b)`), which breaks positional alignment.

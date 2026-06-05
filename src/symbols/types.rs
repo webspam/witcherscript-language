@@ -241,7 +241,7 @@ impl DocumentSymbols {
         }
     }
 
-    /// Re-tag top-level symbols of one kind as another; builtins ingestion marks native engine types, which have no declaration syntax of their own.
+    /// Builtins ingestion marks native engine types, which have no declaration syntax of their own.
     pub(crate) fn retag_top_level(&mut self, from: SymbolKind, to: SymbolKind) {
         for symbol in &mut self.symbols {
             if symbol.container.is_none() && symbol.kind == from {
