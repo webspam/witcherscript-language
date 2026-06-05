@@ -30,6 +30,17 @@ pub enum SymbolKind {
 }
 
 impl SymbolKind {
+    pub(crate) fn is_type(self) -> bool {
+        matches!(
+            self,
+            SymbolKind::Class
+                | SymbolKind::NativeType
+                | SymbolKind::Struct
+                | SymbolKind::State
+                | SymbolKind::Enum
+        )
+    }
+
     pub fn is_callable(self) -> bool {
         matches!(
             self,

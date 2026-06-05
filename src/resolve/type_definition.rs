@@ -1,6 +1,5 @@
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
-use crate::symbols::SymbolKind;
 use crate::types::parse_generic_type;
 
 use super::definition::resolve_definition;
@@ -19,14 +18,7 @@ pub fn resolve_type_definition(
 }
 
 fn type_target_for(def: &Definition, db: &SymbolDb<'_>) -> Option<Definition> {
-    if matches!(
-        def.symbol.kind,
-        SymbolKind::Class
-            | SymbolKind::NativeType
-            | SymbolKind::Struct
-            | SymbolKind::Enum
-            | SymbolKind::State
-    ) {
+    if def.symbol.kind.is_type() {
         return Some(def.clone());
     }
     let raw = definition_type_name(def)?;

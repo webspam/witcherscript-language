@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use crate::symbols::SymbolKind;
 
-use super::ast::is_type_like;
 use super::workspace_index::ObservedKey;
 use super::Definition;
 
@@ -39,7 +38,7 @@ pub fn build_types(
     top_level
         .values()
         .flat_map(|defs| defs.iter())
-        .filter(|d| is_type_like(d.symbol.kind) || d.symbol.kind == SymbolKind::Enum)
+        .filter(|d| d.symbol.kind.is_type())
         .cloned()
         .collect()
 }
