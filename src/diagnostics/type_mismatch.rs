@@ -10,7 +10,7 @@ use crate::resolve::{
     assignability, infer_type, resolve_definition_at_byte, Assignability, SymbolDb,
 };
 use crate::symbols::{node_text, Symbol, SymbolKind};
-use crate::types::{Primitive, Type};
+use crate::types::{native_type_accepts, Primitive, Type};
 
 use super::{run_rules_on_document, CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic};
 
@@ -222,7 +222,7 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         );
         return;
     }
-    if check_behtree_val_default(&target, value, &value_type, ctx) {
+    if check_native_type_default(&target, value, &value_type, ctx) {
         return;
     }
     if is_incompatible(&value_type, &target, ctx.db) {
@@ -236,8 +236,8 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     }
 }
 
-/// `CBehTreeVal*` wrappers accept a matching primitive literal only as a `default`, not via assignment.
-fn check_behtree_val_default<'tree>(
+/// `CBehTreeVal*` native types accept a matching primitive literal only as a `default`, not via assignment.
+fn check_native_type_default<'tree>(
     target: &Type,
     value: Node<'tree>,
     value_type: &Type,
@@ -247,13 +247,8 @@ fn check_behtree_val_default<'tree>(
         return false;
     };
     let name = name.as_str();
-    let accepted: &[Primitive] = match name {
-        "CBehTreeValBool" => &[Primitive::Bool],
-        "CBehTreeValInt" => &[Primitive::Int],
-        "CBehTreeValFloat" => &[Primitive::Int, Primitive::Float],
-        "CBehTreeValString" => &[Primitive::String],
-        "CBehTreeValCName" => &[Primitive::Name],
-        _ => return false,
+    let Some(accepted) = native_type_accepts(name) else {
+        return false;
     };
     // Mirror the real `CName` default: a double-quoted string literal is accepted but flagged.
     if name == "CBehTreeValCName" && value.kind() == "literal_string" {

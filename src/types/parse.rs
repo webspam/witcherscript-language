@@ -24,6 +24,15 @@ const PRIMITIVE_ALIASES: &[(&str, Primitive)] = &[
     ("StringAnsi", Primitive::StringAnsi),
 ];
 
+/// Per-type `default`-value acceptance for the `CBehTreeVal*` native types (Float also takes `int`).
+const NATIVE_TYPE_ACCEPTS: &[(&str, &[Primitive])] = &[
+    ("CBehTreeValBool", &[Primitive::Bool]),
+    ("CBehTreeValInt", &[Primitive::Int]),
+    ("CBehTreeValFloat", &[Primitive::Int, Primitive::Float]),
+    ("CBehTreeValString", &[Primitive::String]),
+    ("CBehTreeValCName", &[Primitive::Name]),
+];
+
 pub(super) fn from_annotation(s: &str) -> Type {
     let trimmed = s.trim();
     if trimmed.is_empty() {
@@ -49,4 +58,11 @@ pub(super) fn from_annotation(s: &str) -> Type {
 
 pub(crate) fn is_builtin_type_name(name: &str) -> bool {
     name == "void" || PRIMITIVE_ALIASES.iter().any(|(alias, _)| *alias == name)
+}
+
+pub(crate) fn native_type_accepts(name: &str) -> Option<&'static [Primitive]> {
+    NATIVE_TYPE_ACCEPTS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, prims)| *prims)
 }
