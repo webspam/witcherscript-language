@@ -48,6 +48,13 @@ impl SymbolKind {
         )
     }
 
+    pub(crate) fn is_assignable_type(self) -> bool {
+        matches!(
+            self,
+            SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::Enum
+        )
+    }
+
     pub fn is_callable(self) -> bool {
         matches!(
             self,

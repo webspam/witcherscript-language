@@ -26,10 +26,7 @@ impl NameContext {
     /// (so this returns true only for `State`).
     pub fn accepts(&self, kind: SymbolKind) -> bool {
         match self {
-            NameContext::Type => matches!(
-                kind,
-                SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::Enum
-            ),
+            NameContext::Type => kind.is_assignable_type(),
             NameContext::StateExtends { .. } => kind == SymbolKind::State,
             NameContext::Callable => matches!(
                 kind,
