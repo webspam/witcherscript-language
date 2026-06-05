@@ -8,7 +8,7 @@ use crate::symbols::SymbolKind;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NameContext {
     /// `: T`, `new T(...)`, cast `(T)`, `class extends T`, `state X in T`,
-    /// `@addMethod(T)`. Accepts class, struct, enum.
+    /// `@addMethod(T)`. Accepts class, native type, struct, enum.
     Type,
     /// `state X in Owner extends T`. Accepts only a state declared in `owner_class`
     /// or one of its statemachine ancestors.
@@ -28,7 +28,7 @@ impl NameContext {
         match self {
             NameContext::Type => matches!(
                 kind,
-                SymbolKind::Class | SymbolKind::Struct | SymbolKind::Enum
+                SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::Enum
             ),
             NameContext::StateExtends { .. } => kind == SymbolKind::State,
             NameContext::Callable => matches!(

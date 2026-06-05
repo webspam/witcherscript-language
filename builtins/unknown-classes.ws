@@ -1,10 +1,5 @@
 class CActionPoint {}
 class CBaseDamage {}
-class CBehTreeValBool {}
-class CBehTreeValCName {}
-class CBehTreeValFloat {}
-class CBehTreeValInt {}
-class CBehTreeValString {}
 class CDateTime {}
 class CDeniedAreaComponent {}
 class CEffectDummyComponent {}

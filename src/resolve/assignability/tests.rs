@@ -60,6 +60,39 @@ fn explicit_only_and_unrelated_primitives_are_incompatible() {
 }
 
 #[test]
+fn native_types_are_not_object_like() {
+    let t = TestDb::new("").with_builtins_index();
+    let native = Type::Named("CBehTreeValBool".to_string());
+    assert_eq!(
+        assignability(&native, &prim(Primitive::Bool), &t.db()),
+        Assignability::Incompatible,
+        "native type must not cast to bool"
+    );
+    assert_eq!(
+        assignability(&native, &prim(Primitive::String), &t.db()),
+        Assignability::Incompatible,
+        "native type must not cast to string"
+    );
+    assert_eq!(
+        assignability(&prim(Primitive::Bool), &native, &t.db()),
+        Assignability::Incompatible,
+        "a primitive must not assign into a native type"
+    );
+
+    let object = Type::Named("CR4HudModule".to_string());
+    assert_eq!(
+        assignability(&object, &prim(Primitive::Bool), &t.db()),
+        Assignability::ImplicitCast(CastKind::ObjectToBool),
+        "a real class still casts to bool"
+    );
+    assert_eq!(
+        assignability(&object, &prim(Primitive::String), &t.db()),
+        Assignability::ImplicitCast(CastKind::ToString),
+        "a real class still casts to string"
+    );
+}
+
+#[test]
 fn sized_ints_accept_only_their_own_spelling() {
     let t = TestDb::new(TYPES_SRC);
     assert_eq!(

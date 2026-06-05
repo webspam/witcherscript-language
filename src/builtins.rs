@@ -3,10 +3,12 @@ use std::sync::{Arc, LazyLock};
 
 use crate::document::{parse_document, ParsedDocument};
 use crate::resolve::{Definition, WorkspaceIndex};
+use crate::symbols::SymbolKind;
 
 pub const BUILTIN_ARRAY_URI: &str = "witcherscript-builtin:/array.ws";
 pub const BUILTIN_ENUMS_URI: &str = "witcherscript-builtin:/enums.ws";
 pub const BUILTIN_ORPHAN_ENUMS_URI: &str = "witcherscript-builtin:/orphan_enums.ws";
+pub const BUILTIN_NATIVE_TYPES_URI: &str = "witcherscript-builtin:/native-types.ws";
 
 pub const GENERIC_ELEMENT_PLACEHOLDER: &str = "T";
 
@@ -50,6 +52,10 @@ static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock
             "witcherscript-builtin:/unknown-structs.ws",
             include_str!("../builtins/unknown-structs.ws"),
         ),
+        (
+            BUILTIN_NATIVE_TYPES_URI,
+            include_str!("../builtins/native-types.ws"),
+        ),
     ])
 });
 
@@ -92,8 +98,13 @@ pub fn builtin_source(uri: &str) -> Option<&'static str> {
 }
 
 fn insert_builtin(index: &mut WorkspaceIndex, uri: &str, source: &'static str) {
-    let doc: ParsedDocument =
+    let mut doc: ParsedDocument =
         parse_document(source).expect("builtin sources must parse cleanly at build time");
+    // Native engine types are stubbed as `class` since no native-type syntax exists; re-tag them.
+    if uri == BUILTIN_NATIVE_TYPES_URI {
+        doc.symbols
+            .retag_top_level(SymbolKind::Class, SymbolKind::NativeType);
+    }
     index.update_document(uri, &doc);
 }
 

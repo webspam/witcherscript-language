@@ -341,7 +341,7 @@ fn classify<'tree>(ident: Node<'tree>, source: &[u8]) -> Option<IdentRole<'tree>
 fn is_type_kind(kind: SymbolKind) -> bool {
     matches!(
         kind,
-        SymbolKind::Class | SymbolKind::Struct | SymbolKind::Enum
+        SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::Enum
     )
 }
 

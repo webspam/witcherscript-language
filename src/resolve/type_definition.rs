@@ -21,7 +21,11 @@ pub fn resolve_type_definition(
 fn type_target_for(def: &Definition, db: &SymbolDb<'_>) -> Option<Definition> {
     if matches!(
         def.symbol.kind,
-        SymbolKind::Class | SymbolKind::Struct | SymbolKind::Enum | SymbolKind::State
+        SymbolKind::Class
+            | SymbolKind::NativeType
+            | SymbolKind::Struct
+            | SymbolKind::Enum
+            | SymbolKind::State
     ) {
         return Some(def.clone());
     }

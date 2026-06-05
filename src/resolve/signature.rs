@@ -232,6 +232,7 @@ pub fn hover_text(definition: &Definition) -> String {
         _ => {
             let label = match symbol.kind {
                 SymbolKind::Class => "class",
+                SymbolKind::NativeType => "native type",
                 SymbolKind::Struct => "struct",
                 SymbolKind::Enum => "enum",
                 SymbolKind::EnumMember => "enum member",
