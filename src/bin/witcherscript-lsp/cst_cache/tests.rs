@@ -1,10 +1,23 @@
 use super::{cst_diagnostics_with_cache, CstCacheEntry, DbFingerprint};
-use std::collections::HashMap;
+use parking_lot::Mutex;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use witcherscript_language::diagnostics::WorkspaceDiagnostic;
 use witcherscript_language::document::{parse_document, ParsedDocument};
 use witcherscript_language::resolve::{SymbolDb, WorkspaceIndex};
 
 fn make_doc(src: &str) -> ParsedDocument {
     parse_document(src).expect("parse should succeed")
+}
+
+fn diag_kinds(by_uri: &HashMap<String, Vec<WorkspaceDiagnostic>>) -> BTreeMap<String, Vec<String>> {
+    by_uri
+        .iter()
+        .map(|(uri, ds)| {
+            let mut kinds: Vec<String> = ds.iter().map(|d| d.kind.clone()).collect();
+            kinds.sort();
+            (uri.clone(), kinds)
+        })
+        .collect()
 }
 
 fn fp() -> DbFingerprint {
@@ -44,12 +57,12 @@ fn unchanged_docs_hit_cache_on_second_call() {
     let db = SymbolDb::new(&idx, &base);
     let documents = docs_map(&doc_a, &doc_b);
 
-    let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
-    let r1 = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
+    let cache: Mutex<HashMap<String, CstCacheEntry>> = Mutex::new(HashMap::new());
+    let r1 = cst_diagnostics_with_cache(&documents, &db, None, fp(), &cache, &|| true);
     assert_eq!(r1.stats.hits, 0);
     assert_eq!(r1.stats.misses, 2);
 
-    let r2 = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
+    let r2 = cst_diagnostics_with_cache(&documents, &db, None, fp(), &cache, &|| true);
     assert_eq!(r2.stats.hits, 2);
     assert_eq!(r2.stats.misses, 0);
 }
@@ -60,10 +73,10 @@ fn text_only_edit_to_doc_keeps_others_hot() {
     let base = WorkspaceIndex::default();
     let mut documents = docs_map(&doc_a, &doc_b);
 
-    let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
+    let cache: Mutex<HashMap<String, CstCacheEntry>> = Mutex::new(HashMap::new());
     {
         let db = SymbolDb::new(&idx, &base);
-        let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
+        let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &cache, &|| true);
     }
 
     let fresh_a = make_doc("class A {} // comment-only edit\n");
@@ -71,7 +84,7 @@ fn text_only_edit_to_doc_keeps_others_hot() {
     documents.insert("file:///a.ws".to_string(), &fresh_a);
 
     let db = SymbolDb::new(&idx, &base);
-    let r = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
+    let r = cst_diagnostics_with_cache(&documents, &db, None, fp(), &cache, &|| true);
     assert_eq!(r.stats.hits, 1, "doc b should still be a cache hit");
     assert_eq!(
         r.stats.misses, 1,
@@ -86,13 +99,13 @@ fn edited_doc_misses_others_hit() {
     let db = SymbolDb::new(&idx, &base);
     let mut documents = docs_map(&doc_a, &doc_b);
 
-    let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
-    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
+    let cache: Mutex<HashMap<String, CstCacheEntry>> = Mutex::new(HashMap::new());
+    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &cache, &|| true);
 
     let fresh_a = make_doc("class A {} // edit\n");
     documents.insert("file:///a.ws".to_string(), &fresh_a);
 
-    let r = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
+    let r = cst_diagnostics_with_cache(&documents, &db, None, fp(), &cache, &|| true);
     assert_eq!(r.stats.hits, 1);
     assert_eq!(r.stats.misses, 1);
 }
@@ -104,17 +117,55 @@ fn fingerprint_change_invalidates_all() {
     let db = SymbolDb::new(&idx, &base);
     let documents = docs_map(&doc_a, &doc_b);
 
-    let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
-    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true);
+    let cache: Mutex<HashMap<String, CstCacheEntry>> = Mutex::new(HashMap::new());
+    let _ = cst_diagnostics_with_cache(&documents, &db, None, fp(), &cache, &|| true);
 
     let fp_bumped = DbFingerprint {
         base_surface: fp().base_surface.wrapping_add(1),
         env: 0,
         legacy_db_generation: 0,
     };
-    let r = cst_diagnostics_with_cache(&documents, &db, None, fp_bumped, &mut cache, &|| true);
+    let r = cst_diagnostics_with_cache(&documents, &db, None, fp_bumped, &cache, &|| true);
     assert_eq!(r.stats.hits, 0);
     assert_eq!(r.stats.misses, 2);
+}
+
+#[test]
+fn parallel_miss_path_agrees_with_cached_results() {
+    let (idx, doc_a, doc_b) = two_doc_fixture(
+        "class A { var x : Missing; }\n",
+        "class B { var y : AlsoMissing; }\n",
+    );
+    let base = WorkspaceIndex::default();
+    let db = SymbolDb::new(&idx, &base);
+    let documents = docs_map(&doc_a, &doc_b);
+
+    let cache: Mutex<HashMap<String, CstCacheEntry>> = Mutex::new(HashMap::new());
+    let parallel = cst_diagnostics_with_cache(&documents, &db, None, fp(), &cache, &|| true);
+    assert_eq!(
+        parallel.stats.misses, 2,
+        "both files take the parallel miss path"
+    );
+
+    let cached = cst_diagnostics_with_cache(&documents, &db, None, fp(), &cache, &|| true);
+    assert_eq!(cached.stats.hits, 2, "second run is served from cache");
+
+    assert_eq!(
+        diag_kinds(&parallel.by_uri),
+        diag_kinds(&cached.by_uri),
+        "parallel-computed diagnostics must match what the cache returns"
+    );
+
+    let subscribed: HashSet<&str> = parallel
+        .new_subscriptions
+        .iter()
+        .map(|(uri, _)| uri.as_str())
+        .collect();
+    assert_eq!(
+        subscribed,
+        HashSet::from(["file:///a.ws", "file:///b.ws"]),
+        "every freshly computed file registers a subscription"
+    );
 }
 
 #[test]
@@ -132,11 +183,11 @@ fn editing_unobserved_doc_does_not_invalidate_dependents() {
     let mut documents: HashMap<String, &ParsedDocument> = HashMap::new();
     documents.insert(user_uri.to_string(), &user);
     documents.insert(helper_uri.to_string(), &helper);
-    let mut cache: HashMap<String, CstCacheEntry> = HashMap::new();
+    let cache: Mutex<HashMap<String, CstCacheEntry>> = Mutex::new(HashMap::new());
 
     let warm = {
         let db = SymbolDb::new(&idx, &base);
-        cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true)
+        cst_diagnostics_with_cache(&documents, &db, None, fp(), &cache, &|| true)
     };
     for (uri, obs) in warm.new_subscriptions {
         subscriptions.register(&uri, obs);
@@ -147,11 +198,13 @@ fn editing_unobserved_doc_does_not_invalidate_dependents() {
     let changed = idx.update_document(helper_uri, &fresh_helper);
     let invalidated = subscriptions.subscribers_of(&changed);
     documents.insert(helper_uri.to_string(), &fresh_helper);
-    cache.retain(|u, _| !invalidated.contains(u.as_str()));
+    cache
+        .lock()
+        .retain(|u, _| !invalidated.contains(u.as_str()));
 
     let stats = {
         let db = SymbolDb::new(&idx, &base);
-        cst_diagnostics_with_cache(&documents, &db, None, fp(), &mut cache, &|| true).stats
+        cst_diagnostics_with_cache(&documents, &db, None, fp(), &cache, &|| true).stats
     };
     assert!(
         !invalidated.contains(user_uri),

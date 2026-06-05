@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use tracing::{debug, error, info, trace, warn};
 use witcherscript_language::document::{parse_document, ParsedDocument};
 use witcherscript_language::files::{canonical_uri, collect_witcherscript_files, read_text_file};
-use witcherscript_language::resolve::WorkspaceIndex;
+use witcherscript_language::resolve::{DocContribution, WorkspaceIndex};
 use witcherscript_language::script_env::parse_script_environment;
 
 use crate::backend::Backend;
@@ -72,6 +72,7 @@ impl Backend {
         info!(op = "index_workspace", roots = ?roots, "start");
         let start = Instant::now();
 
+        let parse_start = Instant::now();
         let join_result = tokio::task::spawn_blocking(move || {
             let files = match collect_witcherscript_files(&roots, &exclude_globs) {
                 Ok(f) => f,
@@ -88,7 +89,7 @@ impl Backend {
                 .map(|u| u.to_string())
                 .collect();
             let parsed: Vec<(String, ParsedDocument)> = files
-                .iter()
+                .par_iter()
                 .filter_map(|path| {
                     let source = read_text_file(path)
                         .map_err(|e| warn!(path = %path.display(), error = %e, "failed to read workspace file"))
@@ -117,6 +118,7 @@ impl Backend {
                 return;
             }
         };
+        let parse_ms = parse_start.elapsed().as_millis();
 
         *self.workspace_known_files.lock() = known_uris;
 
@@ -134,11 +136,21 @@ impl Backend {
             .map(|(uri, doc)| (uri, Arc::new(doc)))
             .collect();
         let indexed = filtered.len();
+
+        let contributions: Vec<(String, DocContribution)> = filtered
+            .par_iter()
+            .map(|(uri, document)| {
+                (
+                    uri.clone(),
+                    WorkspaceIndex::compute_contribution(uri, document.as_ref()),
+                )
+            })
+            .collect();
         self.publish_compilation(|builder| {
             let index = builder.workspace_index_mut();
             index.begin_bulk_catalog_update();
-            for (uri, document) in &filtered {
-                index.update_document(uri.as_str(), document.as_ref());
+            for (uri, contribution) in contributions {
+                index.apply_contribution(uri, contribution);
             }
             index.end_bulk_catalog_update();
             let docs = builder.workspace_documents_mut();
@@ -151,6 +163,7 @@ impl Backend {
             op = "index_workspace",
             indexed,
             file_count,
+            parse_ms,
             elapsed_ms = start.elapsed().as_millis(),
             "complete"
         );
@@ -239,8 +252,16 @@ impl Backend {
 
                 let count = parsed.len();
                 base_total += count;
+
+                let contributions: Vec<(String, DocContribution)> = parsed
+                    .par_iter()
+                    .map(|(uri, doc)| (uri.clone(), WorkspaceIndex::compute_contribution(uri, doc)))
+                    .collect();
+                for (uri, contribution) in contributions {
+                    base_index.apply_contribution(uri, contribution);
+                }
+
                 for (uri, doc) in parsed {
-                    base_index.update_document(uri.as_str(), &doc);
                     base_docs.insert(uri, doc);
                 }
                 let elapsed_ms = seg_start.elapsed().as_millis();

@@ -3,6 +3,7 @@ mod lookup;
 mod subscribers;
 
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::Arc;
 
 use crate::document::ParsedDocument;
@@ -31,7 +32,7 @@ pub struct WorkspaceIndex {
     state_backing_by_name: HashMap<String, (String, String)>,
     member_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
     annotated_members_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
-    doc_idents: HashMap<String, HashMap<String, Vec<std::ops::Range<usize>>>>,
+    doc_idents: HashMap<String, HashMap<String, Vec<Range<usize>>>>,
     doc_surface_hashes: HashMap<String, u64>,
     surface_hash: u64,
     generation: u64,
@@ -39,6 +40,13 @@ pub struct WorkspaceIndex {
     completion_catalog: CompletionCatalog,
     completion_catalog_dirty: bool,
     catalog_rebuild_suppressed: u32,
+}
+
+pub struct DocContribution {
+    symbols: Vec<Symbol>,
+    idents: HashMap<String, Vec<Range<usize>>>,
+    surface_hash: u64,
+    outward: HashMap<ObservedKey, u64>,
 }
 
 impl WorkspaceIndex {
@@ -56,24 +64,52 @@ impl WorkspaceIndex {
         document: &ParsedDocument,
     ) -> Vec<ObservedKey> {
         let uri: String = uri.into();
+        let contribution = Self::compute_contribution(&uri, document);
+        self.apply_contribution(uri, contribution)
+    }
+
+    /// Pure half of `update_document`, so callers can run it in parallel before a serial apply.
+    pub fn compute_contribution(uri: &str, document: &ParsedDocument) -> DocContribution {
+        let symbols = document.symbols.all().to_vec();
+        let idents = scan_ident_occurrences(document);
+        let surface_hash = doc_surface_hash(uri, &symbols);
+        let outward = outward_hash_map(&symbols);
+        DocContribution {
+            symbols,
+            idents,
+            surface_hash,
+            outward,
+        }
+    }
+
+    /// Mutating half of `update_document`: folds a precomputed contribution into the index.
+    pub fn apply_contribution(
+        &mut self,
+        uri: impl Into<String>,
+        contribution: DocContribution,
+    ) -> Vec<ObservedKey> {
+        let uri: String = uri.into();
+        let DocContribution {
+            symbols,
+            idents,
+            surface_hash,
+            outward,
+        } = contribution;
+
         self.remove_from_indices(&uri);
         self.doc_idents.remove(&uri);
-        let all_symbols = document.symbols.all().to_vec();
-        self.insert_into_indices(&uri, &all_symbols);
-        self.doc_idents
-            .insert(uri.clone(), scan_ident_occurrences(document));
+        self.insert_into_indices(&uri, &symbols);
+        self.doc_idents.insert(uri.clone(), idents);
 
-        let new_hash = doc_surface_hash(&uri, &all_symbols);
-        if let Some(old_hash) = self.doc_surface_hashes.insert(uri.clone(), new_hash) {
+        if let Some(old_hash) = self.doc_surface_hashes.insert(uri.clone(), surface_hash) {
             self.surface_hash ^= old_hash;
         }
-        self.surface_hash ^= new_hash;
+        self.surface_hash ^= surface_hash;
 
-        let new_outward = outward_hash_map(&all_symbols);
-        let changed_keys = diff_outward_keys(self.doc_outward_hashes.get(&uri), &new_outward);
-        self.doc_outward_hashes.insert(uri.clone(), new_outward);
+        let changed_keys = diff_outward_keys(self.doc_outward_hashes.get(&uri), &outward);
+        self.doc_outward_hashes.insert(uri.clone(), outward);
 
-        self.documents.insert(uri, all_symbols);
+        self.documents.insert(uri, symbols);
         self.generation = self.generation.wrapping_add(1);
         if global_catalog_changed(&changed_keys) {
             self.completion_catalog_dirty = true;
@@ -149,7 +185,7 @@ impl WorkspaceIndex {
             total += uri.capacity();
             for (name, ranges) in name_map {
                 total += name.capacity();
-                total += ranges.capacity() * size_of::<std::ops::Range<usize>>();
+                total += ranges.capacity() * size_of::<Range<usize>>();
             }
             total += name_map.capacity() * HASHMAP_ENTRY_BYTES;
         }
@@ -157,11 +193,7 @@ impl WorkspaceIndex {
         total
     }
 
-    pub(super) fn ident_ranges_in_doc(
-        &self,
-        uri: &str,
-        name: &str,
-    ) -> Option<&[std::ops::Range<usize>]> {
+    pub(super) fn ident_ranges_in_doc(&self, uri: &str, name: &str) -> Option<&[Range<usize>]> {
         self.doc_idents.get(uri)?.get(name).map(Vec::as_slice)
     }
 }
