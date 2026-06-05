@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use tracing::{debug, error, info, trace, warn};
 use witcherscript_language::document::{parse_document, ParsedDocument};
 use witcherscript_language::files::{canonical_uri, collect_witcherscript_files, read_text_file};
-use witcherscript_language::resolve::WorkspaceIndex;
+use witcherscript_language::resolve::{DocContribution, WorkspaceIndex};
 use witcherscript_language::script_env::parse_script_environment;
 
 use crate::backend::Backend;
@@ -136,14 +136,33 @@ impl Backend {
             .map(|(uri, doc)| (uri, Arc::new(doc)))
             .collect();
         let indexed = filtered.len();
+
         let build_start = Instant::now();
+        let compute_start = Instant::now();
+        let contributions: Vec<(String, DocContribution)> = filtered
+            .par_iter()
+            .map(|(uri, document)| {
+                (
+                    uri.clone(),
+                    WorkspaceIndex::compute_contribution(uri, document.as_ref()),
+                )
+            })
+            .collect();
+        let compute_ms = compute_start.elapsed().as_millis();
+
+        let mut apply_ms = 0u128;
+        let mut catalog_ms = 0u128;
         self.publish_compilation(|builder| {
             let index = builder.workspace_index_mut();
             index.begin_bulk_catalog_update();
-            for (uri, document) in &filtered {
-                index.update_document(uri.as_str(), document.as_ref());
+            let apply_start = Instant::now();
+            for (uri, contribution) in contributions {
+                index.apply_contribution(uri, contribution);
             }
+            apply_ms = apply_start.elapsed().as_millis();
+            let catalog_start = Instant::now();
             index.end_bulk_catalog_update();
+            catalog_ms = catalog_start.elapsed().as_millis();
             let docs = builder.workspace_documents_mut();
             for (uri, document) in filtered {
                 docs.insert(uri, document);
@@ -156,6 +175,9 @@ impl Backend {
             indexed,
             file_count,
             parse_ms,
+            compute_ms,
+            apply_ms,
+            catalog_ms,
             build_ms,
             elapsed_ms = start.elapsed().as_millis(),
             "complete"
@@ -234,7 +256,9 @@ impl Backend {
             let mut base_docs: HashMap<String, ParsedDocument> = HashMap::new();
             let mut base_total: usize = 0;
             let mut parse_ms: u128 = 0;
-            let mut build_ms: u128 = 0;
+            let mut compute_ms: u128 = 0;
+            let mut apply_ms: u128 = 0;
+            let mut catalog_ms: u128 = 0;
             base_index.begin_bulk_catalog_update();
 
             for (label, root) in &base_segments {
@@ -248,12 +272,23 @@ impl Backend {
 
                 let count = parsed.len();
                 base_total += count;
-                let build_start = Instant::now();
+
+                let compute_start = Instant::now();
+                let contributions: Vec<(String, DocContribution)> = parsed
+                    .par_iter()
+                    .map(|(uri, doc)| (uri.clone(), WorkspaceIndex::compute_contribution(uri, doc)))
+                    .collect();
+                compute_ms += compute_start.elapsed().as_millis();
+
+                let apply_start = Instant::now();
+                for (uri, contribution) in contributions {
+                    base_index.apply_contribution(uri, contribution);
+                }
+                apply_ms += apply_start.elapsed().as_millis();
+
                 for (uri, doc) in parsed {
-                    base_index.update_document(uri.as_str(), &doc);
                     base_docs.insert(uri, doc);
                 }
-                build_ms += build_start.elapsed().as_millis();
                 let elapsed_ms = seg_start.elapsed().as_millis();
                 info!(
                     op = "index_base_scripts",
@@ -296,12 +331,12 @@ impl Backend {
                 legacy_base_replacements(&base_uris, &legacy_uris);
             let catalog_start = Instant::now();
             base_index.end_bulk_catalog_update();
-            build_ms += catalog_start.elapsed().as_millis();
+            catalog_ms += catalog_start.elapsed().as_millis();
             let matched_count = suppressed_base.len();
             let legacy_total = legacy_parsed.len();
             debug!(
                 op = "index_base_scripts",
-                parse_ms, build_ms, "index phase timing"
+                parse_ms, compute_ms, apply_ms, catalog_ms, "index phase timing"
             );
 
             (
@@ -334,6 +369,7 @@ impl Backend {
             }
         };
 
+        let tail_start = Instant::now();
         let base_new_docs_arc: HashMap<String, Arc<ParsedDocument>> = base_new_docs
             .into_iter()
             .map(|(uri, doc)| (uri, Arc::new(doc)))
@@ -349,6 +385,7 @@ impl Backend {
 
         let invalidated = self.sync_legacy_workspace_from_parsed(legacy_parsed);
         self.evict_cache_entries(&invalidated);
+        let post_ms = tail_start.elapsed().as_millis();
 
         let elapsed_ms = total_start.elapsed().as_millis();
         info!(
@@ -357,6 +394,7 @@ impl Backend {
             indexed = base_total,
             legacy_indexed = legacy_total,
             base_replaced_by_legacy = matched_count,
+            post_ms,
             elapsed_ms,
             elapsed_secs = format!("{:.1}", elapsed_ms as f32 / 1000.0),
             "complete"
