@@ -23,6 +23,7 @@ fn route_document_to_index(
     scope: &FileScope,
     document: &witcherscript_language::document::ParsedDocument,
 ) -> (Vec<ObservedKey>, Vec<ObservedKey>) {
+    // Only workspace and loose changes feed invalidation (there is no invalidated_base), so base-script keys are dropped.
     match scope {
         FileScope::AdditionalBase => {
             let ws = remove_document_all_spellings(builder.workspace_index_mut(), uri);
@@ -145,6 +146,7 @@ impl Backend {
         let mut changed: Vec<ObservedKey> = Vec::new();
         self.publish_compilation(|builder| {
             if is_base {
+                // Base-script changes feed no invalidation (see the is_base guard below), so drop the changed keys.
                 let (index, docs) = builder.base_scripts_index_and_docs_mut();
                 let _ = reindex_into(index, docs, uri.as_str(), &canonical, parsed);
             } else {
