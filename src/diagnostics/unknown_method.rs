@@ -7,7 +7,7 @@ use crate::cst::grammar::{call_callee, member_access_member};
 use crate::cst::nav::first_named_child;
 use crate::document::ParsedDocument;
 use crate::resolve::{infer_expr_type_memo, SymbolDb};
-use crate::symbols::{AccessLevel, SymbolKind};
+use crate::symbols::AccessLevel;
 
 use super::{
     access_is_inside_declaring_class, declaring_class_of, run_rules_on_document, CstRule,
@@ -101,10 +101,7 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         return;
     };
 
-    if !matches!(
-        top.symbol.kind,
-        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
-    ) {
+    if !top.symbol.kind.is_instantiable() {
         return;
     }
 

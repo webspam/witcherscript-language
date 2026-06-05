@@ -1,7 +1,5 @@
 use tree_sitter::Node;
 
-use crate::symbols::SymbolKind;
-
 pub(super) use crate::cst::ancestors::find_ancestor_of_kind;
 pub(super) use crate::cst::nav::first_named_child;
 pub(super) use crate::cst::offsets::{
@@ -15,11 +13,4 @@ pub const BUILTIN_TYPE_COMPLETIONS: &[&str] =
 pub(super) fn nearest_enclosing_block(node: Node) -> Option<Node> {
     const BLOCKS: &[&str] = &["func_block", "switch_block", "member_default_val_block"];
     find_ancestor_of_kind(node, BLOCKS)
-}
-
-pub(super) fn is_type_like(kind: SymbolKind) -> bool {
-    matches!(
-        kind,
-        SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::State
-    )
 }

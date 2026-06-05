@@ -50,10 +50,7 @@ pub fn signature_help(
         _ => return None,
     };
     let definition = resolve_definition_at_byte(uri, document, db, callee_ident.start_byte())?;
-    if !matches!(
-        definition.symbol.kind,
-        SymbolKind::Function | SymbolKind::Method | SymbolKind::Event
-    ) {
+    if !definition.symbol.kind.is_callable() {
         return None;
     }
 

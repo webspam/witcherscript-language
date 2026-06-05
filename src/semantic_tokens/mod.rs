@@ -240,13 +240,8 @@ fn script_global_override(
     let Some(global_type) = db.script_global_type(name) else {
         return (symbol_kind_to_token_type(kind), 0);
     };
-    let matches_global = match kind {
-        SymbolKind::Variable => true,
-        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State => {
-            def.symbol.name == global_type
-        }
-        _ => false,
-    };
+    let matches_global =
+        kind == SymbolKind::Variable || (kind.is_instantiable() && def.symbol.name == global_type);
     if matches_global {
         (TT_VARIABLE, MOD_DEFAULT_LIBRARY)
     } else {

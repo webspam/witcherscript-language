@@ -29,6 +29,50 @@ pub enum SymbolKind {
     Event,
 }
 
+impl SymbolKind {
+    pub(crate) fn is_type(self) -> bool {
+        matches!(
+            self,
+            SymbolKind::Class
+                | SymbolKind::NativeType
+                | SymbolKind::Struct
+                | SymbolKind::State
+                | SymbolKind::Enum
+        )
+    }
+
+    /// A type that isn't an enum; currently used to filter types (incorrectly)
+    pub(crate) fn is_object_type(self) -> bool {
+        matches!(
+            self,
+            SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::State
+        )
+    }
+
+    /// States cannot be used for assignments
+    pub(crate) fn is_assignable_type(self) -> bool {
+        matches!(
+            self,
+            SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::Enum
+        )
+    }
+
+    pub fn is_callable(self) -> bool {
+        matches!(
+            self,
+            SymbolKind::Function | SymbolKind::Event | SymbolKind::Method
+        )
+    }
+
+    /// There can be multiple instances of this type (and it has members)
+    pub(crate) fn is_instantiable(self) -> bool {
+        matches!(
+            self,
+            SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Annotation {
     pub name: String,
@@ -209,10 +253,7 @@ impl DocumentSymbols {
                         .push(sym.id);
                 }
             }
-            if matches!(
-                sym.kind,
-                SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::State
-            ) {
+            if sym.kind.is_object_type() {
                 self.type_by_name
                     .entry(sym.name.clone())
                     .or_default()
@@ -255,10 +296,7 @@ pub(crate) fn enclosing_callable_id(symbols: &[Symbol], sym: &Symbol) -> Option<
     let mut current = sym.container?;
     loop {
         let owner = symbols.get(current.0)?;
-        if matches!(
-            owner.kind,
-            SymbolKind::Function | SymbolKind::Method | SymbolKind::Event
-        ) {
+        if owner.kind.is_callable() {
             return Some(current);
         }
         current = owner.container?;

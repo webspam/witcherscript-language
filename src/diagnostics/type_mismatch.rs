@@ -290,10 +290,7 @@ fn callee_params(call: Node, ctx: &mut CstRuleCtx) -> Option<Vec<Symbol>> {
         _ => return None,
     };
     let def = resolve_definition_at_byte(ctx.uri, ctx.document, ctx.db, callee_ident.start_byte())?;
-    if !matches!(
-        def.symbol.kind,
-        SymbolKind::Function | SymbolKind::Method | SymbolKind::Event
-    ) {
+    if !def.symbol.kind.is_callable() {
         return None;
     }
     Some(ctx.db.full_parameters_of(&def.uri, def.symbol.id))

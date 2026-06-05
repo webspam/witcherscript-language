@@ -164,10 +164,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 let receiver_type = receiver_type?;
                 ctx.telemetry.top_level_lookups += 1;
                 let top = ctx.db.find_top_level(&receiver_type)?;
-                if !matches!(
-                    top.symbol.kind,
-                    SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
-                ) {
+                if !top.symbol.kind.is_instantiable() {
                     return None;
                 }
                 ctx.telemetry.member_lookups += 1;
@@ -278,7 +275,9 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             } else {
                 ctx.telemetry.definition_resolutions += 1;
                 match resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident) {
-                    Some(def) if is_type_kind(def.symbol.kind) && def.symbol.name == name => {
+                    Some(def)
+                        if def.symbol.kind.is_assignable_type() && def.symbol.name == name =>
+                    {
                         push(
                             ctx,
                             ident,
@@ -336,13 +335,6 @@ fn classify<'tree>(ident: Node<'tree>, source: &[u8]) -> Option<IdentRole<'tree>
         Some(NameContext::Value) => Some(IdentRole::Bare),
         None => Some(IdentRole::Declaration),
     }
-}
-
-fn is_type_kind(kind: SymbolKind) -> bool {
-    matches!(
-        kind,
-        SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::Enum
-    )
 }
 
 fn resolves_as_local<'tree>(ctx: &CstRuleCtx<'_, 'tree>, ident: Node<'tree>, name: &str) -> bool {

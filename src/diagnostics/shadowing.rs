@@ -96,10 +96,7 @@ fn class_field_shadow(
 ) -> Option<WorkspaceDiagnostic> {
     let callable = doc_symbols.get(enclosing_callable_id(doc_symbols, sym)?.0)?;
     let class_sym = callable.container.and_then(|id| doc_symbols.get(id.0))?;
-    if !matches!(
-        class_sym.kind,
-        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
-    ) {
+    if !class_sym.kind.is_instantiable() {
         return None;
     }
     let field = index.direct_member_of(class_sym.name.as_str(), &sym.name, AccessLevel::Private)?;
@@ -129,13 +126,11 @@ fn is_in_exempt_callable(sym: &Symbol, doc_symbols: &[Symbol]) -> bool {
         let Some(parent) = doc_symbols.get(id.0) else {
             return false;
         };
-        if matches!(
-            parent.kind,
-            SymbolKind::Function | SymbolKind::Method | SymbolKind::Event
-        ) && parent
-            .annotations
-            .iter()
-            .any(|a| EXEMPT_ANNOTATIONS.contains(&a.name.as_str()))
+        if parent.kind.is_callable()
+            && parent
+                .annotations
+                .iter()
+                .any(|a| EXEMPT_ANNOTATIONS.contains(&a.name.as_str()))
         {
             return true;
         }
