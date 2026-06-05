@@ -41,6 +41,13 @@ impl SymbolKind {
         )
     }
 
+    pub(crate) fn is_object_type(self) -> bool {
+        matches!(
+            self,
+            SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::State
+        )
+    }
+
     pub fn is_callable(self) -> bool {
         matches!(
             self,
@@ -236,10 +243,7 @@ impl DocumentSymbols {
                         .push(sym.id);
                 }
             }
-            if matches!(
-                sym.kind,
-                SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::State
-            ) {
+            if sym.kind.is_object_type() {
                 self.type_by_name
                     .entry(sym.name.clone())
                     .or_default()

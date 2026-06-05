@@ -5,7 +5,6 @@ use std::hash::Hash;
 use crate::symbols::{Symbol, SymbolKind};
 
 use super::super::annotation_target_class;
-use super::super::ast::is_type_like;
 use super::super::state_classes::state_backing_class_name;
 use super::{Definition, WorkspaceIndex};
 
@@ -53,7 +52,7 @@ impl WorkspaceIndex {
         for sym in old_symbols.clone() {
             if sym.container.is_none() {
                 retain_and_prune(&mut self.top_level_by_name, &sym.name, |d| d.uri != uri);
-                if is_type_like(sym.kind) {
+                if sym.kind.is_object_type() {
                     retain_and_prune(&mut self.superclass_by_name, &sym.name, |(u, _)| u != uri);
                 }
                 if sym.kind == SymbolKind::State {
@@ -100,7 +99,7 @@ impl WorkspaceIndex {
                         uri: uri.to_string(),
                         symbol: sym.clone(),
                     });
-                if is_type_like(sym.kind) {
+                if sym.kind.is_object_type() {
                     if let Some(superclass) = &sym.base_class {
                         self.superclass_by_name
                             .entry(sym.name.clone())
