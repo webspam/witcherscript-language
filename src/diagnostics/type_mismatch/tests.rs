@@ -245,16 +245,22 @@ fn flags_incompatible_defaults_block() {
 }
 
 #[rstest]
-#[case::bool_wrapper_gets_float(
+#[case::bool_gets_float(
     "class CBehTreeValBool {} class C { var v : CBehTreeValBool; default v = 0.5; }\n"
 )]
-#[case::string_wrapper_gets_int(
+#[case::string_gets_int(
     "class CBehTreeValString {} class C { var v : CBehTreeValString; default v = 5; }\n"
 )]
-#[case::cname_wrapper_gets_int(
+#[case::cname_gets_int(
     "class CBehTreeValCName {} class C { var v : CBehTreeValCName; default v = 5; }\n"
 )]
-fn behtree_wrong_primitive_default_is_error(#[case] fixture: &str) {
+#[case::int_gets_float(
+    "class CBehTreeValInt {} class C { var v : CBehTreeValInt; default v = 10.0f; }\n"
+)]
+#[case::cname_gets_string(
+    "class CBehTreeValCName {} class C { var v : CBehTreeValCName; default v = \"Swimming\"; }\n"
+)]
+fn behtree_non_exact_default_is_info(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
 
@@ -262,27 +268,7 @@ fn behtree_wrong_primitive_default_is_error(#[case] fixture: &str) {
         .get(t.primary_uri())
         .expect("should have a diagnostic");
     assert_eq!(diags.len(), 1);
-    assert_eq!(diags[0].kind, "type_mismatch");
-}
-
-#[rstest]
-#[case::float_into_int_wrapper(
-    "class CBehTreeValInt {} class C { var v : CBehTreeValInt; default v = 10.0f; }\n",
-    "float_as_int_default"
-)]
-#[case::string_into_cname_wrapper(
-    "class CBehTreeValCName {} class C { var v : CBehTreeValCName; default v = \"Swimming\"; }\n",
-    "string_as_name_default"
-)]
-fn behtree_loose_default_is_info(#[case] fixture: &str, #[case] kind: &str) {
-    let t = TestDb::new(fixture);
-    let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
-
-    let diags = result
-        .get(t.primary_uri())
-        .expect("should have a diagnostic");
-    assert_eq!(diags.len(), 1);
-    assert_eq!(diags[0].kind, kind);
+    assert_eq!(diags[0].kind, "native_default_coercion");
     assert_eq!(diags[0].severity, super::Severity::Info);
 }
 
