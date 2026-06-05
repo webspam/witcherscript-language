@@ -66,3 +66,7 @@ pub(crate) fn native_type_accepts(name: &str) -> Option<&'static [Primitive]> {
         .find(|(n, _)| *n == name)
         .map(|(_, prims)| *prims)
 }
+
+pub(crate) fn native_type_names() -> impl Iterator<Item = &'static str> {
+    NATIVE_TYPE_ACCEPTS.iter().map(|(name, _)| *name)
+}

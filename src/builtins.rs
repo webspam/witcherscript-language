@@ -4,6 +4,7 @@ use std::sync::{Arc, LazyLock};
 use crate::document::{parse_document, ParsedDocument};
 use crate::resolve::{Definition, WorkspaceIndex};
 use crate::symbols::SymbolKind;
+use crate::types::native_type_names;
 
 pub const BUILTIN_ARRAY_URI: &str = "witcherscript-builtin:/array.ws";
 pub const BUILTIN_ENUMS_URI: &str = "witcherscript-builtin:/enums.ws";
@@ -52,11 +53,14 @@ static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock
             "witcherscript-builtin:/unknown-structs.ws",
             include_str!("../builtins/unknown-structs.ws"),
         ),
-        (
-            BUILTIN_NATIVE_TYPES_URI,
-            include_str!("../builtins/native-types.ws"),
-        ),
     ])
+});
+
+/// `class` stubs for the native engine types, emitted from `NATIVE_TYPE_ACCEPTS` so the names live in one place.
+static NATIVE_TYPES_SOURCE: LazyLock<String> = LazyLock::new(|| {
+    native_type_names()
+        .map(|name| format!("class {name} {{}}\n"))
+        .collect()
 });
 
 /// `array` (only valid as `array<T>`) and the orphan-member bucket (a synthetic enum) are not bare-writable type names, so their types must stay out of type completion.
@@ -90,14 +94,22 @@ fn build_builtins_index() -> WorkspaceIndex {
     for (&uri, &source) in BUILTIN_SOURCES.iter() {
         insert_builtin(&mut index, uri, source);
     }
+    insert_builtin(
+        &mut index,
+        BUILTIN_NATIVE_TYPES_URI,
+        NATIVE_TYPES_SOURCE.as_str(),
+    );
     index
 }
 
 pub fn builtin_source(uri: &str) -> Option<&'static str> {
+    if uri == BUILTIN_NATIVE_TYPES_URI {
+        return Some(NATIVE_TYPES_SOURCE.as_str());
+    }
     BUILTIN_SOURCES.get(uri).copied()
 }
 
-fn insert_builtin(index: &mut WorkspaceIndex, uri: &str, source: &'static str) {
+fn insert_builtin(index: &mut WorkspaceIndex, uri: &str, source: &str) {
     let mut doc: ParsedDocument =
         parse_document(source).expect("builtin sources must parse cleanly at build time");
     // Native engine types are stubbed as `class` since no native-type syntax exists; re-tag them.

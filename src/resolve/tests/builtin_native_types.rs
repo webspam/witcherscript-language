@@ -38,29 +38,6 @@ fn native_types_appear_in_type_completions() {
 }
 
 #[test]
-fn every_indexed_native_type_has_default_acceptance_data() {
-    use crate::types::native_type_accepts;
-    let t = TestDb::new("").with_builtins_index();
-    let types = t.db().all_types();
-    let native: Vec<&str> = types
-        .iter()
-        .filter(|d| d.symbol.kind == SymbolKind::NativeType)
-        .map(|d| d.symbol.name.as_str())
-        .collect();
-    assert_eq!(
-        native.len(),
-        NATIVE_TYPE_NAMES.len(),
-        "indexed native types vs known set"
-    );
-    for name in native {
-        assert!(
-            native_type_accepts(name).is_some(),
-            "{name} is indexed as a native type but has no native_type_accepts entry"
-        );
-    }
-}
-
-#[test]
 fn goto_definition_on_native_type_resolves_into_native_types_file() {
     let t =
         TestDb::new("function Test() {\n  var v : CBehTreeValFl$0oat;\n}\n").with_builtins_index();

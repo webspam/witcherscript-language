@@ -5,7 +5,7 @@ mod parse;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use parse::{is_builtin_type_name, native_type_accepts};
+pub(crate) use parse::{is_builtin_type_name, native_type_accepts, native_type_names};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Type {
