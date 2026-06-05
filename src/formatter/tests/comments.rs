@@ -154,7 +154,7 @@ fn comments_around_return_type_keep_source_order() {
     expect![[r#"
         function f() {
             var y : int = a // c
-        + b;
+                + b;
         }
     "#]]
 )]

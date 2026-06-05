@@ -212,8 +212,12 @@ impl<'a> Formatter<'a> {
                 }
             }
             if let Some(p) = prev {
-                // A preceding comment may have ended the line; don't prefix a space.
-                if !self.out.ends_with('\n') && self.gap_between(p, *child, node.kind()) {
+                if self.out.ends_with('\n') {
+                    // A `//` comment forced a mid-statement break; indent the continuation.
+                    self.level += 1;
+                    self.emit_indent();
+                    self.level -= 1;
+                } else if self.gap_between(p, *child, node.kind()) {
                     self.emit(" ");
                 }
             }
