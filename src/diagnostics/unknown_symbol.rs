@@ -164,10 +164,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 let receiver_type = receiver_type?;
                 ctx.telemetry.top_level_lookups += 1;
                 let top = ctx.db.find_top_level(&receiver_type)?;
-                if !matches!(
-                    top.symbol.kind,
-                    SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
-                ) {
+                if !top.symbol.kind.is_instantiable() {
                     return None;
                 }
                 ctx.telemetry.member_lookups += 1;

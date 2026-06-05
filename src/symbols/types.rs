@@ -36,6 +36,13 @@ impl SymbolKind {
             SymbolKind::Function | SymbolKind::Event | SymbolKind::Method
         )
     }
+
+    pub(crate) fn is_instantiable(self) -> bool {
+        matches!(
+            self,
+            SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

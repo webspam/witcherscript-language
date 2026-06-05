@@ -96,10 +96,7 @@ fn class_field_shadow(
 ) -> Option<WorkspaceDiagnostic> {
     let callable = doc_symbols.get(enclosing_callable_id(doc_symbols, sym)?.0)?;
     let class_sym = callable.container.and_then(|id| doc_symbols.get(id.0))?;
-    if !matches!(
-        class_sym.kind,
-        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
-    ) {
+    if !class_sym.kind.is_instantiable() {
         return None;
     }
     let field = index.direct_member_of(class_sym.name.as_str(), &sym.name, AccessLevel::Private)?;
