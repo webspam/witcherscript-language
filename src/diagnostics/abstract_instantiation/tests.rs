@@ -25,6 +25,18 @@ fn flags_new_on_abstract_class(#[case] fixture: &str, #[case] flagged_uri: &str)
     assert!(diags[0].message.contains("Base"));
 }
 
+#[test]
+fn flags_new_on_native_type() {
+    let t =
+        TestDb::new("function F() { var v : CBehTreeValBool; v = new CBehTreeValBool in this; }\n")
+            .with_builtins_index();
+    let result = collect_abstract_instantiation_diagnostics(&t.search_docs(), &t.db());
+    let diags = result.get("file:///main.ws").expect("expected diagnostic");
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].kind, "native_instantiation");
+    assert!(diags[0].message.contains("CBehTreeValBool"));
+}
+
 #[rstest]
 #[case::concrete_class(
     "class Concrete {} \

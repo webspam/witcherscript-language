@@ -45,6 +45,7 @@ fn lsp_symbol_kind(kind: SymbolKind) -> lsp_types::SymbolKind {
         SymbolKind::Variable => lsp_types::SymbolKind::VARIABLE,
         SymbolKind::Parameter => lsp_types::SymbolKind::VARIABLE,
         SymbolKind::State => lsp_types::SymbolKind::OBJECT,
+        SymbolKind::NativeType => lsp_types::SymbolKind::OBJECT,
     }
 }
 

@@ -42,6 +42,25 @@ fn sized_engine_types_are_distinct_primitives() {
 }
 
 #[test]
+fn native_type_accepts_returns_per_type_primitives() {
+    use super::native_type_accepts;
+    assert_eq!(
+        native_type_accepts("CBehTreeValBool"),
+        Some(&[Primitive::Bool][..])
+    );
+    assert_eq!(
+        native_type_accepts("CBehTreeValFloat"),
+        Some(&[Primitive::Int, Primitive::Float][..])
+    );
+    assert_eq!(
+        native_type_accepts("CBehTreeValCName"),
+        Some(&[Primitive::Name][..])
+    );
+    assert_eq!(native_type_accepts("CR4Player"), None);
+    assert_eq!(native_type_accepts("int"), None);
+}
+
+#[test]
 fn unrecognised_word_is_named() {
     assert_eq!(
         Type::from_annotation("CR4Player"),

@@ -16,6 +16,7 @@ pub enum AccessLevel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolKind {
     Class,
+    NativeType,
     Struct,
     Enum,
     EnumMember,
@@ -210,7 +211,7 @@ impl DocumentSymbols {
             }
             if matches!(
                 sym.kind,
-                SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
+                SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::State
             ) {
                 self.type_by_name
                     .entry(sym.name.clone())
@@ -236,6 +237,15 @@ impl DocumentSymbols {
         for by_name in self.locals_in_function.values_mut() {
             for ids in by_name.values_mut() {
                 ids.sort_by_key(|id| self.symbols[id.0].selection_byte_range.start);
+            }
+        }
+    }
+
+    /// Builtins ingestion marks native engine types, which have no declaration syntax of their own.
+    pub(crate) fn retag_top_level(&mut self, from: SymbolKind, to: SymbolKind) {
+        for symbol in &mut self.symbols {
+            if symbol.container.is_none() && symbol.kind == from {
+                symbol.kind = to;
             }
         }
     }

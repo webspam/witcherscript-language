@@ -10,7 +10,7 @@ use crate::resolve::{
     assignability, infer_type, resolve_definition_at_byte, Assignability, SymbolDb,
 };
 use crate::symbols::{node_text, Symbol, SymbolKind};
-use crate::types::{Primitive, Type};
+use crate::types::{native_type_accepts, Primitive, Type};
 
 use super::{run_rules_on_document, CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic};
 
@@ -222,6 +222,9 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         );
         return;
     }
+    if check_native_type_default(&target, value, &value_type, ctx) {
+        return;
+    }
     if is_incompatible(&value_type, &target, ctx.db) {
         emit(
             value,
@@ -231,6 +234,32 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
             ctx,
         );
     }
+}
+
+/// A `CBehTreeVal*` native type accepts any primitive `default`; a non-exact one is coerced, flagged info-only, never an error.
+fn check_native_type_default<'tree>(
+    target: &Type,
+    value: Node<'tree>,
+    value_type: &Type,
+    ctx: &mut CstRuleCtx<'_, 'tree>,
+) -> bool {
+    let Type::Named(name) = target else {
+        return false;
+    };
+    let Some(accepted) = native_type_accepts(name) else {
+        return false;
+    };
+    let exact = matches!(value_type, Type::Primitive(p) if accepted.contains(p));
+    if !exact && !matches!(value_type, Type::Unknown) {
+        emit(
+            value,
+            "native_default_coercion",
+            format!("Value of type '{value_type}' coerced into native type '{target}' default"),
+            Severity::Info,
+            ctx,
+        );
+    }
+    true
 }
 
 /// Argument slots of a call. `None` if no args or any slot is empty (`f(a,,b)`), which breaks positional alignment.

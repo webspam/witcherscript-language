@@ -26,6 +26,8 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 18 | `type_used_as_value` | error | Type name (class, struct, state, enum) used in a value position |
 | 19 | `type_mismatch` | error | A value's type is not assignable to the target slot |
 | 20 | `string_as_name_default` | info | A `name`/`CName` field default uses a string literal where a name literal is intended |
+| 21 | `native_instantiation` | error | `new T` on a native engine type (`CBehTreeVal*`), which cannot be instantiated |
+| 22 | `native_default_coercion` | info | A native engine type (`CBehTreeVal*`) `default` uses a non-exact primitive (accepted, but coerced) |
 
 ## Details
 
@@ -158,6 +160,20 @@ The sized engine integer spellings (`Int16`, `Int8`, `Uint16`, `Uint32`, `Uint64
 
 Sites where either the value's type or the target's type cannot be inferred with confidence emit nothing, as do sites inside a tree-sitter error subtree, to avoid false positives while typing. A target whose name does not resolve to a known type (including the unsubstituted generic element of `array<T>` methods) is treated as unknown and skipped. Calls with more arguments than declared parameters, or with an empty argument slot, are skipped.
 
+#### Engine `CBehTreeVal*` wrappers
+
+The native types `CBehTreeValBool`, `CBehTreeValInt`, `CBehTreeValFloat`, `CBehTreeValString`, and `CBehTreeValCName` receive a value only through a `default` initializer (or a native `out` parameter). A `default` accepts *any* primitive (the engine coerces it); the exact primitive - `bool`, `int`, `float` (also `int`), `string`, and `name` respectively - is silent, and anything else is `native_default_coercion` (info, never an error). Outside a `default` (e.g. `wrapper = value;`) they accept nothing, matching the compiler.
+
+These five are modelled as a distinct `NativeType` kind, not classes: they take no object-to-bool / to-string / `NULL` casts and cannot be `new`-instantiated (see `native_instantiation`).
+
 ### 20. String literal as a name default
 
 A `name`/`CName` field default whose value is a double-quoted string literal, e.g. `default someVar = "Swimming";`. The compiler accepts this as a compile-time constant `name`, so it is not a type error here (unlike a `var` initializer or an assignment, where `string` -> `name` is reported as `type_mismatch`). It is surfaced at info level because a name literal (`'Swimming'`) is the intended form.
+
+### 21. Native type instantiation
+
+A `new T` expression where `T` is a native engine type (`CBehTreeValBool`, `CBehTreeValInt`, `CBehTreeValFloat`, `CBehTreeValString`, `CBehTreeValCName`). These are C++ value types with no script constructor, so they cannot be instantiated from WitcherScript; a value reaches them only through a `default` initializer or a native `out` parameter.
+
+### 22. Native default coercion
+
+A `CBehTreeVal*` `default` whose value is a primitive other than the type's exact one (e.g. `default someBool = 5;` on a `CBehTreeValBool`). The engine accepts any primitive constant here, so it is not an error; it is info-level because the value is coerced rather than an exact match. `CBehTreeValFloat` treats both `int` and `float` as exact.

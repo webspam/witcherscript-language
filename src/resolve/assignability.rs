@@ -53,7 +53,9 @@ pub(crate) fn assignability(from: &Type, to: &Type, db: &SymbolDb) -> Assignabil
         (Type::Unknown, _) | (_, Type::Unknown) => Assignability::Incompatible,
         (Type::Void, _) | (_, Type::Void) => Assignability::Incompatible,
 
-        (Type::Null, Type::Named(_)) => Assignability::ImplicitCast(CastKind::NullToRef),
+        (Type::Null, Type::Named(t)) if is_object_type(db, t) => {
+            Assignability::ImplicitCast(CastKind::NullToRef)
+        }
         (Type::Null, _) => Assignability::Incompatible,
 
         (Type::Named(f), Type::Named(t)) => named_assignability(f, t, db),

@@ -20,6 +20,6 @@ pub(super) fn nearest_enclosing_block(node: Node) -> Option<Node> {
 pub(super) fn is_type_like(kind: SymbolKind) -> bool {
     matches!(
         kind,
-        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State
+        SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::State
     )
 }

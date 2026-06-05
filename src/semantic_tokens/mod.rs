@@ -256,7 +256,9 @@ fn script_global_override(
 
 fn symbol_kind_to_token_type(kind: SymbolKind) -> u32 {
     match kind {
-        SymbolKind::Class | SymbolKind::Struct | SymbolKind::State => TT_CLASS,
+        SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::State => {
+            TT_CLASS
+        }
         SymbolKind::Enum => TT_ENUM,
         SymbolKind::EnumMember => TT_ENUM_MEMBER,
         SymbolKind::Function | SymbolKind::Method | SymbolKind::Event => TT_FUNCTION,
