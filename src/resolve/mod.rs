@@ -49,7 +49,7 @@ pub use signature::{hover_text, signature_help, SignatureHelpInfo};
 pub use subscription_registry::SubscriptionRegistry;
 pub use symbol_db::{FilteredBaseCatalogs, SymbolDb};
 pub use type_definition::resolve_type_definition;
-pub use workspace_index::{ObservedKey, WorkspaceIndex};
+pub use workspace_index::{DocContribution, ObservedKey, WorkspaceIndex};
 
 #[derive(Debug, Default, Clone)]
 pub struct ObservationSet {
