@@ -41,6 +41,7 @@ impl SymbolKind {
         )
     }
 
+    /// A type that isn't an enum; currently used to filter types (incorrectly)
     pub(crate) fn is_object_type(self) -> bool {
         matches!(
             self,
@@ -48,6 +49,7 @@ impl SymbolKind {
         )
     }
 
+    /// States cannot be used for assignments
     pub(crate) fn is_assignable_type(self) -> bool {
         matches!(
             self,
@@ -62,6 +64,7 @@ impl SymbolKind {
         )
     }
 
+    /// There can be multiple instances of this type (and it has members)
     pub(crate) fn is_instantiable(self) -> bool {
         matches!(
             self,
