@@ -46,27 +46,25 @@ fn build_index_segments_game_dir_only() {
 }
 
 #[test]
-fn recompute_base_scripts_path_derives_from_game_directory() {
+fn base_scripts_dir_derives_from_game_directory() {
     let backend = legacy_helpers::make_backend();
     let game_dir = std::path::PathBuf::from(r"C:\witcher3");
     *backend.game_directory.lock() = Some(game_dir.clone());
-    backend.recompute_base_scripts_path();
     assert_eq!(
-        *backend.base_scripts_path.lock(),
+        backend.base_scripts_dir(),
         Some(game_dir.join(r"content\content0\scripts")),
         "without an override the scripts subpath is appended to the game directory"
     );
 }
 
 #[test]
-fn recompute_base_scripts_path_prefers_override_verbatim() {
+fn base_scripts_dir_prefers_override_verbatim() {
     let backend = legacy_helpers::make_backend();
     let override_dir = std::path::PathBuf::from(r"D:\exact\scripts");
     *backend.game_directory.lock() = Some(std::path::PathBuf::from(r"C:\witcher3"));
     *backend.base_scripts_override.lock() = Some(override_dir.clone());
-    backend.recompute_base_scripts_path();
     assert_eq!(
-        *backend.base_scripts_path.lock(),
+        backend.base_scripts_dir(),
         Some(override_dir),
         "override must be used verbatim, ignoring the game directory and the scripts subpath"
     );

@@ -67,7 +67,6 @@ impl Backend {
                     *self.base_scripts_override.lock() = Some(PathBuf::from(p));
                 }
             }
-            self.recompute_base_scripts_path();
             if let Some(arr) = opts
                 .get("additionalScriptDirectories")
                 .and_then(|v| v.as_array())

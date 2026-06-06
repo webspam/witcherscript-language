@@ -171,7 +171,7 @@ impl Backend {
 
     pub(crate) async fn index_base_scripts(&self) {
         info!(op = "index_base_scripts", "start");
-        let base_scripts_dir = self.base_scripts_path.lock().clone();
+        let base_scripts_dir = self.base_scripts_dir();
         let game_dir_opt = self.game_directory.lock().clone();
         let extras = self.additional_script_dirs.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();

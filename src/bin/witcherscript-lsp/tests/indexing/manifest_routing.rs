@@ -29,7 +29,6 @@ async fn manifest_scripts_root_suppresses_a_base_script() {
     let backend = make_backend();
     *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
     *backend.game_directory.lock() = Some(game_dir);
-    backend.recompute_base_scripts_path();
 
     backend.refresh_manifest_legacy_dirs();
     backend.index_base_scripts().await;
@@ -85,7 +84,6 @@ async fn flag_off_skips_discovery_and_leaves_base_unsuppressed() {
     }));
     *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
     *backend.game_directory.lock() = Some(game_dir);
-    backend.recompute_base_scripts_path();
 
     backend.refresh_manifest_legacy_dirs();
     backend.index_base_scripts().await;

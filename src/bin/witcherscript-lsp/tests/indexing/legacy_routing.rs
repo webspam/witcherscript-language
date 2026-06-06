@@ -24,7 +24,6 @@ async fn matching_legacy_file_shadows_base_and_lands_in_workspace() {
 
     let backend = make_backend();
     *backend.game_directory.lock() = Some(game_dir);
-    backend.recompute_base_scripts_path();
     *backend.legacy_script_dirs.lock() = vec![legacy_dir.clone()];
 
     backend.index_base_scripts().await;
@@ -69,7 +68,6 @@ async fn mod_shared_imports_override_shadows_base_and_lands_in_workspace() {
 
     let backend = make_backend();
     *backend.game_directory.lock() = Some(game_dir);
-    backend.recompute_base_scripts_path();
 
     backend.index_base_scripts().await;
 
@@ -113,7 +111,6 @@ async fn mod_shared_imports_skipped_when_auto_load_off() {
 
     let backend = make_backend();
     *backend.game_directory.lock() = Some(game_dir);
-    backend.recompute_base_scripts_path();
     backend.config.store(Arc::new(Config {
         auto_load_mod_shared_imports: false,
         diagnostics_scope: DiagnosticsScope::None,
@@ -153,7 +150,6 @@ async fn deleting_a_legacy_file_removes_it_from_the_workspace() {
 
     let backend = make_backend();
     *backend.game_directory.lock() = Some(game_dir);
-    backend.recompute_base_scripts_path();
     *backend.legacy_script_dirs.lock() = vec![legacy_dir];
 
     backend.index_base_scripts().await;
@@ -199,7 +195,6 @@ async fn unmatched_legacy_file_still_lands_in_workspace() {
 
     let backend = make_backend();
     *backend.game_directory.lock() = Some(game_dir);
-    backend.recompute_base_scripts_path();
     *backend.legacy_script_dirs.lock() = vec![legacy_dir.clone()];
 
     backend.index_base_scripts().await;
@@ -232,7 +227,6 @@ async fn base_script_conflict_silent_on_matched_legacy_file() {
 
     let backend = make_backend();
     *backend.game_directory.lock() = Some(game_dir);
-    backend.recompute_base_scripts_path();
     *backend.legacy_script_dirs.lock() = vec![legacy_dir];
 
     backend.index_base_scripts().await;
@@ -262,7 +256,6 @@ async fn opening_an_overridden_base_script_keeps_it_out_of_the_workspace() {
 
     let backend = make_backend();
     *backend.game_directory.lock() = Some(game_dir);
-    backend.recompute_base_scripts_path();
     *backend.legacy_script_dirs.lock() = vec![legacy_dir];
     backend.index_base_scripts().await;
 
@@ -302,7 +295,6 @@ async fn additional_script_dir_overlapping_legacy_logs_and_wins_as_legacy() {
 
     let backend = make_backend();
     *backend.game_directory.lock() = Some(game_dir);
-    backend.recompute_base_scripts_path();
     *backend.additional_script_dirs.lock() = vec![legacy_dir.clone()];
     *backend.legacy_script_dirs.lock() = vec![legacy_dir];
 
@@ -348,7 +340,6 @@ async fn watched_legacy_change_updates_workspace_incrementally() {
 
     let backend = make_backend();
     *backend.game_directory.lock() = Some(game_dir);
-    backend.recompute_base_scripts_path();
     *backend.legacy_script_dirs.lock() = vec![legacy_dir];
 
     backend.index_base_scripts().await;

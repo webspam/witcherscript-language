@@ -58,7 +58,7 @@ impl Backend {
         debug!(op = "reindex_open_documents", docs, "start",);
         let roots = self.workspace_roots.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
-        let base_scripts_dir = self.base_scripts_path.lock().clone();
+        let base_scripts_dir = self.base_scripts_dir();
         let additional = self.additional_script_dirs.lock().clone();
         let replacements = self.legacy_replacements.lock().clone();
         let scopes: Vec<(Url, FileScope)> = snap
