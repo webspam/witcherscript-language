@@ -1,6 +1,6 @@
 [package]
 name = "witcherscript-language"
-version = "0.7.2"
+version = "0.7.3"
 edition = "2021"
 description = "LSP & language services for The Witcher 3 script files (WitcherScript / .ws)"
 publish = false
