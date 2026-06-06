@@ -60,7 +60,7 @@ impl Backend {
         let legacy_dirs = self.effective_legacy_dirs();
         let base_scripts_dir = self.base_scripts_dir();
         let additional = self.config.load().additional_script_dirs.clone();
-        let replacements = self.legacy_replacements.lock().clone();
+        let replacements = self.legacy_replacements.load_full();
         let scopes: Vec<(Url, FileScope)> = snap
             .documents
             .keys()

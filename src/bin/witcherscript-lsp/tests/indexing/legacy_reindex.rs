@@ -115,7 +115,7 @@ async fn index_base_scripts_records_only_real_legacy_overrides() {
     let (_temp, backend, override_url, new_url) =
         indexed_legacy_override("ws_legacy_replacements_map").await;
 
-    let map = backend.legacy_replacements.lock();
+    let map = backend.legacy_replacements.load();
     let override_key = canonical_uri(&override_url);
     assert_eq!(
         map.get(&override_key).map(String::as_str),

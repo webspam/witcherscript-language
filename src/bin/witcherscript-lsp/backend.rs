@@ -102,7 +102,7 @@ pub(crate) struct Backend {
     pub(crate) writer_lock: Arc<Mutex<()>>,
     pub(crate) workspace_roots: Arc<ArcSwap<Vec<PathBuf>>>,
     pub(crate) manifest_legacy_dirs: Arc<Mutex<HashMap<String, PathBuf>>>,
-    pub(crate) legacy_replacements: Arc<Mutex<HashMap<String, String>>>,
+    pub(crate) legacy_replacements: Arc<ArcSwap<HashMap<String, String>>>,
     pub(crate) sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,
     pub(crate) sent_file_scope_status: Arc<Mutex<HashMap<Url, FileScopeStatusParams>>>,
     // Canonical URIs the workspace walker yielded; "under a root but missing" means gitignored.
@@ -209,7 +209,7 @@ impl Backend {
             writer_lock: Arc::new(Mutex::new(())),
             workspace_roots: Arc::new(ArcSwap::from_pointee(Vec::new())),
             manifest_legacy_dirs: Arc::new(Mutex::new(HashMap::new())),
-            legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
+            legacy_replacements: Arc::new(ArcSwap::from_pointee(HashMap::new())),
             sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
             sent_file_scope_status: Arc::new(Mutex::new(HashMap::new())),
             workspace_known_files: Arc::new(Mutex::new(HashSet::new())),
@@ -325,7 +325,7 @@ impl Backend {
         let legacy_dirs = self.effective_legacy_dirs();
         let base_scripts_dir = self.base_scripts_dir();
         let additional = self.config.load().additional_script_dirs.clone();
-        let replacements = self.legacy_replacements.lock();
+        let replacements = self.legacy_replacements.load();
         classify_file_scope(
             uri,
             &roots,
@@ -339,7 +339,7 @@ impl Backend {
     // Holds even for an override inside a workspace root, which `file_scope_of` reports as `InProject`, not `LegacyOverride`.
     pub(crate) fn replaces_base_script(&self, uri: &Url) -> bool {
         self.legacy_replacements
-            .lock()
+            .load()
             .contains_key(&canonical_uri(uri))
     }
 
@@ -351,7 +351,7 @@ impl Backend {
         let legacy_dirs = self.effective_legacy_dirs();
         let base_scripts_dir = self.base_scripts_dir();
         let additional = self.config.load().additional_script_dirs.clone();
-        let replacements = self.legacy_replacements.lock();
+        let replacements = self.legacy_replacements.load();
         documents
             .keys()
             .filter(|uri| {

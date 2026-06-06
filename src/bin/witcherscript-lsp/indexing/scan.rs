@@ -183,7 +183,7 @@ impl Backend {
                 builder.set_base_scripts_documents(HashMap::new());
                 builder.set_suppressed_base_uris(HashSet::new());
             });
-            self.legacy_replacements.lock().clear();
+            self.legacy_replacements.store(Arc::new(HashMap::new()));
             self.rebuild_filtered_base_catalogs();
             self.prune_stale_legacy_workspace_files(&HashSet::new());
             self.publish_legacy_script_status();
@@ -348,7 +348,7 @@ impl Backend {
             builder.set_base_scripts_documents(base_new_docs_arc);
             builder.set_suppressed_base_uris(suppressed_base);
         });
-        *self.legacy_replacements.lock() = legacy_replacements;
+        self.legacy_replacements.store(Arc::new(legacy_replacements));
         self.merge_open_base_documents();
         self.rebuild_filtered_base_catalogs();
 

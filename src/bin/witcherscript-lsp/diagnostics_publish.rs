@@ -454,7 +454,7 @@ impl Backend {
     pub(crate) fn publish_legacy_script_status(&self) {
         let to_send: Vec<LegacyScriptStatusParams> = {
             let documents = self.snapshot().documents.clone();
-            let replacements = self.legacy_replacements.lock();
+            let replacements = self.legacy_replacements.load();
             let mut sent = self.sent_legacy_status.lock();
             let mut list = Vec::new();
             for uri in documents.keys() {
@@ -481,7 +481,7 @@ impl Backend {
             let legacy_dirs = self.effective_legacy_dirs();
             let base_scripts_dir = self.base_scripts_dir();
             let additional = self.config.load().additional_script_dirs.clone();
-            let replacements = self.legacy_replacements.lock();
+            let replacements = self.legacy_replacements.load();
             let mut sent = self.sent_file_scope_status.lock();
             let mut list = Vec::new();
             for uri in documents.keys() {
