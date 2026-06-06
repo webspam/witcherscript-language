@@ -101,6 +101,10 @@ impl Backend {
             },
             ConfigurationItem {
                 scope_uri: None,
+                section: Some("witcherscript.baseScriptsDirectory".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
                 section: Some("witcherscript.logLevel".to_string()),
             },
             ConfigurationItem {
@@ -178,6 +182,10 @@ impl Backend {
                 *self.game_directory.lock() = Some(std::path::PathBuf::from(path_str));
             }
         }
+        *self.base_scripts_override.lock() = match iter.next() {
+            Some(Value::String(s)) if !s.is_empty() => Some(std::path::PathBuf::from(s)),
+            _ => None,
+        };
         self.recompute_base_scripts_path();
         if let Some(Value::String(level_str)) = iter.next() {
             next_cfg.log_level = level_to_u8(level_from_str(&level_str));

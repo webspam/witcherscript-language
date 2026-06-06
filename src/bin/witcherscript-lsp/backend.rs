@@ -103,7 +103,9 @@ pub(crate) struct Backend {
     pub(crate) workspace_roots: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) files_exclude: Arc<Mutex<Vec<String>>>,
     pub(crate) game_directory: Arc<Mutex<Option<PathBuf>>>,
-    // Resolved base scripts dir; derived from `game_directory` by `recompute_base_scripts_path`.
+    // User-set exact base scripts dir; when present it overrides the `game_directory` derivation.
+    pub(crate) base_scripts_override: Arc<Mutex<Option<PathBuf>>>,
+    // Resolved base scripts dir; derived from the override or `game_directory` by `recompute_base_scripts_path`.
     pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
@@ -203,6 +205,7 @@ impl Backend {
             workspace_roots: Arc::new(Mutex::new(Vec::new())),
             files_exclude: Arc::new(Mutex::new(Vec::new())),
             game_directory: Arc::new(Mutex::new(None)),
+            base_scripts_override: Arc::new(Mutex::new(None)),
             base_scripts_path: Arc::new(Mutex::new(None)),
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
@@ -239,11 +242,13 @@ impl Backend {
 
     // The one place the game-dir -> scripts subpath is applied; consumers read `base_scripts_path` only.
     pub(crate) fn recompute_base_scripts_path(&self) {
-        *self.base_scripts_path.lock() = self
-            .game_directory
-            .lock()
-            .as_ref()
-            .map(|gd| gd.join(BASE_SCRIPTS_SUBDIR));
+        let derived = self.base_scripts_override.lock().clone().or_else(|| {
+            self.game_directory
+                .lock()
+                .as_ref()
+                .map(|gd| gd.join(BASE_SCRIPTS_SUBDIR))
+        });
+        *self.base_scripts_path.lock() = derived;
     }
 
     // Single-writer publish: build the next Compilation on a shadow and atomically swap.
