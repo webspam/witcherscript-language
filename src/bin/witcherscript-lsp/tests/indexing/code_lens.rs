@@ -81,7 +81,7 @@ async fn lens_shown_for_override_inside_workspace_root() {
     let (temp, backend, override_url, _new_url) =
         indexed_legacy_override("ws_code_lens_in_workspace").await;
     // Inside an open workspace root the override classifies as InProject, not LegacyOverride; the lens must still appear.
-    *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
     backend._did_open(open_params(
         &override_url,
         "class CR4Player {}\n// legacy\n",

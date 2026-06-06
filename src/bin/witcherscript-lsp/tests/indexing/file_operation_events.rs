@@ -9,7 +9,7 @@ use crate::backend::Backend;
 use crate::convert::{deleted_files_to_watched, renamed_files_to_watched};
 
 async fn index_dir(backend: &Backend, dir: &Path) {
-    *backend.workspace_roots.lock() = vec![dir.to_path_buf()];
+    backend.set_workspace_roots(vec![dir.to_path_buf()]);
     backend.index_workspace().await;
 }
 

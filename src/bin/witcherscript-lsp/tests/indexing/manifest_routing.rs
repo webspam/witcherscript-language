@@ -27,7 +27,7 @@ async fn manifest_scripts_root_suppresses_a_base_script() {
     let override_url = Url::from_file_path(&override_path).expect("override -> url");
 
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
     backend.update_config(|c| c.game_directory = Some(game_dir));
 
     backend.refresh_manifest_legacy_dirs();
@@ -82,7 +82,7 @@ async fn flag_off_skips_discovery_and_leaves_base_unsuppressed() {
         diagnostics_scope: DiagnosticsScope::None,
         ..Config::default()
     }));
-    *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
     backend.update_config(|c| c.game_directory = Some(game_dir));
 
     backend.refresh_manifest_legacy_dirs();

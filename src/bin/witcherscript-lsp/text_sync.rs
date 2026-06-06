@@ -185,15 +185,16 @@ impl Backend {
             .filter_map(|folder| folder.uri.to_file_path().ok())
             .collect();
 
-        {
-            let mut roots = self.workspace_roots.lock();
-            roots.retain(|root| !removed.iter().any(|dir| root.starts_with(dir)));
+        self.workspace_roots.rcu(|roots| {
+            let mut next = (**roots).clone();
+            next.retain(|root| !removed.iter().any(|dir| root.starts_with(dir)));
             for path in &added {
-                if !roots.contains(path) {
-                    roots.push(path.clone());
+                if !next.contains(path) {
+                    next.push(path.clone());
                 }
             }
-        }
+            next
+        });
 
         // index_workspace only adds files; a removed folder's scripts must be dropped here.
         if !removed.is_empty() {

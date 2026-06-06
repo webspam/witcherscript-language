@@ -180,7 +180,7 @@ impl Backend {
         let roots = workspace_roots(params);
         let game_dir = self.config.load().game_directory.clone();
         info!(roots = ?roots, game_dir = ?game_dir, supports_pull, "LSP initialize");
-        *self.workspace_roots.lock() = roots;
+        self.workspace_roots.store(Arc::new(roots));
 
         let result = Ok(InitializeResult {
             capabilities: ServerCapabilities {

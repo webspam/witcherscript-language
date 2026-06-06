@@ -29,7 +29,7 @@ fn make_backend_with(scope: DiagnosticsScope) -> Backend {
 }
 
 async fn index_dir(backend: &Backend, dir: &std::path::Path) {
-    *backend.workspace_roots.lock() = vec![dir.to_path_buf()];
+    backend.set_workspace_roots(vec![dir.to_path_buf()]);
     backend.index_workspace().await;
 }
 

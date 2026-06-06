@@ -18,7 +18,7 @@ fn refresh_finds_manifests_at_multiple_depths() {
     write_manifest(temp.path(), "Mods/modB/inner", "src");
 
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
 
     let changed = backend.refresh_manifest_legacy_dirs();
     assert!(changed, "first refresh must report a change");
@@ -34,7 +34,7 @@ fn refresh_picks_up_gitignored_manifest() {
     write_manifest(temp.path(), "Mods/modA", "scripts");
 
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
 
     backend.refresh_manifest_legacy_dirs();
     assert_eq!(
@@ -51,7 +51,7 @@ fn refresh_honors_files_exclude() {
     write_manifest(temp.path(), "skip", "scripts");
 
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
     backend.update_config(|c| c.files_exclude = vec!["**/skip/**".to_string()]);
 
     backend.refresh_manifest_legacy_dirs();
@@ -79,7 +79,7 @@ fn manifest_dirs_appear_in_effective_legacy_dirs() {
     write_manifest(temp.path(), "Mods/modA", "scripts");
 
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
     backend.refresh_manifest_legacy_dirs();
 
     let manifest_dir = temp.path().join("Mods/modA/scripts");

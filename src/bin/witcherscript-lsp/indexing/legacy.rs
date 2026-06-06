@@ -36,7 +36,7 @@ impl Backend {
         let next: HashMap<String, PathBuf> = if !self.config.load().auto_detect_project_manifests {
             HashMap::new()
         } else {
-            let roots = self.workspace_roots.lock().clone();
+            let roots = self.workspace_roots.load_full();
             if roots.is_empty() {
                 HashMap::new()
             } else {
