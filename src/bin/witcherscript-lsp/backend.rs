@@ -101,8 +101,10 @@ pub(crate) struct Backend {
     // on a shadow Compilation that is then atomically swapped into `compilation`.
     pub(crate) writer_lock: Arc<Mutex<()>>,
     pub(crate) workspace_roots: Arc<ArcSwap<Vec<PathBuf>>>,
+    // Mutex not ArcSwap: per-key insert/remove delta from manifest watch events.
     pub(crate) manifest_legacy_dirs: Arc<Mutex<HashMap<String, PathBuf>>>,
     pub(crate) legacy_replacements: Arc<ArcSwap<HashMap<String, String>>>,
+    // Mutex not ArcSwap: check-then-insert dedup must stay atomic so each status sends once.
     pub(crate) sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,
     pub(crate) sent_file_scope_status: Arc<Mutex<HashMap<Url, FileScopeStatusParams>>>,
     // Canonical URIs the workspace walker yielded; "under a root but missing" means gitignored.
@@ -112,6 +114,7 @@ pub(crate) struct Backend {
     // index itself is read-only from the publisher's point of view.
     pub(crate) workspace_subscriptions: Arc<Mutex<SubscriptionRegistry>>,
     pub(crate) loose_subscriptions: Arc<Mutex<SubscriptionRegistry>>,
+    // Mutex not ArcSwap: caches read then commit computed misses under one held lock.
     pub(crate) cst_diag_cache: Arc<Mutex<HashMap<String, crate::cst_cache::CstCacheEntry>>>,
     // Whole-workspace diagnostics keyed by surface fingerprint; a key mismatch is the sole invalidation.
     pub(crate) diag_bundle_cache: Arc<Mutex<Option<crate::diagnostics_publish::CachedBundle>>>,
@@ -123,6 +126,7 @@ pub(crate) struct Backend {
     pub(crate) client_supports_pull_diagnostics: Arc<AtomicBool>,
     pub(crate) client_supports_code_lens_refresh: Arc<AtomicBool>,
     pub(crate) client_supports_semantic_tokens_refresh: Arc<AtomicBool>,
+    // Mutex not ArcSwap: edit queue with version-checked insert/remove.
     pub(crate) pending_edits: Arc<Mutex<HashMap<Url, PendingEdit>>>,
     pub(crate) edit_notify: Arc<tokio::sync::Notify>,
     pub(crate) edit_writer_spawned: Arc<AtomicBool>,

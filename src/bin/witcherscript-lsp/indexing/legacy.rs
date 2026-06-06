@@ -133,7 +133,8 @@ impl Backend {
         self.publish_compilation(|builder| {
             builder.set_suppressed_base_uris(suppressed);
         });
-        self.legacy_replacements.store(std::sync::Arc::new(replacements));
+        self.legacy_replacements
+            .store(std::sync::Arc::new(replacements));
         self.rebuild_filtered_base_catalogs();
     }
 

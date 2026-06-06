@@ -348,7 +348,8 @@ impl Backend {
             builder.set_base_scripts_documents(base_new_docs_arc);
             builder.set_suppressed_base_uris(suppressed_base);
         });
-        self.legacy_replacements.store(Arc::new(legacy_replacements));
+        self.legacy_replacements
+            .store(Arc::new(legacy_replacements));
         self.merge_open_base_documents();
         self.rebuild_filtered_base_catalogs();
 
