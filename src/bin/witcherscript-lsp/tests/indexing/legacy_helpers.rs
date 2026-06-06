@@ -77,8 +77,10 @@ pub(super) async fn indexed_legacy_override(name: &str) -> (LocalTempDir, Backen
     let new_url = Url::from_file_path(&new_path).expect("new path -> url");
 
     let backend = make_backend();
-    *backend.game_directory.lock() = Some(game_dir);
-    *backend.legacy_script_dirs.lock() = vec![legacy_dir];
+    backend.update_config(|c| {
+        c.game_directory = Some(game_dir);
+        c.legacy_script_dirs = vec![legacy_dir];
+    });
     backend.index_base_scripts().await;
     (temp, backend, override_url, new_url)
 }

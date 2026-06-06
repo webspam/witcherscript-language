@@ -33,7 +33,7 @@ async fn loose_file_lands_in_loose_index_not_workspace() {
     let loose_url = Url::from_file_path(&loose_path).unwrap();
 
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![project_dir];
+    backend.set_workspace_roots(vec![project_dir]);
     backend.update_open_document(loose_url.clone(), "class CLoose {}\n".to_string());
 
     assert!(
@@ -104,7 +104,7 @@ async fn closing_a_project_file_keeps_it_indexed() {
     let url = Url::from_file_path(&path).unwrap();
 
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
     backend._did_open(open_params(&url, "class CHelper {}\n"));
     backend._did_close(close_params(&url));
 
@@ -135,7 +135,7 @@ async fn scope_change_between_open_and_change_does_not_leak() {
         "the file should start in loose_index",
     );
 
-    *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
     backend.update_open_document(url.clone(), "class CFile {}\n// edit\n".to_string());
 
     assert!(
@@ -185,7 +185,7 @@ async fn loose_file_does_not_resolve_project_symbols() {
     write_script(&project_dir, "Foo.ws", "class CFoo {}\n");
 
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![project_dir];
+    backend.set_workspace_roots(vec![project_dir]);
     backend.index_workspace().await;
 
     let loose_path = write_script(temp.path(), "outside/Loose.ws", "x");
@@ -209,7 +209,7 @@ async fn loose_and_project_file_with_same_class_do_not_conflict() {
     write_script(&project_dir, "Same.ws", "class CSame {}\n");
 
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![project_dir];
+    backend.set_workspace_roots(vec![project_dir]);
     backend.index_workspace().await;
 
     let loose_path = write_script(temp.path(), "outside/Same.ws", "class CSame {}\n");
@@ -236,7 +236,7 @@ async fn opening_a_loose_file_sends_file_scope_status() {
     let loose_url = Url::from_file_path(&loose_path).unwrap();
 
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![project_dir];
+    backend.set_workspace_roots(vec![project_dir]);
     backend._did_open(open_params(&loose_url, "class CLoose {}\n"));
 
     let sent = backend.sent_file_scope_status.lock();

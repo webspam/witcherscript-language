@@ -100,15 +100,11 @@ pub(crate) struct Backend {
     // Writers serialize through this; the writer never blocks readers because mutation happens
     // on a shadow Compilation that is then atomically swapped into `compilation`.
     pub(crate) writer_lock: Arc<Mutex<()>>,
-    pub(crate) workspace_roots: Arc<Mutex<Vec<PathBuf>>>,
-    pub(crate) files_exclude: Arc<Mutex<Vec<String>>>,
-    pub(crate) game_directory: Arc<Mutex<Option<PathBuf>>>,
-    // User-set exact base scripts dir; when present it overrides the `game_directory` derivation.
-    pub(crate) base_scripts_override: Arc<Mutex<Option<PathBuf>>>,
-    pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
-    pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
+    pub(crate) workspace_roots: Arc<ArcSwap<Vec<PathBuf>>>,
+    // Mutex not ArcSwap: per-key insert/remove delta from manifest watch events.
     pub(crate) manifest_legacy_dirs: Arc<Mutex<HashMap<String, PathBuf>>>,
-    pub(crate) legacy_replacements: Arc<Mutex<HashMap<String, String>>>,
+    pub(crate) legacy_replacements: Arc<ArcSwap<HashMap<String, String>>>,
+    // Mutex not ArcSwap: check-then-insert dedup must stay atomic so each status sends once.
     pub(crate) sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,
     pub(crate) sent_file_scope_status: Arc<Mutex<HashMap<Url, FileScopeStatusParams>>>,
     // Canonical URIs the workspace walker yielded; "under a root but missing" means gitignored.
@@ -118,6 +114,7 @@ pub(crate) struct Backend {
     // index itself is read-only from the publisher's point of view.
     pub(crate) workspace_subscriptions: Arc<Mutex<SubscriptionRegistry>>,
     pub(crate) loose_subscriptions: Arc<Mutex<SubscriptionRegistry>>,
+    // Mutex not ArcSwap: caches read then commit computed misses under one held lock.
     pub(crate) cst_diag_cache: Arc<Mutex<HashMap<String, crate::cst_cache::CstCacheEntry>>>,
     // Whole-workspace diagnostics keyed by surface fingerprint; a key mismatch is the sole invalidation.
     pub(crate) diag_bundle_cache: Arc<Mutex<Option<crate::diagnostics_publish::CachedBundle>>>,
@@ -129,6 +126,7 @@ pub(crate) struct Backend {
     pub(crate) client_supports_pull_diagnostics: Arc<AtomicBool>,
     pub(crate) client_supports_code_lens_refresh: Arc<AtomicBool>,
     pub(crate) client_supports_semantic_tokens_refresh: Arc<AtomicBool>,
+    // Mutex not ArcSwap: edit queue with version-checked insert/remove.
     pub(crate) pending_edits: Arc<Mutex<HashMap<Url, PendingEdit>>>,
     pub(crate) edit_notify: Arc<tokio::sync::Notify>,
     pub(crate) edit_writer_spawned: Arc<AtomicBool>,
@@ -137,6 +135,19 @@ pub(crate) struct Backend {
     pub(crate) view_refresher_spawned: Arc<AtomicBool>,
     // Wakes handlers blocked in `await_initial_index`; paired with `initial_index_done`.
     pub(crate) index_ready_notify: Arc<tokio::sync::Notify>,
+}
+
+#[cfg(test)]
+impl Backend {
+    pub(crate) fn update_config(&self, f: impl FnOnce(&mut Config)) {
+        let mut cfg = (**self.config.load()).clone();
+        f(&mut cfg);
+        self.config.store(Arc::new(cfg));
+    }
+
+    pub(crate) fn set_workspace_roots(&self, roots: Vec<PathBuf>) {
+        self.workspace_roots.store(Arc::new(roots));
+    }
 }
 
 pub(super) fn build_symbol_db<'a>(
@@ -200,14 +211,9 @@ impl Backend {
             config,
             compilation: Arc::new(ArcSwap::from_pointee(Compilation::default())),
             writer_lock: Arc::new(Mutex::new(())),
-            workspace_roots: Arc::new(Mutex::new(Vec::new())),
-            files_exclude: Arc::new(Mutex::new(Vec::new())),
-            game_directory: Arc::new(Mutex::new(None)),
-            base_scripts_override: Arc::new(Mutex::new(None)),
-            additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
-            legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
+            workspace_roots: Arc::new(ArcSwap::from_pointee(Vec::new())),
             manifest_legacy_dirs: Arc::new(Mutex::new(HashMap::new())),
-            legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
+            legacy_replacements: Arc::new(ArcSwap::from_pointee(HashMap::new())),
             sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
             sent_file_scope_status: Arc::new(Mutex::new(HashMap::new())),
             workspace_known_files: Arc::new(Mutex::new(HashSet::new())),
@@ -239,11 +245,11 @@ impl Backend {
 
     // Resolved base scripts dir: the override if set, else the game-dir + scripts subpath.
     pub(crate) fn base_scripts_dir(&self) -> Option<PathBuf> {
-        if let Some(override_dir) = self.base_scripts_override.lock().clone() {
+        let cfg = self.config.load();
+        if let Some(override_dir) = cfg.base_scripts_override.clone() {
             return Some(override_dir);
         }
-        self.game_directory
-            .lock()
+        cfg.game_directory
             .as_ref()
             .map(|gd| gd.join(BASE_SCRIPTS_SUBDIR))
     }
@@ -288,8 +294,8 @@ impl Backend {
     }
 
     pub(crate) fn exclude_filter(&self) -> witcherscript_language::files::ExcludeFilter {
-        let roots = self.workspace_roots.lock().clone();
-        let globs = self.files_exclude.lock().clone();
+        let roots = self.workspace_roots.load_full();
+        let globs = self.config.load().files_exclude.clone();
         witcherscript_language::files::ExcludeFilter::new(&roots, &globs)
     }
 
@@ -297,7 +303,7 @@ impl Backend {
         let Ok(path) = uri.to_file_path() else {
             return false;
         };
-        let roots = self.workspace_roots.lock();
+        let roots = self.workspace_roots.load();
         if !roots.iter().any(|r| path.starts_with(r)) {
             return false;
         }
@@ -319,11 +325,11 @@ impl Backend {
     }
 
     pub(crate) fn file_scope_of(&self, uri: &Url) -> FileScope {
-        let roots = self.workspace_roots.lock().clone();
+        let roots = self.workspace_roots.load_full();
         let legacy_dirs = self.effective_legacy_dirs();
         let base_scripts_dir = self.base_scripts_dir();
-        let additional = self.additional_script_dirs.lock().clone();
-        let replacements = self.legacy_replacements.lock();
+        let additional = self.config.load().additional_script_dirs.clone();
+        let replacements = self.legacy_replacements.load();
         classify_file_scope(
             uri,
             &roots,
@@ -337,7 +343,7 @@ impl Backend {
     // Holds even for an override inside a workspace root, which `file_scope_of` reports as `InProject`, not `LegacyOverride`.
     pub(crate) fn replaces_base_script(&self, uri: &Url) -> bool {
         self.legacy_replacements
-            .lock()
+            .load()
             .contains_key(&canonical_uri(uri))
     }
 
@@ -345,11 +351,11 @@ impl Backend {
         &self,
         documents: &HashMap<Url, Arc<ParsedDocument>>,
     ) -> HashSet<Url> {
-        let roots = self.workspace_roots.lock().clone();
+        let roots = self.workspace_roots.load_full();
         let legacy_dirs = self.effective_legacy_dirs();
         let base_scripts_dir = self.base_scripts_dir();
-        let additional = self.additional_script_dirs.lock().clone();
-        let replacements = self.legacy_replacements.lock();
+        let additional = self.config.load().additional_script_dirs.clone();
+        let replacements = self.legacy_replacements.load();
         documents
             .keys()
             .filter(|uri| {

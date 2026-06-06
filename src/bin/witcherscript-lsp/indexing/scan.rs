@@ -62,12 +62,12 @@ impl Backend {
     }
 
     pub(crate) async fn index_workspace(&self) {
-        let roots = self.workspace_roots.lock().clone();
+        let roots = self.workspace_roots.load_full();
         if roots.is_empty() {
             self.workspace_known_files.lock().clear();
             return;
         }
-        let exclude_globs = self.files_exclude.lock().clone();
+        let exclude_globs = self.config.load().files_exclude.clone();
 
         info!(op = "index_workspace", roots = ?roots, "start");
         let start = Instant::now();
@@ -172,8 +172,9 @@ impl Backend {
     pub(crate) async fn index_base_scripts(&self) {
         info!(op = "index_base_scripts", "start");
         let base_scripts_dir = self.base_scripts_dir();
-        let game_dir_opt = self.game_directory.lock().clone();
-        let extras = self.additional_script_dirs.lock().clone();
+        let cfg = self.config.load();
+        let game_dir_opt = cfg.game_directory.clone();
+        let extras = cfg.additional_script_dirs.clone();
         let legacy_dirs = self.effective_legacy_dirs();
 
         if base_scripts_dir.is_none() && extras.is_empty() && legacy_dirs.is_empty() {
@@ -182,7 +183,7 @@ impl Backend {
                 builder.set_base_scripts_documents(HashMap::new());
                 builder.set_suppressed_base_uris(HashSet::new());
             });
-            self.legacy_replacements.lock().clear();
+            self.legacy_replacements.store(Arc::new(HashMap::new()));
             self.rebuild_filtered_base_catalogs();
             self.prune_stale_legacy_workspace_files(&HashSet::new());
             self.publish_legacy_script_status();
@@ -347,7 +348,8 @@ impl Backend {
             builder.set_base_scripts_documents(base_new_docs_arc);
             builder.set_suppressed_base_uris(suppressed_base);
         });
-        *self.legacy_replacements.lock() = legacy_replacements;
+        self.legacy_replacements
+            .store(Arc::new(legacy_replacements));
         self.merge_open_base_documents();
         self.rebuild_filtered_base_catalogs();
 

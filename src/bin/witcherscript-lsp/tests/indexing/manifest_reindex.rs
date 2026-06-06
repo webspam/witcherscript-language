@@ -23,7 +23,7 @@ fn write_manifest(temp: &std::path::Path, rel_dir: &str, scripts_subdir: &str) -
 async fn adding_a_manifest_via_watched_event_changes_the_dir_set() {
     let temp = LocalTempDir::new("ws_manifest_reindex_add");
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
     backend.refresh_manifest_legacy_dirs();
     assert!(backend.manifest_legacy_dirs.lock().is_empty());
 
@@ -47,7 +47,7 @@ fn manifest_event_with_no_set_change_is_a_noop() {
     let manifest_url = write_manifest(temp.path(), "Mods/modA", "scripts");
 
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
     backend.refresh_manifest_legacy_dirs();
     let prev_dirs = backend.manifest_legacy_dirs.lock().clone();
     assert_eq!(prev_dirs.len(), 1, "sanity: discovery seeded one dir");
@@ -74,7 +74,7 @@ async fn deleting_a_manifest_via_watched_event_removes_the_dir() {
     let manifest_url = Url::from_file_path(&toml_path).unwrap();
 
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
     backend.refresh_manifest_legacy_dirs();
     assert_eq!(backend.manifest_legacy_dirs.lock().len(), 1);
 
@@ -96,7 +96,7 @@ fn toggling_flag_off_clears_the_cache() {
     write_manifest(temp.path(), "Mods/modA", "scripts");
 
     let backend = make_backend();
-    *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
     backend.refresh_manifest_legacy_dirs();
     assert_eq!(backend.manifest_legacy_dirs.lock().len(), 1);
 

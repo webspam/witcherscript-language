@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use lsp_types::request::WorkspaceConfiguration;
@@ -9,13 +10,13 @@ use crate::backend::Backend;
 use crate::logging::{level_from_str, level_to_u8, DEFAULT_LOG_LEVEL};
 use witcherscript_language::formatter::AnnotationPlacement;
 
-fn parse_path_array(value: Option<Value>) -> Vec<std::path::PathBuf> {
+fn parse_path_array(value: Option<Value>) -> Vec<PathBuf> {
     let Some(Value::Array(arr)) = value else {
         return Vec::new();
     };
     arr.into_iter()
         .filter_map(|v| match v {
-            Value::String(s) if !s.is_empty() => Some(std::path::PathBuf::from(s)),
+            Value::String(s) if !s.is_empty() => Some(PathBuf::from(s)),
             _ => None,
         })
         .collect()
@@ -51,6 +52,12 @@ pub(crate) struct Config {
     pub(crate) formatter_default_placement: AnnotationPlacement,
     pub(crate) code_lens_overridden_symbols: bool,
     pub(crate) code_lens_references: bool,
+    pub(crate) game_directory: Option<PathBuf>,
+    // User-set exact base scripts dir; overrides the game_directory derivation when present.
+    pub(crate) base_scripts_override: Option<PathBuf>,
+    pub(crate) files_exclude: Vec<String>,
+    pub(crate) additional_script_dirs: Vec<PathBuf>,
+    pub(crate) legacy_script_dirs: Vec<PathBuf>,
 }
 
 impl Default for Config {
@@ -67,6 +74,11 @@ impl Default for Config {
             formatter_default_placement: AnnotationPlacement::Preserve,
             code_lens_overridden_symbols: true,
             code_lens_references: false,
+            game_directory: None,
+            base_scripts_override: None,
+            files_exclude: Vec::new(),
+            additional_script_dirs: Vec::new(),
+            legacy_script_dirs: Vec::new(),
         }
     }
 }
@@ -88,11 +100,8 @@ impl Backend {
     pub(crate) async fn fetch_config(&self) -> ConfigChange {
         let started_at = std::time::Instant::now();
         tracing::debug!(op = "fetch_config", "start",);
-        let prev_base_scripts_path = self.base_scripts_dir();
-        let prev_files_exclude = self.files_exclude.lock().clone();
-        let prev_additional = self.additional_script_dirs.lock().clone();
-        let prev_legacy = self.legacy_script_dirs.lock().clone();
         let prev_cfg = (**self.config.load()).clone();
+        let prev_base_scripts_path = self.base_scripts_dir();
 
         let items = vec![
             ConfigurationItem {
@@ -179,11 +188,11 @@ impl Backend {
 
         if let Some(Value::String(path_str)) = iter.next() {
             if !path_str.is_empty() {
-                *self.game_directory.lock() = Some(std::path::PathBuf::from(path_str));
+                next_cfg.game_directory = Some(PathBuf::from(path_str));
             }
         }
-        *self.base_scripts_override.lock() = match iter.next() {
-            Some(Value::String(s)) if !s.is_empty() => Some(std::path::PathBuf::from(s)),
+        next_cfg.base_scripts_override = match iter.next() {
+            Some(Value::String(s)) if !s.is_empty() => Some(PathBuf::from(s)),
             _ => None,
         };
         if let Some(Value::String(level_str)) = iter.next() {
@@ -240,14 +249,14 @@ impl Backend {
                 .filter(|(_, enabled)| matches!(enabled, Value::Bool(true)))
                 .map(|(glob, _)| glob)
                 .collect();
-            *self.files_exclude.lock() = globs;
+            next_cfg.files_exclude = globs;
         }
-        *self.additional_script_dirs.lock() = parse_path_array(iter.next());
+        next_cfg.additional_script_dirs = parse_path_array(iter.next());
         next_cfg.auto_load_mod_shared_imports = match iter.next() {
             Some(Value::Bool(b)) => b,
             _ => true,
         };
-        *self.legacy_script_dirs.lock() = parse_path_array(iter.next());
+        next_cfg.legacy_script_dirs = parse_path_array(iter.next());
         next_cfg.auto_detect_project_manifests = match iter.next() {
             Some(Value::Bool(b)) => b,
             _ => true,
@@ -268,11 +277,9 @@ impl Backend {
         self.config.store(Arc::new(next_cfg.clone()));
 
         let base_scripts_changed = self.base_scripts_dir() != prev_base_scripts_path;
-        let files_exclude_changed = *self.files_exclude.lock() != prev_files_exclude;
-        let new_additional_len = self.additional_script_dirs.lock().len();
-        let additional_changed = new_additional_len != prev_additional.len()
-            || *self.additional_script_dirs.lock() != prev_additional;
-        let legacy_changed = *self.legacy_script_dirs.lock() != prev_legacy;
+        let files_exclude_changed = next_cfg.files_exclude != prev_cfg.files_exclude;
+        let additional_changed = next_cfg.additional_script_dirs != prev_cfg.additional_script_dirs;
+        let legacy_changed = next_cfg.legacy_script_dirs != prev_cfg.legacy_script_dirs;
         let auto_load_changed =
             next_cfg.auto_load_mod_shared_imports != prev_cfg.auto_load_mod_shared_imports;
         let auto_detect_manifests_changed =
@@ -290,8 +297,8 @@ impl Backend {
         if additional_changed {
             trace!(
                 setting = "additionalScriptDirectories",
-                prev = prev_additional.len(),
-                new = new_additional_len,
+                prev = prev_cfg.additional_script_dirs.len(),
+                new = next_cfg.additional_script_dirs.len(),
                 "setting changed"
             );
         }

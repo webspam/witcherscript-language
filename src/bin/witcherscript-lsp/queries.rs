@@ -234,7 +234,7 @@ impl Backend {
         let uri = params.text_document.uri.clone();
         let started_at = Instant::now();
         trace!(op = "code_action", uri = %uri, "start");
-        let roots = self.workspace_roots.lock().clone();
+        let roots = self.workspace_roots.load_full();
         let actions = base_script_conflict_code_actions(&params.context.diagnostics, &roots);
         trace!(
             op = "code_action",

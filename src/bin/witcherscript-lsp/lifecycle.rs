@@ -57,14 +57,15 @@ impl Backend {
         // workspace/configuration is pulled after initialized(), but this ensures
         // we have a value even before that round-trip completes.
         if let Some(opts) = &params.initialization_options {
+            let mut cfg = (**self.config.load()).clone();
             if let Some(p) = opts.get("gameDirectory").and_then(|v| v.as_str()) {
                 if !p.is_empty() {
-                    *self.game_directory.lock() = Some(PathBuf::from(p));
+                    cfg.game_directory = Some(PathBuf::from(p));
                 }
             }
             if let Some(p) = opts.get("baseScriptsDirectory").and_then(|v| v.as_str()) {
                 if !p.is_empty() {
-                    *self.base_scripts_override.lock() = Some(PathBuf::from(p));
+                    cfg.base_scripts_override = Some(PathBuf::from(p));
                 }
             }
             if let Some(arr) = opts
@@ -77,7 +78,7 @@ impl Backend {
                     .filter(|s| !s.is_empty())
                     .map(PathBuf::from)
                     .collect();
-                *self.additional_script_dirs.lock() = dirs;
+                cfg.additional_script_dirs = dirs;
             }
             if let Some(arr) = opts
                 .get("legacyScriptDirectories")
@@ -89,9 +90,8 @@ impl Backend {
                     .filter(|s| !s.is_empty())
                     .map(PathBuf::from)
                     .collect();
-                *self.legacy_script_dirs.lock() = dirs;
+                cfg.legacy_script_dirs = dirs;
             }
-            let mut cfg = (**self.config.load()).clone();
             if let Some(b) = opts
                 .get("autoLoadModSharedImports")
                 .and_then(|v| v.as_bool())
@@ -178,9 +178,9 @@ impl Backend {
             .store(supports_semantic_tokens_refresh, Ordering::Release);
 
         let roots = workspace_roots(params);
-        let game_dir = self.game_directory.lock().clone();
+        let game_dir = self.config.load().game_directory.clone();
         info!(roots = ?roots, game_dir = ?game_dir, supports_pull, "LSP initialize");
-        *self.workspace_roots.lock() = roots;
+        self.workspace_roots.store(Arc::new(roots));
 
         let result = Ok(InitializeResult {
             capabilities: ServerCapabilities {

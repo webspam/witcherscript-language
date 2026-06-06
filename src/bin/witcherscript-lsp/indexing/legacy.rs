@@ -12,9 +12,10 @@ use super::helpers::{legacy_base_replacements, mod_shared_imports_dir, path_to_c
 impl Backend {
     // Auto-detected modSharedImports counts as legacy without being in the setting.
     pub(crate) fn effective_legacy_dirs(&self) -> Vec<PathBuf> {
-        let mut dirs = self.legacy_script_dirs.lock().clone();
-        if self.config.load().auto_load_mod_shared_imports {
-            if let Some(gd) = self.game_directory.lock().as_ref() {
+        let cfg = self.config.load();
+        let mut dirs = cfg.legacy_script_dirs.clone();
+        if cfg.auto_load_mod_shared_imports {
+            if let Some(gd) = cfg.game_directory.as_ref() {
                 if let Some(msi) = mod_shared_imports_dir(gd) {
                     if !dirs.contains(&msi) {
                         dirs.push(msi);
@@ -35,11 +36,11 @@ impl Backend {
         let next: HashMap<String, PathBuf> = if !self.config.load().auto_detect_project_manifests {
             HashMap::new()
         } else {
-            let roots = self.workspace_roots.lock().clone();
+            let roots = self.workspace_roots.load_full();
             if roots.is_empty() {
                 HashMap::new()
             } else {
-                let exclude_globs = self.files_exclude.lock().clone();
+                let exclude_globs = self.config.load().files_exclude.clone();
                 crate::project_manifest::discover_manifests(&roots, &exclude_globs)
                     .into_iter()
                     .filter_map(|toml| {
@@ -132,7 +133,8 @@ impl Backend {
         self.publish_compilation(|builder| {
             builder.set_suppressed_base_uris(suppressed);
         });
-        *self.legacy_replacements.lock() = replacements;
+        self.legacy_replacements
+            .store(std::sync::Arc::new(replacements));
         self.rebuild_filtered_base_catalogs();
     }
 
