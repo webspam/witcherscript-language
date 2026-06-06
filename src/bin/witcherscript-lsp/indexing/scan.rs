@@ -171,11 +171,12 @@ impl Backend {
 
     pub(crate) async fn index_base_scripts(&self) {
         info!(op = "index_base_scripts", "start");
-        let game_dir_opt = self.base_scripts_path.lock().clone();
+        let base_scripts_dir = self.base_scripts_dir();
+        let game_dir_opt = self.game_directory.lock().clone();
         let extras = self.additional_script_dirs.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
 
-        if game_dir_opt.is_none() && extras.is_empty() && legacy_dirs.is_empty() {
+        if base_scripts_dir.is_none() && extras.is_empty() && legacy_dirs.is_empty() {
             self.publish_compilation(|builder| {
                 builder.set_base_scripts_index(WorkspaceIndex::default());
                 builder.set_base_scripts_documents(HashMap::new());
@@ -231,7 +232,7 @@ impl Backend {
             })
             .collect();
 
-        let base_segments = build_index_segments(game_dir_opt.as_deref(), &extras_filtered);
+        let base_segments = build_index_segments(base_scripts_dir.as_deref(), &extras_filtered);
         let base_segments_count = base_segments.len();
         let total_start = Instant::now();
         let legacy_dirs_for_task = legacy_dirs_valid.clone();

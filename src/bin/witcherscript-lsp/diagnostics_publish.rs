@@ -479,7 +479,7 @@ impl Backend {
             let documents = self.snapshot().documents.clone();
             let roots = self.workspace_roots.lock().clone();
             let legacy_dirs = self.effective_legacy_dirs();
-            let game_dir = self.base_scripts_path.lock().clone();
+            let base_scripts_dir = self.base_scripts_dir();
             let additional = self.additional_script_dirs.lock().clone();
             let replacements = self.legacy_replacements.lock();
             let mut sent = self.sent_file_scope_status.lock();
@@ -490,7 +490,7 @@ impl Backend {
                     &roots,
                     &legacy_dirs,
                     &replacements,
-                    game_dir.as_deref(),
+                    base_scripts_dir.as_deref(),
                     &additional,
                 );
                 let replaced_script_path = if matches!(scope, FileScope::LegacyOverride) {

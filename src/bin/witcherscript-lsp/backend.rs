@@ -41,6 +41,8 @@ use crate::legacy_status::LegacyScriptStatusParams;
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
+const BASE_SCRIPTS_SUBDIR: &str = r"content\content0\scripts";
+
 // The diagnosed set excludes read-only base scripts, so it cannot reuse merge_documents.
 pub(crate) fn diagnostics_document_set<'a>(
     workspace_docs: &'a HashMap<String, Arc<ParsedDocument>>,
@@ -100,7 +102,9 @@ pub(crate) struct Backend {
     pub(crate) writer_lock: Arc<Mutex<()>>,
     pub(crate) workspace_roots: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) files_exclude: Arc<Mutex<Vec<String>>>,
-    pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
+    pub(crate) game_directory: Arc<Mutex<Option<PathBuf>>>,
+    // User-set exact base scripts dir; when present it overrides the `game_directory` derivation.
+    pub(crate) base_scripts_override: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) manifest_legacy_dirs: Arc<Mutex<HashMap<String, PathBuf>>>,
@@ -198,7 +202,8 @@ impl Backend {
             writer_lock: Arc::new(Mutex::new(())),
             workspace_roots: Arc::new(Mutex::new(Vec::new())),
             files_exclude: Arc::new(Mutex::new(Vec::new())),
-            base_scripts_path: Arc::new(Mutex::new(None)),
+            game_directory: Arc::new(Mutex::new(None)),
+            base_scripts_override: Arc::new(Mutex::new(None)),
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
             manifest_legacy_dirs: Arc::new(Mutex::new(HashMap::new())),
@@ -230,6 +235,17 @@ impl Backend {
 
     pub(crate) fn snapshot(&self) -> Arc<Compilation> {
         self.compilation.load_full()
+    }
+
+    // Resolved base scripts dir: the override if set, else the game-dir + scripts subpath.
+    pub(crate) fn base_scripts_dir(&self) -> Option<PathBuf> {
+        if let Some(override_dir) = self.base_scripts_override.lock().clone() {
+            return Some(override_dir);
+        }
+        self.game_directory
+            .lock()
+            .as_ref()
+            .map(|gd| gd.join(BASE_SCRIPTS_SUBDIR))
     }
 
     // Single-writer publish: build the next Compilation on a shadow and atomically swap.
@@ -305,7 +321,7 @@ impl Backend {
     pub(crate) fn file_scope_of(&self, uri: &Url) -> FileScope {
         let roots = self.workspace_roots.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
-        let game_dir = self.base_scripts_path.lock().clone();
+        let base_scripts_dir = self.base_scripts_dir();
         let additional = self.additional_script_dirs.lock().clone();
         let replacements = self.legacy_replacements.lock();
         classify_file_scope(
@@ -313,7 +329,7 @@ impl Backend {
             &roots,
             &legacy_dirs,
             &replacements,
-            game_dir.as_deref(),
+            base_scripts_dir.as_deref(),
             &additional,
         )
     }
@@ -331,7 +347,7 @@ impl Backend {
     ) -> HashSet<Url> {
         let roots = self.workspace_roots.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
-        let game_dir = self.base_scripts_path.lock().clone();
+        let base_scripts_dir = self.base_scripts_dir();
         let additional = self.additional_script_dirs.lock().clone();
         let replacements = self.legacy_replacements.lock();
         documents
@@ -342,7 +358,7 @@ impl Backend {
                     &roots,
                     &legacy_dirs,
                     &replacements,
-                    game_dir.as_deref(),
+                    base_scripts_dir.as_deref(),
                     &additional,
                 )
                 .is_loose()

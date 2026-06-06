@@ -88,7 +88,7 @@ impl Backend {
     pub(crate) async fn fetch_config(&self) -> ConfigChange {
         let started_at = std::time::Instant::now();
         tracing::debug!(op = "fetch_config", "start",);
-        let prev_base_scripts_path = self.base_scripts_path.lock().clone();
+        let prev_base_scripts_path = self.base_scripts_dir();
         let prev_files_exclude = self.files_exclude.lock().clone();
         let prev_additional = self.additional_script_dirs.lock().clone();
         let prev_legacy = self.legacy_script_dirs.lock().clone();
@@ -98,6 +98,10 @@ impl Backend {
             ConfigurationItem {
                 scope_uri: None,
                 section: Some("witcherscript.gameDirectory".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("witcherscript.baseScriptsDirectory".to_string()),
             },
             ConfigurationItem {
                 scope_uri: None,
@@ -175,9 +179,13 @@ impl Backend {
 
         if let Some(Value::String(path_str)) = iter.next() {
             if !path_str.is_empty() {
-                *self.base_scripts_path.lock() = Some(std::path::PathBuf::from(path_str));
+                *self.game_directory.lock() = Some(std::path::PathBuf::from(path_str));
             }
         }
+        *self.base_scripts_override.lock() = match iter.next() {
+            Some(Value::String(s)) if !s.is_empty() => Some(std::path::PathBuf::from(s)),
+            _ => None,
+        };
         if let Some(Value::String(level_str)) = iter.next() {
             next_cfg.log_level = level_to_u8(level_from_str(&level_str));
             if next_cfg.log_level != prev_cfg.log_level {
@@ -259,7 +267,7 @@ impl Backend {
 
         self.config.store(Arc::new(next_cfg.clone()));
 
-        let base_scripts_changed = *self.base_scripts_path.lock() != prev_base_scripts_path;
+        let base_scripts_changed = self.base_scripts_dir() != prev_base_scripts_path;
         let files_exclude_changed = *self.files_exclude.lock() != prev_files_exclude;
         let new_additional_len = self.additional_script_dirs.lock().len();
         let additional_changed = new_additional_len != prev_additional.len()
