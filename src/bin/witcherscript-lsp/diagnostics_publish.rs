@@ -480,7 +480,7 @@ impl Backend {
             let roots = self.workspace_roots.lock().clone();
             let legacy_dirs = self.effective_legacy_dirs();
             let base_scripts_dir = self.base_scripts_dir();
-            let additional = self.additional_script_dirs.lock().clone();
+            let additional = self.config.load().additional_script_dirs.clone();
             let replacements = self.legacy_replacements.lock();
             let mut sent = self.sent_file_scope_status.lock();
             let mut list = Vec::new();

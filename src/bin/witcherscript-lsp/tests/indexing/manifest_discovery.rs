@@ -52,7 +52,7 @@ fn refresh_honors_files_exclude() {
 
     let backend = make_backend();
     *backend.workspace_roots.lock() = vec![temp.path().to_path_buf()];
-    *backend.files_exclude.lock() = vec!["**/skip/**".to_string()];
+    backend.update_config(|c| c.files_exclude = vec!["**/skip/**".to_string()]);
 
     backend.refresh_manifest_legacy_dirs();
 

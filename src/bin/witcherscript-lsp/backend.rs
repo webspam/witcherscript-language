@@ -101,12 +101,6 @@ pub(crate) struct Backend {
     // on a shadow Compilation that is then atomically swapped into `compilation`.
     pub(crate) writer_lock: Arc<Mutex<()>>,
     pub(crate) workspace_roots: Arc<Mutex<Vec<PathBuf>>>,
-    pub(crate) files_exclude: Arc<Mutex<Vec<String>>>,
-    pub(crate) game_directory: Arc<Mutex<Option<PathBuf>>>,
-    // User-set exact base scripts dir; when present it overrides the `game_directory` derivation.
-    pub(crate) base_scripts_override: Arc<Mutex<Option<PathBuf>>>,
-    pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
-    pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) manifest_legacy_dirs: Arc<Mutex<HashMap<String, PathBuf>>>,
     pub(crate) legacy_replacements: Arc<Mutex<HashMap<String, String>>>,
     pub(crate) sent_legacy_status: Arc<Mutex<HashMap<Url, LegacyScriptStatusParams>>>,
@@ -137,6 +131,15 @@ pub(crate) struct Backend {
     pub(crate) view_refresher_spawned: Arc<AtomicBool>,
     // Wakes handlers blocked in `await_initial_index`; paired with `initial_index_done`.
     pub(crate) index_ready_notify: Arc<tokio::sync::Notify>,
+}
+
+#[cfg(test)]
+impl Backend {
+    pub(crate) fn update_config(&self, f: impl FnOnce(&mut Config)) {
+        let mut cfg = (**self.config.load()).clone();
+        f(&mut cfg);
+        self.config.store(Arc::new(cfg));
+    }
 }
 
 pub(super) fn build_symbol_db<'a>(
@@ -201,11 +204,6 @@ impl Backend {
             compilation: Arc::new(ArcSwap::from_pointee(Compilation::default())),
             writer_lock: Arc::new(Mutex::new(())),
             workspace_roots: Arc::new(Mutex::new(Vec::new())),
-            files_exclude: Arc::new(Mutex::new(Vec::new())),
-            game_directory: Arc::new(Mutex::new(None)),
-            base_scripts_override: Arc::new(Mutex::new(None)),
-            additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
-            legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
             manifest_legacy_dirs: Arc::new(Mutex::new(HashMap::new())),
             legacy_replacements: Arc::new(Mutex::new(HashMap::new())),
             sent_legacy_status: Arc::new(Mutex::new(HashMap::new())),
@@ -239,11 +237,11 @@ impl Backend {
 
     // Resolved base scripts dir: the override if set, else the game-dir + scripts subpath.
     pub(crate) fn base_scripts_dir(&self) -> Option<PathBuf> {
-        if let Some(override_dir) = self.base_scripts_override.lock().clone() {
+        let cfg = self.config.load();
+        if let Some(override_dir) = cfg.base_scripts_override.clone() {
             return Some(override_dir);
         }
-        self.game_directory
-            .lock()
+        cfg.game_directory
             .as_ref()
             .map(|gd| gd.join(BASE_SCRIPTS_SUBDIR))
     }
@@ -289,7 +287,7 @@ impl Backend {
 
     pub(crate) fn exclude_filter(&self) -> witcherscript_language::files::ExcludeFilter {
         let roots = self.workspace_roots.lock().clone();
-        let globs = self.files_exclude.lock().clone();
+        let globs = self.config.load().files_exclude.clone();
         witcherscript_language::files::ExcludeFilter::new(&roots, &globs)
     }
 
@@ -322,7 +320,7 @@ impl Backend {
         let roots = self.workspace_roots.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
         let base_scripts_dir = self.base_scripts_dir();
-        let additional = self.additional_script_dirs.lock().clone();
+        let additional = self.config.load().additional_script_dirs.clone();
         let replacements = self.legacy_replacements.lock();
         classify_file_scope(
             uri,
@@ -348,7 +346,7 @@ impl Backend {
         let roots = self.workspace_roots.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
         let base_scripts_dir = self.base_scripts_dir();
-        let additional = self.additional_script_dirs.lock().clone();
+        let additional = self.config.load().additional_script_dirs.clone();
         let replacements = self.legacy_replacements.lock();
         documents
             .keys()

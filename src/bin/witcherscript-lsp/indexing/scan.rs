@@ -67,7 +67,7 @@ impl Backend {
             self.workspace_known_files.lock().clear();
             return;
         }
-        let exclude_globs = self.files_exclude.lock().clone();
+        let exclude_globs = self.config.load().files_exclude.clone();
 
         info!(op = "index_workspace", roots = ?roots, "start");
         let start = Instant::now();
@@ -172,8 +172,9 @@ impl Backend {
     pub(crate) async fn index_base_scripts(&self) {
         info!(op = "index_base_scripts", "start");
         let base_scripts_dir = self.base_scripts_dir();
-        let game_dir_opt = self.game_directory.lock().clone();
-        let extras = self.additional_script_dirs.lock().clone();
+        let cfg = self.config.load();
+        let game_dir_opt = cfg.game_directory.clone();
+        let extras = cfg.additional_script_dirs.clone();
         let legacy_dirs = self.effective_legacy_dirs();
 
         if base_scripts_dir.is_none() && extras.is_empty() && legacy_dirs.is_empty() {

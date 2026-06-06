@@ -753,7 +753,7 @@ async fn new_file_after_initial_index_is_not_excluded() {
         "a newly created in-root file must not be treated as excluded",
     );
 
-    *backend.files_exclude.lock() = vec!["**/generated/**".to_string()];
+    backend.update_config(|c| c.files_exclude = vec!["**/generated/**".to_string()]);
     let ignored_path = write_script(temp.path(), "generated/Gen.ws", "class CGen {}\n");
     let ignored_url = Url::from_file_path(&ignored_path).expect("path -> url");
     assert!(
