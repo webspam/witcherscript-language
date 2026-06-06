@@ -479,7 +479,7 @@ impl Backend {
             let documents = self.snapshot().documents.clone();
             let roots = self.workspace_roots.lock().clone();
             let legacy_dirs = self.effective_legacy_dirs();
-            let game_dir = self.base_scripts_path.lock().clone();
+            let game_dir = self.game_directory.lock().clone();
             let additional = self.additional_script_dirs.lock().clone();
             let replacements = self.legacy_replacements.lock();
             let mut sent = self.sent_file_scope_status.lock();

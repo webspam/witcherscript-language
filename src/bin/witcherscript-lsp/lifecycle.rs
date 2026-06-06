@@ -59,7 +59,7 @@ impl Backend {
         if let Some(opts) = &params.initialization_options {
             if let Some(p) = opts.get("gameDirectory").and_then(|v| v.as_str()) {
                 if !p.is_empty() {
-                    *self.base_scripts_path.lock() = Some(PathBuf::from(p));
+                    *self.game_directory.lock() = Some(PathBuf::from(p));
                 }
             }
             if let Some(arr) = opts
@@ -173,7 +173,7 @@ impl Backend {
             .store(supports_semantic_tokens_refresh, Ordering::Release);
 
         let roots = workspace_roots(params);
-        let game_dir = self.base_scripts_path.lock().clone();
+        let game_dir = self.game_directory.lock().clone();
         info!(roots = ?roots, game_dir = ?game_dir, supports_pull, "LSP initialize");
         *self.workspace_roots.lock() = roots;
 

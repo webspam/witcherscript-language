@@ -18,7 +18,7 @@ async fn reindexing_keeps_an_open_legacy_file_indexed() {
     let legacy_url = Url::from_file_path(&legacy_path).expect("legacy path -> url");
 
     let backend = make_backend();
-    *backend.base_scripts_path.lock() = Some(game_dir);
+    *backend.game_directory.lock() = Some(game_dir);
     *backend.legacy_script_dirs.lock() = vec![legacy_dir];
 
     backend.index_base_scripts().await;
@@ -49,7 +49,7 @@ async fn refresh_override_maps_keeps_open_legacy_pairing() {
     let legacy_url = Url::from_file_path(&legacy_path).expect("legacy path -> url");
 
     let backend = make_backend();
-    *backend.base_scripts_path.lock() = Some(game_dir);
+    *backend.game_directory.lock() = Some(game_dir);
     *backend.legacy_script_dirs.lock() = vec![legacy_dir];
 
     backend.index_base_scripts().await;
@@ -87,7 +87,7 @@ async fn reindexing_keeps_an_open_overridden_base_script_indexed() {
     );
 
     let backend = make_backend();
-    *backend.base_scripts_path.lock() = Some(game_dir);
+    *backend.game_directory.lock() = Some(game_dir);
     *backend.legacy_script_dirs.lock() = vec![legacy_dir];
 
     backend.index_base_scripts().await;
@@ -131,7 +131,7 @@ async fn did_open_refreshes_legacy_override_maps_for_open_first_override() {
     let legacy_dir = temp.path().join("legacy");
 
     let backend = make_backend();
-    *backend.base_scripts_path.lock() = Some(game_dir);
+    *backend.game_directory.lock() = Some(game_dir);
     *backend.legacy_script_dirs.lock() = vec![legacy_dir.clone()];
     backend.index_base_scripts().await;
 

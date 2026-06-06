@@ -14,7 +14,7 @@ impl Backend {
     pub(crate) fn effective_legacy_dirs(&self) -> Vec<PathBuf> {
         let mut dirs = self.legacy_script_dirs.lock().clone();
         if self.config.load().auto_load_mod_shared_imports {
-            if let Some(gd) = self.base_scripts_path.lock().as_ref() {
+            if let Some(gd) = self.game_directory.lock().as_ref() {
                 if let Some(msi) = mod_shared_imports_dir(gd) {
                     if !dirs.contains(&msi) {
                         dirs.push(msi);

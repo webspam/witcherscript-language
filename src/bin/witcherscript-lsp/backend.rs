@@ -100,7 +100,7 @@ pub(crate) struct Backend {
     pub(crate) writer_lock: Arc<Mutex<()>>,
     pub(crate) workspace_roots: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) files_exclude: Arc<Mutex<Vec<String>>>,
-    pub(crate) base_scripts_path: Arc<Mutex<Option<PathBuf>>>,
+    pub(crate) game_directory: Arc<Mutex<Option<PathBuf>>>,
     pub(crate) additional_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) legacy_script_dirs: Arc<Mutex<Vec<PathBuf>>>,
     pub(crate) manifest_legacy_dirs: Arc<Mutex<HashMap<String, PathBuf>>>,
@@ -198,7 +198,7 @@ impl Backend {
             writer_lock: Arc::new(Mutex::new(())),
             workspace_roots: Arc::new(Mutex::new(Vec::new())),
             files_exclude: Arc::new(Mutex::new(Vec::new())),
-            base_scripts_path: Arc::new(Mutex::new(None)),
+            game_directory: Arc::new(Mutex::new(None)),
             additional_script_dirs: Arc::new(Mutex::new(Vec::new())),
             legacy_script_dirs: Arc::new(Mutex::new(Vec::new())),
             manifest_legacy_dirs: Arc::new(Mutex::new(HashMap::new())),
@@ -305,7 +305,7 @@ impl Backend {
     pub(crate) fn file_scope_of(&self, uri: &Url) -> FileScope {
         let roots = self.workspace_roots.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
-        let game_dir = self.base_scripts_path.lock().clone();
+        let game_dir = self.game_directory.lock().clone();
         let additional = self.additional_script_dirs.lock().clone();
         let replacements = self.legacy_replacements.lock();
         classify_file_scope(
@@ -331,7 +331,7 @@ impl Backend {
     ) -> HashSet<Url> {
         let roots = self.workspace_roots.lock().clone();
         let legacy_dirs = self.effective_legacy_dirs();
-        let game_dir = self.base_scripts_path.lock().clone();
+        let game_dir = self.game_directory.lock().clone();
         let additional = self.additional_script_dirs.lock().clone();
         let replacements = self.legacy_replacements.lock();
         documents

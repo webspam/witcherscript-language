@@ -88,7 +88,7 @@ impl Backend {
     pub(crate) async fn fetch_config(&self) -> ConfigChange {
         let started_at = std::time::Instant::now();
         tracing::debug!(op = "fetch_config", "start",);
-        let prev_base_scripts_path = self.base_scripts_path.lock().clone();
+        let prev_base_scripts_path = self.game_directory.lock().clone();
         let prev_files_exclude = self.files_exclude.lock().clone();
         let prev_additional = self.additional_script_dirs.lock().clone();
         let prev_legacy = self.legacy_script_dirs.lock().clone();
@@ -175,7 +175,7 @@ impl Backend {
 
         if let Some(Value::String(path_str)) = iter.next() {
             if !path_str.is_empty() {
-                *self.base_scripts_path.lock() = Some(std::path::PathBuf::from(path_str));
+                *self.game_directory.lock() = Some(std::path::PathBuf::from(path_str));
             }
         }
         if let Some(Value::String(level_str)) = iter.next() {
@@ -259,7 +259,7 @@ impl Backend {
 
         self.config.store(Arc::new(next_cfg.clone()));
 
-        let base_scripts_changed = *self.base_scripts_path.lock() != prev_base_scripts_path;
+        let base_scripts_changed = *self.game_directory.lock() != prev_base_scripts_path;
         let files_exclude_changed = *self.files_exclude.lock() != prev_files_exclude;
         let new_additional_len = self.additional_script_dirs.lock().len();
         let additional_changed = new_additional_len != prev_additional.len()
