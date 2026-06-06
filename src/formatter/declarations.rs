@@ -21,7 +21,13 @@ impl<'a> Formatter<'a> {
             let trailing = child_is_comment && self.is_trailing_comment(prev_node, *child);
             if let Some(prev) = prev_end_row {
                 let source_gap = child_row.saturating_sub(prev);
-                if !trailing && (source_gap >= 2 || (!prev_was_comment && !child_is_comment)) {
+                // Consecutive single-line @addField members may sit gaplessly; do not force a blank.
+                let both_add_field = prev_node.is_some_and(|p| self.is_add_field_decl(p))
+                    && self.is_add_field_decl(*child);
+                if !trailing
+                    && (source_gap >= 2
+                        || (!both_add_field && !prev_was_comment && !child_is_comment))
+                {
                     self.nl();
                 }
             }
@@ -53,6 +59,13 @@ impl<'a> Formatter<'a> {
     fn is_add_field_annotation(&self, ann: Node) -> bool {
         self.child_of_kind(ann, "annotation_ident")
             .is_some_and(|ident| self.text(ident).trim_start_matches('@') == "addField")
+    }
+
+    fn is_add_field_decl(&self, node: Node) -> bool {
+        node.kind() == "member_var_decl"
+            && self
+                .child_of_kind(node, "annotation")
+                .is_some_and(|ann| self.is_add_field_annotation(ann))
     }
 
     fn emit_annotation(&mut self, ann: Node) {
