@@ -60,6 +60,7 @@ impl Backend {
             if let Some(p) = opts.get("gameDirectory").and_then(|v| v.as_str()) {
                 if !p.is_empty() {
                     *self.game_directory.lock() = Some(PathBuf::from(p));
+                    self.recompute_base_scripts_path();
                 }
             }
             if let Some(arr) = opts

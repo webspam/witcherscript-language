@@ -26,7 +26,7 @@ pub(crate) fn classify_file_scope(
     workspace_roots: &[PathBuf],
     legacy_script_dirs: &[PathBuf],
     legacy_replacements: &HashMap<String, String>,
-    game_dir: Option<&Path>,
+    base_scripts_dir: Option<&Path>,
     additional_script_dirs: &[PathBuf],
 ) -> FileScope {
     let loose = || {
@@ -51,7 +51,7 @@ pub(crate) fn classify_file_scope(
             FileScope::LegacyNew
         };
     }
-    if game_dir.is_some_and(|dir| path.starts_with(dir)) {
+    if base_scripts_dir.is_some_and(|dir| path.starts_with(dir)) {
         return FileScope::AdditionalBase;
     }
     if additional_script_dirs

@@ -78,6 +78,7 @@ pub(super) async fn indexed_legacy_override(name: &str) -> (LocalTempDir, Backen
 
     let backend = make_backend();
     *backend.game_directory.lock() = Some(game_dir);
+    backend.recompute_base_scripts_path();
     *backend.legacy_script_dirs.lock() = vec![legacy_dir];
     backend.index_base_scripts().await;
     (temp, backend, override_url, new_url)

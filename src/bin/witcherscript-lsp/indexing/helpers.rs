@@ -55,17 +55,16 @@ pub(crate) fn legacy_base_replacements(
 }
 
 pub(crate) fn build_index_segments(
-    game_dir: Option<&Path>,
+    base_scripts_dir: Option<&Path>,
     extras: &[PathBuf],
 ) -> Vec<(&'static str, PathBuf)> {
     let mut segments: Vec<(&'static str, PathBuf)> = Vec::new();
     let mut seen: HashSet<PathBuf> = HashSet::new();
     let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
 
-    if let Some(gd) = game_dir {
-        let base = gd.join(r"content\content0\scripts");
-        if seen.insert(canon(&base)) {
-            segments.push(("gameDirectory", base));
+    if let Some(base) = base_scripts_dir {
+        if seen.insert(canon(base)) {
+            segments.push(("gameDirectory", base.to_path_buf()));
         }
     }
 
