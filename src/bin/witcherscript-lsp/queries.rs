@@ -7,11 +7,12 @@ use lsp_types::{
     DiagnosticServerCancellationData, DocumentDiagnosticParams, DocumentDiagnosticReport,
     DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentSymbolParams,
     DocumentSymbolResponse, FullDocumentDiagnosticReport, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverContents, HoverParams, Location, MarkupContent, MarkupKind,
-    Position, RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport,
-    SemanticToken, SemanticTokens, SemanticTokensParams, SemanticTokensResult, SignatureHelp,
-    SignatureHelpParams, TextEdit, UnchangedDocumentDiagnosticReport, Url,
-    WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
+    GotoDefinitionResponse, Hover, HoverContents, HoverParams, InlayHint, InlayHintParams,
+    Location, MarkupContent, MarkupKind, Position, RelatedFullDocumentDiagnosticReport,
+    RelatedUnchangedDocumentDiagnosticReport, SemanticToken, SemanticTokens, SemanticTokensParams,
+    SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextEdit,
+    UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams,
+    WorkspaceDiagnosticReportResult,
 };
 
 use crate::config::DiagnosticsScope;
@@ -20,16 +21,16 @@ use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::formatter::{format_document, FormatOptions};
 use witcherscript_language::resolve::{
-    overridden_top_level, resolve_all_definitions, resolve_definition, resolve_type_definition,
-    signature_help, OverriddenSymbol,
+    inlay_hints, overridden_top_level, resolve_all_definitions, resolve_definition,
+    resolve_type_definition, signature_help, OverriddenSymbol,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens_cancellable;
 use witcherscript_language::symbols::{Symbol, SymbolKind};
 
 use crate::backend::{diagnostics_document_for, Backend};
 use crate::convert::{
-    base_script_conflict_code_actions, document_symbols, hover_markdown, lsp_range,
-    signature_help_response, source_position,
+    base_script_conflict_code_actions, document_symbols, hover_markdown, inlay_hint, lsp_range,
+    signature_help_response, source_position, source_range,
 };
 use crate::diagnostics_publish::publish_url;
 
@@ -598,6 +599,51 @@ impl Backend {
         };
         trace!(
             op = "semantic_tokens_full",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
+        result
+    }
+
+    pub(crate) fn _inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
+        let uri = params.text_document.uri;
+        let started_at = Instant::now();
+        trace!(op = "inlay_hint", uri = %uri, "start");
+        let result = 'body: {
+            let snap = self.snapshot();
+            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+                break 'body Ok(None);
+            };
+            let document = document_arc.as_ref();
+            let target = self.pending_target_for(&uri).unwrap_or(0);
+            if target > document.parse_version {
+                break 'body Err(ResponseError::new(
+                    ErrorCode::CONTENT_MODIFIED,
+                    "document edited while computing inlay hints",
+                ));
+            }
+            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
+            let db = handles.db();
+            let version = self.state_version.load(Ordering::Acquire);
+            let state_version = self.state_version.clone();
+            let should_continue = || state_version.load(Ordering::Acquire) == version;
+            let range = source_range(
+                source_position(params.range.start),
+                source_position(params.range.end),
+            );
+            let Some(infos) =
+                inlay_hints(&canonical_uri(&uri), document, &db, range, &should_continue)
+            else {
+                break 'body Err(ResponseError::new(
+                    ErrorCode::CONTENT_MODIFIED,
+                    "document changed while computing inlay hints",
+                ));
+            };
+            Ok(Some(infos.into_iter().map(inlay_hint).collect()))
+        };
+        trace!(
+            op = "inlay_hint",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
             "complete",
