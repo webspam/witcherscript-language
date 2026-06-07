@@ -99,22 +99,22 @@ The server reads the following user-configurable settings:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `witcherscript.gameDirectory` | `string` | `""` | Absolute path to the Witcher 3 install root (e.g. `C:\GOG Games\The Witcher 3`). The server appends `content\content0\scripts` and indexes the ~1,700 base game scripts. It also loads engine globals from `bin\redscripts.ini`. |
-| `witcherscript.additionalScriptDirectories` | `string[]` | `[]` | Extra root directories to walk recursively for `.ws` files. Each entry is loaded as read-only base scripts: their symbols join the global namespace, but renames are rejected. Use this when writing co-dependent mods that need to see each other's declarations. |
-| `witcherscript.legacyScriptDirectories` | `string[]` | `[]` | Directories holding legacy full-script overrides - copies of base game scripts edited in place. Each base script a legacy file replaces is dropped from the read-only base index, and the legacy file is indexed as a normal (editable) workspace file. Marking a directory here is what silences the `base_script_conflict` diagnostic; the diagnostic's quick fix appends to this list. The editor shows a "legacy script" status-bar indicator only for a legacy file that actually replaces a base game script - not for a brand-new script that merely sits in a legacy directory. |
-| `witcherscript.autoLoadModSharedImports` | `boolean` | `true` | Auto-load the **Shared Imports** mod (a specific community mod at `<gameDirectory>\Mods\modSharedImports` that most modern Witcher 3 mods depend on to avoid clashes between `import` declarations). When this flag is on and the directory exists, it is loaded automatically - see "Auto-loaded: the Shared Imports mod" below. |
-| `witcherscript.detectProjectManifests` | `boolean` | `true` | When true, the server recursively scans each workspace folder for `witcherscript.toml` files (legacy witcherscript-ide project manifests) and registers each manifest's `scripts_root` as a legacy script directory automatically. Only the `scripts_root` field is read; everything else in the manifest is ignored. `files.exclude` is honored; `.gitignore` is intentionally not, because mod `scripts/` directories are commonly gitignored. |
-| `witcherscript.codeLens.overriddenSymbols` | `boolean` | `true` | Show a "game definition" code lens above each top-level symbol in a legacy override file that shadows a base game symbol. Clicking it jumps to the vanilla definition. The lens appears only on legacy override files (those replacing a specific base game script). |
-| `witcherscript.codeLens.references` | `boolean` | `false` | Show an "N references" code lens above each top-level declaration (classes, structs, enums, functions, states) and class method (`function`/`event`). Clicking it lists the references. The count is resolved lazily, only for lenses the editor shows. |
-| `witcherscript.inlayHints` | `boolean` | `true` | Show inlay hints. Currently parameter-name labels at call sites (`out` parameters shown as `out name:`); a hint is omitted when a non-`out` argument already spells the parameter name. Live-switchable. |
-| `witcherscript.diagnostics.scope` | `string` | `"workspace"` | Which files are diagnosed. `"workspace"` diagnoses every `.ws` file in the project on startup, so the Problems list is complete and stays stable as you open and close editor tabs. `"openFiles"` diagnoses only the files currently open in the editor - symbols are still indexed project-wide so go-to-definition and completion work everywhere, but the heavy whole-project checking is skipped. `"none"` suppresses all diagnostics. Live-switchable. |
-| `witcherscript.logLevel` | `string` | `"warn"` | Server log level (`error`, `warn`, `debug`, `trace`; unknown values fall back to `warn`). Live-toggleable via `workspace/didChangeConfiguration`. |
-| `witcherscript.formatter.lineLimit` | `number` | `100` | Soft wrap width for the formatter. |
-| `witcherscript.formatter.compactColon` | `boolean` | `false` | Drop the space before `:` in type annotations when formatting. |
-| `witcherscript.formatter.alignMemberColons` | `boolean` | `false` | Align `:` on consecutive member declarations when formatting. |
-| `witcherscript.formatter.annotationPlacement` | `string` | `"preserve"` | How `@addField` sits relative to the field it annotates. `"preserve"` keeps the source line break; `"ownLine"` always puts the annotation above the field; `"sameLine"` always puts them on one line. |
-| `witcherscript.formatter.defaultPlacement` | `string` | `"preserve"` | How a trailing `default` initializer sits relative to its field when the names match. Same options as `annotationPlacement`. |
-| `files.exclude` | `object` | `{}` | Standard VS Code exclude globs. The server respects these when walking workspace roots. |
+| witcherscript.gameDirectory | `string` | `""` | Witcher 3 install root. Base game scripts and engine globals are indexed from here. |
+| witcherscript.additionalScriptDirectories | `string[]` | `[]` | Extra read-only script roots, walked recursively. |
+| witcherscript.legacyScriptDirectories | `string[]` | `[]` | Roots holding legacy script overrides; a replaced base script is indexed as the editable override instead. |
+| witcherscript.autoLoadModSharedImports | `boolean` | `true` | Auto-load the Shared Imports mod from `gameDirectory` when present (see below). |
+| witcherscript.detectProjectManifests | `boolean` | `true` | Treat each `witcherscript.toml`'s `scripts_root` as a legacy script directory. |
+| witcherscript.codeLens.overriddenSymbols | `boolean` | `true` | "Game definition" lens on overridden symbols in legacy override files. |
+| witcherscript.codeLens.references | `boolean` | `false` | "N references" lens on top-level declarations and class methods. |
+| witcherscript.inlayHints.parameterNames | `boolean` | `true` | Parameter-name inlay hints at call sites. |
+| witcherscript.diagnostics.scope | `string` | `"workspace"` | Files to diagnose: `workspace`, `openFiles`, or `none`. |
+| witcherscript.logLevel | `string` | `"warn"` | Server log level: `error`, `warn`, `debug`, `trace`. |
+| witcherscript.formatter.lineLimit | `number` | `100` | Soft wrap width. |
+| witcherscript.formatter.compactColon | `boolean` | `false` | Drop the space before `:` in type annotations. |
+| witcherscript.formatter.alignMemberColons | `boolean` | `false` | Align `:` across consecutive member declarations. |
+| witcherscript.formatter.annotationPlacement | `string` | `"preserve"` | `@addField` placement: `preserve`, `ownLine`, `sameLine`. |
+| witcherscript.formatter.defaultPlacement | `string` | `"preserve"` | Trailing `default` placement: `preserve`, `ownLine`, `sameLine`. |
+| files.exclude | `object` | `{}` | VS Code exclude globs, honored when walking script roots. |
 
 #### Auto-loaded: the Shared Imports mod
 
@@ -140,44 +140,6 @@ Two complementary LSP mechanisms:
 2. **`initializationOptions`** (fallback) - the client may pass any of the above settings
    in the `initialize` request so the server has values immediately at startup, before
    the `workspace/configuration` round-trip completes.
-
-**VS Code plugin integration**
-
-Declare each setting in your extension's `package.json` under
-`contributes.configuration.properties` so VS Code surfaces them in Settings UI, then
-forward the current values as `initializationOptions` from your extension's activation
-code:
-
-```typescript
-const cfg = vscode.workspace.getConfiguration('witcherscript');
-const clientOptions: LanguageClientOptions = {
-  documentSelector: [{ scheme: 'file', language: 'witcherscript' }],
-  initializationOptions: {
-    gameDirectory: cfg.get<string>('gameDirectory') ?? '',
-    additionalScriptDirectories: cfg.get<string[]>('additionalScriptDirectories') ?? [],
-    autoLoadModSharedImports: cfg.get<boolean>('autoLoadModSharedImports') ?? true,
-    diagnostics: {
-      scope: cfg.get<string>('diagnostics.scope') ?? 'workspace',
-    },
-    codeLens: {
-      overriddenSymbols: cfg.get<boolean>('codeLens.overriddenSymbols') ?? true,
-      references: cfg.get<boolean>('codeLens.references') ?? false,
-    },
-    logLevel: cfg.get<string>('logLevel') ?? 'warn',
-    formatter: {
-      lineLimit: cfg.get<number>('formatter.lineLimit') ?? 100,
-      compactColon: cfg.get<boolean>('formatter.compactColon') ?? false,
-      alignMemberColons: cfg.get<boolean>('formatter.alignMemberColons') ?? false,
-      annotationPlacement: cfg.get<string>('formatter.annotationPlacement') ?? 'preserve',
-      defaultPlacement: cfg.get<string>('formatter.defaultPlacement') ?? 'preserve',
-    },
-  },
-};
-```
-
-The `LanguageClient` handles all `workspace/configuration` and
-`workspace/didChangeConfiguration` traffic automatically once the settings are declared
-in `package.json`.
 
 ## Symbol extraction
 
