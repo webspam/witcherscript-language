@@ -95,8 +95,11 @@ impl Walk<'_, '_> {
         }
         let params = self.db.full_parameters_of(&def.uri, def.symbol.id);
         for (param, arg) in params.iter().zip(slots.iter()) {
-            // A bare identifier already spelling the parameter name makes the hint pure noise.
-            if arg.kind() == "ident" && node_text(*arg, &self.document.source) == param.name {
+            // Suppress a redundant name echo, except for `out` params whose write-through is the point.
+            if !param.is_out
+                && arg.kind() == "ident"
+                && node_text(*arg, &self.document.source) == param.name
+            {
                 continue;
             }
             let position = self

@@ -53,6 +53,10 @@ fn hint_labels(source: &str) -> Vec<String> {
     "function G(out result : int) {}\nfunction Caller() { G(x); }\n",
     &["out result:"],
 )]
+#[case::out_param_not_suppressed_on_name_match(
+    "function G(out target : int) {}\nfunction Caller() { G(target); }\n",
+    &["out target:"],
+)]
 #[case::optional_param_labelled(
     "function H(name : string, optional count : int) {}\nfunction Caller() { H(\"a\", 1); }\n",
     &["name:", "count:"],
