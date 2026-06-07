@@ -140,48 +140,51 @@ fn new_text(action: &CodeActionOrCommand) -> String {
     edits[0].new_text.clone()
 }
 
+const COLLAPSE: &str = "Collapse switch cases to a single line";
+const EXPAND: &str = "Expand switch cases onto multiple lines";
+
 #[rstest]
-#[case::on_switch_keyword("switch")]
-#[case::on_case_keyword("case")]
-fn block_switch_offers_only_collapse(#[case] needle: &str) {
-    let actions = switch_actions(
-        include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
-        needle,
-    );
-    assert_eq!(
-        titles(&actions),
-        vec!["Collapse switch cases to a single line"],
-        "block switch should offer collapse only",
-    );
-    assert!(new_text(&actions[0]).contains("case 0:  Foo();  break;"));
+#[case::block_on_switch(
+    include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
+    "switch",
+    &[COLLAPSE]
+)]
+#[case::block_on_case(
+    include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
+    "case",
+    &[COLLAPSE]
+)]
+#[case::inline_only_expand(
+    include_str!("../../../../tests/fixtures/formatter/switch_inline.ws"),
+    "switch",
+    &[EXPAND]
+)]
+#[case::mixed_collapse_first(
+    include_str!("../../../../tests/fixtures/formatter/switch_mixed.ws"),
+    "switch",
+    &[COLLAPSE, EXPAND]
+)]
+#[case::off_a_keyword(
+    include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
+    "Foo",
+    &[]
+)]
+fn offers_expected_switch_actions(
+    #[case] src: &str,
+    #[case] needle: &str,
+    #[case] expected: &[&str],
+) {
+    let actions = switch_actions(src, needle);
+    let title_list = titles(&actions);
+    let got: Vec<&str> = title_list.iter().map(String::as_str).collect();
+    assert_eq!(got.as_slice(), expected, "offered actions for {needle:?}");
 }
 
 #[test]
-fn inline_switch_offers_only_expand() {
-    let actions = switch_actions(
-        include_str!("../../../../tests/fixtures/formatter/switch_inline.ws"),
-        "switch",
-    );
-    assert_eq!(
-        titles(&actions),
-        vec!["Expand switch cases onto multiple lines"],
-        "inline switch should offer expand only",
-    );
-}
-
-#[test]
-fn mixed_switch_offers_collapse_first_and_preferred() {
+fn mixed_switch_marks_collapse_preferred() {
     let actions = switch_actions(
         include_str!("../../../../tests/fixtures/formatter/switch_mixed.ws"),
         "switch",
-    );
-    assert_eq!(
-        titles(&actions),
-        vec![
-            "Collapse switch cases to a single line",
-            "Expand switch cases onto multiple lines",
-        ],
-        "mix should offer collapse first, then expand",
     );
     let CodeActionOrCommand::CodeAction(collapse) = &actions[0] else {
         panic!("expected a CodeAction");
@@ -194,10 +197,10 @@ fn mixed_switch_offers_collapse_first_and_preferred() {
 }
 
 #[test]
-fn no_switch_actions_off_a_keyword() {
+fn collapse_action_carries_the_collapsed_text() {
     let actions = switch_actions(
         include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
-        "Foo",
+        "switch",
     );
-    assert!(actions.is_empty(), "cursor off a keyword offers nothing");
+    assert!(new_text(&actions[0]).contains("case 0:  Foo();  break;"));
 }

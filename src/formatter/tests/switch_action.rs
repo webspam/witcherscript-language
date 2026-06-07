@@ -121,34 +121,24 @@ fn expand_puts_each_statement_on_its_own_line() {
     ));
 }
 
-#[test]
-fn collapse_output_is_stable_under_the_formatter() {
-    let collapsed = apply(
-        include_str!("../../../tests/fixtures/formatter/switch_block.ws"),
-        SwitchLayout::Collapse,
-    );
-    let doc = parse_document(&collapsed).expect("should parse");
+#[rstest]
+#[case::collapse(
+    include_str!("../../../tests/fixtures/formatter/switch_block.ws"),
+    SwitchLayout::Collapse
+)]
+#[case::expand(
+    include_str!("../../../tests/fixtures/formatter/switch_inline.ws"),
+    SwitchLayout::Expand
+)]
+fn rewrite_output_is_stable_under_the_formatter(#[case] src: &str, #[case] layout: SwitchLayout) {
+    let rewritten = apply(src, layout);
+    let doc = parse_document(&rewritten).expect("should parse");
     let reformatted = crate::formatter::format_document(
         doc.tree.root_node(),
         &doc.source,
         FormatOptions::default(),
     );
-    assert_eq!(reformatted, collapsed, "collapse must survive a reformat");
-}
-
-#[test]
-fn expand_output_is_stable_under_the_formatter() {
-    let expanded = apply(
-        include_str!("../../../tests/fixtures/formatter/switch_inline.ws"),
-        SwitchLayout::Expand,
-    );
-    let doc = parse_document(&expanded).expect("should parse");
-    let reformatted = crate::formatter::format_document(
-        doc.tree.root_node(),
-        &doc.source,
-        FormatOptions::default(),
-    );
-    assert_eq!(reformatted, expanded, "expand must survive a reformat");
+    assert_eq!(reformatted, rewritten, "rewrite must survive a reformat");
 }
 
 #[rstest]
