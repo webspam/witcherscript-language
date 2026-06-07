@@ -3,10 +3,12 @@ use tree_sitter::Node;
 mod action;
 mod core;
 mod declarations;
+mod if_action;
 mod signatures;
 mod statements;
 mod switch_action;
 
+pub use if_action::{analyze_if, format_if_with_layout, if_stmt_on_keyword, IfLayout, IfToggle};
 pub use switch_action::{
     analyze_switch, format_switch_with_layout, switch_stmt_on_keyword, SwitchLayout, SwitchToggle,
 };
@@ -16,6 +18,8 @@ pub use switch_action::{
 enum LayoutDirective {
     SwitchCollapse,
     SwitchExpand,
+    IfCollapse,
+    IfExpand,
 }
 
 #[cfg(test)]

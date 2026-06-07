@@ -7,12 +7,16 @@ use witcherscript_language::formatter::FormatOptions;
 
 use super::lsp_range;
 
+mod if_stmt;
 mod switch;
 
 const DEFAULT_TAB_WIDTH: u32 = 4;
 
-// Adding a construct (if-statements, etc.) means writing a `Refactoring` impl and listing it here.
-const REFACTORINGS: &[&dyn Refactoring] = &[&switch::SwitchLayoutRefactoring];
+// Adding a construct means writing a `Refactoring` impl and listing it here.
+const REFACTORINGS: &[&dyn Refactoring] = &[
+    &switch::SwitchLayoutRefactoring,
+    &if_stmt::IfLayoutRefactoring,
+];
 
 // A cursor-driven "rewrite this construct" code action. Each impl locates its own target node
 // from the cursor and returns 0..N rewrites; an impl that does not apply returns an empty vec.

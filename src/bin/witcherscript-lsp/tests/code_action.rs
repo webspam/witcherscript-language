@@ -100,7 +100,7 @@ fn no_quickfix_when_not_applicable(
     );
 }
 
-fn switch_actions(src: &str, needle: &str) -> Vec<CodeActionOrCommand> {
+fn refactor_actions(src: &str, needle: &str) -> Vec<CodeActionOrCommand> {
     let doc = parse_document(src).expect("should parse");
     let cursor = src.find(needle).expect("needle present") + 1;
     let (use_tabs, tab_size) = infer_indent(&doc.source);
@@ -166,12 +166,12 @@ const EXPAND: &str = "Expand switch cases onto multiple lines";
     "Foo",
     &[]
 )]
-fn offers_expected_switch_actions(
+fn offers_expected_refactor_actions(
     #[case] src: &str,
     #[case] needle: &str,
     #[case] expected: &[&str],
 ) {
-    let actions = switch_actions(src, needle);
+    let actions = refactor_actions(src, needle);
     let title_list = titles(&actions);
     let got: Vec<&str> = title_list.iter().map(String::as_str).collect();
     assert_eq!(got.as_slice(), expected, "offered actions for {needle:?}");
@@ -179,7 +179,7 @@ fn offers_expected_switch_actions(
 
 #[test]
 fn mixed_switch_marks_collapse_preferred() {
-    let actions = switch_actions(
+    let actions = refactor_actions(
         include_str!("../../../../tests/fixtures/formatter/switch_mixed.ws"),
         "switch",
     );
@@ -195,9 +195,70 @@ fn mixed_switch_marks_collapse_preferred() {
 
 #[test]
 fn collapse_action_carries_the_collapsed_text() {
-    let actions = switch_actions(
+    let actions = refactor_actions(
         include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
         "switch",
     );
     assert!(new_text(&actions[0]).contains("case 0:  Foo();  break;"));
+}
+
+const IF_COLLAPSE: &str = "Collapse if/else to single-line bodies";
+const IF_EXPAND: &str = "Expand if/else to block bodies";
+
+#[rstest]
+#[case::block_on_if(
+    include_str!("../../../../tests/fixtures/formatter/if_block.ws"),
+    "if",
+    &[IF_COLLAPSE]
+)]
+#[case::block_on_else(
+    include_str!("../../../../tests/fixtures/formatter/if_block.ws"),
+    "else",
+    &[IF_COLLAPSE]
+)]
+#[case::inline_only_expand(
+    include_str!("../../../../tests/fixtures/formatter/if_inline.ws"),
+    "if",
+    &[IF_EXPAND]
+)]
+#[case::mixed_collapse_first(
+    include_str!("../../../../tests/fixtures/formatter/if_mixed.ws"),
+    "if",
+    &[IF_COLLAPSE, IF_EXPAND]
+)]
+#[case::off_a_keyword(
+    include_str!("../../../../tests/fixtures/formatter/if_block.ws"),
+    "Foo",
+    &[]
+)]
+fn offers_expected_if_actions(#[case] src: &str, #[case] needle: &str, #[case] expected: &[&str]) {
+    let actions = refactor_actions(src, needle);
+    let title_list = titles(&actions);
+    let got: Vec<&str> = title_list.iter().map(String::as_str).collect();
+    assert_eq!(got.as_slice(), expected, "offered actions for {needle:?}");
+}
+
+#[test]
+fn mixed_if_marks_collapse_preferred() {
+    let actions = refactor_actions(
+        include_str!("../../../../tests/fixtures/formatter/if_mixed.ws"),
+        "if",
+    );
+    let CodeActionOrCommand::CodeAction(collapse) = &actions[0] else {
+        panic!("expected a CodeAction");
+    };
+    assert_eq!(
+        collapse.is_preferred,
+        Some(true),
+        "collapse is the default in a mix",
+    );
+}
+
+#[test]
+fn collapse_action_carries_the_inlined_text() {
+    let actions = refactor_actions(
+        include_str!("../../../../tests/fixtures/formatter/if_block.ws"),
+        "if",
+    );
+    assert!(new_text(&actions[0]).contains("if (a) Foo();"));
 }
