@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+mod action;
 mod core;
 mod declarations;
 mod signatures;
