@@ -131,7 +131,7 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    // Collapse must stay format-stable: every line fits and no condition is hand-broken (else fmt re-expands).
+    // Without this guard, the next fmt would re-expand the collapsed chain.
     fn if_chain_collapse_fits(&self, if_node: Node) -> bool {
         let indent = self.level * self.indent_unit.len();
         let mut cur = Some(if_node);
@@ -186,7 +186,7 @@ fn body_expandable(body: Node) -> bool {
     !matches!(body.kind(), "func_block" | "nop")
 }
 
-// Leaf `_func_stmt`s (end in `;`, no nested body); unwrapping one can't change `else` binding.
+// Unwrapping one of these into a bare branch can't change `else` binding.
 fn is_simple_stmt(node: Node) -> bool {
     matches!(
         node.kind(),
@@ -203,7 +203,7 @@ fn body_single_line(node: Node) -> bool {
     node.start_position().row == node.end_position().row
 }
 
-/// The lone simple statement in a `func_block`, else `None` (zero/many/compound) - the unwrap gate.
+/// The lone simple statement in a `func_block`, else `None` (zero, many, or compound).
 pub(super) fn block_single_stmt(block: Node) -> Option<Node> {
     if block.kind() != "func_block" {
         return None;

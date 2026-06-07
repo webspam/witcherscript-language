@@ -27,8 +27,7 @@ pub struct IfToggle {
     pub can_expand: bool,
 }
 
-/// The whole enclosing `if`/`else if`/`else` chain when `byte` sits on an `if`/`else` keyword.
-/// Resolves to the outermost link so the action always rewrites the entire chain.
+/// Resolves to the outermost link, not the nearest `if_stmt`, so the action rewrites the whole chain.
 pub fn if_stmt_on_keyword(root: Node, byte: usize) -> Option<Node> {
     nodes_at_offset(root, byte)
         .into_iter()
@@ -37,7 +36,7 @@ pub fn if_stmt_on_keyword(root: Node, byte: usize) -> Option<Node> {
         .map(outermost_if_chain)
 }
 
-// An `else if` is parsed as the outer if's `else` child; walk up to the chain head.
+// An `else if` is parsed as the outer if's `else` child.
 fn outermost_if_chain(mut node: Node) -> Node {
     while let Some(parent) = node.parent() {
         let is_else_link = parent.kind() == "if_stmt"
@@ -57,7 +56,6 @@ pub fn analyze_if(if_node: Node, source: &str, options: FormatOptions) -> IfTogg
     f.if_toggle(if_node)
 }
 
-/// Replacement text for the `if_node`'s byte range with the whole chain forced to `layout`.
 pub fn format_if_with_layout(
     if_node: Node,
     source: &str,

@@ -2,7 +2,6 @@ use tree_sitter::Node;
 
 use super::{FormatOptions, Formatter, LayoutDirective};
 
-/// The node's indentation depth, in indent units, derived from its start column.
 pub(super) fn node_indent_level(node: Node, options: &FormatOptions) -> usize {
     let col = node.start_position().column;
     if options.use_tabs {
