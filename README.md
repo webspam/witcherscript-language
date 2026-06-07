@@ -85,6 +85,7 @@ client extension to connect to `127.0.0.1:9257` instead of spawning the binary.
 | Signature help | Triggered by `(` and `,`; highlights the active parameter |
 | Document symbols | Nested outline of classes, structs, enums, functions, methods, states, events, and fields |
 | Semantic tokens | Full-document semantic highlighting; legend exposed in `initialize` |
+| Inlay hints | Parameter-name labels at call sites (`out` parameters shown as `out name:`); honours the requested range and skips an argument that already spells the parameter name |
 | Document formatting | Pretty-prints whole documents using `witcherscript.formatter.*` settings |
 | Code actions | Quick fix for `base_script_conflict`: marks the conflicting directory as a legacy override directory |
 | Code lens | On legacy override files, a "game definition" lens above each top-level symbol that shadows a base game symbol; jumps to the vanilla definition. Gated by `witcherscript.codeLens.overriddenSymbols`. Optionally, an "N references" lens above declarations and class methods; clicking it lists the references. Gated by `witcherscript.codeLens.references` |

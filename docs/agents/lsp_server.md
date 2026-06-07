@@ -9,7 +9,7 @@
 | `lifecycle.rs` | `_initialize` (advertises `ServerCapabilities`), `_initialized` (kicks off the startup index), `_did_change_configuration`. |
 | `text_sync.rs` | `_did_open`, `_did_change`, `_did_close`, `_did_change_watched_files`, `_did_change_workspace_folders` - owns the editor-open document lifecycle and the loose-file index. |
 | `completion.rs` | `_completion` - runs member / type / statement / class-body / annotation / wrap-method dispatch in order. |
-| `queries.rs` | Read-only request handlers: `_hover`, `_goto_definition`, `_references` entry, `_document_symbol`, `_signature_help`, `_semantic_tokens_full`, `_formatting`, `_code_action`, `_document_diagnostic`, `_handle_builtin_source`. |
+| `queries.rs` | Read-only request handlers: `_hover`, `_goto_definition`, `_references` entry, `_document_symbol`, `_signature_help`, `_semantic_tokens_full`, `_inlay_hint`, `_formatting`, `_code_action`, `_document_diagnostic`, `_handle_builtin_source`. |
 | `references_rename.rs` | `_references`, `_prepare_rename`, `_rename` + the `merge_documents` helper that builds the cross-doc search set (open shadows workspace shadows base; loose target sees only loose+base). |
 | `convert/` | LSP↔internal conversion - `positions.rs` (ranges), `diagnostics.rs`, `completions.rs`, `symbols.rs` (document outline, hover), `file_ops.rs` (`workspace_roots`, watched-file bridging). |
 | `cst_cache.rs` | Per-document parse-tree cache with invalidation hooks. |
@@ -106,6 +106,7 @@ When you add a map keyed by a document URI, or compare two URIs to decide whethe
 | Hover | Markdown with location link |
 | Document symbol | Nested outline (excludes Variable/Parameter kinds) |
 | Semantic tokens full | Whole-document token array |
+| Inlay hints | Parameter-name hints at call sites; range-scoped to the requested viewport; `workspace/inlayHint/refresh` pushed when workspace state changes |
 | Workspace folders | Multi-root support |
 | Pull diagnostics | `textDocument/diagnostic` and `workspace/diagnostic` (LSP 3.17) with `result_id` for "unchanged" replies; `workspace/diagnostic/refresh` is pushed when workspace state changes |
 
