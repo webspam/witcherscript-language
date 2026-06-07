@@ -102,6 +102,8 @@ impl<'a> Formatter<'a> {
             close = children.iter().rfind(|n| n.kind() == "}").copied();
             let arms = collect_switch_arms(&children);
             let layouts = self.switch_arm_layouts(&arms);
+            // The directive targets only this switch; nested switches in arm bodies format normally.
+            self.layout_directive = None;
             let mut prev: Option<&SwitchArm> = None;
             for (arm, layout) in arms.iter().zip(layouts.iter()) {
                 if let Some(p) = prev {

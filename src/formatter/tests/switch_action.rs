@@ -121,6 +121,28 @@ fn expand_puts_each_statement_on_its_own_line() {
     ));
 }
 
+#[test]
+fn expand_leaves_a_nested_switch_untouched() {
+    expect![[r#"
+        function F() {
+            switch (x) {
+                case 0:
+                    Foo();
+                    break;
+                case 1:
+                    switch (y) {
+                        case 2: G(); break;
+                    }
+                    break;
+            }
+        }
+    "#]]
+        .assert_eq(&apply(
+            include_str!("../../../tests/fixtures/formatter/switch_nested.ws"),
+            SwitchLayout::Expand,
+        ));
+}
+
 #[rstest]
 #[case::collapse(
     include_str!("../../../tests/fixtures/formatter/switch_block.ws"),
