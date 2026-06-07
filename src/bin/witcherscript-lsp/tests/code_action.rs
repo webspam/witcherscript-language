@@ -2,9 +2,9 @@ use lsp_types::{CodeActionKind, CodeActionOrCommand, Diagnostic, NumberOrString,
 use rstest::rstest;
 use serde_json::json;
 use witcherscript_language::document::parse_document;
-use witcherscript_language::formatter::{switch_stmt_on_keyword, FormatOptions};
+use witcherscript_language::formatter::FormatOptions;
 
-use crate::convert::{base_script_conflict_code_actions, infer_indent, switch_layout_code_actions};
+use crate::convert::{base_script_conflict_code_actions, infer_indent, refactor_code_actions};
 
 fn diag(code: Option<&str>, data: Option<serde_json::Value>) -> Diagnostic {
     Diagnostic {
@@ -102,18 +102,15 @@ fn no_quickfix_when_not_applicable(
 
 fn switch_actions(src: &str, needle: &str) -> Vec<CodeActionOrCommand> {
     let doc = parse_document(src).expect("should parse");
-    let byte = src.find(needle).expect("needle present") + 1;
-    let Some(switch_node) = switch_stmt_on_keyword(doc.tree.root_node(), byte) else {
-        return Vec::new();
-    };
-    let (use_tabs, tab_size) = infer_indent(&doc.source, switch_node);
+    let cursor = src.find(needle).expect("needle present") + 1;
+    let (use_tabs, tab_size) = infer_indent(&doc.source);
     let options = FormatOptions {
         tab_size,
         use_tabs,
         ..FormatOptions::default()
     };
     let uri = Url::parse("file:///main.ws").unwrap();
-    switch_layout_code_actions(&uri, &doc, switch_node, options)
+    refactor_code_actions(&uri, &doc, cursor, options)
 }
 
 fn titles(actions: &[CodeActionOrCommand]) -> Vec<String> {
