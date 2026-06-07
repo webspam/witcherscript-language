@@ -8,6 +8,7 @@ mod completion;
 mod completion_catalog;
 mod definition;
 mod inference;
+mod inlay_hints;
 mod name_context;
 mod overrides;
 mod references;
@@ -42,6 +43,7 @@ pub use definition::{
 };
 pub use inference::infer_expr_type_memo;
 pub(crate) use inference::infer_type;
+pub use inlay_hints::{inlay_hints, InlayHintInfo};
 pub use name_context::{classify_ident_context, NameContext};
 pub use overrides::{overridden_top_level, OverriddenSymbol};
 pub use references::find_references;
