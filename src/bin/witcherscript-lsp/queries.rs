@@ -611,6 +611,9 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "inlay_hint", uri = %uri, "start");
         let result = 'body: {
+            if !self.config.load().inlay_hints_parameter_names {
+                break 'body Ok(None);
+            }
             let snap = self.snapshot();
             let Some(document_arc) = snap.documents.get(&uri).cloned() else {
                 break 'body Ok(None);

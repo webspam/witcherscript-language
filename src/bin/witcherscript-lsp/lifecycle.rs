@@ -316,7 +316,11 @@ impl Backend {
             self.reindex_open_documents();
         }
         // A scope/diagnostics/code-lens toggle changes `config`, not `compilation`, so publish_compilation never fired.
-        if change.needs_reindex || change.diagnostics_changed || change.code_lens_changed {
+        if change.needs_reindex
+            || change.diagnostics_changed
+            || change.code_lens_changed
+            || change.inlay_hints_changed
+        {
             self.mark_state_changed();
         }
         self.publish_file_scope_status();
