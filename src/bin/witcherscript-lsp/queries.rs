@@ -611,7 +611,7 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "inlay_hint", uri = %uri, "start");
         let result = 'body: {
-            if !self.config.load().inlay_hints_parameter_names {
+            if !self.config.load().inlay_hints {
                 break 'body Ok(None);
             }
             let snap = self.snapshot();

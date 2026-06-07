@@ -52,7 +52,7 @@ pub(crate) struct Config {
     pub(crate) formatter_default_placement: AnnotationPlacement,
     pub(crate) code_lens_overridden_symbols: bool,
     pub(crate) code_lens_references: bool,
-    pub(crate) inlay_hints_parameter_names: bool,
+    pub(crate) inlay_hints: bool,
     pub(crate) game_directory: Option<PathBuf>,
     // User-set exact base scripts dir; overrides the game_directory derivation when present.
     pub(crate) base_scripts_override: Option<PathBuf>,
@@ -75,7 +75,7 @@ impl Default for Config {
             formatter_default_placement: AnnotationPlacement::Preserve,
             code_lens_overridden_symbols: true,
             code_lens_references: false,
-            inlay_hints_parameter_names: true,
+            inlay_hints: true,
             game_directory: None,
             base_scripts_override: None,
             files_exclude: Vec::new(),
@@ -173,7 +173,7 @@ impl Backend {
             },
             ConfigurationItem {
                 scope_uri: None,
-                section: Some("witcherscript.inlayHints.parameterNames".to_string()),
+                section: Some("witcherscript.inlayHints".to_string()),
             },
         ];
         let Ok(values) = self
@@ -280,7 +280,7 @@ impl Backend {
             Some(Value::Bool(b)) => b,
             _ => false,
         };
-        next_cfg.inlay_hints_parameter_names = match iter.next() {
+        next_cfg.inlay_hints = match iter.next() {
             Some(Value::Bool(b)) => b,
             _ => true,
         };
@@ -299,8 +299,7 @@ impl Backend {
         let code_lens_changed = next_cfg.code_lens_overridden_symbols
             != prev_cfg.code_lens_overridden_symbols
             || next_cfg.code_lens_references != prev_cfg.code_lens_references;
-        let inlay_hints_changed =
-            next_cfg.inlay_hints_parameter_names != prev_cfg.inlay_hints_parameter_names;
+        let inlay_hints_changed = next_cfg.inlay_hints != prev_cfg.inlay_hints;
         if base_scripts_changed {
             trace!(setting = "gameDirectory", "setting changed");
         }
@@ -352,9 +351,9 @@ impl Backend {
         }
         if inlay_hints_changed {
             trace!(
-                setting = "inlayHints.parameterNames",
-                prev = prev_cfg.inlay_hints_parameter_names,
-                new = next_cfg.inlay_hints_parameter_names,
+                setting = "inlayHints",
+                prev = prev_cfg.inlay_hints,
+                new = next_cfg.inlay_hints,
                 "setting changed"
             );
         }
