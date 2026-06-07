@@ -160,6 +160,9 @@ fn collect_walk(node: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>
     if node.kind() == "func_block" {
         collect_late_local_vars_in_block(node, source, diagnostics);
     }
+    if node.kind() == "struct_def" {
+        collect_struct_prop_access_modifiers(node, source, diagnostics);
+    }
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -215,6 +218,30 @@ fn collect_late_local_vars_in_block(
     }
 }
 
+fn collect_struct_prop_access_modifiers(
+    struct_def: Node,
+    source: &str,
+    diagnostics: &mut Vec<ParseDiagnostic>,
+) {
+    let mut cursor = struct_def.walk();
+    for prop in struct_def.children(&mut cursor) {
+        if prop.kind() != "member_var_decl" {
+            continue;
+        }
+
+        let mut prop_cursor = prop.walk();
+        for specifier in prop.children(&mut prop_cursor) {
+            if specifier.kind() != "specifier" {
+                continue;
+            }
+            let keyword = &source[specifier.start_byte()..specifier.end_byte()];
+            if matches!(keyword, "private" | "protected" | "public") {
+                diagnostics.push(struct_prop_access_modifier_diagnostic(specifier, source));
+            }
+        }
+    }
+}
+
 fn tree_error_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
     let kind = node.kind().to_string();
     let message = if node.is_missing() {
@@ -237,6 +264,17 @@ fn late_local_var_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
     ParseDiagnostic {
         kind: "late_local_var_decl".to_string(),
         message: "Local variable declarations must precede executable statements".to_string(),
+        start: node.start_position(),
+        end: node.end_position(),
+        byte_range: node.start_byte()..node.end_byte(),
+        snippet: line_snippet(source, node.start_position().row),
+    }
+}
+
+fn struct_prop_access_modifier_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
+    ParseDiagnostic {
+        kind: "struct_property_access_modifier".to_string(),
+        message: "Accessibility modifiers cannot be applied to struct properties".to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),
