@@ -29,8 +29,8 @@ use witcherscript_language::symbols::{Symbol, SymbolKind};
 
 use crate::backend::{diagnostics_document_for, Backend};
 use crate::convert::{
-    base_script_conflict_code_actions, document_symbols, hover_markdown, inlay_hint, lsp_range,
-    signature_help_response, source_position, source_range,
+    base_script_conflict_code_actions, document_symbols, hover_markdown, infer_indent, inlay_hint,
+    lsp_range, refactor_code_actions, signature_help_response, source_position, source_range,
 };
 use crate::diagnostics_publish::publish_url;
 
@@ -236,7 +236,8 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "code_action", uri = %uri, "start");
         let roots = self.workspace_roots.load_full();
-        let actions = base_script_conflict_code_actions(&params.context.diagnostics, &roots);
+        let mut actions = base_script_conflict_code_actions(&params.context.diagnostics, &roots);
+        actions.extend(self.refactor_actions(&uri, params.range.start));
         trace!(
             op = "code_action",
             uri = %uri,
@@ -244,6 +245,35 @@ impl Backend {
             "complete",
         );
         Ok((!actions.is_empty()).then_some(actions))
+    }
+
+    fn refactor_actions(&self, uri: &Url, position: Position) -> CodeActionResponse {
+        let Some(document_arc) = self.latest_parsed_document(uri) else {
+            return Vec::new();
+        };
+        let document = document_arc.as_ref();
+        let Some(cursor) = document
+            .line_index
+            .position_to_byte(&document.source, source_position(position))
+        else {
+            return Vec::new();
+        };
+        let (use_tabs, tab_size) = infer_indent(&document.source);
+        let options = self.format_options(use_tabs, tab_size);
+        refactor_code_actions(uri, document, cursor, options)
+    }
+
+    fn format_options(&self, use_tabs: bool, tab_size: u32) -> FormatOptions {
+        let cfg = self.config.load();
+        FormatOptions {
+            tab_size,
+            use_tabs,
+            line_limit: cfg.formatter_line_limit,
+            compact_colon: cfg.formatter_compact_colon,
+            align_member_colons: cfg.formatter_align_member_colons,
+            annotation_placement: cfg.formatter_annotation_placement,
+            default_placement: cfg.formatter_default_placement,
+        }
     }
 
     pub(crate) fn _definition(
@@ -675,25 +705,10 @@ impl Backend {
             };
             let document = document_arc.as_ref();
 
-            let cfg = self.config.load();
-            let line_limit = cfg.formatter_line_limit;
-            let compact_colon = cfg.formatter_compact_colon;
-            let align_member_colons = cfg.formatter_align_member_colons;
-            let annotation_placement = cfg.formatter_annotation_placement;
-            let default_placement = cfg.formatter_default_placement;
-
             let formatted = format_document(
                 document.tree.root_node(),
                 &document.source,
-                FormatOptions {
-                    tab_size,
-                    use_tabs,
-                    line_limit,
-                    compact_colon,
-                    align_member_colons,
-                    annotation_placement,
-                    default_placement,
-                },
+                self.format_options(use_tabs, tab_size),
             );
 
             if formatted == document.source {

@@ -1,8 +1,10 @@
-use lsp_types::{CodeActionKind, CodeActionOrCommand, Diagnostic, NumberOrString, Range};
+use lsp_types::{CodeActionKind, CodeActionOrCommand, Diagnostic, NumberOrString, Range, Url};
 use rstest::rstest;
 use serde_json::json;
+use witcherscript_language::document::parse_document;
+use witcherscript_language::formatter::FormatOptions;
 
-use crate::convert::base_script_conflict_code_actions;
+use crate::convert::{base_script_conflict_code_actions, infer_indent, refactor_code_actions};
 
 fn diag(code: Option<&str>, data: Option<serde_json::Value>) -> Diagnostic {
     Diagnostic {
@@ -96,4 +98,106 @@ fn no_quickfix_when_not_applicable(
         actions.is_empty(),
         "expected no code actions, got {actions:?}"
     );
+}
+
+fn switch_actions(src: &str, needle: &str) -> Vec<CodeActionOrCommand> {
+    let doc = parse_document(src).expect("should parse");
+    let cursor = src.find(needle).expect("needle present") + 1;
+    let (use_tabs, tab_size) = infer_indent(&doc.source);
+    let options = FormatOptions {
+        tab_size,
+        use_tabs,
+        ..FormatOptions::default()
+    };
+    let uri = Url::parse("file:///main.ws").unwrap();
+    refactor_code_actions(&uri, &doc, cursor, options)
+}
+
+fn titles(actions: &[CodeActionOrCommand]) -> Vec<String> {
+    actions
+        .iter()
+        .map(|a| match a {
+            CodeActionOrCommand::CodeAction(action) => action.title.clone(),
+            CodeActionOrCommand::Command(cmd) => cmd.title.clone(),
+        })
+        .collect()
+}
+
+fn new_text(action: &CodeActionOrCommand) -> String {
+    let CodeActionOrCommand::CodeAction(action) = action else {
+        panic!("expected a CodeAction");
+    };
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_REWRITE));
+    let edits = action
+        .edit
+        .as_ref()
+        .and_then(|e| e.changes.as_ref())
+        .and_then(|c| c.values().next())
+        .expect("rewrite carries a WorkspaceEdit");
+    edits[0].new_text.clone()
+}
+
+const COLLAPSE: &str = "Collapse switch cases to a single line";
+const EXPAND: &str = "Expand switch cases onto multiple lines";
+
+#[rstest]
+#[case::block_on_switch(
+    include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
+    "switch",
+    &[COLLAPSE]
+)]
+#[case::block_on_case(
+    include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
+    "case",
+    &[COLLAPSE]
+)]
+#[case::inline_only_expand(
+    include_str!("../../../../tests/fixtures/formatter/switch_inline.ws"),
+    "switch",
+    &[EXPAND]
+)]
+#[case::mixed_collapse_first(
+    include_str!("../../../../tests/fixtures/formatter/switch_mixed.ws"),
+    "switch",
+    &[COLLAPSE, EXPAND]
+)]
+#[case::off_a_keyword(
+    include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
+    "Foo",
+    &[]
+)]
+fn offers_expected_switch_actions(
+    #[case] src: &str,
+    #[case] needle: &str,
+    #[case] expected: &[&str],
+) {
+    let actions = switch_actions(src, needle);
+    let title_list = titles(&actions);
+    let got: Vec<&str> = title_list.iter().map(String::as_str).collect();
+    assert_eq!(got.as_slice(), expected, "offered actions for {needle:?}");
+}
+
+#[test]
+fn mixed_switch_marks_collapse_preferred() {
+    let actions = switch_actions(
+        include_str!("../../../../tests/fixtures/formatter/switch_mixed.ws"),
+        "switch",
+    );
+    let CodeActionOrCommand::CodeAction(collapse) = &actions[0] else {
+        panic!("expected a CodeAction");
+    };
+    assert_eq!(
+        collapse.is_preferred,
+        Some(true),
+        "collapse is the default in a mix",
+    );
+}
+
+#[test]
+fn collapse_action_carries_the_collapsed_text() {
+    let actions = switch_actions(
+        include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
+        "switch",
+    );
+    assert!(new_text(&actions[0]).contains("case 0:  Foo();  break;"));
 }

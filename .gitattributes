@@ -1,0 +1,2 @@
+# Ensure homogeneous line endings for all .ws files (fixtures, builtins)
+*.ws text eol=lf
