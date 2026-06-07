@@ -8,10 +8,35 @@ use crate::test_support::TestDb;
     "function Ok() {\n var a : int;\n // comment\n a = 1;\n}\n"
 )]
 #[case::accepts_non_ternary_expression("function Ok() {\n  var x : int;\n  x = 1;\n}\n")]
+#[case::accepts_struct_property_without_access_modifier("struct S {\n  var x : int;\n}\n")]
+#[case::accepts_access_modifier_on_class_field("class C {\n  private var x : int;\n}\n")]
 fn does_not_fire(#[case] source: &str) {
     let t = TestDb::new(source);
     let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
     assert!(diagnostics.is_empty(), "got: {diagnostics:#?}");
+}
+
+#[rstest]
+#[case::private("struct S {\n  private var x : int;\n}\n", "private")]
+#[case::protected("struct S {\n  protected var x : int;\n}\n", "protected")]
+#[case::public("struct S {\n  public var x : int;\n}\n", "public")]
+fn reports_access_modifier_on_struct_property(#[case] source: &str, #[case] keyword: &str) {
+    let t = TestDb::new(source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
+
+    let found = diagnostics
+        .iter()
+        .find(|d| d.kind == "struct_property_access_modifier");
+    assert!(
+        found.is_some(),
+        "expected struct_property_access_modifier for {keyword}, got: {diagnostics:#?}"
+    );
+    let d = found.unwrap();
+    assert_eq!(
+        &source[d.byte_range.clone()],
+        keyword,
+        "diagnostic should underline only the {keyword} keyword"
+    );
 }
 
 #[test]

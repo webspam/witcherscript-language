@@ -28,6 +28,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 20 | `string_as_name_default` | info | A `name`/`CName` field default uses a string literal where a name literal is intended |
 | 21 | `native_instantiation` | error | `new T` on a native engine type (`CBehTreeVal*`), which cannot be instantiated |
 | 22 | `native_default_coercion` | info | A native engine type (`CBehTreeVal*`) `default` uses a non-exact primitive (accepted, but coerced) |
+| 23 | `struct_property_access_modifier` | error | An accessibility modifier (`private`/`protected`/`public`) is applied to a struct property |
 
 ## Details
 
@@ -177,3 +178,7 @@ A `new T` expression where `T` is a native engine type (`CBehTreeValBool`, `CBeh
 ### 22. Native default coercion
 
 A `CBehTreeVal*` `default` whose value is a primitive other than the type's exact one (e.g. `default someBool = 5;` on a `CBehTreeValBool`). The engine accepts any primitive constant here, so it is not an error; it is info-level because the value is coerced rather than an exact match. `CBehTreeValFloat` treats both `int` and `float` as exact.
+
+### 23. Accessibility modifier on a struct property
+
+A `private`, `protected`, or `public` specifier applied to a property declared inside a `struct`, e.g. `struct S { private var x : int; }`. The diagnostic underlines the offending keyword. Unlike most rules in this list it is purely syntactic, so the `witcherscript-check` CLI reports it as well.
