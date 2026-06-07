@@ -177,6 +177,16 @@ impl Backend {
         self.client_supports_semantic_tokens_refresh
             .store(supports_semantic_tokens_refresh, Ordering::Release);
 
+        let supports_inlay_hint_refresh = params
+            .capabilities
+            .workspace
+            .as_ref()
+            .and_then(|ws| ws.inlay_hint.as_ref())
+            .and_then(|ih| ih.refresh_support)
+            .unwrap_or(false);
+        self.client_supports_inlay_hint_refresh
+            .store(supports_inlay_hint_refresh, Ordering::Release);
+
         let roots = workspace_roots(params);
         let game_dir = self.config.load().game_directory.clone();
         info!(roots = ?roots, game_dir = ?game_dir, supports_pull, "LSP initialize");
@@ -227,6 +237,7 @@ impl Backend {
                         },
                     ),
                 ),
+                inlay_hint_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Options(
                     CodeActionOptions {
@@ -305,7 +316,11 @@ impl Backend {
             self.reindex_open_documents();
         }
         // A scope/diagnostics/code-lens toggle changes `config`, not `compilation`, so publish_compilation never fired.
-        if change.needs_reindex || change.diagnostics_changed || change.code_lens_changed {
+        if change.needs_reindex
+            || change.diagnostics_changed
+            || change.code_lens_changed
+            || change.inlay_hints_changed
+        {
             self.mark_state_changed();
         }
         self.publish_file_scope_status();

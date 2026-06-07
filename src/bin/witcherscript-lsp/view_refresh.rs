@@ -2,7 +2,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use lsp_types::request::{
-    CodeLensRefresh, Request as LspRequest, SemanticTokensRefresh, WorkspaceDiagnosticRefresh,
+    CodeLensRefresh, InlayHintRefreshRequest, Request as LspRequest, SemanticTokensRefresh,
+    WorkspaceDiagnosticRefresh,
 };
 use tracing::trace;
 
@@ -44,6 +45,10 @@ impl Backend {
             self.spawn_refresh::<WorkspaceDiagnosticRefresh>(
                 &self.client_supports_pull_diagnostics,
                 "diagnostic",
+            );
+            self.spawn_refresh::<InlayHintRefreshRequest>(
+                &self.client_supports_inlay_hint_refresh,
+                "inlayHint",
             );
         }
     }

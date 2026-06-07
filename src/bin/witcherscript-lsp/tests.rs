@@ -6,6 +6,7 @@ mod file_io;
 mod file_scope;
 mod hover;
 mod indexing;
+mod inlay_hints;
 mod jsonrpc_client;
 mod refactoring;
 

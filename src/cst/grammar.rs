@@ -19,6 +19,34 @@ pub(crate) fn member_access_member(node: Node) -> Option<Node> {
     })
 }
 
+/// Argument slots of a call. `None` if no args or any slot is empty (`f(a,,b)`), which breaks positional alignment.
+pub(crate) fn arg_slots(call: Node) -> Option<Vec<Node>> {
+    let args = call.child_by_field_name("args")?;
+    let mut slots: Vec<Option<Node>> = Vec::new();
+    let mut pending: Option<Node> = None;
+    let mut cursor = args.walk();
+    for child in args.children(&mut cursor) {
+        match child.kind() {
+            "," => slots.push(pending.take()),
+            "comment" => {}
+            _ if child.is_named() => pending = Some(child),
+            _ => {}
+        }
+    }
+    slots.push(pending.take());
+    slots.into_iter().collect()
+}
+
+pub(crate) fn callee_ident(callee: Node) -> Option<Node> {
+    match callee.kind() {
+        "ident" => Some(callee),
+        "member_access_expr" | "incomplete_member_access_expr" => {
+            member_access_member(callee).filter(|m| m.kind() == "ident")
+        }
+        _ => None,
+    }
+}
+
 pub(crate) const DEFAULT_OR_HINT_ASSIGN_KINDS: &[&str] = &[
     "member_default_val",
     "member_default_val_block_assign",

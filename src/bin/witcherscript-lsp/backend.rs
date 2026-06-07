@@ -14,10 +14,11 @@ use lsp_types::{
     DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DocumentDiagnosticParams, DocumentDiagnosticReportResult, DocumentFormattingParams,
     DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse,
-    Hover, HoverParams, InitializeParams, InitializeResult, InitializedParams, Location,
-    PrepareRenameResponse, ReferenceParams, RenameParams, SemanticTokensParams,
-    SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextDocumentPositionParams, TextEdit,
-    Url, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult, WorkspaceEdit,
+    Hover, HoverParams, InitializeParams, InitializeResult, InitializedParams, InlayHint,
+    InlayHintParams, Location, PrepareRenameResponse, ReferenceParams, RenameParams,
+    SemanticTokensParams, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
+    TextDocumentPositionParams, TextEdit, Url, WorkspaceDiagnosticParams,
+    WorkspaceDiagnosticReportResult, WorkspaceEdit,
 };
 use parking_lot::Mutex;
 use serde_json::{json, Value};
@@ -126,6 +127,7 @@ pub(crate) struct Backend {
     pub(crate) client_supports_pull_diagnostics: Arc<AtomicBool>,
     pub(crate) client_supports_code_lens_refresh: Arc<AtomicBool>,
     pub(crate) client_supports_semantic_tokens_refresh: Arc<AtomicBool>,
+    pub(crate) client_supports_inlay_hint_refresh: Arc<AtomicBool>,
     // Mutex not ArcSwap: edit queue with version-checked insert/remove.
     pub(crate) pending_edits: Arc<Mutex<HashMap<Url, PendingEdit>>>,
     pub(crate) edit_notify: Arc<tokio::sync::Notify>,
@@ -230,6 +232,7 @@ impl Backend {
             client_supports_pull_diagnostics: Arc::new(AtomicBool::new(false)),
             client_supports_code_lens_refresh: Arc::new(AtomicBool::new(false)),
             client_supports_semantic_tokens_refresh: Arc::new(AtomicBool::new(false)),
+            client_supports_inlay_hint_refresh: Arc::new(AtomicBool::new(false)),
             pending_edits: Arc::new(Mutex::new(HashMap::new())),
             edit_notify: Arc::new(tokio::sync::Notify::new()),
             edit_writer_spawned: Arc::new(AtomicBool::new(false)),
@@ -646,6 +649,14 @@ impl LanguageServer for Backend {
                 .spawn_compute(move |b| b._semantic_tokens_full(params))
                 .await
         })
+    }
+
+    fn inlay_hint(
+        &mut self,
+        params: InlayHintParams,
+    ) -> BoxFuture<'static, Result<Option<Vec<InlayHint>>>> {
+        let backend = self.clone();
+        Box::pin(async move { backend.spawn_compute(move |b| b._inlay_hint(params)).await })
     }
 
     fn references(

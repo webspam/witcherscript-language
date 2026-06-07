@@ -6,6 +6,7 @@ mod diagnostics;
 mod fixture;
 mod harness;
 mod hover;
+mod inlay_hints;
 mod notifications;
 mod panic_boundary;
 mod rename;

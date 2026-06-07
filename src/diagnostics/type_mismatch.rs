@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use tracing::{debug, trace};
 use tree_sitter::Node;
 
-use crate::cst::grammar::call_callee;
+use crate::cst::grammar::{arg_slots, call_callee, callee_ident};
 use crate::cst::nav::first_named_child;
 use crate::document::ParsedDocument;
 use crate::resolve::{
@@ -262,34 +262,9 @@ fn check_native_type_default<'tree>(
     true
 }
 
-/// Argument slots of a call. `None` if no args or any slot is empty (`f(a,,b)`), which breaks positional alignment.
-fn arg_slots<'tree>(call: Node<'tree>) -> Option<Vec<Node<'tree>>> {
-    let args = call.child_by_field_name("args")?;
-    let mut slots: Vec<Option<Node>> = Vec::new();
-    let mut pending: Option<Node> = None;
-    let mut cursor = args.walk();
-    for child in args.children(&mut cursor) {
-        match child.kind() {
-            "," => slots.push(pending.take()),
-            "comment" => {}
-            _ if child.is_named() => pending = Some(child),
-            _ => {}
-        }
-    }
-    slots.push(pending.take());
-    slots.into_iter().collect()
-}
-
 fn callee_params(call: Node, ctx: &mut CstRuleCtx) -> Option<Vec<Symbol>> {
-    let callee = call_callee(call)?;
-    let callee_ident = match callee.kind() {
-        "ident" => callee,
-        "member_access_expr" => callee
-            .child_by_field_name("member")
-            .filter(|m| m.kind() == "ident")?,
-        _ => return None,
-    };
-    let def = resolve_definition_at_byte(ctx.uri, ctx.document, ctx.db, callee_ident.start_byte())?;
+    let ident = callee_ident(call_callee(call)?)?;
+    let def = resolve_definition_at_byte(ctx.uri, ctx.document, ctx.db, ident.start_byte())?;
     if !def.symbol.kind.is_callable() {
         return None;
     }
