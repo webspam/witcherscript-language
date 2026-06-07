@@ -50,7 +50,7 @@ fn inlay_hint_params(uri: &Url) -> InlayHintParams {
 }
 
 #[test]
-fn parameter_names_setting_toggles_hints() {
+fn inlay_hints_setting_toggles_hints() {
     let backend = make_backend();
     let uri: Url = "file:///main.ws".parse().unwrap();
     backend._did_open(open_params(
@@ -64,7 +64,7 @@ fn parameter_names_setting_toggles_hints() {
         .expect("hints present when enabled");
     assert_eq!(enabled.len(), 1, "default-on config yields the hint");
 
-    backend.update_config(|c| c.inlay_hints_parameter_names = false);
+    backend.update_config(|c| c.inlay_hints = false);
     let disabled = backend
         ._inlay_hint(inlay_hint_params(&uri))
         .expect("handler ok");
