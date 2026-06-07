@@ -258,9 +258,14 @@ impl Backend {
         else {
             return Vec::new();
         };
-        let cfg = self.config.load();
         let (use_tabs, tab_size) = infer_indent(&document.source);
-        let options = FormatOptions {
+        let options = self.format_options(use_tabs, tab_size);
+        refactor_code_actions(uri, document, cursor, options)
+    }
+
+    fn format_options(&self, use_tabs: bool, tab_size: u32) -> FormatOptions {
+        let cfg = self.config.load();
+        FormatOptions {
             tab_size,
             use_tabs,
             line_limit: cfg.formatter_line_limit,
@@ -268,8 +273,7 @@ impl Backend {
             align_member_colons: cfg.formatter_align_member_colons,
             annotation_placement: cfg.formatter_annotation_placement,
             default_placement: cfg.formatter_default_placement,
-        };
-        refactor_code_actions(uri, document, cursor, options)
+        }
     }
 
     pub(crate) fn _definition(
@@ -701,25 +705,10 @@ impl Backend {
             };
             let document = document_arc.as_ref();
 
-            let cfg = self.config.load();
-            let line_limit = cfg.formatter_line_limit;
-            let compact_colon = cfg.formatter_compact_colon;
-            let align_member_colons = cfg.formatter_align_member_colons;
-            let annotation_placement = cfg.formatter_annotation_placement;
-            let default_placement = cfg.formatter_default_placement;
-
             let formatted = format_document(
                 document.tree.root_node(),
                 &document.source,
-                FormatOptions {
-                    tab_size,
-                    use_tabs,
-                    line_limit,
-                    compact_colon,
-                    align_member_colons,
-                    annotation_placement,
-                    default_placement,
-                },
+                self.format_options(use_tabs, tab_size),
             );
 
             if formatted == document.source {
