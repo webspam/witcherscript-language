@@ -33,9 +33,6 @@ fn apply_with(src: &str, layout: SwitchLayout, options: FormatOptions) -> String
     out
 }
 
-const BLOCK_SWITCH: &str = include_str!("../../../tests/fixtures/formatter/switch_block.ws");
-const INLINE_SWITCH: &str = include_str!("../../../tests/fixtures/formatter/switch_inline.ws");
-
 #[rstest]
 #[case::block_collapsible(
     "function F() {\nswitch (x) {\ncase 0:\nFoo();\nbreak;\ncase 1:\nBar();\nbreak;\n}\n}\n",
@@ -98,7 +95,10 @@ fn collapse_joins_each_case_onto_its_label() {
             }
         }
     "#]]
-    .assert_eq(&apply(BLOCK_SWITCH, SwitchLayout::Collapse));
+    .assert_eq(&apply(
+        include_str!("../../../tests/fixtures/formatter/switch_block.ws"),
+        SwitchLayout::Collapse,
+    ));
 }
 
 #[test]
@@ -115,12 +115,18 @@ fn expand_puts_each_statement_on_its_own_line() {
             }
         }
     "#]]
-    .assert_eq(&apply(INLINE_SWITCH, SwitchLayout::Expand));
+    .assert_eq(&apply(
+        include_str!("../../../tests/fixtures/formatter/switch_inline.ws"),
+        SwitchLayout::Expand,
+    ));
 }
 
 #[test]
 fn collapse_output_is_stable_under_the_formatter() {
-    let collapsed = apply(BLOCK_SWITCH, SwitchLayout::Collapse);
+    let collapsed = apply(
+        include_str!("../../../tests/fixtures/formatter/switch_block.ws"),
+        SwitchLayout::Collapse,
+    );
     let doc = parse_document(&collapsed).expect("should parse");
     let reformatted = crate::formatter::format_document(
         doc.tree.root_node(),
@@ -132,7 +138,10 @@ fn collapse_output_is_stable_under_the_formatter() {
 
 #[test]
 fn expand_output_is_stable_under_the_formatter() {
-    let expanded = apply(INLINE_SWITCH, SwitchLayout::Expand);
+    let expanded = apply(
+        include_str!("../../../tests/fixtures/formatter/switch_inline.ws"),
+        SwitchLayout::Expand,
+    );
     let doc = parse_document(&expanded).expect("should parse");
     let reformatted = crate::formatter::format_document(
         doc.tree.root_node(),

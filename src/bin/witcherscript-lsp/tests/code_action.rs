@@ -100,10 +100,6 @@ fn no_quickfix_when_not_applicable(
     );
 }
 
-const BLOCK_SWITCH: &str = include_str!("../../../../tests/fixtures/formatter/switch_block.ws");
-const INLINE_SWITCH: &str = include_str!("../../../../tests/fixtures/formatter/switch_inline.ws");
-const MIXED_SWITCH: &str = include_str!("../../../../tests/fixtures/formatter/switch_mixed.ws");
-
 fn switch_actions(src: &str, needle: &str) -> Vec<CodeActionOrCommand> {
     let doc = parse_document(src).expect("should parse");
     let byte = src.find(needle).expect("needle present") + 1;
@@ -148,7 +144,10 @@ fn new_text(action: &CodeActionOrCommand) -> String {
 #[case::on_switch_keyword("switch")]
 #[case::on_case_keyword("case")]
 fn block_switch_offers_only_collapse(#[case] needle: &str) {
-    let actions = switch_actions(BLOCK_SWITCH, needle);
+    let actions = switch_actions(
+        include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
+        needle,
+    );
     assert_eq!(
         titles(&actions),
         vec!["Collapse switch cases to a single line"],
@@ -159,7 +158,10 @@ fn block_switch_offers_only_collapse(#[case] needle: &str) {
 
 #[test]
 fn inline_switch_offers_only_expand() {
-    let actions = switch_actions(INLINE_SWITCH, "switch");
+    let actions = switch_actions(
+        include_str!("../../../../tests/fixtures/formatter/switch_inline.ws"),
+        "switch",
+    );
     assert_eq!(
         titles(&actions),
         vec!["Expand switch cases onto multiple lines"],
@@ -169,7 +171,10 @@ fn inline_switch_offers_only_expand() {
 
 #[test]
 fn mixed_switch_offers_collapse_first_and_preferred() {
-    let actions = switch_actions(MIXED_SWITCH, "switch");
+    let actions = switch_actions(
+        include_str!("../../../../tests/fixtures/formatter/switch_mixed.ws"),
+        "switch",
+    );
     assert_eq!(
         titles(&actions),
         vec![
@@ -190,6 +195,9 @@ fn mixed_switch_offers_collapse_first_and_preferred() {
 
 #[test]
 fn no_switch_actions_off_a_keyword() {
-    let actions = switch_actions(BLOCK_SWITCH, "Foo");
+    let actions = switch_actions(
+        include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
+        "Foo",
+    );
     assert!(actions.is_empty(), "cursor off a keyword offers nothing");
 }
