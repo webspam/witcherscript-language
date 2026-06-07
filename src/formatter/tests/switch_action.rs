@@ -137,10 +137,10 @@ fn expand_leaves_a_nested_switch_untouched() {
             }
         }
     "#]]
-        .assert_eq(&apply(
-            include_str!("../../../tests/fixtures/formatter/switch_nested.ws"),
-            SwitchLayout::Expand,
-        ));
+    .assert_eq(&apply(
+        include_str!("../../../tests/fixtures/formatter/switch_nested.ws"),
+        SwitchLayout::Expand,
+    ));
 }
 
 #[rstest]
