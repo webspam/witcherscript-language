@@ -167,7 +167,7 @@ impl<'a> Formatter<'a> {
         match self.layout_directive {
             Some(LayoutDirective::SwitchExpand) => return self.expanded_arm_layouts(arms),
             Some(LayoutDirective::SwitchCollapse) => return self.collapsed_arm_layouts(arms),
-            _ => {}
+            None => {}
         }
         let mut layouts: Vec<ArmLayout> = arms
             .iter()
