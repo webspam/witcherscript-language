@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use crate::cst::grammar::callee_ident;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
@@ -41,15 +42,8 @@ pub fn signature_help(
         byte_offset,
     )?;
 
-    let callee_ident = match call.callee.kind() {
-        "ident" => call.callee,
-        "member_access_expr" | "incomplete_member_access_expr" => call
-            .callee
-            .child_by_field_name("member")
-            .filter(|m| m.kind() == "ident")?,
-        _ => return None,
-    };
-    let definition = resolve_definition_at_byte(uri, document, db, callee_ident.start_byte())?;
+    let ident = callee_ident(call.callee)?;
+    let definition = resolve_definition_at_byte(uri, document, db, ident.start_byte())?;
     if !definition.symbol.kind.is_callable() {
         return None;
     }
