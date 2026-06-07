@@ -19,7 +19,7 @@ use crate::config::DiagnosticsScope;
 use tracing::{trace, warn};
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::files::canonical_uri;
-use witcherscript_language::formatter::{format_document, FormatOptions};
+use witcherscript_language::formatter::{format_document, switch_stmt_on_keyword, FormatOptions};
 use witcherscript_language::resolve::{
     inlay_hints, overridden_top_level, resolve_all_definitions, resolve_definition,
     resolve_type_definition, signature_help, OverriddenSymbol,
@@ -29,8 +29,8 @@ use witcherscript_language::symbols::{Symbol, SymbolKind};
 
 use crate::backend::{diagnostics_document_for, Backend};
 use crate::convert::{
-    base_script_conflict_code_actions, document_symbols, hover_markdown, inlay_hint, lsp_range,
-    signature_help_response, source_position, source_range,
+    base_script_conflict_code_actions, document_symbols, hover_markdown, infer_indent, inlay_hint,
+    lsp_range, signature_help_response, source_position, source_range, switch_layout_code_actions,
 };
 use crate::diagnostics_publish::publish_url;
 
@@ -236,7 +236,8 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "code_action", uri = %uri, "start");
         let roots = self.workspace_roots.load_full();
-        let actions = base_script_conflict_code_actions(&params.context.diagnostics, &roots);
+        let mut actions = base_script_conflict_code_actions(&params.context.diagnostics, &roots);
+        actions.extend(self.switch_layout_actions(&uri, params.range.start));
         trace!(
             op = "code_action",
             uri = %uri,
@@ -244,6 +245,34 @@ impl Backend {
             "complete",
         );
         Ok((!actions.is_empty()).then_some(actions))
+    }
+
+    fn switch_layout_actions(&self, uri: &Url, position: Position) -> CodeActionResponse {
+        let Some(document_arc) = self.latest_parsed_document(uri) else {
+            return Vec::new();
+        };
+        let document = document_arc.as_ref();
+        let Some(byte) = document
+            .line_index
+            .position_to_byte(&document.source, source_position(position))
+        else {
+            return Vec::new();
+        };
+        let Some(switch_node) = switch_stmt_on_keyword(document.tree.root_node(), byte) else {
+            return Vec::new();
+        };
+        let cfg = self.config.load();
+        let (use_tabs, tab_size) = infer_indent(&document.source, switch_node);
+        let options = FormatOptions {
+            tab_size,
+            use_tabs,
+            line_limit: cfg.formatter_line_limit,
+            compact_colon: cfg.formatter_compact_colon,
+            align_member_colons: cfg.formatter_align_member_colons,
+            annotation_placement: cfg.formatter_annotation_placement,
+            default_placement: cfg.formatter_default_placement,
+        };
+        switch_layout_code_actions(uri, document, switch_node, options)
     }
 
     pub(crate) fn _definition(

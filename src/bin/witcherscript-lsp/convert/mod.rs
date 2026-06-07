@@ -3,6 +3,7 @@ mod diagnostics;
 mod file_ops;
 mod inlay_hints;
 mod positions;
+mod switch_action;
 mod symbols;
 
 pub(crate) use completions::{
@@ -18,6 +19,7 @@ pub(crate) use file_ops::{
 };
 pub(crate) use inlay_hints::inlay_hint;
 pub(crate) use positions::{lsp_range, source_position, source_range};
+pub(crate) use switch_action::{infer_indent, switch_layout_code_actions};
 pub(crate) use symbols::{document_symbols, hover_markdown};
 
 #[cfg(test)]

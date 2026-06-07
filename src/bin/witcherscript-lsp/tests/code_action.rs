@@ -1,8 +1,10 @@
-use lsp_types::{CodeActionKind, CodeActionOrCommand, Diagnostic, NumberOrString, Range};
+use lsp_types::{CodeActionKind, CodeActionOrCommand, Diagnostic, NumberOrString, Range, Url};
 use rstest::rstest;
 use serde_json::json;
+use witcherscript_language::document::parse_document;
+use witcherscript_language::formatter::{switch_stmt_on_keyword, FormatOptions};
 
-use crate::convert::base_script_conflict_code_actions;
+use crate::convert::{base_script_conflict_code_actions, infer_indent, switch_layout_code_actions};
 
 fn diag(code: Option<&str>, data: Option<serde_json::Value>) -> Diagnostic {
     Diagnostic {
@@ -96,4 +98,101 @@ fn no_quickfix_when_not_applicable(
         actions.is_empty(),
         "expected no code actions, got {actions:?}"
     );
+}
+
+const BLOCK_SWITCH: &str = "function F() {\n    switch (x) {\n        case 0:\n            Foo();\n            break;\n        case 1:\n            Bar();\n            break;\n    }\n}\n";
+
+const INLINE_SWITCH: &str =
+    "function F() {\n    switch (x) {\n        case 0:  Foo();  break;\n        case 1:  Bar();  break;\n    }\n}\n";
+
+const MIXED_SWITCH: &str = "function F() {\n    switch (x) {\n        case 0:  Foo();  break;\n        case 1:\n            Bar();\n            break;\n    }\n}\n";
+
+fn switch_actions(src: &str, needle: &str) -> Vec<CodeActionOrCommand> {
+    let doc = parse_document(src).expect("should parse");
+    let byte = src.find(needle).expect("needle present") + 1;
+    let Some(switch_node) = switch_stmt_on_keyword(doc.tree.root_node(), byte) else {
+        return Vec::new();
+    };
+    let (use_tabs, tab_size) = infer_indent(&doc.source, switch_node);
+    let options = FormatOptions {
+        tab_size,
+        use_tabs,
+        ..FormatOptions::default()
+    };
+    let uri = Url::parse("file:///main.ws").unwrap();
+    switch_layout_code_actions(&uri, &doc, switch_node, options)
+}
+
+fn titles(actions: &[CodeActionOrCommand]) -> Vec<String> {
+    actions
+        .iter()
+        .map(|a| match a {
+            CodeActionOrCommand::CodeAction(action) => action.title.clone(),
+            CodeActionOrCommand::Command(cmd) => cmd.title.clone(),
+        })
+        .collect()
+}
+
+fn new_text(action: &CodeActionOrCommand) -> String {
+    let CodeActionOrCommand::CodeAction(action) = action else {
+        panic!("expected a CodeAction");
+    };
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_REWRITE));
+    let edits = action
+        .edit
+        .as_ref()
+        .and_then(|e| e.changes.as_ref())
+        .and_then(|c| c.values().next())
+        .expect("rewrite carries a WorkspaceEdit");
+    edits[0].new_text.clone()
+}
+
+#[rstest]
+#[case::on_switch_keyword("switch")]
+#[case::on_case_keyword("case")]
+fn block_switch_offers_only_collapse(#[case] needle: &str) {
+    let actions = switch_actions(BLOCK_SWITCH, needle);
+    assert_eq!(
+        titles(&actions),
+        vec!["Collapse switch cases to a single line"],
+        "block switch should offer collapse only",
+    );
+    assert!(new_text(&actions[0]).contains("case 0:  Foo();  break;"));
+}
+
+#[test]
+fn inline_switch_offers_only_expand() {
+    let actions = switch_actions(INLINE_SWITCH, "switch");
+    assert_eq!(
+        titles(&actions),
+        vec!["Expand switch cases onto multiple lines"],
+        "inline switch should offer expand only",
+    );
+}
+
+#[test]
+fn mixed_switch_offers_collapse_first_and_preferred() {
+    let actions = switch_actions(MIXED_SWITCH, "switch");
+    assert_eq!(
+        titles(&actions),
+        vec![
+            "Collapse switch cases to a single line",
+            "Expand switch cases onto multiple lines",
+        ],
+        "mix should offer collapse first, then expand",
+    );
+    let CodeActionOrCommand::CodeAction(collapse) = &actions[0] else {
+        panic!("expected a CodeAction");
+    };
+    assert_eq!(
+        collapse.is_preferred,
+        Some(true),
+        "collapse is the default in a mix",
+    );
+}
+
+#[test]
+fn no_switch_actions_off_a_keyword() {
+    let actions = switch_actions(BLOCK_SWITCH, "Foo");
+    assert!(actions.is_empty(), "cursor off a keyword offers nothing");
 }
