@@ -33,10 +33,8 @@ fn apply_with(src: &str, layout: SwitchLayout, options: FormatOptions) -> String
     out
 }
 
-const BLOCK_SWITCH: &str = "function F() {\n    switch (x) {\n        case 0:\n            Foo();\n            break;\n        case 1:\n            Bar();\n            break;\n    }\n}\n";
-
-const INLINE_SWITCH: &str =
-    "function F() {\n    switch (x) {\n        case 0:  Foo();  break;\n        case 1:  Bar();  break;\n    }\n}\n";
+const BLOCK_SWITCH: &str = include_str!("../../../tests/fixtures/formatter/switch_block.ws");
+const INLINE_SWITCH: &str = include_str!("../../../tests/fixtures/formatter/switch_inline.ws");
 
 #[rstest]
 #[case::block_collapsible(

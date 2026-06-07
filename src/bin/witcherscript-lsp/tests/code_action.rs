@@ -100,12 +100,9 @@ fn no_quickfix_when_not_applicable(
     );
 }
 
-const BLOCK_SWITCH: &str = "function F() {\n    switch (x) {\n        case 0:\n            Foo();\n            break;\n        case 1:\n            Bar();\n            break;\n    }\n}\n";
-
-const INLINE_SWITCH: &str =
-    "function F() {\n    switch (x) {\n        case 0:  Foo();  break;\n        case 1:  Bar();  break;\n    }\n}\n";
-
-const MIXED_SWITCH: &str = "function F() {\n    switch (x) {\n        case 0:  Foo();  break;\n        case 1:\n            Bar();\n            break;\n    }\n}\n";
+const BLOCK_SWITCH: &str = include_str!("../../../../tests/fixtures/formatter/switch_block.ws");
+const INLINE_SWITCH: &str = include_str!("../../../../tests/fixtures/formatter/switch_inline.ws");
+const MIXED_SWITCH: &str = include_str!("../../../../tests/fixtures/formatter/switch_mixed.ws");
 
 fn switch_actions(src: &str, needle: &str) -> Vec<CodeActionOrCommand> {
     let doc = parse_document(src).expect("should parse");
