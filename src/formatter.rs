@@ -4,6 +4,11 @@ mod core;
 mod declarations;
 mod signatures;
 mod statements;
+mod switch_action;
+
+pub use switch_action::{
+    analyze_switch, format_switch_with_layout, switch_stmt_on_keyword, SwitchLayout, SwitchToggle,
+};
 
 #[cfg(test)]
 mod tests;
@@ -85,6 +90,7 @@ fn render_expr(node: Node, source: &str) -> String {
         colon_align_col: None,
         comments: Vec::new(),
         comment_cursor: 0,
+        switch_layout: None,
     }
     .render_node(node)
 }
@@ -249,6 +255,7 @@ pub fn render_callable_signature(node: Node, source: &str) -> Option<String> {
         colon_align_col: None,
         comments: Vec::new(),
         comment_cursor: 0,
+        switch_layout: None,
     };
     f.render_sig(node)
 }
@@ -273,6 +280,7 @@ pub fn format_document(root: Node, source: &str, options: FormatOptions) -> Stri
         colon_align_col: None,
         comments: collect_comments(root),
         comment_cursor: 0,
+        switch_layout: None,
     };
     f.format_node(root);
     f.flush_comments_before(usize::MAX);
@@ -300,4 +308,6 @@ struct Formatter<'a> {
     // Source-ordered comments; the sweep emits each just before the next node past it.
     comments: Vec<Node<'a>>,
     comment_cursor: usize,
+    // When set, switch arms are forced to one layout instead of mirroring the source rows.
+    switch_layout: Option<SwitchLayout>,
 }

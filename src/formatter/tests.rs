@@ -9,6 +9,7 @@ mod comments;
 mod line_breaking;
 mod structures;
 mod switch;
+mod switch_action;
 
 use super::{AnnotationPlacement, FormatOptions};
 
