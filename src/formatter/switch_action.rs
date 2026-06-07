@@ -3,12 +3,21 @@ use tree_sitter::Node;
 use crate::cst::ancestors::find_ancestor_of_kind;
 use crate::cst::offsets::nodes_at_offset;
 
-use super::{collect_comments, FormatOptions, Formatter};
+use super::{collect_comments, FormatOptions, Formatter, LayoutDirective};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SwitchLayout {
     Collapse,
     Expand,
+}
+
+impl From<SwitchLayout> for LayoutDirective {
+    fn from(layout: SwitchLayout) -> Self {
+        match layout {
+            SwitchLayout::Collapse => LayoutDirective::SwitchCollapse,
+            SwitchLayout::Expand => LayoutDirective::SwitchExpand,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,7 +50,7 @@ pub fn format_switch_with_layout(
 ) -> String {
     let comments = collect_comments(switch_node);
     let level = switch_level(switch_node, &options);
-    let mut f = formatter_for(source, options, comments, level, Some(layout));
+    let mut f = formatter_for(source, options, comments, level, Some(layout.into()));
     // The source indent before the node's start byte is kept, so skip the leading one.
     f.suppress_next_indent = true;
     f.format_switch_stmt_impl(switch_node);
@@ -66,7 +75,7 @@ fn formatter_for<'a>(
     options: FormatOptions,
     comments: Vec<Node<'a>>,
     level: usize,
-    switch_layout: Option<SwitchLayout>,
+    layout_directive: Option<LayoutDirective>,
 ) -> Formatter<'a> {
     let indent_unit = if options.use_tabs {
         "\t".to_string()
@@ -87,6 +96,6 @@ fn formatter_for<'a>(
         colon_align_col: None,
         comments,
         comment_cursor: 0,
-        switch_layout,
+        layout_directive,
     }
 }

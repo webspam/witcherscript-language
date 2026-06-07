@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use super::super::{child_nodes, Formatter, SwitchLayout, SwitchToggle};
+use super::super::{child_nodes, Formatter, LayoutDirective, SwitchToggle};
 
 // Spaces between aligned switch-arm columns (label -> statement -> break).
 const SWITCH_CELL_GAP: usize = 2;
@@ -164,10 +164,10 @@ impl<'a> Formatter<'a> {
     }
 
     fn switch_arm_layouts(&self, arms: &[SwitchArm]) -> Vec<ArmLayout> {
-        match self.switch_layout {
-            Some(SwitchLayout::Expand) => return self.expanded_arm_layouts(arms),
-            Some(SwitchLayout::Collapse) => return self.collapsed_arm_layouts(arms),
-            None => {}
+        match self.layout_directive {
+            Some(LayoutDirective::SwitchExpand) => return self.expanded_arm_layouts(arms),
+            Some(LayoutDirective::SwitchCollapse) => return self.collapsed_arm_layouts(arms),
+            _ => {}
         }
         let mut layouts: Vec<ArmLayout> = arms
             .iter()
