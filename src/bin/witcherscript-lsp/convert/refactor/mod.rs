@@ -45,7 +45,7 @@ pub(crate) fn refactor_code_actions(
 }
 
 /// Indent style for a rewrite, since code-action requests carry no editor formatting hint. Taken
-/// from the first indented line; consistent on formatted code, which is what these rewrites run on.
+/// from the first indented line in the document.
 pub(crate) fn infer_indent(source: &str) -> (bool, u32) {
     for line in source.lines() {
         let trimmed = line.trim_start();

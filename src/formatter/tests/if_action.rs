@@ -3,7 +3,7 @@ use rstest::rstest;
 use tree_sitter::Node;
 
 use crate::document::{parse_document, ParsedDocument};
-use crate::formatter::{analyze_if, format_if_with_layout, if_chain_at, FormatOptions, IfLayout};
+use crate::formatter::{analyze_if, if_chain_at, rewrite_if_layout, FormatOptions, IfLayout};
 
 fn first_if(node: Node) -> Option<Node> {
     if node.kind() == "if_stmt" {
@@ -21,7 +21,7 @@ fn if_of(doc: &ParsedDocument) -> Node<'_> {
 fn apply(src: &str, layout: IfLayout) -> String {
     let doc = parse_document(src).expect("should parse");
     let if_node = if_of(&doc);
-    let new_text = format_if_with_layout(if_node, &doc.source, FormatOptions::default(), layout);
+    let new_text = rewrite_if_layout(if_node, &doc.source, FormatOptions::default(), layout);
     let mut out = doc.source.clone();
     out.replace_range(if_node.start_byte()..if_node.end_byte(), &new_text);
     out
@@ -139,24 +139,24 @@ fn expand_leaves_a_nested_if_untouched() {
     ));
 }
 
-#[rstest]
-#[case::collapse(
-    include_str!("../../../tests/fixtures/formatter/if_block.ws"),
-    IfLayout::Collapse
-)]
-#[case::expand(
-    include_str!("../../../tests/fixtures/formatter/if_inline.ws"),
-    IfLayout::Expand
-)]
-fn rewrite_output_is_stable_under_the_formatter(#[case] src: &str, #[case] layout: IfLayout) {
-    let rewritten = apply(src, layout);
-    let doc = parse_document(&rewritten).expect("should parse");
-    let reformatted = crate::formatter::format_document(
-        doc.tree.root_node(),
-        &doc.source,
-        FormatOptions::default(),
+#[test]
+fn collapse_keeps_body_spacing_verbatim() {
+    let src = "function F() {\n    if (cond) {\n        Do( p,q );\n    }\n}\n";
+    let got = apply(src, IfLayout::Collapse);
+    assert!(
+        got.contains("if (cond) Do( p,q );"),
+        "collapse must move the body verbatim, not reformat it; got:\n{got}"
     );
-    assert_eq!(reformatted, rewritten, "rewrite must survive a reformat");
+}
+
+#[test]
+fn expand_keeps_body_spacing_verbatim() {
+    let src = "function F() {\n    if (cond) Do( p,q );\n}\n";
+    let got = apply(src, IfLayout::Expand);
+    assert!(
+        got.contains("Do( p,q );"),
+        "expand must wrap the body verbatim, not reformat it; got:\n{got}"
+    );
 }
 
 #[rstest]

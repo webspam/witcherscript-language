@@ -7,9 +7,9 @@ const SWITCH_CELL_GAP: usize = 2;
 
 // One `case`/`default` group: the labels (>1 only for stacked fall-through) and the
 // statements bound to the last label.
-struct SwitchArm<'t> {
-    labels: Vec<Node<'t>>,
-    stmts: Vec<Node<'t>>,
+pub(in crate::formatter) struct SwitchArm<'t> {
+    pub(in crate::formatter) labels: Vec<Node<'t>>,
+    pub(in crate::formatter) stmts: Vec<Node<'t>>,
 }
 
 // Per-arm layout decision. `cols[i]` is the target column for statement `i` when inline.
@@ -20,7 +20,7 @@ struct ArmLayout {
 
 // A label after statements closes the current arm; runs of bare labels (fall-through)
 // accumulate, with statements binding to the last label.
-fn collect_switch_arms<'t>(children: &[Node<'t>]) -> Vec<SwitchArm<'t>> {
+pub(in crate::formatter) fn collect_switch_arms<'t>(children: &[Node<'t>]) -> Vec<SwitchArm<'t>> {
     let mut arms: Vec<SwitchArm<'t>> = Vec::new();
     let mut current: Option<SwitchArm<'t>> = None;
     for child in children {
@@ -356,17 +356,27 @@ impl<'a> Formatter<'a> {
             .iter()
             .any(|a| !self.switch_arm_structurally_inline(a));
         let all_collapsible = stmt_arms.iter().all(|a| self.collapsible_arm(a));
-        // Collapse only when the aligned single-line result stays inline; otherwise the formatter
-        // would re-expand it, so offering collapse would produce output `just fmt` undoes.
-        let width_ok = all_collapsible && {
-            let layouts = self.collapsed_arm_layouts(&arms);
-            arms.iter()
-                .zip(&layouts)
-                .all(|(a, l)| a.stmts.is_empty() || l.inline)
-        };
+        let width_ok = all_collapsible && self.switch_collapse_fits(&stmt_arms);
         SwitchToggle {
             can_collapse: all_collapsible && width_ok && any_block,
             can_expand: any_inline,
         }
+    }
+
+    fn switch_collapse_fits(&self, stmt_arms: &[&SwitchArm]) -> bool {
+        // Labels sit one level inside the switch; the collapsed arm joins onto that line.
+        let indent = (self.level + 1) * self.indent_unit.len();
+        stmt_arms.iter().all(|arm| {
+            let Some(last_label) = arm.labels.last() else {
+                return true;
+            };
+            let label_len = last_label.end_byte() - last_label.start_byte();
+            let stmts_len: usize = arm
+                .stmts
+                .iter()
+                .map(|s| 1 + (s.end_byte() - s.start_byte()))
+                .sum();
+            indent + label_len + stmts_len <= self.line_limit
+        })
     }
 }

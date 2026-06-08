@@ -4,7 +4,7 @@ use tree_sitter::Node;
 
 use crate::document::{parse_document, ParsedDocument};
 use crate::formatter::{
-    analyze_switch, format_switch_with_layout, switch_stmt_at, FormatOptions, SwitchLayout,
+    analyze_switch, rewrite_switch_layout, switch_stmt_at, FormatOptions, SwitchLayout,
 };
 
 fn first_switch(node: Node) -> Option<Node> {
@@ -27,7 +27,7 @@ fn apply(src: &str, layout: SwitchLayout) -> String {
 fn apply_with(src: &str, layout: SwitchLayout, options: FormatOptions) -> String {
     let doc = parse_document(src).expect("should parse");
     let switch_node = switch_of(&doc);
-    let new_text = format_switch_with_layout(switch_node, &doc.source, options, layout);
+    let new_text = rewrite_switch_layout(switch_node, &doc.source, options, layout);
     let mut out = doc.source.clone();
     out.replace_range(switch_node.start_byte()..switch_node.end_byte(), &new_text);
     out
@@ -90,8 +90,8 @@ fn collapse_joins_each_case_onto_its_label() {
     expect![[r#"
         function F() {
             switch (x) {
-                case 0:  Foo();  break;
-                case 1:  Bar();  break;
+                case 0: Foo(); break;
+                case 1: Bar(); break;
             }
         }
     "#]]
@@ -131,7 +131,7 @@ fn expand_leaves_a_nested_switch_untouched() {
                     break;
                 case 1:
                     switch (y) {
-                        case 2: G(); break;
+                        case 2:  G();  break;
                     }
                     break;
             }
@@ -143,24 +143,25 @@ fn expand_leaves_a_nested_switch_untouched() {
     ));
 }
 
-#[rstest]
-#[case::collapse(
-    include_str!("../../../tests/fixtures/formatter/switch_block.ws"),
-    SwitchLayout::Collapse
-)]
-#[case::expand(
-    include_str!("../../../tests/fixtures/formatter/switch_inline.ws"),
-    SwitchLayout::Expand
-)]
-fn rewrite_output_is_stable_under_the_formatter(#[case] src: &str, #[case] layout: SwitchLayout) {
-    let rewritten = apply(src, layout);
-    let doc = parse_document(&rewritten).expect("should parse");
-    let reformatted = crate::formatter::format_document(
-        doc.tree.root_node(),
-        &doc.source,
-        FormatOptions::default(),
+#[test]
+fn collapse_keeps_statement_spacing_verbatim() {
+    let src =
+        "function F() {\n    switch (x) {\n        case 0:\n            Do( p,q );\n            break;\n    }\n}\n";
+    let got = apply(src, SwitchLayout::Collapse);
+    assert!(
+        got.contains("case 0: Do( p,q ); break;"),
+        "collapse must join statements verbatim, not reformat them; got:\n{got}"
     );
-    assert_eq!(reformatted, rewritten, "rewrite must survive a reformat");
+}
+
+#[test]
+fn expand_keeps_statement_spacing_verbatim() {
+    let src = "function F() {\n    switch (x) {\n        case 0:  Do( p,q );  break;\n    }\n}\n";
+    let got = apply(src, SwitchLayout::Expand);
+    assert!(
+        got.contains("Do( p,q );"),
+        "expand must split statements verbatim, not reformat them; got:\n{got}"
+    );
 }
 
 #[rstest]

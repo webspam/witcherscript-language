@@ -209,7 +209,7 @@ fn collapse_action_carries_the_collapsed_text() {
         include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
         "switch",
     );
-    assert!(new_text(&actions[0]).contains("case 0:  Foo();  break;"));
+    assert!(new_text(&actions[0]).contains("case 0: Foo(); break;"));
 }
 
 const IF_COLLAPSE: &str = "Collapse if/else to single-line bodies";

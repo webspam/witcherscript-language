@@ -1,6 +1,6 @@
 use lsp_types::CodeActionOrCommand;
 use witcherscript_language::formatter::{
-    analyze_switch, format_switch_with_layout, switch_stmt_at, SwitchLayout,
+    analyze_switch, rewrite_switch_layout, switch_stmt_at, SwitchLayout,
 };
 
 use super::{Preference, RefactorContext, Refactoring};
@@ -19,13 +19,11 @@ impl Refactoring for SwitchLayoutRefactoring {
         let toggle = analyze_switch(switch, ctx.source(), options);
         let mut actions = Vec::new();
         if toggle.can_collapse {
-            let text =
-                format_switch_with_layout(switch, ctx.source(), options, SwitchLayout::Collapse);
+            let text = rewrite_switch_layout(switch, ctx.source(), options, SwitchLayout::Collapse);
             actions.push(ctx.rewrite(COLLAPSE_TITLE, switch, text, Preference::Preferred));
         }
         if toggle.can_expand {
-            let text =
-                format_switch_with_layout(switch, ctx.source(), options, SwitchLayout::Expand);
+            let text = rewrite_switch_layout(switch, ctx.source(), options, SwitchLayout::Expand);
             actions.push(ctx.rewrite(EXPAND_TITLE, switch, text, Preference::Alternative));
         }
         actions

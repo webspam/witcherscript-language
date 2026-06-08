@@ -1,8 +1,6 @@
 use tree_sitter::Node;
 
-use super::super::{
-    chain_fully_broken, split_binary_condition, Formatter, IfToggle, LayoutDirective,
-};
+use super::super::{Formatter, IfToggle, LayoutDirective};
 use super::BodyLayout;
 
 const IF_OPEN: usize = "if (".len();
@@ -118,23 +116,23 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    // Without this guard, the next fmt would re-expand the collapsed chain.
+    // A condition split across rows can't be joined verbatim, so such a chain isn't collapsible.
     fn if_chain_collapse_fits(&self, if_node: Node) -> bool {
         let indent = self.level * self.indent_unit.len();
         let mut cur = Some(if_node);
         let mut first = true;
         while let Some(n) = cur {
             if n.kind() != "if_stmt" {
-                return indent + ELSE_OPEN + self.inline_body_len(n) <= self.line_limit;
+                return indent + ELSE_OPEN + self.inline_body_byte_len(n) <= self.line_limit;
             }
             let cond = n.child_by_field_name("cond");
-            if cond.is_some_and(|c| chain_fully_broken(&split_binary_condition(c, self.source))) {
+            if cond.is_some_and(|c| c.start_position().row != c.end_position().row) {
                 return false;
             }
-            let cond_len = cond.map(|c| self.render_node(c).len()).unwrap_or(0);
+            let cond_len = cond.map(span_len).unwrap_or(0);
             let stmt_len = n
                 .child_by_field_name("body")
-                .map(|b| self.inline_body_len(b))
+                .map(|b| self.inline_body_byte_len(b))
                 .unwrap_or(0);
             let prefix = if first { IF_OPEN } else { ELSE_IF_OPEN };
             if indent + prefix + cond_len + COND_CLOSE + stmt_len > self.line_limit {
@@ -146,13 +144,17 @@ impl<'a> Formatter<'a> {
         true
     }
 
-    fn inline_body_len(&self, body: Node) -> usize {
+    fn inline_body_byte_len(&self, body: Node) -> usize {
         let effective = block_single_stmt(body).unwrap_or(body);
-        self.render_node(effective).len()
+        span_len(effective)
     }
 }
 
-fn chain_bodies(if_node: Node) -> Vec<Node> {
+fn span_len(node: Node) -> usize {
+    node.end_byte() - node.start_byte()
+}
+
+pub(in crate::formatter) fn chain_bodies(if_node: Node) -> Vec<Node> {
     let mut bodies = Vec::new();
     let mut cur = Some(if_node);
     while let Some(n) = cur {
@@ -169,7 +171,7 @@ fn chain_bodies(if_node: Node) -> Vec<Node> {
     bodies
 }
 
-fn body_expandable(body: Node) -> bool {
+pub(in crate::formatter) fn body_expandable(body: Node) -> bool {
     !matches!(body.kind(), "func_block" | "nop")
 }
 
@@ -191,7 +193,7 @@ fn body_single_line(node: Node) -> bool {
 }
 
 /// The lone simple statement in a `func_block`, else `None` (zero, many, or compound).
-pub(super) fn block_single_stmt(block: Node) -> Option<Node> {
+pub(in crate::formatter) fn block_single_stmt(block: Node) -> Option<Node> {
     if block.kind() != "func_block" {
         return None;
     }

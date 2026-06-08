@@ -1,5 +1,5 @@
 use lsp_types::CodeActionOrCommand;
-use witcherscript_language::formatter::{analyze_if, format_if_with_layout, if_chain_at, IfLayout};
+use witcherscript_language::formatter::{analyze_if, if_chain_at, rewrite_if_layout, IfLayout};
 
 use super::{Preference, RefactorContext, Refactoring};
 
@@ -17,11 +17,11 @@ impl Refactoring for IfLayoutRefactoring {
         let toggle = analyze_if(if_node, ctx.source(), options);
         let mut actions = Vec::new();
         if toggle.can_collapse {
-            let text = format_if_with_layout(if_node, ctx.source(), options, IfLayout::Collapse);
+            let text = rewrite_if_layout(if_node, ctx.source(), options, IfLayout::Collapse);
             actions.push(ctx.rewrite(COLLAPSE_TITLE, if_node, text, Preference::Preferred));
         }
         if toggle.can_expand {
-            let text = format_if_with_layout(if_node, ctx.source(), options, IfLayout::Expand);
+            let text = rewrite_if_layout(if_node, ctx.source(), options, IfLayout::Expand);
             actions.push(ctx.rewrite(EXPAND_TITLE, if_node, text, Preference::Alternative));
         }
         actions
