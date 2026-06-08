@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use super::super::{child_nodes, Formatter, LayoutDirective, SwitchToggle};
+use super::super::{child_nodes, Formatter, SwitchToggle};
 
 // Spaces between aligned switch-arm columns (label -> statement -> break).
 const SWITCH_CELL_GAP: usize = 2;
@@ -102,8 +102,6 @@ impl<'a> Formatter<'a> {
             close = children.iter().rfind(|n| n.kind() == "}").copied();
             let arms = collect_switch_arms(&children);
             let layouts = self.switch_arm_layouts(&arms);
-            // The directive targets only this switch; nested switches in arm bodies format normally.
-            self.layout_directive = None;
             let mut prev: Option<&SwitchArm> = None;
             for (arm, layout) in arms.iter().zip(layouts.iter()) {
                 if let Some(p) = prev {
@@ -166,11 +164,6 @@ impl<'a> Formatter<'a> {
     }
 
     fn switch_arm_layouts(&self, arms: &[SwitchArm]) -> Vec<ArmLayout> {
-        match self.layout_directive {
-            Some(LayoutDirective::Expand) => return self.expanded_arm_layouts(arms),
-            Some(LayoutDirective::Collapse) => return self.collapsed_arm_layouts(arms),
-            None => {}
-        }
         let mut layouts: Vec<ArmLayout> = arms
             .iter()
             .map(|_| ArmLayout {
@@ -291,25 +284,6 @@ impl<'a> Formatter<'a> {
                 .any(|c| c.start_byte() >= e && c.start_byte() < s),
             _ => false,
         }
-    }
-
-    fn expanded_arm_layouts(&self, arms: &[SwitchArm]) -> Vec<ArmLayout> {
-        arms.iter()
-            .map(|_| ArmLayout {
-                inline: false,
-                cols: Vec::new(),
-            })
-            .collect()
-    }
-
-    // Every arm forms one aligned run; assign_run_layout still demotes to block past the line limit.
-    fn collapsed_arm_layouts(&self, arms: &[SwitchArm]) -> Vec<ArmLayout> {
-        let mut layouts = self.expanded_arm_layouts(arms);
-        if !arms.is_empty() {
-            let indent_width = self.level * self.indent_unit.len();
-            self.assign_run_layout(arms, &mut layouts, indent_width);
-        }
-        layouts
     }
 
     // Like switch_arm_structurally_inline but without requiring the statements to already share

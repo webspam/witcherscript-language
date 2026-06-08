@@ -5,21 +5,12 @@ use crate::cst::offsets::nodes_at_offset;
 
 use super::action::{formatter_for, indent_unit_for, node_indent_level, splice_subs, Substitution};
 use super::statements::{block_single_stmt, body_expandable, chain_bodies};
-use super::{collect_comments, FormatOptions, LayoutDirective};
+use super::{collect_comments, FormatOptions};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IfLayout {
     Collapse,
     Expand,
-}
-
-impl From<IfLayout> for LayoutDirective {
-    fn from(layout: IfLayout) -> Self {
-        match layout {
-            IfLayout::Collapse => LayoutDirective::Collapse,
-            IfLayout::Expand => LayoutDirective::Expand,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +43,7 @@ fn if_chain_head(mut node: Node) -> Node {
 pub fn analyze_if(if_node: Node, source: &str, options: FormatOptions) -> IfToggle {
     let comments = collect_comments(if_node);
     let level = node_indent_level(if_node, &options);
-    let f = formatter_for(source, options, comments, level, None);
+    let f = formatter_for(source, options, comments, level);
     f.if_toggle(if_node)
 }
 

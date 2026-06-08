@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use super::super::{Formatter, IfToggle, LayoutDirective};
+use super::super::{Formatter, IfToggle};
 use super::BodyLayout;
 
 const IF_OPEN: usize = "if (".len();
@@ -10,11 +10,10 @@ const COND_CLOSE: usize = ") ".len();
 
 impl<'a> Formatter<'a> {
     pub(in crate::formatter) fn format_if_stmt(&mut self, node: Node) {
-        let layout = match self.layout_directive.take() {
-            Some(LayoutDirective::Expand) => BodyLayout::ForceBlock,
-            Some(LayoutDirective::Collapse) => BodyLayout::ForceInline,
-            None if self.if_chain_needs_block(node) => BodyLayout::ForceBlock,
-            None => BodyLayout::Auto,
+        let layout = if self.if_chain_needs_block(node) {
+            BodyLayout::ForceBlock
+        } else {
+            BodyLayout::Auto
         };
         self.format_if_stmt_emit(node, layout);
     }

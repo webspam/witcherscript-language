@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use super::{FormatOptions, Formatter, LayoutDirective};
+use super::{FormatOptions, Formatter};
 
 pub(super) fn node_indent_level(node: Node, options: &FormatOptions) -> usize {
     let col = node.start_position().column;
@@ -51,7 +51,6 @@ pub(super) fn formatter_for<'a>(
     options: FormatOptions,
     comments: Vec<Node<'a>>,
     level: usize,
-    layout_directive: Option<LayoutDirective>,
 ) -> Formatter<'a> {
     Formatter {
         source,
@@ -67,6 +66,5 @@ pub(super) fn formatter_for<'a>(
         colon_align_col: None,
         comments,
         comment_cursor: 0,
-        layout_directive,
     }
 }

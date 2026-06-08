@@ -15,7 +15,6 @@ use super::{
 pub(in crate::formatter) enum BodyLayout {
     Auto,
     ForceBlock,
-    ForceInline,
 }
 
 impl<'a> Formatter<'a> {
@@ -218,7 +217,7 @@ impl<'a> Formatter<'a> {
         trailing: Option<usize>,
     ) {
         let mid_line = trailing.is_some();
-        let Some(mut body) = body else {
+        let Some(body) = body else {
             if mid_line {
                 self.emit(" ");
             } else {
@@ -226,12 +225,6 @@ impl<'a> Formatter<'a> {
             }
             return;
         };
-        // Collapse unwraps a single simple-statement block so the bare statement takes the inline path.
-        if layout == BodyLayout::ForceInline {
-            if let Some(inner) = if_stmt::block_single_stmt(body) {
-                body = inner;
-            }
-        }
         if body.kind() == "func_block" {
             self.emit(" ");
             self.format_func_block_inner(body, !mid_line);

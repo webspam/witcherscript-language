@@ -5,21 +5,12 @@ use crate::cst::offsets::nodes_at_offset;
 
 use super::action::{formatter_for, indent_unit_for, node_indent_level, splice_subs, Substitution};
 use super::statements::{collect_switch_arms, SwitchArm};
-use super::{child_nodes, collect_comments, FormatOptions, LayoutDirective};
+use super::{child_nodes, collect_comments, FormatOptions};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SwitchLayout {
     Collapse,
     Expand,
-}
-
-impl From<SwitchLayout> for LayoutDirective {
-    fn from(layout: SwitchLayout) -> Self {
-        match layout {
-            SwitchLayout::Collapse => LayoutDirective::Collapse,
-            SwitchLayout::Expand => LayoutDirective::Expand,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,7 +29,7 @@ pub fn switch_stmt_at(root: Node, byte: usize) -> Option<Node> {
 pub fn analyze_switch(switch_node: Node, source: &str, options: FormatOptions) -> SwitchToggle {
     let comments = collect_comments(switch_node);
     let level = node_indent_level(switch_node, &options);
-    let f = formatter_for(source, options, comments, level, None);
+    let f = formatter_for(source, options, comments, level);
     f.switch_toggle(switch_node)
 }
 
