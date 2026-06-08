@@ -115,10 +115,10 @@ impl ExcludeFilter {
 
     pub fn matches(&self, path: &Path) -> bool {
         for f in &self.per_root {
-            if let Ok(rel) = path.strip_prefix(&f.root) {
-                if f.overrides.matched(rel, false).is_ignore() {
-                    return true;
-                }
+            if let Ok(rel) = path.strip_prefix(&f.root)
+                && f.overrides.matched(rel, false).is_ignore()
+            {
+                return true;
             }
         }
         // WalkBuilder can't probe gitignore for a path that isn't on disk (e.g. synthetic test paths).

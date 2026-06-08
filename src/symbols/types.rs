@@ -197,7 +197,11 @@ impl DocumentSymbols {
             .find(|s| accept(s.kind))
     }
 
-    pub fn member_of(&self, container: SymbolId, name: &str) -> impl Iterator<Item = &Symbol> {
+    pub fn member_of(
+        &self,
+        container: SymbolId,
+        name: &str,
+    ) -> impl Iterator<Item = &Symbol> + use<'_> {
         self.members_by_container
             .get(&container)
             .and_then(|by_name| by_name.get(name))

@@ -3,9 +3,9 @@ use tree_sitter::Node;
 use crate::cst::ancestors::find_ancestor_of_kind;
 use crate::cst::offsets::nodes_at_offset;
 
-use super::action::{indent_unit_for, layout_ctx, line_indent, splice_subs, Substitution};
-use super::statements::{block_single_stmt, body_expandable, chain_bodies};
 use super::FormatOptions;
+use super::action::{Substitution, indent_unit_for, layout_ctx, line_indent, splice_subs};
+use super::statements::{block_single_stmt, body_expandable, chain_bodies};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IfLayout {

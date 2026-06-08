@@ -1,4 +1,4 @@
-use super::{collect_witcherscript_files, ExcludeFilter};
+use super::{ExcludeFilter, collect_witcherscript_files};
 use std::path::{Path, PathBuf};
 
 #[test]

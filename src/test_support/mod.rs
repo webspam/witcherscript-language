@@ -2,7 +2,7 @@ mod fixture;
 
 pub use fixture::{Fixture, FixtureFile};
 
-use crate::document::{parse_document, ParsedDocument};
+use crate::document::{ParsedDocument, parse_document};
 use crate::line_index::{SourcePosition, SourceRange};
 use crate::resolve::{Definition, SymbolDb, WorkspaceIndex};
 use crate::script_env::{ScriptEnvironment, ScriptGlobal};

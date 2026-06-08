@@ -55,7 +55,7 @@ fn keyword_resolves_to_class(
      class CR4Player {\n  var playerAiming : PlayerAiming;\n  function Test() {\n    playerAiming.$0GetCurrentStateName();\n  }\n}\n",
     "GetCurrentStateName",
     None,
-    None,
+    None
 )]
 #[case::unqualified_inherited_in_subclass(
     "//- /a.ws\n\
@@ -80,7 +80,7 @@ fn keyword_resolves_to_class(
      class CInGameConfigWrapper {\n  function GetSpecialConfig() {}\n}\n",
     "GetSpecialConfig",
     None,
-    None,
+    None
 )]
 #[case::private_in_parent_navigable_from_subclass(
     "//- /a.ws\n\
@@ -129,7 +129,7 @@ fn keyword_resolves_to_class(
      state SpawnBoatLatentHack in Owner {\n  entry function Run() {\n    $0OnEnterState('Foo');\n  }\n}\n",
     "OnEnterState",
     Some("CScriptableState"),
-    None,
+    None
 )]
 #[case::super_dot_baseless_class_falls_back_to_cobject(
     "class CObject {\n  function GetName() : name {}\n}\n\
@@ -145,7 +145,7 @@ fn keyword_resolves_to_class(
      state SpawnBoatLatentHack in Owner {\n  entry function Run() {\n    super.$0OnEnterState('Foo');\n  }\n}\n",
     "OnEnterState",
     Some("CScriptableState"),
-    None,
+    None
 )]
 #[case::state_method_through_extends_chain(
     "statemachine class Owner {}\n\
@@ -196,10 +196,11 @@ fn method_resolution_blocked(#[case] fixture: &str) {
 #[test]
 fn class_without_explicit_extends_defaults_to_cobject() {
     let t = TestDb::new("class A {}");
-    assert!(t
-        .db()
-        .find_member("A", "someMethod", AccessLevel::Public)
-        .is_none());
+    assert!(
+        t.db()
+            .find_member("A", "someMethod", AccessLevel::Public)
+            .is_none()
+    );
 }
 
 #[test]
@@ -210,10 +211,11 @@ fn engine_root_chain_does_not_loop_through_virtual_base() {
         "class CObject extends IScriptable {}\n",
     ));
     assert_eq!(t.db().superclass_of("ISerializable"), None);
-    assert!(t
-        .db()
-        .find_member("CObject", "missing", AccessLevel::Public)
-        .is_none());
+    assert!(
+        t.db()
+            .find_member("CObject", "missing", AccessLevel::Public)
+            .is_none()
+    );
 }
 
 #[test]
@@ -226,8 +228,9 @@ fn state_without_explicit_extends_defaults_to_cscriptablestate() {
         t.db().superclass_of("SpawnBoatLatentHack").as_deref(),
         Some("CScriptableState")
     );
-    assert!(t
-        .db()
-        .find_member("SpawnBoatLatentHack", "someMethod", AccessLevel::Public)
-        .is_none());
+    assert!(
+        t.db()
+            .find_member("SpawnBoatLatentHack", "someMethod", AccessLevel::Public)
+            .is_none()
+    );
 }

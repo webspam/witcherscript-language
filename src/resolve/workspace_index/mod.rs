@@ -9,10 +9,10 @@ use std::sync::Arc;
 use crate::document::ParsedDocument;
 use crate::symbols::Symbol;
 
-use super::completion_catalog::{
-    build_callables, build_enum_members, build_types, global_catalog_changed, CompletionCatalog,
-};
 use super::Definition;
+use super::completion_catalog::{
+    CompletionCatalog, build_callables, build_enum_members, build_types, global_catalog_changed,
+};
 
 pub use subscribers::ObservedKey;
 

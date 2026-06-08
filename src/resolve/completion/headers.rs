@@ -4,9 +4,9 @@ use crate::cst::ancestors::node_and_ancestors;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 
+use super::super::MAX_INHERITANCE_DEPTH;
 use super::super::ast::nodes_at_offset;
 use super::super::symbol_db::SymbolDb;
-use super::super::MAX_INHERITANCE_DEPTH;
 
 pub fn class_header_keyword_completions(
     document: &ParsedDocument,
@@ -109,10 +109,10 @@ fn enclosing_header_node(start: Node) -> Option<Node> {
     node_and_ancestors(start).find_map(|current| match current.kind() {
         "class_decl" | "state_decl" => Some(current),
         "ERROR" => {
-            if let Some(p) = current.parent() {
-                if matches!(p.kind(), "class_decl" | "state_decl") {
-                    return Some(p);
-                }
+            if let Some(p) = current.parent()
+                && matches!(p.kind(), "class_decl" | "state_decl")
+            {
+                return Some(p);
             }
             if node_contains_kind_any(current, &["class", "state"]) {
                 Some(current)
@@ -166,8 +166,7 @@ fn header_walk(node: Node, byte_offset: usize, source: &[u8], ctx: &mut HeaderCo
 
 fn node_contains_kind_any(node: Node, kinds: &[&str]) -> bool {
     let mut cursor = node.walk();
-    let found = node
-        .children(&mut cursor)
-        .any(|c| kinds.contains(&c.kind()));
-    found
+
+    node.children(&mut cursor)
+        .any(|c| kinds.contains(&c.kind()))
 }

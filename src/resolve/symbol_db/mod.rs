@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use super::shadowed_base::{filter_catalog, ShadowedBase};
-use super::workspace_index::WorkspaceIndex;
 use super::ObservationSet;
+use super::shadowed_base::{ShadowedBase, filter_catalog};
+use super::workspace_index::WorkspaceIndex;
 use crate::script_env::ScriptEnvironment;
 
 pub struct SymbolDb<'a> {

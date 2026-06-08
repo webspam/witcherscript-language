@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
-use super::{run_rules_on_document, CstRule, CstRuleCtx};
+use super::{CstRule, CstRuleCtx, run_rules_on_document};
 use crate::cst::grammar::call_callee;
 use crate::resolve::infer_expr_type_memo;
 use crate::test_support::TestDb;

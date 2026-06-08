@@ -14,7 +14,7 @@ use super::inference::{
 };
 use super::name_context::classify_ident_context;
 use super::symbol_db::SymbolDb;
-use super::{annotation_target_class, dedup_definitions, Definition};
+use super::{Definition, annotation_target_class, dedup_definitions};
 
 pub fn resolve_definition(
     uri: &str,
@@ -254,25 +254,22 @@ pub(super) fn resolve_self_keyword(
     let owner = current_type.owner_class.clone();
     match node.kind() {
         "this_expr" => {
-            if in_state {
-                if let Some(owner_class) = owner.as_deref() {
-                    if let Some(def) = db.find_state_in_owner_chain(owner_class, &current_type.name)
-                    {
-                        return Some(def);
-                    }
-                }
+            if in_state
+                && let Some(owner_class) = owner.as_deref()
+                && let Some(def) = db.find_state_in_owner_chain(owner_class, &current_type.name)
+            {
+                return Some(def);
             }
             resolve_document_top_level(uri, document, &current_type.name)
                 .or_else(|| db.find_top_level(&current_type.name))
         }
         "super_expr" => {
             let base_name = current_type.base_class.as_deref()?;
-            if in_state {
-                if let Some(owner_class) = owner.as_deref() {
-                    if let Some(def) = db.find_state_in_owner_chain(owner_class, base_name) {
-                        return Some(def);
-                    }
-                }
+            if in_state
+                && let Some(owner_class) = owner.as_deref()
+                && let Some(def) = db.find_state_in_owner_chain(owner_class, base_name)
+            {
+                return Some(def);
             }
             resolve_document_top_level(uri, document, base_name)
                 .or_else(|| db.find_top_level(base_name))

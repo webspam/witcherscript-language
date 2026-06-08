@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use lsp_types::{FileChangeType, FileEvent, Url};
 use witcherscript_language::files::ExcludeFilter;
 
-use crate::watcher::{classify_watched_event, WatchedEvent};
+use crate::watcher::{WatchedEvent, classify_watched_event};
 
 fn event(uri: &str, typ: FileChangeType) -> FileEvent {
     FileEvent {

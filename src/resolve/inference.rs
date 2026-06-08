@@ -10,7 +10,7 @@ use crate::types::{Primitive, Type};
 use super::ast::first_named_child;
 use super::name_context::NameContext;
 use super::symbol_db::SymbolDb;
-use super::{annotation_target_class, Definition};
+use super::{Definition, annotation_target_class};
 
 #[derive(Debug, Clone)]
 pub(super) struct TypeContext {

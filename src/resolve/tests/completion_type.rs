@@ -5,7 +5,7 @@ use super::super::{
     state_owner_completions, type_completions,
 };
 use crate::line_index::SourcePosition;
-use crate::test_support::{def_names, TestDb};
+use crate::test_support::{TestDb, def_names};
 
 #[rstest]
 #[case::right_after_colon_before_any_type_typed(

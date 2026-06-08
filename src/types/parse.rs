@@ -41,10 +41,10 @@ pub(super) fn from_annotation(s: &str) -> Type {
     if trimmed == "void" {
         return Type::Void;
     }
-    if let Some((ctor, element)) = parse_generic_type(trimmed) {
-        if ctor == "array" {
-            return Type::Array(Box::new(from_annotation(element)));
-        }
+    if let Some((ctor, element)) = parse_generic_type(trimmed)
+        && ctor == "array"
+    {
+        return Type::Array(Box::new(from_annotation(element)));
     }
     if let Some(prim) = PRIMITIVE_ALIASES
         .iter()

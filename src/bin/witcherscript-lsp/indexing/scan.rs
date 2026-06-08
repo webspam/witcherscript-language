@@ -6,7 +6,7 @@ use std::time::Instant;
 use lsp_types::Url;
 use rayon::prelude::*;
 use tracing::{debug, error, info, trace, warn};
-use witcherscript_language::document::{parse_document, ParsedDocument};
+use witcherscript_language::document::{ParsedDocument, parse_document};
 use witcherscript_language::files::{canonical_uri, collect_witcherscript_files, read_text_file};
 use witcherscript_language::resolve::{DocContribution, WorkspaceIndex};
 use witcherscript_language::script_env::parse_script_environment;
@@ -196,12 +196,12 @@ impl Backend {
             return;
         }
 
-        if let Some(gd) = &game_dir_opt {
-            if let Some(env) = parse_script_environment(&gd.join(r"bin\redscripts.ini")) {
-                self.publish_compilation(|builder| {
-                    *builder.script_env_mut() = env;
-                });
-            }
+        if let Some(gd) = &game_dir_opt
+            && let Some(env) = parse_script_environment(&gd.join(r"bin\redscripts.ini"))
+        {
+            self.publish_compilation(|builder| {
+                *builder.script_env_mut() = env;
+            });
         }
 
         let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());

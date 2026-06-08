@@ -6,13 +6,13 @@ use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::{AccessLevel, SymbolKind};
 
+use super::super::Definition;
 use super::super::ast::{
     find_ancestor_of_kind, is_kind_or_error_wrapped_kind, is_statement_boundary,
     nearest_enclosing_block, nodes_at_offset, significant_node_before_byte,
 };
 use super::super::inference::enclosing_type_context;
 use super::super::symbol_db::SymbolDb;
-use super::super::Definition;
 
 pub fn default_or_hint_member_completions(
     document: &ParsedDocument,

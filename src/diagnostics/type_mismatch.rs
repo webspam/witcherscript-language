@@ -7,12 +7,12 @@ use crate::cst::grammar::{arg_slots, call_callee, callee_ident};
 use crate::cst::nav::first_named_child;
 use crate::document::ParsedDocument;
 use crate::resolve::{
-    assignability, infer_type, resolve_definition_at_byte, Assignability, SymbolDb,
+    Assignability, SymbolDb, assignability, infer_type, resolve_definition_at_byte,
 };
-use crate::symbols::{node_text, Symbol, SymbolKind};
-use crate::types::{native_type_accepts, Primitive, Type};
+use crate::symbols::{Symbol, SymbolKind, node_text};
+use crate::types::{Primitive, Type, native_type_accepts};
 
-use super::{run_rules_on_document, CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic};
+use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, run_rules_on_document};
 
 pub(crate) struct TypeMismatchRule;
 

@@ -1,17 +1,17 @@
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use arc_swap::ArcSwap;
-use async_lsp::router::Router;
 use async_lsp::ClientSocket;
+use async_lsp::router::Router;
 use lsp_types::{
     DidCloseTextDocumentParams, PartialResultParams, PreviousResultId, TextDocumentIdentifier, Url,
     WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
     WorkspaceDocumentDiagnosticReport,
 };
 
-use super::legacy_helpers::{write_script, LocalTempDir};
+use super::legacy_helpers::{LocalTempDir, write_script};
 use crate::backend::Backend;
 use crate::config::{Config, DiagnosticsScope};
 use crate::cst_cache::{CstCacheEntry, DbFingerprint};

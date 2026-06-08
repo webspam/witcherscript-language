@@ -1,12 +1,12 @@
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use lsp_types::Url;
 use tracing::{debug, error, trace};
 use tree_sitter::{Parser, Tree};
 use witcherscript_language::document::{
-    allocate_parse_version, parse_document_with_prior, ParsedDocument,
+    ParsedDocument, allocate_parse_version, parse_document_with_prior,
 };
 use witcherscript_language::line_index::LineIndex;
 
@@ -128,10 +128,10 @@ impl Backend {
                         let processed_target = edit.target_parse_version;
                         backend.process_pending_edit(uri.clone(), edit);
                         let mut pending = backend.pending_edits.lock();
-                        if let Some(current) = pending.get(&uri) {
-                            if current.target_parse_version == processed_target {
-                                pending.remove(&uri);
-                            }
+                        if let Some(current) = pending.get(&uri)
+                            && current.target_parse_version == processed_target
+                        {
+                            pending.remove(&uri);
                         }
                     }
                 })

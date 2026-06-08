@@ -4,7 +4,7 @@ use super::collect_unknown_symbol_diagnostics;
 use crate::diagnostics::collect_cst_diagnostics_for_document;
 use crate::document::parse_document;
 use crate::resolve::{SymbolDb, WorkspaceIndex};
-use crate::test_support::{script_env, TestDb};
+use crate::test_support::{TestDb, script_env};
 
 #[test]
 fn parallel_run_is_deterministic() {

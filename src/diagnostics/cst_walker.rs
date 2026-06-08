@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
-use crate::resolve::{annotation_target_class, Definition, ObservationSet, SymbolDb};
+use crate::resolve::{Definition, ObservationSet, SymbolDb, annotation_target_class};
 use crate::symbols::SymbolKind;
 
 use super::WorkspaceDiagnostic;

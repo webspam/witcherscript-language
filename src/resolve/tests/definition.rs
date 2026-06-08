@@ -35,7 +35,9 @@ use crate::test_support::TestDb;
 )]
 #[case::receiver_variable_resolves_to_declaration(
     "class Example {\n  function Test() {\n    var unrelated : UnrelatedClass;\n    $0unrelated.Initialize();\n  }\n}\n",
-    "unrelated", Some(SymbolKind::Variable), None,
+    "unrelated",
+    Some(SymbolKind::Variable),
+    None
 )]
 #[case::parameter_shadows_top_level(
     "function value() {}\nfunction test(value : int) {\n $0value = 1;\n}\n",
@@ -89,7 +91,9 @@ use crate::test_support::TestDb;
 )]
 #[case::autobind_member_resolves_as_field(
     "class C {\n  autobind theInput : CInputManager = single;\n  function Use() {\n    $0theInput.Foo();\n  }\n}\n",
-    "theInput", Some(SymbolKind::Field), Some("file:///main.ws"),
+    "theInput",
+    Some(SymbolKind::Field),
+    Some("file:///main.ws")
 )]
 fn resolves_definition_at_cursor(
     #[case] fixture: &str,

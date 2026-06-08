@@ -4,11 +4,11 @@ mod switch;
 use tree_sitter::Node;
 
 pub(in crate::formatter) use if_stmt::{block_single_stmt, body_expandable, chain_bodies};
-pub(in crate::formatter) use switch::{collect_switch_arms, SwitchArm};
+pub(in crate::formatter) use switch::{SwitchArm, collect_switch_arms};
 
 use super::{
-    chain_fully_broken, child_nodes, named_child_nodes, split_binary_condition,
-    try_split_call_args, BoolPart, Formatter,
+    BoolPart, Formatter, chain_fully_broken, child_nodes, named_child_nodes,
+    split_binary_condition, try_split_call_args,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,10 +62,10 @@ impl<'a> Formatter<'a> {
         self.level += 1;
         let mut prev_end_row: Option<usize> = None;
         for (stmt, trailing_semi) in &stmts {
-            if let Some(prev) = prev_end_row {
-                if stmt.start_position().row.saturating_sub(prev) >= 2 {
-                    self.nl();
-                }
+            if let Some(prev) = prev_end_row
+                && stmt.start_position().row.saturating_sub(prev) >= 2
+            {
+                self.nl();
             }
             self.emit_stmt_in_block(*stmt, *trailing_semi);
             prev_end_row = Some(stmt.end_position().row);
@@ -73,11 +73,11 @@ impl<'a> Formatter<'a> {
         self.flush_before_close(close.copied());
         self.level -= 1;
         self.emit_indent();
-        if let Some(cl) = close {
-            if !cl.is_missing() {
-                let t = self.text(*cl).to_string();
-                self.emit(&t);
-            }
+        if let Some(cl) = close
+            && !cl.is_missing()
+        {
+            let t = self.text(*cl).to_string();
+            self.emit(&t);
         }
         if trailing_nl {
             self.nl();
@@ -333,29 +333,29 @@ impl<'a> Formatter<'a> {
         let expr = named_child_nodes(node).into_iter().next();
         if let Some(e) = expr {
             let indent = self.level * self.indent_unit.len();
-            if indent + self.render_node(e).len() + 1 > self.line_limit {
-                if let Some((prefix, args)) = try_split_call_args(e, self.source) {
-                    self.emit(&prefix);
-                    self.emit("(\n");
-                    self.level += 1;
-                    for (idx, arg) in args.iter().enumerate() {
-                        self.emit_indent();
-                        self.emit(arg);
-                        if idx + 1 < args.len() {
-                            self.emit(",");
-                        }
-                        self.nl();
-                    }
-                    self.level -= 1;
+            if indent + self.render_node(e).len() + 1 > self.line_limit
+                && let Some((prefix, args)) = try_split_call_args(e, self.source)
+            {
+                self.emit(&prefix);
+                self.emit("(\n");
+                self.level += 1;
+                for (idx, arg) in args.iter().enumerate() {
                     self.emit_indent();
-                    self.emit(")");
-                    let semi = self.child_of_kind(node, ";");
-                    if semi.map(|n| !n.is_missing()).unwrap_or(false) {
-                        self.emit(";");
+                    self.emit(arg);
+                    if idx + 1 < args.len() {
+                        self.emit(",");
                     }
                     self.nl();
-                    return;
                 }
+                self.level -= 1;
+                self.emit_indent();
+                self.emit(")");
+                let semi = self.child_of_kind(node, ";");
+                if semi.map(|n| !n.is_missing()).unwrap_or(false) {
+                    self.emit(";");
+                }
+                self.nl();
+                return;
             }
             if !self.try_emit_broken_chain(e, node.kind()) {
                 self.format_node(e);

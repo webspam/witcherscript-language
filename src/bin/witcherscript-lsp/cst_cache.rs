@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use witcherscript_language::diagnostics::{
-    collect_cst_diagnostics_for_document, WorkspaceDiagnostic,
+    WorkspaceDiagnostic, collect_cst_diagnostics_for_document,
 };
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::resolve::{ObservationSet, SymbolDb};

@@ -1,6 +1,6 @@
 use lsp_types::Url;
 use witcherscript_language::builtins::load_builtins_index;
-use witcherscript_language::document::{parse_document, ParsedDocument};
+use witcherscript_language::document::{ParsedDocument, parse_document};
 use witcherscript_language::resolve::WorkspaceIndex;
 
 #[allow(dead_code)]

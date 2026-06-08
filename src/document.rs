@@ -4,9 +4,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tree_sitter::{InputEdit, Parser, Point, Tree};
 
-use crate::diagnostics::{collect_diagnostics, ParseDiagnostic};
+use crate::diagnostics::{ParseDiagnostic, collect_diagnostics};
 use crate::line_index::{LineIndex, SourceRange};
-use crate::symbols::{extract_symbols, DocumentSymbols};
+use crate::symbols::{DocumentSymbols, extract_symbols};
 
 static PARSE_VERSION: AtomicU64 = AtomicU64::new(0);
 

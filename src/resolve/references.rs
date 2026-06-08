@@ -4,11 +4,11 @@ use crate::document::ParsedDocument;
 use crate::line_index::SourceRange;
 use crate::symbols::{AccessLevel, SymbolKind};
 
+use super::Definition;
 use super::ast::identifier_at;
 use super::definition::{all_declarations_of, definition_key, resolve_definition};
 use super::inference::{resolve_local_or_parameter, resolve_name};
 use super::symbol_db::SymbolDb;
-use super::Definition;
 
 enum SearchScope {
     AllDocuments,
@@ -275,10 +275,10 @@ fn collect_ident_occurrences<'tree>(
     scope: Option<&std::ops::Range<usize>>,
     results: &mut Vec<std::ops::Range<usize>>,
 ) {
-    if let Some(s) = scope {
-        if node.end_byte() <= s.start || node.start_byte() >= s.end {
-            return;
-        }
+    if let Some(s) = scope
+        && (node.end_byte() <= s.start || node.start_byte() >= s.end)
+    {
+        return;
     }
     if node.kind() == "ident" && node.utf8_text(source).ok() == Some(name) {
         results.push(node.start_byte()..node.end_byte());

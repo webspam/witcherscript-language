@@ -17,7 +17,7 @@ use lsp_types::{
     TextDocumentIdentifier, Url, WorkDoneProgressParams, WorkspaceClientCapabilities,
 };
 use serde_json::Value;
-use tokio::io::{split, DuplexStream, ReadHalf, WriteHalf};
+use tokio::io::{DuplexStream, ReadHalf, WriteHalf, split};
 use tokio::task::JoinHandle;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use tower::ServiceBuilder;

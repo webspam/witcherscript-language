@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 
-use crate::document::{parse_document, ParsedDocument};
+use crate::document::{ParsedDocument, parse_document};
 use crate::resolve::{Definition, WorkspaceIndex};
 use crate::symbols::SymbolKind;
 use crate::types::native_type_names;

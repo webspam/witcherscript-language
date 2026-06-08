@@ -23,19 +23,19 @@ mod workspace_index;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use assignability::{assignability, Assignability};
+pub(crate) use assignability::{Assignability, assignability};
 pub use ast::BUILTIN_TYPE_COMPLETIONS;
 pub use completion::{
+    ExpressionCompletions, OverrideBody, OverrideCompletion, StatementCompletions,
     annotation_arg_completions, annotation_name_completions, class_body_keyword_completions,
     class_header_keyword_completions, completion_members, default_or_hint_member_completions,
     expression_completions, extends_completions, merged_global_completions,
     new_lifetime_completions, new_type_completions, override_completions, position_in_comment,
     script_body_completions, state_owner_completions, statement_completions, type_completions,
-    type_completions_arc, ExpressionCompletions, OverrideBody, OverrideCompletion,
-    StatementCompletions,
+    type_completions_arc,
 };
 pub use completion_catalog::{
-    global_catalog_changed, merge_ws_base, merge_ws_base_three, CompletionCatalog,
+    CompletionCatalog, global_catalog_changed, merge_ws_base, merge_ws_base_three,
 };
 pub use definition::{
     classify_definition_at_ident, resolve_all_definitions, resolve_definition,
@@ -43,11 +43,11 @@ pub use definition::{
 };
 pub use inference::infer_expr_type_memo;
 pub(crate) use inference::infer_type;
-pub use inlay_hints::{inlay_hints, InlayHintInfo};
-pub use name_context::{classify_ident_context, NameContext};
-pub use overrides::{overridden_top_level, OverriddenSymbol};
+pub use inlay_hints::{InlayHintInfo, inlay_hints};
+pub use name_context::{NameContext, classify_ident_context};
+pub use overrides::{OverriddenSymbol, overridden_top_level};
 pub use references::find_references;
-pub use signature::{hover_text, signature_help, SignatureHelpInfo};
+pub use signature::{SignatureHelpInfo, hover_text, signature_help};
 pub use subscription_registry::SubscriptionRegistry;
 pub use symbol_db::{FilteredBaseCatalogs, SymbolDb};
 pub use type_definition::resolve_type_definition;

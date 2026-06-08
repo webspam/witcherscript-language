@@ -7,15 +7,15 @@ use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
 use crate::resolve::{
-    classify_ident_context, infer_expr_type_memo, resolve_definition_at_ident, NameContext,
-    SymbolDb,
+    NameContext, SymbolDb, classify_ident_context, infer_expr_type_memo,
+    resolve_definition_at_ident,
 };
 use crate::symbols::{AccessLevel, SymbolKind};
 use crate::types::is_builtin_type_name;
 
 use super::{
-    access_is_inside_declaring_class, collect_nodes_with_error_subtree, declaring_class_of,
-    run_parallel_pass, CstRuleCtx, ParallelRuleShard, Severity, WorkspaceDiagnostic,
+    CstRuleCtx, ParallelRuleShard, Severity, WorkspaceDiagnostic, access_is_inside_declaring_class,
+    collect_nodes_with_error_subtree, declaring_class_of, run_parallel_pass,
 };
 
 pub(crate) fn run_unknown_symbol_parallel(
@@ -128,7 +128,8 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
     }
 
     let branch_start = Instant::now();
-    let result = match role {
+
+    match role {
         IdentRole::Declaration => None,
         IdentRole::TypeRef => {
             if is_builtin_type_name(name) {
@@ -182,7 +183,9 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                             ctx,
                             ident,
                             "private_member_access",
-                            format!("Private member '{name}' of class '{declarer}' is not accessible here."),
+                            format!(
+                                "Private member '{name}' of class '{declarer}' is not accessible here."
+                            ),
                         );
                         return Some(());
                     }
@@ -282,7 +285,9 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                             ctx,
                             ident,
                             "type_used_as_value",
-                            format!("Type '{name}' is used as a value here. Did you mean a value or instance of '{name}'?"),
+                            format!(
+                                "Type '{name}' is used as a value here. Did you mean a value or instance of '{name}'?"
+                            ),
                         );
                         Some(())
                     }
@@ -302,8 +307,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             ctx.telemetry.branch_bare_visits += 1;
             r
         }
-    };
-    result
+    }
 }
 
 fn classify<'tree>(ident: Node<'tree>, source: &[u8]) -> Option<IdentRole<'tree>> {
@@ -312,12 +316,11 @@ fn classify<'tree>(ident: Node<'tree>, source: &[u8]) -> Option<IdentRole<'tree>
     if parent.kind() == "member_access_expr" {
         let is_member = parent.child_by_field_name("member").map(|n| n.id()) == Some(ident.id());
         if is_member {
-            if let Some(grandparent) = parent.parent() {
-                if grandparent.kind() == "func_call_expr"
-                    && grandparent.child_by_field_name("func").map(|n| n.id()) == Some(parent.id())
-                {
-                    return None;
-                }
+            if let Some(grandparent) = parent.parent()
+                && grandparent.kind() == "func_call_expr"
+                && grandparent.child_by_field_name("func").map(|n| n.id()) == Some(parent.id())
+            {
+                return None;
             }
             let receiver = parent.child_by_field_name("accessor")?;
             return Some(IdentRole::MemberOfAccess(receiver));

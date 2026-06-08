@@ -2,10 +2,10 @@ use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::AccessLevel;
 
+use super::super::Definition;
 use super::super::ast::{find_ancestor_of_kind, first_named_child, nodes_at_offset};
 use super::super::inference::{enclosing_type_context, infer_expr_type};
 use super::super::symbol_db::SymbolDb;
-use super::super::Definition;
 
 pub fn completion_members(
     uri: &str,

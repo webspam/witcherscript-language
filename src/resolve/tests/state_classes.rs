@@ -1,5 +1,5 @@
 use crate::document::parse_document;
-use crate::resolve::{resolve_definition, SymbolDb, WorkspaceIndex};
+use crate::resolve::{SymbolDb, WorkspaceIndex, resolve_definition};
 use crate::symbols::SymbolKind;
 use crate::test_support::TestDb;
 

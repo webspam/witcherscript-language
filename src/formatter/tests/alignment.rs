@@ -1,6 +1,6 @@
 use expect_test::expect;
 
-use super::{fmt, fmt_aligned, fmt_aligned_with_default_placement, AnnotationPlacement};
+use super::{AnnotationPlacement, fmt, fmt_aligned, fmt_aligned_with_default_placement};
 
 fn default_keyword_col(line: &str, field: &str) -> usize {
     line.find(&format!("default {field}"))

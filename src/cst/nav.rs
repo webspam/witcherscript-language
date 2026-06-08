@@ -10,17 +10,16 @@ pub(crate) fn nth_child_kind<'tree>(
     index: usize,
 ) -> Option<Node<'tree>> {
     let mut cursor = node.walk();
-    let child = node
-        .children(&mut cursor)
+
+    node.children(&mut cursor)
         .filter(|child| child.kind() == kind)
-        .nth(index);
-    child
+        .nth(index)
 }
 
 pub(crate) fn first_named_child(node: Node) -> Option<Node> {
     let mut cursor = node.walk();
-    let child = node.named_children(&mut cursor).next();
-    child
+
+    node.named_children(&mut cursor).next()
 }
 
 pub(crate) fn child_nodes(node: Node) -> Vec<Node> {

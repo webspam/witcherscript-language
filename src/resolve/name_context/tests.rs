@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use super::{classify_ident_context, NameContext};
+use super::{NameContext, classify_ident_context};
 use crate::document::parse_document;
 use crate::symbols::SymbolKind;
 

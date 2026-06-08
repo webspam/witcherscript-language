@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use super::{named_child_nodes, Formatter};
+use super::{Formatter, named_child_nodes};
 
 impl<'a> Formatter<'a> {
     pub(super) fn format_func_params(&mut self, func_node: Node) {

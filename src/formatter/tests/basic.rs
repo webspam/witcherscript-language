@@ -1,7 +1,7 @@
-use expect_test::{expect, Expect};
+use expect_test::{Expect, expect};
 use rstest::rstest;
 
-use super::{fmt, fmt_with_annotation_placement, fmt_with_default_placement, AnnotationPlacement};
+use super::{AnnotationPlacement, fmt, fmt_with_annotation_placement, fmt_with_default_placement};
 
 #[test]
 fn error_recovery_formats_valid_stmts_around_invalid() {

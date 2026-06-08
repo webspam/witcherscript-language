@@ -1,5 +1,5 @@
 use lsp_types::CodeActionOrCommand;
-use witcherscript_language::formatter::{analyze_if, if_chain_at, rewrite_if_layout, IfLayout};
+use witcherscript_language::formatter::{IfLayout, analyze_if, if_chain_at, rewrite_if_layout};
 
 use super::{Preference, RefactorContext, Refactoring};
 

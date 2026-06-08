@@ -14,8 +14,8 @@ pub(crate) fn call_callee(node: Node) -> Option<Node> {
 pub(crate) fn member_access_member(node: Node) -> Option<Node> {
     node.child_by_field_name("member").or_else(|| {
         let mut cursor = node.walk();
-        let member = node.named_children(&mut cursor).nth(1);
-        member
+
+        node.named_children(&mut cursor).nth(1)
     })
 }
 

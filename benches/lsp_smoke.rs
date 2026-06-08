@@ -1,6 +1,6 @@
 use std::process::Stdio;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use lsp_types::notification::Initialized;
 use lsp_types::request::{GotoDefinition, Initialize, Request};
 use lsp_types::{

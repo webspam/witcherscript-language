@@ -1,5 +1,5 @@
 use lsp_types::{DocumentSymbol, Url};
-use witcherscript_language::resolve::{hover_text, Definition};
+use witcherscript_language::resolve::{Definition, hover_text};
 use witcherscript_language::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
 
 use super::positions::lsp_range;

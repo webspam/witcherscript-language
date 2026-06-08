@@ -5,7 +5,7 @@ use lsp_types::{
     DiagnosticRelatedInformation, DiagnosticSeverity, Location, NumberOrString, Url,
 };
 use witcherscript_language::diagnostics::{
-    Severity, WorkspaceDiagnostic, BASE_SCRIPT_CONFLICT_KIND,
+    BASE_SCRIPT_CONFLICT_KIND, Severity, WorkspaceDiagnostic,
 };
 use witcherscript_language::document::ParsedDocument;
 

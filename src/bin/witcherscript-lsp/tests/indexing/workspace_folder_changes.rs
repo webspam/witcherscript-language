@@ -2,7 +2,7 @@ use lsp_types::{
     DidChangeWorkspaceFoldersParams, Url, WorkspaceFolder, WorkspaceFoldersChangeEvent,
 };
 
-use super::legacy_helpers::{make_backend, write_script, LocalTempDir};
+use super::legacy_helpers::{LocalTempDir, make_backend, write_script};
 
 fn folders(uris: &[&Url]) -> Vec<WorkspaceFolder> {
     uris.iter()

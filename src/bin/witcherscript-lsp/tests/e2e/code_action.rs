@@ -63,8 +63,7 @@ async fn returns_quickfix_for_base_script_conflict() {
 async fn offers_collapse_rewrite_on_a_block_switch() {
     let uri: Url = "file:///main.ws".parse().unwrap();
     let mut client = LspClient::spawn().await;
-    let source =
-        "function F() {\n    switch (x) {\n        case 0:\n            Foo();\n            break;\n    }\n}\n";
+    let source = "function F() {\n    switch (x) {\n        case 0:\n            Foo();\n            break;\n    }\n}\n";
     client.open(&uri, source).await;
 
     // Cursor on the `switch` keyword (line 1, character 4).
@@ -104,8 +103,7 @@ async fn offers_collapse_rewrite_on_a_block_switch() {
 async fn automatic_trigger_suppresses_refactors() {
     let uri: Url = "file:///main.ws".parse().unwrap();
     let mut client = LspClient::spawn().await;
-    let source =
-        "function F() {\n    switch (x) {\n        case 0:\n            Foo();\n            break;\n    }\n}\n";
+    let source = "function F() {\n    switch (x) {\n        case 0:\n            Foo();\n            break;\n    }\n}\n";
     client.open(&uri, source).await;
 
     // Cursor on the `switch` keyword, but the editor requested this automatically, not the user
@@ -132,8 +130,7 @@ async fn automatic_trigger_suppresses_refactors() {
 async fn offers_collapse_rewrite_on_a_block_if() {
     let uri: Url = "file:///main.ws".parse().unwrap();
     let mut client = LspClient::spawn().await;
-    let source =
-        "function F() {\n    if (a) {\n        Foo();\n    }\n    else {\n        Bar();\n    }\n}\n";
+    let source = "function F() {\n    if (a) {\n        Foo();\n    }\n    else {\n        Bar();\n    }\n}\n";
     client.open(&uri, source).await;
 
     // Cursor on the `if` keyword (line 1, character 4).

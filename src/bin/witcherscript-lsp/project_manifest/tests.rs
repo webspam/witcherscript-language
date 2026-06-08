@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::{discover_manifests, parse_manifest, MANIFEST_FILENAME};
+use super::{MANIFEST_FILENAME, discover_manifests, parse_manifest};
 
 struct TempDir {
     path: PathBuf,
@@ -147,9 +147,11 @@ fn discover_manifests_recurses_and_finds_nested() {
         2,
         "expected two nested manifests, got {found:?}"
     );
-    assert!(found
-        .iter()
-        .all(|p| p.file_name().unwrap() == MANIFEST_FILENAME));
+    assert!(
+        found
+            .iter()
+            .all(|p| p.file_name().unwrap() == MANIFEST_FILENAME)
+    );
 }
 
 #[test]
@@ -167,10 +169,12 @@ fn discover_manifests_honors_files_exclude() {
     );
     let found = discover_manifests(&[tmp.path().to_path_buf()], &["**/skip/**".to_string()]);
     assert_eq!(found.len(), 1);
-    assert!(found[0]
-        .to_string_lossy()
-        .replace('\\', "/")
-        .contains("/keep/"));
+    assert!(
+        found[0]
+            .to_string_lossy()
+            .replace('\\', "/")
+            .contains("/keep/")
+    );
 }
 
 #[test]

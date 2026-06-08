@@ -1,12 +1,12 @@
 use rstest::rstest;
 
 use super::super::{
-    completion_members, expression_completions, merged_global_completions, statement_completions,
-    type_completions, StatementCompletions,
+    StatementCompletions, completion_members, expression_completions, merged_global_completions,
+    statement_completions, type_completions,
 };
 use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
-use crate::test_support::{def_names, script_env, TestDb};
+use crate::test_support::{TestDb, def_names, script_env};
 
 #[derive(Clone, Copy)]
 enum Bucket {
@@ -132,7 +132,7 @@ fn statement_completions_this_super_flags(
 #[rstest]
 #[case::outside_any_callable("class CExample {}\n$0\n")]
 #[case::after_dot_in_class_method(
-    "class CExample {\n  var mField : int;\n  function Test() {\n    var local : CExample;\n    local.$0\n  }\n}\n",
+    "class CExample {\n  var mField : int;\n  function Test() {\n    var local : CExample;\n    local.$0\n  }\n}\n"
 )]
 #[case::leading_dot_with_no_lhs("class C {\n  function A() {\n    .$0\n  }\n}\n")]
 fn statement_completions_all_empty(#[case] fixture: &str) {
@@ -156,10 +156,11 @@ fn statement_completions_all_empty(#[case] fixture: &str) {
 #[test]
 fn parameter_appears_with_kind_parameter() {
     let (_t, r) = run_at_cursor("function Test(owner : int) {\n  $0owner;\n}\n");
-    assert!(r
-        .locals
-        .iter()
-        .any(|d| d.symbol.name == "owner" && d.symbol.kind == SymbolKind::Parameter));
+    assert!(
+        r.locals
+            .iter()
+            .any(|d| d.symbol.name == "owner" && d.symbol.kind == SymbolKind::Parameter)
+    );
 }
 
 #[test]

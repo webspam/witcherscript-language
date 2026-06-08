@@ -1,7 +1,7 @@
-use witcherscript_language::builtins::{load_builtins_index, BUILTIN_ARRAY_URI};
+use witcherscript_language::builtins::{BUILTIN_ARRAY_URI, load_builtins_index};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::line_index::SourcePosition;
-use witcherscript_language::resolve::{resolve_definition, SymbolDb, WorkspaceIndex};
+use witcherscript_language::resolve::{SymbolDb, WorkspaceIndex, resolve_definition};
 use witcherscript_language::symbols::SymbolKind;
 
 #[test]

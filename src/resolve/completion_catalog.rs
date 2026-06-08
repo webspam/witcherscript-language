@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::symbols::SymbolKind;
 
-use super::workspace_index::ObservedKey;
 use super::Definition;
+use super::workspace_index::ObservedKey;
 
 #[derive(Debug, Clone, Default)]
 pub struct CompletionCatalog {

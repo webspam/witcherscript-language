@@ -8,7 +8,7 @@ use crate::cst::nav::first_named_child;
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 
-use super::{run_rules_on_document, CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic};
+use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, run_rules_on_document};
 
 pub(crate) struct SuperFieldAccessRule;
 

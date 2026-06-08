@@ -3,9 +3,9 @@ use tree_sitter::Node;
 use crate::cst::ancestors::find_ancestor_of_kind;
 use crate::cst::offsets::nodes_at_offset;
 
-use super::action::{indent_unit_for, layout_ctx, line_indent, splice_subs, Substitution};
-use super::statements::{collect_switch_arms, SwitchArm};
-use super::{child_nodes, FormatOptions};
+use super::action::{Substitution, indent_unit_for, layout_ctx, line_indent, splice_subs};
+use super::statements::{SwitchArm, collect_switch_arms};
+use super::{FormatOptions, child_nodes};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SwitchLayout {

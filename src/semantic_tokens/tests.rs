@@ -1,8 +1,8 @@
 use rstest::rstest;
 
 use super::{
-    collect_semantic_tokens, collect_semantic_tokens_cancellable, decode_tokens, SemanticTokenView,
-    TT_CLASS, TT_ENUM, TT_ENUM_MEMBER, TT_FUNCTION, TT_PARAMETER, TT_PROPERTY, TT_VARIABLE,
+    SemanticTokenView, TT_CLASS, TT_ENUM, TT_ENUM_MEMBER, TT_FUNCTION, TT_PARAMETER, TT_PROPERTY,
+    TT_VARIABLE, collect_semantic_tokens, collect_semantic_tokens_cancellable, decode_tokens,
 };
 use crate::document::parse_document;
 use crate::resolve::{SymbolDb, WorkspaceIndex};

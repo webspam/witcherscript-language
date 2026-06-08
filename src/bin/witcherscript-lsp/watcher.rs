@@ -10,7 +10,7 @@ use lsp_types::{
 use tracing::{debug, trace, warn};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::files::{
-    canonical_uri, is_witcherscript_file, read_text_file, ExcludeFilter,
+    ExcludeFilter, canonical_uri, is_witcherscript_file, read_text_file,
 };
 
 use crate::backend::Backend;

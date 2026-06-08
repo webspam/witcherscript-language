@@ -4,9 +4,9 @@ use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
 use super::super::completion_catalog::{merge_ws_base, merge_ws_base_three};
 use super::super::state_classes::StateBackingClass;
-use super::super::{dedup_by_name, dedup_definitions, MAX_INHERITANCE_DEPTH};
-use super::generics::{generic_lookup_target, substitute_in_definition};
+use super::super::{MAX_INHERITANCE_DEPTH, dedup_by_name, dedup_definitions};
 use super::SymbolDb;
+use super::generics::{generic_lookup_target, substitute_in_definition};
 use crate::resolve::{Definition, NameContext};
 
 const OBJECT_BASE_CLASS: &str = "CObject";

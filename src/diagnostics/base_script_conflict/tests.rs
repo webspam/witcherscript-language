@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rstest::rstest;
 
-use super::{collect_base_script_conflict_diagnostics, KIND};
+use super::{KIND, collect_base_script_conflict_diagnostics};
 use crate::diagnostics::{Severity, WorkspaceDiagnostic};
 use crate::document::parse_document;
 use crate::resolve::WorkspaceIndex;

@@ -1,5 +1,5 @@
-use super::super::symbol_db::SymbolDb;
 use super::super::Definition;
+use super::super::symbol_db::SymbolDb;
 
 pub fn merged_global_completions(db: &SymbolDb) -> Vec<Definition> {
     let mut globals = Vec::with_capacity(

@@ -1,14 +1,14 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::line_index::SourcePosition;
 use witcherscript_language::resolve::{
-    completion_members, statement_completions, SymbolDb, WorkspaceIndex,
+    SymbolDb, WorkspaceIndex, completion_members, statement_completions,
 };
 
 #[path = "common/synth.rs"]
 mod synth;
 
-use synth::{build_workspace, synth_workspace, TARGET_URI};
+use synth::{TARGET_URI, build_workspace, synth_workspace};
 
 fn bench_completion_members(c: &mut Criterion) {
     let (workspace, base, target_doc) = build_workspace();

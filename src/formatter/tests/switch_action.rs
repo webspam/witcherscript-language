@@ -2,9 +2,9 @@ use expect_test::expect;
 use rstest::rstest;
 use tree_sitter::Node;
 
-use crate::document::{parse_document, ParsedDocument};
+use crate::document::{ParsedDocument, parse_document};
 use crate::formatter::{
-    analyze_switch, rewrite_switch_layout, switch_stmt_at, FormatOptions, SwitchLayout,
+    FormatOptions, SwitchLayout, analyze_switch, rewrite_switch_layout, switch_stmt_at,
 };
 
 fn first_switch(node: Node) -> Option<Node> {
@@ -145,8 +145,7 @@ fn expand_leaves_a_nested_switch_untouched() {
 
 #[test]
 fn collapse_keeps_statement_spacing_verbatim() {
-    let src =
-        "function F() {\n    switch (x) {\n        case 0:\n            Do( p,q );\n            break;\n    }\n}\n";
+    let src = "function F() {\n    switch (x) {\n        case 0:\n            Do( p,q );\n            break;\n    }\n}\n";
     let got = apply(src, SwitchLayout::Collapse);
     assert!(
         got.contains("case 0: Do( p,q ); break;"),
