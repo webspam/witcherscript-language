@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use async_lsp::{ErrorCode, ResponseError};
 use lsp_types::{
-    CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, Command,
+    CodeActionParams, CodeActionResponse, CodeActionTriggerKind, CodeLens, CodeLensParams, Command,
     DiagnosticServerCancellationData, DocumentDiagnosticParams, DocumentDiagnosticReport,
     DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentSymbolParams,
     DocumentSymbolResponse, FullDocumentDiagnosticReport, GotoDefinitionParams,
@@ -237,7 +237,10 @@ impl Backend {
         trace!(op = "code_action", uri = %uri, "start");
         let roots = self.workspace_roots.load_full();
         let mut actions = base_script_conflict_code_actions(&params.context.diagnostics, &roots);
-        actions.extend(self.refactor_actions(&uri, params.range.start));
+        // An Automatic trigger is the editor requesting code actions on its own, not the user asking
+        if params.context.trigger_kind != Some(CodeActionTriggerKind::AUTOMATIC) {
+            actions.extend(self.refactor_actions(&uri, params.range.start));
+        }
         trace!(
             op = "code_action",
             uri = %uri,
