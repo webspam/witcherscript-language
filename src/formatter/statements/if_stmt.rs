@@ -57,23 +57,8 @@ impl<'a> Formatter<'a> {
     }
 
     fn if_chain_needs_block(&self, node: Node) -> bool {
-        if let (Some(cond), Some(body)) = (
-            node.child_by_field_name("cond"),
-            node.child_by_field_name("body"),
-        ) {
-            if body.kind() != "func_block" {
-                let indent = self.level * self.indent_unit.len();
-                let line = indent
-                    + IF_OPEN
-                    + self.render_node(cond).len()
-                    + COND_CLOSE
-                    + self.text(body).len();
-                if line > self.line_limit {
-                    return true;
-                }
-            }
-        }
-        self.else_chain_needs_block(node.child_by_field_name("else"))
+        self.if_link_overflows(node, IF_OPEN)
+            || self.else_chain_needs_block(node.child_by_field_name("else"))
     }
 
     fn else_chain_needs_block(&self, else_node: Option<Node>) -> bool {
@@ -82,23 +67,8 @@ impl<'a> Formatter<'a> {
         };
         match eb.kind() {
             "if_stmt" => {
-                if let (Some(ec), Some(eb_body)) = (
-                    eb.child_by_field_name("cond"),
-                    eb.child_by_field_name("body"),
-                ) {
-                    if eb_body.kind() != "func_block" {
-                        let indent = self.level * self.indent_unit.len();
-                        let line = indent
-                            + ELSE_IF_OPEN
-                            + self.render_node(ec).len()
-                            + COND_CLOSE
-                            + self.text(eb_body).len();
-                        if line > self.line_limit {
-                            return true;
-                        }
-                    }
-                }
-                self.else_chain_needs_block(eb.child_by_field_name("else"))
+                self.if_link_overflows(eb, ELSE_IF_OPEN)
+                    || self.else_chain_needs_block(eb.child_by_field_name("else"))
             }
             "func_block" => false,
             _ => {
@@ -106,6 +76,23 @@ impl<'a> Formatter<'a> {
                 indent + ELSE_OPEN + self.text(eb).len() > self.line_limit
             }
         }
+    }
+
+    fn if_link_overflows(&self, node: Node, open: usize) -> bool {
+        let (Some(cond), Some(body)) = (
+            node.child_by_field_name("cond"),
+            node.child_by_field_name("body"),
+        ) else {
+            return false;
+        };
+        // Block bodies never overflow
+        if body.kind() == "func_block" {
+            return false;
+        }
+        let indent = self.level * self.indent_unit.len();
+        let line =
+            indent + open + self.render_node(cond).len() + COND_CLOSE + self.text(body).len();
+        line > self.line_limit
     }
 
     pub(in crate::formatter) fn if_toggle(&self, if_node: Node) -> IfToggle {
