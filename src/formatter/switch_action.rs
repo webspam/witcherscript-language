@@ -27,11 +27,10 @@ pub struct SwitchToggle {
     pub can_expand: bool,
 }
 
-/// The enclosing `switch_stmt` when `byte` sits on a `switch`/`case`/`default` keyword, else `None`.
-pub fn switch_stmt_on_keyword(root: Node, byte: usize) -> Option<Node> {
+/// The enclosing `switch_stmt` when `byte` sits anywhere inside one, else `None`.
+pub fn switch_stmt_at(root: Node, byte: usize) -> Option<Node> {
     nodes_at_offset(root, byte)
         .into_iter()
-        .filter(|n| matches!(n.kind(), "switch" | "case" | "default"))
         .find_map(|n| find_ancestor_of_kind(n, &["switch_stmt"]))
 }
 

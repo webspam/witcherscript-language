@@ -4,7 +4,7 @@ use tree_sitter::Node;
 
 use crate::document::{parse_document, ParsedDocument};
 use crate::formatter::{
-    analyze_switch, format_switch_with_layout, switch_stmt_on_keyword, FormatOptions, SwitchLayout,
+    analyze_switch, format_switch_with_layout, switch_stmt_at, FormatOptions, SwitchLayout,
 };
 
 fn first_switch(node: Node) -> Option<Node> {
@@ -164,14 +164,28 @@ fn rewrite_output_is_stable_under_the_formatter(#[case] src: &str, #[case] layou
 }
 
 #[rstest]
-#[case::switch_kw("switch", true)]
-#[case::case_kw("case", true)]
-#[case::default_kw("default", true)]
-#[case::statement("Foo", false)]
-fn keyword_trigger_finds_the_switch(#[case] needle: &str, #[case] expected: bool) {
+#[case::switch_kw("switch")]
+#[case::case_kw("case")]
+#[case::default_kw("default")]
+#[case::condition("(x)")]
+#[case::statement("Foo")]
+fn cursor_inside_switch_resolves_to_stmt(#[case] needle: &str) {
     let src = "function F() {\n    switch (x) {\n        case 0:\n            Foo();\n            break;\n        default:\n            break;\n    }\n}\n";
     let doc = parse_document(src).expect("should parse");
+    let switch_start = src.find("switch").expect("switch present");
     let byte = src.find(needle).expect("needle present") + 1;
-    let found = switch_stmt_on_keyword(doc.tree.root_node(), byte).is_some();
-    assert_eq!(found, expected, "keyword {needle}");
+    let found = switch_stmt_at(doc.tree.root_node(), byte).expect("cursor is inside a switch");
+    assert_eq!(
+        found.start_byte(),
+        switch_start,
+        "case {needle}: must resolve to the enclosing switch"
+    );
+}
+
+#[test]
+fn cursor_outside_any_switch_is_none() {
+    let src = "function F() {\n    switch (x) {\n        case 0:\n            break;\n    }\n}\n";
+    let doc = parse_document(src).expect("should parse");
+    let byte = src.find("function").expect("needle present") + 1;
+    assert!(switch_stmt_at(doc.tree.root_node(), byte).is_none());
 }

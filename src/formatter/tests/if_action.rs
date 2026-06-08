@@ -3,9 +3,7 @@ use rstest::rstest;
 use tree_sitter::Node;
 
 use crate::document::{parse_document, ParsedDocument};
-use crate::formatter::{
-    analyze_if, format_if_with_layout, if_stmt_on_keyword, FormatOptions, IfLayout,
-};
+use crate::formatter::{analyze_if, format_if_with_layout, if_chain_at, FormatOptions, IfLayout};
 
 fn first_if(node: Node) -> Option<Node> {
     if node.kind() == "if_stmt" {
@@ -162,14 +160,26 @@ fn rewrite_output_is_stable_under_the_formatter(#[case] src: &str, #[case] layou
 }
 
 #[rstest]
-#[case::if_kw("if", true)]
-#[case::else_kw("else", true)]
-#[case::statement("Foo", false)]
-fn keyword_trigger_finds_the_chain(#[case] needle: &str, #[case] expected: bool) {
-    let src =
-        "function F() {\n    if (a) {\n        Foo();\n    }\n    else {\n        Bar();\n    }\n}\n";
+#[case::head_if("if (a)")]
+#[case::else_if("else if")]
+#[case::trailing_else_body("Baz")]
+fn cursor_in_chain_resolves_to_head(#[case] needle: &str) {
+    let src = "function F() {\n    if (a) Foo();\n    else if (b) Bar();\n    else Baz();\n}\n";
     let doc = parse_document(src).expect("should parse");
+    let head = src.find("if (a)").expect("head present");
     let byte = src.find(needle).expect("needle present") + 1;
-    let found = if_stmt_on_keyword(doc.tree.root_node(), byte).is_some();
-    assert_eq!(found, expected, "keyword {needle}");
+    let found = if_chain_at(doc.tree.root_node(), byte).expect("cursor is inside a chain");
+    assert_eq!(
+        found.start_byte(),
+        head,
+        "case {needle}: must climb to the chain head"
+    );
+}
+
+#[test]
+fn cursor_outside_any_chain_is_none() {
+    let src = "function F() {\n    if (a) Foo();\n}\n";
+    let doc = parse_document(src).expect("should parse");
+    let byte = src.find("function").expect("needle present") + 1;
+    assert!(if_chain_at(doc.tree.root_node(), byte).is_none());
 }

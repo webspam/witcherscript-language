@@ -1,7 +1,5 @@
 use lsp_types::CodeActionOrCommand;
-use witcherscript_language::formatter::{
-    analyze_if, format_if_with_layout, if_stmt_on_keyword, IfLayout,
-};
+use witcherscript_language::formatter::{analyze_if, format_if_with_layout, if_chain_at, IfLayout};
 
 use super::{Preference, RefactorContext, Refactoring};
 
@@ -12,7 +10,7 @@ pub(super) struct IfLayoutRefactoring;
 
 impl Refactoring for IfLayoutRefactoring {
     fn actions(&self, ctx: &RefactorContext) -> Vec<CodeActionOrCommand> {
-        let Some(if_node) = if_stmt_on_keyword(ctx.root(), ctx.cursor()) else {
+        let Some(if_node) = if_chain_at(ctx.root(), ctx.cursor()) else {
             return Vec::new();
         };
         let options = ctx.options();

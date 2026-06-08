@@ -161,9 +161,19 @@ const EXPAND: &str = "Expand switch cases onto multiple lines";
     "switch",
     &[COLLAPSE, EXPAND]
 )]
-#[case::off_a_keyword(
+#[case::on_condition(
+    include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
+    "(x)",
+    &[COLLAPSE]
+)]
+#[case::on_statement(
     include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
     "Foo",
+    &[COLLAPSE]
+)]
+#[case::outside_switch(
+    include_str!("../../../../tests/fixtures/formatter/switch_block.ws"),
+    "function",
     &[]
 )]
 fn offers_expected_refactor_actions(
@@ -226,9 +236,14 @@ const IF_EXPAND: &str = "Expand if/else to block bodies";
     "if",
     &[IF_COLLAPSE, IF_EXPAND]
 )]
-#[case::off_a_keyword(
+#[case::on_statement(
     include_str!("../../../../tests/fixtures/formatter/if_block.ws"),
     "Foo",
+    &[IF_COLLAPSE]
+)]
+#[case::outside_chain(
+    include_str!("../../../../tests/fixtures/formatter/if_block.ws"),
+    "function",
     &[]
 )]
 fn offers_expected_if_actions(#[case] src: &str, #[case] needle: &str, #[case] expected: &[&str]) {

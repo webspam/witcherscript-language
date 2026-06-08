@@ -8,9 +8,9 @@ mod signatures;
 mod statements;
 mod switch_action;
 
-pub use if_action::{analyze_if, format_if_with_layout, if_stmt_on_keyword, IfLayout, IfToggle};
+pub use if_action::{analyze_if, format_if_with_layout, if_chain_at, IfLayout, IfToggle};
 pub use switch_action::{
-    analyze_switch, format_switch_with_layout, switch_stmt_on_keyword, SwitchLayout, SwitchToggle,
+    analyze_switch, format_switch_with_layout, switch_stmt_at, SwitchLayout, SwitchToggle,
 };
 
 // One forced layout for the node a code action is rewriting; `None` during ordinary formatting.

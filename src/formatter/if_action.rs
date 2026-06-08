@@ -27,17 +27,16 @@ pub struct IfToggle {
     pub can_expand: bool,
 }
 
-/// Resolves to the outermost link, not the nearest `if_stmt`, so the action rewrites the whole chain.
-pub fn if_stmt_on_keyword(root: Node, byte: usize) -> Option<Node> {
+/// The if/else chain enclosing `byte` (climbed to its leading `if`), or `None`.
+pub fn if_chain_at(root: Node, byte: usize) -> Option<Node> {
     nodes_at_offset(root, byte)
         .into_iter()
-        .filter(|n| matches!(n.kind(), "if" | "else"))
         .find_map(|n| find_ancestor_of_kind(n, &["if_stmt"]))
-        .map(outermost_if_chain)
+        .map(if_chain_head)
 }
 
 // An `else if` is parsed as the outer if's `else` child.
-fn outermost_if_chain(mut node: Node) -> Node {
+fn if_chain_head(mut node: Node) -> Node {
     while let Some(parent) = node.parent() {
         let is_else_link = parent.kind() == "if_stmt"
             && parent.child_by_field_name("else").map(|e| e.id()) == Some(node.id());
