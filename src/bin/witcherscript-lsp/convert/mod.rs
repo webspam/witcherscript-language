@@ -19,7 +19,7 @@ pub(crate) use file_ops::{
 };
 pub(crate) use inlay_hints::inlay_hint;
 pub(crate) use positions::{lsp_range, source_position, source_range};
-pub(crate) use refactor::{infer_indent, refactor_code_actions};
+pub(crate) use refactor::refactor_code_actions;
 pub(crate) use symbols::{document_symbols, hover_markdown};
 
 #[cfg(test)]

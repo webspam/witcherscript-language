@@ -10,8 +10,6 @@ use super::lsp_range;
 mod if_stmt;
 mod switch;
 
-const DEFAULT_TAB_WIDTH: u32 = 4;
-
 // Adding a construct means writing a `Refactoring` impl and listing it here.
 const REFACTORINGS: &[&dyn Refactoring] = &[
     &switch::SwitchLayoutRefactoring,
@@ -42,24 +40,6 @@ pub(crate) fn refactor_code_actions(
         options,
     };
     REFACTORINGS.iter().flat_map(|r| r.actions(&ctx)).collect()
-}
-
-/// Indent style for a rewrite, since code-action requests carry no editor formatting hint. Taken
-/// from the first indented line in the document.
-pub(crate) fn infer_indent(source: &str) -> (bool, u32) {
-    for line in source.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.len() == line.len() {
-            continue;
-        }
-        let indent = &line[..line.len() - trimmed.len()];
-        return if indent.starts_with('\t') {
-            (true, DEFAULT_TAB_WIDTH)
-        } else {
-            (false, indent.len() as u32)
-        };
-    }
-    (false, DEFAULT_TAB_WIDTH)
 }
 
 struct RefactorContext<'a> {
