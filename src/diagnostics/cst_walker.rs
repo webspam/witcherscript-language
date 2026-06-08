@@ -161,8 +161,8 @@ fn is_error_subtree_root(node: Node) -> bool {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn walk<'tree>(
-    node: Node<'tree>,
+fn walk(
+    node: Node<'_>,
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb<'_>,
@@ -218,10 +218,10 @@ pub(crate) struct ParallelRuleShard {
     pub observer: ObservationSet,
 }
 
-pub(crate) fn collect_nodes_with_error_subtree<'tree>(
-    root: Node<'tree>,
+pub(crate) fn collect_nodes_with_error_subtree(
+    root: Node<'_>,
     predicate: impl Fn(&str) -> bool,
-) -> Vec<(Node<'tree>, bool)> {
+) -> Vec<(Node<'_>, bool)> {
     let mut out = Vec::new();
     collect_nodes_walk(root, false, &predicate, &mut out);
     out

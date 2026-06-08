@@ -4,7 +4,7 @@ use super::{Formatter, child_nodes, is_alignable_field, is_bodiless_callable};
 
 const DEFAULT_GAP: &str = "  ";
 
-impl<'a> Formatter<'a> {
+impl Formatter<'_> {
     // ---- Top level ----
 
     pub(super) fn format_script(&mut self, node: Node) {

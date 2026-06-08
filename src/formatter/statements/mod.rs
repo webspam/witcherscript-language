@@ -17,7 +17,7 @@ pub(in crate::formatter) enum BodyLayout {
     ForceBlock,
 }
 
-impl<'a> Formatter<'a> {
+impl Formatter<'_> {
     // ---- Function body ----
 
     pub(super) fn format_func_block(&mut self, node: Node) {

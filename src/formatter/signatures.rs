@@ -2,7 +2,7 @@ use tree_sitter::Node;
 
 use super::{Formatter, named_child_nodes};
 
-impl<'a> Formatter<'a> {
+impl Formatter<'_> {
     pub(super) fn format_func_params(&mut self, func_node: Node) {
         let params = self.child_of_kind(func_node, "func_params");
         if let Some(fp) = params {

@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-pub(crate) fn nodes_at_offset<'a>(root: Node<'a>, byte_offset: usize) -> Vec<Node<'a>> {
+pub(crate) fn nodes_at_offset(root: Node<'_>, byte_offset: usize) -> Vec<Node<'_>> {
     let second = byte_offset.checked_sub(1);
     [Some(byte_offset), second]
         .into_iter()

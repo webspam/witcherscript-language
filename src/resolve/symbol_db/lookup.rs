@@ -13,7 +13,7 @@ const OBJECT_BASE_CLASS: &str = "CObject";
 const STATE_BASE_CLASS: &str = "CScriptableState";
 const OBJECT_ROOT_CHAIN: [&str; 3] = ["CObject", "IScriptable", "ISerializable"];
 
-impl<'a> SymbolDb<'a> {
+impl SymbolDb<'_> {
     pub(crate) fn find_script_global(&self, name: &str) -> Option<Definition> {
         let g = self.script_env?.find(name)?;
         if let Some(class_def) = self.find_top_level(&g.type_name) {

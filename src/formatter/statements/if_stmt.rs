@@ -9,7 +9,7 @@ const ELSE_IF_OPEN: usize = "else if (".len();
 const ELSE_OPEN: usize = "else ".len();
 const COND_CLOSE: usize = ") ".len();
 
-impl<'a> Formatter<'a> {
+impl Formatter<'_> {
     pub(in crate::formatter) fn format_if_stmt(&mut self, node: Node) {
         let layout = if self.if_chain_needs_block(node) {
             BodyLayout::ForceBlock
@@ -94,7 +94,7 @@ impl<'a> Formatter<'a> {
     }
 }
 
-impl<'t> LayoutCtx<'t> {
+impl LayoutCtx<'_> {
     pub(in crate::formatter) fn if_toggle(&self, if_node: Node) -> IfToggle {
         let bodies = chain_bodies(if_node);
         let any_block = bodies.iter().any(|b| b.kind() == "func_block");

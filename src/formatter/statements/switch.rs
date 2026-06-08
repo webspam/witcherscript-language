@@ -83,7 +83,7 @@ pub(super) fn format_switch_stmt(f: &mut Formatter<'_>, node: Node) {
     f.format_switch_stmt_impl(node);
 }
 
-impl<'a> Formatter<'a> {
+impl Formatter<'_> {
     pub(in crate::formatter) fn format_switch_stmt_impl(&mut self, node: Node) {
         let cond = node.child_by_field_name("cond");
         if self.emit_split_keyword_cond("switch (", cond) {
@@ -314,7 +314,7 @@ fn collapsible_arm(arm: &SwitchArm, comments: &[Node]) -> bool {
     !arm_has_interior_comment(arm, comments)
 }
 
-impl<'t> LayoutCtx<'t> {
+impl LayoutCtx<'_> {
     pub(in crate::formatter) fn switch_toggle(&self, switch_node: Node) -> SwitchToggle {
         let Some(block) = child_nodes(switch_node)
             .into_iter()

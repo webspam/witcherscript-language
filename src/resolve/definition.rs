@@ -171,10 +171,10 @@ pub fn resolve_all_definitions(
     all_declarations_of(&primary, db)
 }
 
-fn resolution_ident<'tree>(
-    document: &'tree ParsedDocument,
+fn resolution_ident(
+    document: &ParsedDocument,
     byte_offset: usize,
-) -> Option<Node<'tree>> {
+) -> Option<Node<'_>> {
     let root = document.tree.root_node();
     identifier_at(root, byte_offset)
         .or_else(|| ident_before_trailing_semicolon(document, byte_offset))
@@ -182,10 +182,10 @@ fn resolution_ident<'tree>(
 
 /// Cursor parked past a line-ending `;` resolves nothing, yet the identifier left of it is the obvious intent.
 /// Must only be used with user-initiated requests, e.g. Go To Definition.
-fn ident_before_trailing_semicolon<'tree>(
-    document: &'tree ParsedDocument,
+fn ident_before_trailing_semicolon(
+    document: &ParsedDocument,
     byte_offset: usize,
-) -> Option<Node<'tree>> {
+) -> Option<Node<'_>> {
     let source = document.source.as_bytes();
     let rest_of_line = source[byte_offset..].iter().take_while(|&&b| b != b'\n');
     if rest_of_line.clone().any(|b| !b.is_ascii_whitespace()) {
