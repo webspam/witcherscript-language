@@ -5,6 +5,11 @@ use super::super::{
 };
 use super::BodyLayout;
 
+const IF_OPEN: usize = "if (".len();
+const ELSE_IF_OPEN: usize = "else if (".len();
+const ELSE_OPEN: usize = "else ".len();
+const COND_CLOSE: usize = ") ".len();
+
 impl<'a> Formatter<'a> {
     pub(in crate::formatter) fn format_if_stmt(&mut self, node: Node) {
         let layout = match self.layout_directive.take() {
@@ -58,7 +63,11 @@ impl<'a> Formatter<'a> {
         ) {
             if body.kind() != "func_block" {
                 let indent = self.level * self.indent_unit.len();
-                let line = indent + 4 + self.render_node(cond).len() + 2 + self.text(body).len();
+                let line = indent
+                    + IF_OPEN
+                    + self.render_node(cond).len()
+                    + COND_CLOSE
+                    + self.text(body).len();
                 if line > self.line_limit {
                     return true;
                 }
@@ -79,8 +88,11 @@ impl<'a> Formatter<'a> {
                 ) {
                     if eb_body.kind() != "func_block" {
                         let indent = self.level * self.indent_unit.len();
-                        let line =
-                            indent + 9 + self.render_node(ec).len() + 2 + self.text(eb_body).len();
+                        let line = indent
+                            + ELSE_IF_OPEN
+                            + self.render_node(ec).len()
+                            + COND_CLOSE
+                            + self.text(eb_body).len();
                         if line > self.line_limit {
                             return true;
                         }
@@ -91,7 +103,7 @@ impl<'a> Formatter<'a> {
             "func_block" => false,
             _ => {
                 let indent = self.level * self.indent_unit.len();
-                indent + 5 + self.text(eb).len() > self.line_limit
+                indent + ELSE_OPEN + self.text(eb).len() > self.line_limit
             }
         }
     }
@@ -126,7 +138,7 @@ impl<'a> Formatter<'a> {
         let mut first = true;
         while let Some(n) = cur {
             if n.kind() != "if_stmt" {
-                return indent + 5 + self.inline_body_len(n) <= self.line_limit;
+                return indent + ELSE_OPEN + self.inline_body_len(n) <= self.line_limit;
             }
             let cond = n.child_by_field_name("cond");
             if cond.is_some_and(|c| chain_fully_broken(&split_binary_condition(c, self.source))) {
@@ -137,8 +149,8 @@ impl<'a> Formatter<'a> {
                 .child_by_field_name("body")
                 .map(|b| self.inline_body_len(b))
                 .unwrap_or(0);
-            let prefix = if first { 4 } else { 9 };
-            if indent + prefix + cond_len + 2 + stmt_len > self.line_limit {
+            let prefix = if first { IF_OPEN } else { ELSE_IF_OPEN };
+            if indent + prefix + cond_len + COND_CLOSE + stmt_len > self.line_limit {
                 return false;
             }
             first = false;
