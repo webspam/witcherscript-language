@@ -1,6 +1,6 @@
 use super::make_doc;
 use crate::symbols::{AccessLevel, SymbolKind};
-use crate::test_support::{script_env, TestDb};
+use crate::test_support::{TestDb, script_env};
 
 #[test]
 fn all_top_level_yields_top_level_symbols_across_documents() {

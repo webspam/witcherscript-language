@@ -1,7 +1,7 @@
 use rstest::rstest;
 
 use crate::document::parse_document;
-use crate::resolve::{overridden_top_level, WorkspaceIndex};
+use crate::resolve::{WorkspaceIndex, overridden_top_level};
 use crate::symbols::SymbolKind;
 
 fn base_index(uri: &str, source: &str) -> WorkspaceIndex {

@@ -4,7 +4,7 @@ use lsp_types::{
     DeleteFilesParams, DidChangeWatchedFilesParams, FileDelete, FileRename, RenameFilesParams, Url,
 };
 
-use super::legacy_helpers::{make_backend, write_script, LocalTempDir};
+use super::legacy_helpers::{LocalTempDir, make_backend, write_script};
 use crate::backend::Backend;
 use crate::convert::{deleted_files_to_watched, renamed_files_to_watched};
 

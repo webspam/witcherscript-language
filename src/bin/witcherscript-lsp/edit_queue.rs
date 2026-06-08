@@ -1,12 +1,12 @@
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use lsp_types::Url;
 use tracing::{debug, error, trace};
 use tree_sitter::{Parser, Tree};
 use witcherscript_language::document::{
-    allocate_parse_version, parse_document_with_prior, ParsedDocument,
+    ParsedDocument, allocate_parse_version, parse_document_with_prior,
 };
 use witcherscript_language::line_index::LineIndex;
 

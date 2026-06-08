@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use super::{child_nodes, is_alignable_field, is_bodiless_callable, Formatter};
+use super::{Formatter, child_nodes, is_alignable_field, is_bodiless_callable};
 
 const DEFAULT_GAP: &str = "  ";
 

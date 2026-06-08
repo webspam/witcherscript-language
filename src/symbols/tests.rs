@@ -10,18 +10,24 @@ fn extracts_functions_params_and_locals() {
     );
     let symbols = &t.primary_doc().symbols;
 
-    assert!(symbols
-        .all()
-        .iter()
-        .any(|symbol| symbol.name == "Basic" && symbol.kind == SymbolKind::Function));
-    assert!(symbols
-        .all()
-        .iter()
-        .any(|symbol| symbol.name == "owner" && symbol.kind == SymbolKind::Parameter));
-    assert!(symbols
-        .all()
-        .iter()
-        .any(|symbol| symbol.name == "count" && symbol.kind == SymbolKind::Variable));
+    assert!(
+        symbols
+            .all()
+            .iter()
+            .any(|symbol| symbol.name == "Basic" && symbol.kind == SymbolKind::Function)
+    );
+    assert!(
+        symbols
+            .all()
+            .iter()
+            .any(|symbol| symbol.name == "owner" && symbol.kind == SymbolKind::Parameter)
+    );
+    assert!(
+        symbols
+            .all()
+            .iter()
+            .any(|symbol| symbol.name == "count" && symbol.kind == SymbolKind::Variable)
+    );
 }
 
 #[rstest]

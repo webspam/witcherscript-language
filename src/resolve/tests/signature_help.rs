@@ -1,4 +1,4 @@
-use super::super::{signature_help, SignatureHelpInfo};
+use super::super::{SignatureHelpInfo, signature_help};
 use crate::test_support::TestDb;
 
 fn help(fixture: &str) -> Option<SignatureHelpInfo> {

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::document::parse_document;
 use crate::line_index::SourcePosition;
-use crate::resolve::{find_references, resolve_definition, SymbolDb, WorkspaceIndex};
+use crate::resolve::{SymbolDb, WorkspaceIndex, find_references, resolve_definition};
 
 #[test]
 fn suppressed_base_stays_in_index_but_not_in_find_top_level() {

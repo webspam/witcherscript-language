@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use super::{child_nodes, is_expr_node, Formatter};
+use super::{Formatter, child_nodes, is_expr_node};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CommentPlacement {

@@ -1,7 +1,7 @@
 use crate::test_support::TestDb;
 use crate::types::{Primitive, Type};
 
-use super::{assignability, Assignability, CastKind};
+use super::{Assignability, CastKind, assignability};
 
 const TYPES_SRC: &str = "class Base {} class Derived extends Base {} class Other {} \
      enum Mood { Happy, Sad } struct Vec { var x : float; } \

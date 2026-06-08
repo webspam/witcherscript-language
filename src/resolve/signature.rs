@@ -5,10 +5,10 @@ use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
 
+use super::Definition;
 use super::ast::{nodes_at_offset, significant_node_before_byte};
 use super::definition::resolve_definition_at_byte;
 use super::symbol_db::SymbolDb;
-use super::Definition;
 
 #[derive(Debug, Clone)]
 pub struct SignatureHelpInfo {

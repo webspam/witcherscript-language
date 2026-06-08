@@ -6,12 +6,12 @@ use tree_sitter::Node;
 use crate::cst::grammar::{call_callee, member_access_member};
 use crate::cst::nav::first_named_child;
 use crate::document::ParsedDocument;
-use crate::resolve::{infer_expr_type_memo, SymbolDb};
+use crate::resolve::{SymbolDb, infer_expr_type_memo};
 use crate::symbols::AccessLevel;
 
 use super::{
-    access_is_inside_declaring_class, declaring_class_of, run_rules_on_document, CstRule,
-    CstRuleCtx, Severity, WorkspaceDiagnostic,
+    CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, access_is_inside_declaring_class,
+    declaring_class_of, run_rules_on_document,
 };
 
 pub(crate) struct UnknownMethodRule;

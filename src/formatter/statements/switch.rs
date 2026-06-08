@@ -1,7 +1,7 @@
 use tree_sitter::Node;
 
 use super::super::action::LayoutCtx;
-use super::super::{child_nodes, Formatter, SwitchToggle};
+use super::super::{Formatter, SwitchToggle, child_nodes};
 
 // Spaces between aligned switch-arm columns (label -> statement -> break).
 const SWITCH_CELL_GAP: usize = 2;

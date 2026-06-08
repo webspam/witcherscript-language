@@ -4,11 +4,11 @@ mod switch;
 use tree_sitter::Node;
 
 pub(in crate::formatter) use if_stmt::{block_single_stmt, body_expandable, chain_bodies};
-pub(in crate::formatter) use switch::{collect_switch_arms, SwitchArm};
+pub(in crate::formatter) use switch::{SwitchArm, collect_switch_arms};
 
 use super::{
-    chain_fully_broken, child_nodes, named_child_nodes, split_binary_condition,
-    try_split_call_args, BoolPart, Formatter,
+    BoolPart, Formatter, chain_fully_broken, child_nodes, named_child_nodes,
+    split_binary_condition, try_split_call_args,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

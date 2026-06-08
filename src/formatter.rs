@@ -8,9 +8,9 @@ mod signatures;
 mod statements;
 mod switch_action;
 
-pub use if_action::{analyze_if, if_chain_at, rewrite_if_layout, IfLayout, IfToggle};
+pub use if_action::{IfLayout, IfToggle, analyze_if, if_chain_at, rewrite_if_layout};
 pub use switch_action::{
-    analyze_switch, rewrite_switch_layout, switch_stmt_at, SwitchLayout, SwitchToggle,
+    SwitchLayout, SwitchToggle, analyze_switch, rewrite_switch_layout, switch_stmt_at,
 };
 
 #[cfg(test)]

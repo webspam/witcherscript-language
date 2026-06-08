@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use super::{collect_comments, FormatOptions};
+use super::{FormatOptions, collect_comments};
 
 pub(super) fn node_indent_level(node: Node, options: &FormatOptions) -> usize {
     let col = node.start_position().column;

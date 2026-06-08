@@ -4,7 +4,7 @@ use lsp_types::Url;
 
 use crate::config::{Config, DiagnosticsScope};
 
-use super::legacy_helpers::{make_backend, make_game_dir, write_script, LocalTempDir};
+use super::legacy_helpers::{LocalTempDir, make_backend, make_game_dir, write_script};
 
 #[tokio::test]
 async fn manifest_scripts_root_suppresses_a_base_script() {

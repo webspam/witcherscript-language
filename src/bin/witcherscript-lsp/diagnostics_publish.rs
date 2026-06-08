@@ -1,14 +1,14 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use crate::backend::{build_symbol_db, diagnostics_document_set, Backend};
+use crate::backend::{Backend, build_symbol_db, diagnostics_document_set};
 use crate::config::DiagnosticsScope;
 use crate::convert::{lsp_diagnostics, lsp_workspace_diagnostic};
-use crate::cst_cache::{cst_diagnostics_with_cache, CstDiagnosticsResult, DbFingerprint};
-use crate::file_scope::{classify_file_scope, FileScope};
+use crate::cst_cache::{CstDiagnosticsResult, DbFingerprint, cst_diagnostics_with_cache};
+use crate::file_scope::{FileScope, classify_file_scope};
 use crate::file_scope_status::{FileScopeStatusNotification, FileScopeStatusParams};
 use crate::legacy_status::{LegacyScriptStatusNotification, LegacyScriptStatusParams};
 use lsp_types::{
@@ -19,8 +19,9 @@ use lsp_types::{
 use tracing::{debug, trace};
 
 use witcherscript_language::diagnostics::{
-    collect_base_script_conflict_diagnostics, collect_duplicate_local_diagnostics,
-    collect_duplicate_symbol_diagnostics, collect_shadowing_diagnostics, WorkspaceDiagnostic,
+    WorkspaceDiagnostic, collect_base_script_conflict_diagnostics,
+    collect_duplicate_local_diagnostics, collect_duplicate_symbol_diagnostics,
+    collect_shadowing_diagnostics,
 };
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
@@ -522,7 +523,7 @@ impl Backend {
 fn duplicates_not_explained_by_conflict<'a>(
     duplicates: &'a [WorkspaceDiagnostic],
     conflicts: &[WorkspaceDiagnostic],
-) -> impl Iterator<Item = &'a WorkspaceDiagnostic> {
+) -> impl Iterator<Item = &'a WorkspaceDiagnostic> + use<'a> {
     let conflict_ranges: Vec<SourceRange> = conflicts.iter().map(|c| c.range).collect();
     duplicates
         .iter()

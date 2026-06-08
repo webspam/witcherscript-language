@@ -2,10 +2,10 @@ use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::types::parse_generic_type;
 
+use super::Definition;
 use super::definition::resolve_definition;
 use super::inference::definition_type_name;
 use super::symbol_db::SymbolDb;
-use super::Definition;
 
 pub fn resolve_type_definition(
     uri: &str,

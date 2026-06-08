@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::resolve::WorkspaceIndex;
 use crate::script_env::ScriptEnvironment;
-use crate::symbols::{enclosing_callable_id, AccessLevel, Symbol, SymbolKind};
+use crate::symbols::{AccessLevel, Symbol, SymbolKind, enclosing_callable_id};
 
 use super::{RelatedLocation, Severity, WorkspaceDiagnostic};
 

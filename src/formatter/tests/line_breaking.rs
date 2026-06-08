@@ -1,4 +1,4 @@
-use expect_test::{expect, Expect};
+use expect_test::{Expect, expect};
 use rstest::rstest;
 
 use super::{fmt, fmt_limit};
@@ -7,7 +7,9 @@ use super::{fmt, fmt_limit};
 fn long_line_forces_block_form() {
     let long_cond =
         "veryLongVariableName.IsWayTooLong.SeriouslyNeedsToBeSmaller().DoesntFitWell > 1";
-    let input = format!("function F() {{\n    if (expr) DoThing();\n    else if ({long_cond})\n        return;\n    else\n        Log(\"Something\");\n}}");
+    let input = format!(
+        "function F() {{\n    if (expr) DoThing();\n    else if ({long_cond})\n        return;\n    else\n        Log(\"Something\");\n}}"
+    );
     expect![[r#"
         function F() {
             if (expr) {

@@ -1,8 +1,8 @@
-use super::{cst_diagnostics_with_cache, CstCacheEntry, DbFingerprint};
+use super::{CstCacheEntry, DbFingerprint, cst_diagnostics_with_cache};
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use witcherscript_language::diagnostics::WorkspaceDiagnostic;
-use witcherscript_language::document::{parse_document, ParsedDocument};
+use witcherscript_language::document::{ParsedDocument, parse_document};
 use witcherscript_language::resolve::{SymbolDb, WorkspaceIndex};
 
 fn make_doc(src: &str) -> ParsedDocument {

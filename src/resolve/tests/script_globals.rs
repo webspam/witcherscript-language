@@ -1,6 +1,6 @@
 use super::super::resolve_definition;
 use crate::symbols::SymbolKind;
-use crate::test_support::{script_env, TestDb};
+use crate::test_support::{TestDb, script_env};
 
 #[test]
 fn script_global_resolves_to_ini_when_class_not_loaded() {

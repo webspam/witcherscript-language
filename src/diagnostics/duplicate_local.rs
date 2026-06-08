@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::resolve::WorkspaceIndex;
-use crate::symbols::{enclosing_callable_id, Symbol, SymbolId, SymbolKind};
+use crate::symbols::{Symbol, SymbolId, SymbolKind, enclosing_callable_id};
 
 use super::{RelatedLocation, Severity, WorkspaceDiagnostic};
 

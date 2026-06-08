@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use arc_swap::ArcSwap;
 use async_lsp::router::Router;

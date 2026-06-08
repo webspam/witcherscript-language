@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use expect_test::{expect, Expect};
+use expect_test::{Expect, expect};
 use rstest::rstest;
 
 use super::fmt;

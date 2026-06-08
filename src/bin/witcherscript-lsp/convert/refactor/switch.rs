@@ -1,6 +1,6 @@
 use lsp_types::CodeActionOrCommand;
 use witcherscript_language::formatter::{
-    analyze_switch, rewrite_switch_layout, switch_stmt_at, SwitchLayout,
+    SwitchLayout, analyze_switch, rewrite_switch_layout, switch_stmt_at,
 };
 
 use super::{Preference, RefactorContext, Refactoring};

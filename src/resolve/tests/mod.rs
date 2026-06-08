@@ -28,7 +28,7 @@ mod script_globals;
 mod signature_help;
 mod state_classes;
 
-use crate::document::{parse_document, ParsedDocument};
+use crate::document::{ParsedDocument, parse_document};
 
 pub(super) fn make_doc(source: &str) -> ParsedDocument {
     parse_document(source).expect("parse should succeed")

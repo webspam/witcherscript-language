@@ -58,7 +58,7 @@ fn empty_annotation_parens_parse_shape() {
 )]
 #[case::unknown_annotation(
     "class CPlayer {}\nstruct SData {}\nenum EDir { North = 0 }\n@someUnknownAnnotation($0CPlayer)\n",
-    false,
+    false
 )]
 fn annotation_arg_completions_offers_classes(#[case] fixture: &str, #[case] should_fire: bool) {
     let t = TestDb::new(fixture);

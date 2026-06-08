@@ -5,10 +5,10 @@ use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::{AccessLevel, SymbolKind};
 
+use super::super::Definition;
 use super::super::ast::{nodes_at_offset, significant_node_before_byte};
 use super::super::inference::{enclosing_type_context, infer_expr_type};
 use super::super::symbol_db::SymbolDb;
-use super::super::Definition;
 
 pub fn new_type_completions(
     uri: &str,

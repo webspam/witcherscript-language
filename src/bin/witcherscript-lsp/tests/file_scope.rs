@@ -5,7 +5,7 @@ use lsp_types::Url;
 use rstest::rstest;
 use witcherscript_language::files::canonical_uri;
 
-use crate::file_scope::{classify_file_scope, FileScope};
+use crate::file_scope::{FileScope, classify_file_scope};
 use crate::file_scope_status::FileScopeStatusParams;
 
 fn dir(rel: &str) -> PathBuf {

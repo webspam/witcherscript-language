@@ -7,7 +7,7 @@ use serde_json::Value;
 use tracing::{info, trace, warn};
 
 use crate::backend::Backend;
-use crate::logging::{level_from_str, level_to_u8, DEFAULT_LOG_LEVEL};
+use crate::logging::{DEFAULT_LOG_LEVEL, level_from_str, level_to_u8};
 use witcherscript_language::formatter::AnnotationPlacement;
 
 fn parse_path_array(value: Option<Value>) -> Vec<PathBuf> {

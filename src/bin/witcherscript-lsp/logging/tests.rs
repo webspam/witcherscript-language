@@ -19,9 +19,11 @@ fn utc_timestamp_has_millisecond_granularity() {
     assert!(millis.chars().all(|c| c.is_ascii_digit()));
     let parts: Vec<&str> = time.split(':').collect();
     assert_eq!(parts.len(), 3);
-    assert!(parts
-        .iter()
-        .all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_digit())));
+    assert!(
+        parts
+            .iter()
+            .all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_digit()))
+    );
 }
 
 #[test]

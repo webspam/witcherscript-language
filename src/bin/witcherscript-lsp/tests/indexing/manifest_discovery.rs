@@ -1,4 +1,4 @@
-use super::legacy_helpers::{make_backend, LocalTempDir};
+use super::legacy_helpers::{LocalTempDir, make_backend};
 
 fn write_manifest(temp: &std::path::Path, rel_dir: &str, scripts_subdir: &str) {
     let dir = temp.join(rel_dir);
@@ -67,10 +67,12 @@ fn refresh_honors_files_exclude() {
         1,
         "expected only the kept manifest, got {dirs:?}"
     );
-    assert!(dirs[0]
-        .to_string_lossy()
-        .replace('\\', "/")
-        .contains("/keep/"));
+    assert!(
+        dirs[0]
+            .to_string_lossy()
+            .replace('\\', "/")
+            .contains("/keep/")
+    );
 }
 
 #[test]

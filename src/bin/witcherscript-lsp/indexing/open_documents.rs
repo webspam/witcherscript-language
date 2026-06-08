@@ -7,12 +7,12 @@ use tracing::{debug, error, trace, warn};
 use tree_sitter::{Parser, Tree};
 use witcherscript_language::document::{parse_document, parse_document_with_prior};
 use witcherscript_language::files::{canonical_uri, read_text_file};
-use witcherscript_language::resolve::{resolve_definition, Definition, ObservedKey};
+use witcherscript_language::resolve::{Definition, ObservedKey, resolve_definition};
 
 use crate::backend::Backend;
 use crate::compilation::CompilationBuilder;
 use crate::convert::source_position;
-use crate::file_scope::{classify_file_scope, FileScope};
+use crate::file_scope::{FileScope, classify_file_scope};
 
 use super::helpers::{index_open_document, reindex_into, remove_document_all_spellings};
 

@@ -19,15 +19,15 @@ use crate::config::DiagnosticsScope;
 use tracing::{trace, warn};
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::files::canonical_uri;
-use witcherscript_language::formatter::{format_document, FormatOptions};
+use witcherscript_language::formatter::{FormatOptions, format_document};
 use witcherscript_language::resolve::{
-    inlay_hints, overridden_top_level, resolve_all_definitions, resolve_definition,
-    resolve_type_definition, signature_help, OverriddenSymbol,
+    OverriddenSymbol, inlay_hints, overridden_top_level, resolve_all_definitions,
+    resolve_definition, resolve_type_definition, signature_help,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens_cancellable;
 use witcherscript_language::symbols::{Symbol, SymbolKind};
 
-use crate::backend::{diagnostics_document_for, Backend};
+use crate::backend::{Backend, diagnostics_document_for};
 use crate::convert::{
     base_script_conflict_code_actions, document_symbols, hover_markdown, inlay_hint, lsp_range,
     refactor_code_actions, signature_help_response, source_position, source_range,

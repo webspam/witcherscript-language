@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
-use async_lsp::router::Router;
 use async_lsp::ClientSocket;
+use async_lsp::router::Router;
 use lsp_types::{
     DidOpenTextDocumentParams, InlayHintParams, Position, Range, TextDocumentIdentifier,
     TextDocumentItem, Url, WorkDoneProgressParams,

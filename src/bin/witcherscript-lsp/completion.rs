@@ -8,12 +8,12 @@ use lsp_types::{
 use tracing::trace;
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::resolve::{
-    annotation_arg_completions, annotation_name_completions, class_body_keyword_completions,
-    class_header_keyword_completions, completion_members, default_or_hint_member_completions,
-    expression_completions, extends_completions, new_lifetime_completions, new_type_completions,
-    override_completions, position_in_comment, script_body_completions, state_owner_completions,
-    statement_completions, type_completions_arc, Definition, OverrideBody, SymbolDb,
-    BUILTIN_TYPE_COMPLETIONS,
+    BUILTIN_TYPE_COMPLETIONS, Definition, OverrideBody, SymbolDb, annotation_arg_completions,
+    annotation_name_completions, class_body_keyword_completions, class_header_keyword_completions,
+    completion_members, default_or_hint_member_completions, expression_completions,
+    extends_completions, new_lifetime_completions, new_type_completions, override_completions,
+    position_in_comment, script_body_completions, state_owner_completions, statement_completions,
+    type_completions_arc,
 };
 use witcherscript_language::symbols::SymbolKind;
 

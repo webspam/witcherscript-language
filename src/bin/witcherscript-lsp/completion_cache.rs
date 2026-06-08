@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use witcherscript_language::resolve::{
-    merged_global_completions, Definition, SymbolDb, WorkspaceIndex,
+    Definition, SymbolDb, WorkspaceIndex, merged_global_completions,
 };
 use witcherscript_language::script_env::ScriptEnvironment;
 

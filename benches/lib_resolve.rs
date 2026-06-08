@@ -1,12 +1,12 @@
-use criterion::{criterion_group, criterion_main, Criterion};
-use witcherscript_language::document::{parse_document, ParsedDocument};
+use criterion::{Criterion, criterion_group, criterion_main};
+use witcherscript_language::document::{ParsedDocument, parse_document};
 use witcherscript_language::line_index::SourcePosition;
-use witcherscript_language::resolve::{find_references, resolve_definition, SymbolDb};
+use witcherscript_language::resolve::{SymbolDb, find_references, resolve_definition};
 
 #[path = "common/synth.rs"]
 mod synth;
 
-use synth::{build_workspace, TARGET_URI};
+use synth::{TARGET_URI, build_workspace};
 
 fn bench_resolve(c: &mut Criterion) {
     let (workspace, base, target_doc) = build_workspace();

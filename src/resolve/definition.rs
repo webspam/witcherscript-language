@@ -14,7 +14,7 @@ use super::inference::{
 };
 use super::name_context::classify_ident_context;
 use super::symbol_db::SymbolDb;
-use super::{annotation_target_class, dedup_definitions, Definition};
+use super::{Definition, annotation_target_class, dedup_definitions};
 
 pub fn resolve_definition(
     uri: &str,

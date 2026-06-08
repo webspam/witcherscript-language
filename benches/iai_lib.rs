@@ -1,17 +1,17 @@
 use std::hint::black_box;
 
 use iai_callgrind::{library_benchmark, library_benchmark_group, main};
-use witcherscript_language::document::{parse_document, ParsedDocument};
+use witcherscript_language::document::{ParsedDocument, parse_document};
 use witcherscript_language::line_index::SourcePosition;
 use witcherscript_language::resolve::{
-    completion_members, find_references, resolve_definition, statement_completions, Definition,
-    SymbolDb, WorkspaceIndex,
+    Definition, SymbolDb, WorkspaceIndex, completion_members, find_references, resolve_definition,
+    statement_completions,
 };
 
 #[path = "common/synth.rs"]
 mod synth;
 
-use synth::{build_workspace, WorkspaceFixture, TARGET_URI};
+use synth::{TARGET_URI, WorkspaceFixture, build_workspace};
 
 type FindRefsFixture = (
     WorkspaceIndex,

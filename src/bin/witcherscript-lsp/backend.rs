@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::ControlFlow;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use arc_swap::ArcSwap;
 use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
@@ -21,7 +21,7 @@ use lsp_types::{
     WorkspaceDiagnosticReportResult, WorkspaceEdit,
 };
 use parking_lot::Mutex;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tracing::{debug, trace};
 
 use witcherscript_language::builtins::{builtin_source, load_builtins_index};
@@ -36,7 +36,7 @@ use crate::compilation::{Compilation, CompilationBuilder};
 use crate::completion_cache::MergedCompletionCache;
 use crate::config::Config;
 use crate::edit_queue::PendingEdit;
-use crate::file_scope::{classify_file_scope, FileScope};
+use crate::file_scope::{FileScope, classify_file_scope};
 use crate::file_scope_status::FileScopeStatusParams;
 use crate::legacy_status::LegacyScriptStatusParams;
 

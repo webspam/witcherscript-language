@@ -1,4 +1,4 @@
-use super::{apply_content_change, LineIndex};
+use super::{LineIndex, apply_content_change};
 use crate::line_index::{SourcePosition, SourceRange};
 
 fn pos(line: u32, character: u32) -> SourcePosition {

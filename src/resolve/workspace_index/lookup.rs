@@ -1,7 +1,7 @@
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
-use super::super::state_classes::StateBackingClass;
 use super::super::NameContext;
+use super::super::state_classes::StateBackingClass;
 use super::{Definition, WorkspaceIndex};
 
 impl WorkspaceIndex {

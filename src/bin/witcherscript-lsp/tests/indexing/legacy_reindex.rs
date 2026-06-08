@@ -5,7 +5,7 @@ use lsp_types::{DidCloseTextDocumentParams, TextDocumentIdentifier, Url};
 use witcherscript_language::files::canonical_uri;
 
 use super::legacy_helpers::{
-    indexed_legacy_override, make_backend, make_game_dir, open_params, write_script, LocalTempDir,
+    LocalTempDir, indexed_legacy_override, make_backend, make_game_dir, open_params, write_script,
 };
 
 #[tokio::test]

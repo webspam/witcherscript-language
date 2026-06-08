@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use witcherscript_language::document::parse_document;
 use witcherscript_language::line_index::SourcePosition;
 use witcherscript_language::resolve::{
-    find_references, resolve_definition, SymbolDb, WorkspaceIndex,
+    SymbolDb, WorkspaceIndex, find_references, resolve_definition,
 };
 use witcherscript_language::symbols::AccessLevel;
 use witcherscript_language::test_support::TestDb;
@@ -92,9 +92,11 @@ fn rename_does_not_edit_base_scripts() {
     assert!(refs.iter().any(|(uri, _)| uri == "file:///base/player.ws"));
 
     let changes = rename_changes(&refs, "IsCiriRenamed", &base_docs);
-    assert!(changes
-        .keys()
-        .all(|url| url.as_str() != "file:///base/player.ws"));
+    assert!(
+        changes
+            .keys()
+            .all(|url| url.as_str() != "file:///base/player.ws")
+    );
     assert!(!changes.is_empty());
 }
 
@@ -102,7 +104,7 @@ fn rename_does_not_edit_base_scripts() {
 #[case::plain_params(
     "class CPlayer {\n  public function CanParry(damage : int, attacker : CObject) : bool {}\n}\n",
     "CanParry",
-    "CanParry(damage : int, attacker : CObject) {\n\t$0\n\n\treturn wrappedMethod(damage, attacker);\n}",
+    "CanParry(damage : int, attacker : CObject) {\n\t$0\n\n\treturn wrappedMethod(damage, attacker);\n}"
 )]
 #[case::optional_and_out_params(
     "class CPlayer {\n  public function Foo(a : int, optional b : float, out c : string) {}\n}\n",

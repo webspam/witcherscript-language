@@ -1,5 +1,5 @@
-use super::super::{override_completions, OverrideBody, OverrideCompletion};
-use crate::test_support::{def_names, TestDb};
+use super::super::{OverrideBody, OverrideCompletion, override_completions};
+use crate::test_support::{TestDb, def_names};
 
 fn run(fixture: &str) -> Option<OverrideCompletion> {
     let t = TestDb::new(fixture);

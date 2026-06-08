@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use super::workspace_index::ObservedKey;
 use super::ObservationSet;
+use super::workspace_index::ObservedKey;
 
 #[derive(Debug, Clone, Default)]
 pub struct SubscriptionRegistry {

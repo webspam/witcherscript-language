@@ -1,7 +1,7 @@
 use rstest::rstest;
 
 use super::super::completion::{new_lifetime_completions, new_type_completions};
-use crate::test_support::{def_names, TestDb};
+use crate::test_support::{TestDb, def_names};
 
 // `new |` class slot. When the expected type is known, narrow to that type and
 // its subclasses; otherwise (no LHS, unknown LHS, or a universal base like

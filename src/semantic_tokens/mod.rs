@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
-use crate::resolve::{classify_definition_at_ident, SymbolDb};
+use crate::resolve::{SymbolDb, classify_definition_at_ident};
 use crate::symbols::{SymbolId, SymbolKind};
 
 pub const TOKEN_TYPES: &[&str] = &[

@@ -4,9 +4,9 @@ use crate::cst::ancestors::node_and_ancestors;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 
+use super::super::MAX_INHERITANCE_DEPTH;
 use super::super::ast::nodes_at_offset;
 use super::super::symbol_db::SymbolDb;
-use super::super::MAX_INHERITANCE_DEPTH;
 
 pub fn class_header_keyword_completions(
     document: &ParsedDocument,

@@ -2,8 +2,8 @@ use expect_test::expect;
 use rstest::rstest;
 use tree_sitter::Node;
 
-use crate::document::{parse_document, ParsedDocument};
-use crate::formatter::{analyze_if, if_chain_at, rewrite_if_layout, FormatOptions, IfLayout};
+use crate::document::{ParsedDocument, parse_document};
+use crate::formatter::{FormatOptions, IfLayout, analyze_if, if_chain_at, rewrite_if_layout};
 
 fn first_if(node: Node) -> Option<Node> {
     if node.kind() == "if_stmt" {

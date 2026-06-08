@@ -4,11 +4,11 @@ use crate::document::ParsedDocument;
 use crate::line_index::SourceRange;
 use crate::symbols::{AccessLevel, SymbolKind};
 
+use super::Definition;
 use super::ast::identifier_at;
 use super::definition::{all_declarations_of, definition_key, resolve_definition};
 use super::inference::{resolve_local_or_parameter, resolve_name};
 use super::symbol_db::SymbolDb;
-use super::Definition;
 
 enum SearchScope {
     AllDocuments,
