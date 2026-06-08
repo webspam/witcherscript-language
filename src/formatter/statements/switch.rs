@@ -288,34 +288,33 @@ fn arm_has_interior_comment(arm: &SwitchArm, comments: &[Node]) -> bool {
         .any(|c| (start_row..=end_row).contains(&c.start_position().row))
 }
 
-impl<'t> LayoutCtx<'t> {
-    // Like arm_structurally_inline but without requiring the statements to already share the
-    // label's row: the test for whether the arm *can* be joined onto one line.
-    fn collapsible_arm(&self, arm: &SwitchArm) -> bool {
-        let Some(last_label) = arm.labels.last() else {
-            return false;
-        };
-        if last_label.start_position().row != last_label.end_position().row {
-            return false;
-        }
-        let each_single_line = arm
-            .stmts
-            .iter()
-            .all(|s| s.start_position().row == s.end_position().row);
-        if !each_single_line {
-            return false;
-        }
-        let non_break = arm
-            .stmts
-            .iter()
-            .filter(|s| s.kind() != "break_stmt")
-            .count();
-        if non_break > 1 {
-            return false;
-        }
-        !arm_has_interior_comment(arm, &self.comments)
+// Like arm_structurally_inline, but the statements need not already share the label's row.
+fn collapsible_arm(arm: &SwitchArm, comments: &[Node]) -> bool {
+    let Some(last_label) = arm.labels.last() else {
+        return false;
+    };
+    if last_label.start_position().row != last_label.end_position().row {
+        return false;
     }
+    let each_single_line = arm
+        .stmts
+        .iter()
+        .all(|s| s.start_position().row == s.end_position().row);
+    if !each_single_line {
+        return false;
+    }
+    let non_break = arm
+        .stmts
+        .iter()
+        .filter(|s| s.kind() != "break_stmt")
+        .count();
+    if non_break > 1 {
+        return false;
+    }
+    !arm_has_interior_comment(arm, comments)
+}
 
+impl<'t> LayoutCtx<'t> {
     pub(in crate::formatter) fn switch_toggle(&self, switch_node: Node) -> SwitchToggle {
         let Some(block) = child_nodes(switch_node)
             .into_iter()
@@ -335,7 +334,7 @@ impl<'t> LayoutCtx<'t> {
         let any_block = stmt_arms
             .iter()
             .any(|a| !arm_structurally_inline(a, &self.comments));
-        let all_collapsible = stmt_arms.iter().all(|a| self.collapsible_arm(a));
+        let all_collapsible = stmt_arms.iter().all(|a| collapsible_arm(a, &self.comments));
         let width_ok = all_collapsible && self.switch_collapse_fits(&stmt_arms);
         SwitchToggle {
             can_collapse: all_collapsible && width_ok && any_block,
