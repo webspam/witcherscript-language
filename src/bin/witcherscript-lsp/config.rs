@@ -50,6 +50,9 @@ pub(crate) struct Config {
     pub(crate) formatter_align_member_colons: bool,
     pub(crate) formatter_annotation_placement: AnnotationPlacement,
     pub(crate) formatter_default_placement: AnnotationPlacement,
+    // Editor indent settings, used by code actions: their LSP request carries no FormattingOptions.
+    pub(crate) editor_tab_size: u32,
+    pub(crate) editor_insert_spaces: bool,
     pub(crate) code_lens_overridden_symbols: bool,
     pub(crate) code_lens_references: bool,
     pub(crate) inlay_hints: bool,
@@ -73,6 +76,8 @@ impl Default for Config {
             formatter_align_member_colons: false,
             formatter_annotation_placement: AnnotationPlacement::Preserve,
             formatter_default_placement: AnnotationPlacement::Preserve,
+            editor_tab_size: 4,
+            editor_insert_spaces: true,
             code_lens_overridden_symbols: true,
             code_lens_references: false,
             inlay_hints: true,
@@ -174,6 +179,14 @@ impl Backend {
             ConfigurationItem {
                 scope_uri: None,
                 section: Some("witcherscript.inlayHints".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("editor.tabSize".to_string()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("editor.insertSpaces".to_string()),
             },
         ];
         let Ok(values) = self
@@ -281,6 +294,17 @@ impl Backend {
             _ => false,
         };
         next_cfg.inlay_hints = match iter.next() {
+            Some(Value::Bool(b)) => b,
+            _ => true,
+        };
+        if let Some(Value::Number(n)) = iter.next() {
+            if let Some(size) = n.as_u64() {
+                if size > 0 {
+                    next_cfg.editor_tab_size = size as u32;
+                }
+            }
+        }
+        next_cfg.editor_insert_spaces = match iter.next() {
             Some(Value::Bool(b)) => b,
             _ => true,
         };

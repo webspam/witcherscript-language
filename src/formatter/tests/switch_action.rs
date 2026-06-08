@@ -4,7 +4,7 @@ use tree_sitter::Node;
 
 use crate::document::{parse_document, ParsedDocument};
 use crate::formatter::{
-    analyze_switch, format_switch_with_layout, switch_stmt_on_keyword, FormatOptions, SwitchLayout,
+    analyze_switch, rewrite_switch_layout, switch_stmt_at, FormatOptions, SwitchLayout,
 };
 
 fn first_switch(node: Node) -> Option<Node> {
@@ -27,7 +27,7 @@ fn apply(src: &str, layout: SwitchLayout) -> String {
 fn apply_with(src: &str, layout: SwitchLayout, options: FormatOptions) -> String {
     let doc = parse_document(src).expect("should parse");
     let switch_node = switch_of(&doc);
-    let new_text = format_switch_with_layout(switch_node, &doc.source, options, layout);
+    let new_text = rewrite_switch_layout(switch_node, &doc.source, options, layout);
     let mut out = doc.source.clone();
     out.replace_range(switch_node.start_byte()..switch_node.end_byte(), &new_text);
     out
@@ -65,7 +65,7 @@ fn analyze_reports_legal_directions(
     #[case] can_expand: bool,
 ) {
     let doc = parse_document(src).expect("should parse");
-    let toggle = analyze_switch(switch_of(&doc), &doc.source, FormatOptions::default());
+    let toggle = analyze_switch(switch_of(&doc), FormatOptions::default());
     assert_eq!(toggle.can_collapse, can_collapse, "can_collapse mismatch");
     assert_eq!(toggle.can_expand, can_expand, "can_expand mismatch");
 }
@@ -78,7 +78,7 @@ fn collapse_past_line_limit_is_not_offered() {
         ..Default::default()
     };
     let doc = parse_document(src).expect("should parse");
-    let toggle = analyze_switch(switch_of(&doc), &doc.source, options);
+    let toggle = analyze_switch(switch_of(&doc), options);
     assert!(
         !toggle.can_collapse,
         "over-limit collapse must not be offered"
@@ -90,8 +90,8 @@ fn collapse_joins_each_case_onto_its_label() {
     expect![[r#"
         function F() {
             switch (x) {
-                case 0:  Foo();  break;
-                case 1:  Bar();  break;
+                case 0: Foo(); break;
+                case 1: Bar(); break;
             }
         }
     "#]]
@@ -131,7 +131,7 @@ fn expand_leaves_a_nested_switch_untouched() {
                     break;
                 case 1:
                     switch (y) {
-                        case 2: G(); break;
+                        case 2:  G();  break;
                     }
                     break;
             }
@@ -143,35 +143,50 @@ fn expand_leaves_a_nested_switch_untouched() {
     ));
 }
 
-#[rstest]
-#[case::collapse(
-    include_str!("../../../tests/fixtures/formatter/switch_block.ws"),
-    SwitchLayout::Collapse
-)]
-#[case::expand(
-    include_str!("../../../tests/fixtures/formatter/switch_inline.ws"),
-    SwitchLayout::Expand
-)]
-fn rewrite_output_is_stable_under_the_formatter(#[case] src: &str, #[case] layout: SwitchLayout) {
-    let rewritten = apply(src, layout);
-    let doc = parse_document(&rewritten).expect("should parse");
-    let reformatted = crate::formatter::format_document(
-        doc.tree.root_node(),
-        &doc.source,
-        FormatOptions::default(),
+#[test]
+fn collapse_keeps_statement_spacing_verbatim() {
+    let src =
+        "function F() {\n    switch (x) {\n        case 0:\n            Do( p,q );\n            break;\n    }\n}\n";
+    let got = apply(src, SwitchLayout::Collapse);
+    assert!(
+        got.contains("case 0: Do( p,q ); break;"),
+        "collapse must join statements verbatim, not reformat them; got:\n{got}"
     );
-    assert_eq!(reformatted, rewritten, "rewrite must survive a reformat");
+}
+
+#[test]
+fn expand_keeps_statement_spacing_verbatim() {
+    let src = "function F() {\n    switch (x) {\n        case 0:  Do( p,q );  break;\n    }\n}\n";
+    let got = apply(src, SwitchLayout::Expand);
+    assert!(
+        got.contains("Do( p,q );"),
+        "expand must split statements verbatim, not reformat them; got:\n{got}"
+    );
 }
 
 #[rstest]
-#[case::switch_kw("switch", true)]
-#[case::case_kw("case", true)]
-#[case::default_kw("default", true)]
-#[case::statement("Foo", false)]
-fn keyword_trigger_finds_the_switch(#[case] needle: &str, #[case] expected: bool) {
+#[case::switch_kw("switch")]
+#[case::case_kw("case")]
+#[case::default_kw("default")]
+#[case::condition("(x)")]
+#[case::statement("Foo")]
+fn cursor_inside_switch_resolves_to_stmt(#[case] needle: &str) {
     let src = "function F() {\n    switch (x) {\n        case 0:\n            Foo();\n            break;\n        default:\n            break;\n    }\n}\n";
     let doc = parse_document(src).expect("should parse");
+    let switch_start = src.find("switch").expect("switch present");
     let byte = src.find(needle).expect("needle present") + 1;
-    let found = switch_stmt_on_keyword(doc.tree.root_node(), byte).is_some();
-    assert_eq!(found, expected, "keyword {needle}");
+    let found = switch_stmt_at(doc.tree.root_node(), byte).expect("cursor is inside a switch");
+    assert_eq!(
+        found.start_byte(),
+        switch_start,
+        "case {needle}: must resolve to the enclosing switch"
+    );
+}
+
+#[test]
+fn cursor_outside_any_switch_is_none() {
+    let src = "function F() {\n    switch (x) {\n        case 0:\n            break;\n    }\n}\n";
+    let doc = parse_document(src).expect("should parse");
+    let byte = src.find("function").expect("needle present") + 1;
+    assert!(switch_stmt_at(doc.tree.root_node(), byte).is_none());
 }

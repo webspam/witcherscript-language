@@ -1,11 +1,21 @@
+mod if_stmt;
 mod switch;
 
 use tree_sitter::Node;
+
+pub(in crate::formatter) use if_stmt::{block_single_stmt, body_expandable, chain_bodies};
+pub(in crate::formatter) use switch::{collect_switch_arms, SwitchArm};
 
 use super::{
     chain_fully_broken, child_nodes, named_child_nodes, split_binary_condition,
     try_split_call_args, BoolPart, Formatter,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::formatter) enum BodyLayout {
+    Auto,
+    ForceBlock,
+}
 
 impl<'a> Formatter<'a> {
     // ---- Function body ----
@@ -128,35 +138,6 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    pub(super) fn format_if_stmt(&mut self, node: Node) {
-        let force_block = self.if_chain_needs_block(node);
-        self.format_if_stmt_emit(node, force_block);
-    }
-
-    fn format_if_stmt_emit(&mut self, node: Node, force_block: bool) {
-        let cond = node.child_by_field_name("cond");
-        let body = node.child_by_field_name("body");
-        let else_body = node.child_by_field_name("else");
-
-        if self.emit_split_keyword_cond("if (", cond) {
-            self.emit_stmt_body(body, true);
-        } else {
-            self.emit_indent();
-            self.emit("if (");
-            if let Some(c) = cond {
-                self.format_node(c);
-            }
-            self.emit(")");
-            self.emit_stmt_body(body, force_block);
-        }
-
-        if let Some(eb) = else_body {
-            self.emit_indent();
-            self.emit("else");
-            self.emit_else_clause(eb, force_block);
-        }
-    }
-
     fn emit_split_keyword_cond(&mut self, keyword_open: &str, cond: Option<Node>) -> bool {
         let Some(c) = cond else {
             return false;
@@ -223,8 +204,8 @@ impl<'a> Formatter<'a> {
         true
     }
 
-    fn emit_stmt_body(&mut self, body: Option<Node>, force_block: bool) {
-        self.emit_stmt_body_trailing(body, force_block, None);
+    fn emit_stmt_body(&mut self, body: Option<Node>, layout: BodyLayout) {
+        self.emit_stmt_body_trailing(body, layout, None);
     }
 
     // `trailing` is `Some(n)` when a continuation (do-while's `while (...)`) follows on the
@@ -232,7 +213,7 @@ impl<'a> Formatter<'a> {
     fn emit_stmt_body_trailing(
         &mut self,
         body: Option<Node>,
-        force_block: bool,
+        layout: BodyLayout,
         trailing: Option<usize>,
     ) {
         let mid_line = trailing.is_some();
@@ -253,7 +234,7 @@ impl<'a> Formatter<'a> {
             return;
         }
         let line_len = self.current_line_len() + 1 + self.text(body).len() + trailing.unwrap_or(0);
-        if force_block || line_len > self.line_limit {
+        if layout == BodyLayout::ForceBlock || line_len > self.line_limit {
             self.emit(" {\n");
             self.level += 1;
             self.format_stmt(body);
@@ -276,62 +257,6 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    fn emit_else_clause(&mut self, node: Node, force_block: bool) {
-        // An `else if` is another if-chain link, not a body slot; recurse to carry force_block.
-        if node.kind() == "if_stmt" {
-            self.emit(" ");
-            self.suppress_next_indent = true;
-            self.format_if_stmt_emit(node, force_block);
-            return;
-        }
-        self.emit_stmt_body(Some(node), force_block);
-    }
-
-    fn if_chain_needs_block(&self, node: Node) -> bool {
-        if let (Some(cond), Some(body)) = (
-            node.child_by_field_name("cond"),
-            node.child_by_field_name("body"),
-        ) {
-            if body.kind() != "func_block" {
-                let indent = self.level * self.indent_unit.len();
-                let line = indent + 4 + self.render_node(cond).len() + 2 + self.text(body).len();
-                if line > self.line_limit {
-                    return true;
-                }
-            }
-        }
-        self.else_chain_needs_block(node.child_by_field_name("else"))
-    }
-
-    fn else_chain_needs_block(&self, else_node: Option<Node>) -> bool {
-        let Some(eb) = else_node else {
-            return false;
-        };
-        match eb.kind() {
-            "if_stmt" => {
-                if let (Some(ec), Some(eb_body)) = (
-                    eb.child_by_field_name("cond"),
-                    eb.child_by_field_name("body"),
-                ) {
-                    if eb_body.kind() != "func_block" {
-                        let indent = self.level * self.indent_unit.len();
-                        let line =
-                            indent + 9 + self.render_node(ec).len() + 2 + self.text(eb_body).len();
-                        if line > self.line_limit {
-                            return true;
-                        }
-                    }
-                }
-                self.else_chain_needs_block(eb.child_by_field_name("else"))
-            }
-            "func_block" => false,
-            _ => {
-                let indent = self.level * self.indent_unit.len();
-                indent + 5 + self.text(eb).len() > self.line_limit
-            }
-        }
-    }
-
     pub(super) fn format_loop_stmt(&mut self, node: Node) {
         match node.kind() {
             "while_stmt" => {
@@ -345,7 +270,12 @@ impl<'a> Formatter<'a> {
                     }
                     self.emit(")");
                 }
-                self.emit_stmt_body(node.child_by_field_name("body"), split);
+                let body_layout = if split {
+                    BodyLayout::ForceBlock
+                } else {
+                    BodyLayout::Auto
+                };
+                self.emit_stmt_body(node.child_by_field_name("body"), body_layout);
             }
             "do_while_stmt" => {
                 self.emit_indent();
@@ -355,7 +285,7 @@ impl<'a> Formatter<'a> {
                 let trailing = " while (".len() + cond_len + ")".len();
                 self.emit_stmt_body_trailing(
                     node.child_by_field_name("body"),
-                    false,
+                    BodyLayout::Auto,
                     Some(trailing),
                 );
                 self.suppress_next_indent = true;
@@ -384,7 +314,7 @@ impl<'a> Formatter<'a> {
                     self.format_node(iter);
                 }
                 self.emit(")");
-                self.emit_stmt_body(node.child_by_field_name("body"), false);
+                self.emit_stmt_body(node.child_by_field_name("body"), BodyLayout::Auto);
             }
             _ => {
                 self.emit_indent();

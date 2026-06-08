@@ -1,15 +1,16 @@
 use tree_sitter::Node;
 
-use super::super::{child_nodes, Formatter, LayoutDirective, SwitchToggle};
+use super::super::action::LayoutCtx;
+use super::super::{child_nodes, Formatter, SwitchToggle};
 
 // Spaces between aligned switch-arm columns (label -> statement -> break).
 const SWITCH_CELL_GAP: usize = 2;
 
 // One `case`/`default` group: the labels (>1 only for stacked fall-through) and the
 // statements bound to the last label.
-struct SwitchArm<'t> {
-    labels: Vec<Node<'t>>,
-    stmts: Vec<Node<'t>>,
+pub(in crate::formatter) struct SwitchArm<'t> {
+    pub(in crate::formatter) labels: Vec<Node<'t>>,
+    pub(in crate::formatter) stmts: Vec<Node<'t>>,
 }
 
 // Per-arm layout decision. `cols[i]` is the target column for statement `i` when inline.
@@ -20,7 +21,7 @@ struct ArmLayout {
 
 // A label after statements closes the current arm; runs of bare labels (fall-through)
 // accumulate, with statements binding to the last label.
-fn collect_switch_arms<'t>(children: &[Node<'t>]) -> Vec<SwitchArm<'t>> {
+pub(in crate::formatter) fn collect_switch_arms<'t>(children: &[Node<'t>]) -> Vec<SwitchArm<'t>> {
     let mut arms: Vec<SwitchArm<'t>> = Vec::new();
     let mut current: Option<SwitchArm<'t>> = None;
     for child in children {
@@ -102,8 +103,6 @@ impl<'a> Formatter<'a> {
             close = children.iter().rfind(|n| n.kind() == "}").copied();
             let arms = collect_switch_arms(&children);
             let layouts = self.switch_arm_layouts(&arms);
-            // The directive targets only this switch; nested switches in arm bodies format normally.
-            self.layout_directive = None;
             let mut prev: Option<&SwitchArm> = None;
             for (arm, layout) in arms.iter().zip(layouts.iter()) {
                 if let Some(p) = prev {
@@ -166,11 +165,6 @@ impl<'a> Formatter<'a> {
     }
 
     fn switch_arm_layouts(&self, arms: &[SwitchArm]) -> Vec<ArmLayout> {
-        match self.layout_directive {
-            Some(LayoutDirective::SwitchExpand) => return self.expanded_arm_layouts(arms),
-            Some(LayoutDirective::SwitchCollapse) => return self.collapsed_arm_layouts(arms),
-            None => {}
-        }
         let mut layouts: Vec<ArmLayout> = arms
             .iter()
             .map(|_| ArmLayout {
@@ -181,12 +175,12 @@ impl<'a> Formatter<'a> {
         let indent_width = self.level * self.indent_unit.len();
         let mut i = 0;
         while i < arms.len() {
-            if !self.switch_arm_structurally_inline(&arms[i]) {
+            if !arm_structurally_inline(&arms[i], &self.comments) {
                 i += 1;
                 continue;
             }
             let mut j = i;
-            while j + 1 < arms.len() && self.switch_arm_structurally_inline(&arms[j + 1]) {
+            while j + 1 < arms.len() && arm_structurally_inline(&arms[j + 1], &self.comments) {
                 j += 1;
             }
             self.assign_run_layout(&arms[i..=j], &mut layouts[i..=j], indent_width);
@@ -235,44 +229,6 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    fn switch_arm_structurally_inline(&self, arm: &SwitchArm) -> bool {
-        let Some(last_label) = arm.labels.last() else {
-            return false;
-        };
-        if arm.stmts.is_empty() {
-            return false;
-        }
-        let row = last_label.start_position().row;
-        if last_label.end_position().row != row {
-            return false;
-        }
-        let same_row = arm
-            .stmts
-            .iter()
-            .all(|s| s.start_position().row == row && s.end_position().row == row);
-        if !same_row {
-            return false;
-        }
-        let non_break = arm
-            .stmts
-            .iter()
-            .filter(|s| s.kind() != "break_stmt")
-            .count();
-        if non_break > 1 {
-            return false;
-        }
-        !self.arm_has_interior_comment(arm)
-    }
-
-    fn arm_has_interior_comment(&self, arm: &SwitchArm) -> bool {
-        let (Some(start_row), Some(end_row)) = (arm_start_row(arm), arm_end_row(arm)) else {
-            return false;
-        };
-        self.comments
-            .iter()
-            .any(|c| (start_row..=end_row).contains(&c.start_position().row))
-    }
-
     fn comment_between_arms(&self, a: &SwitchArm, b: &SwitchArm) -> bool {
         let a_end = a
             .stmts
@@ -292,55 +248,78 @@ impl<'a> Formatter<'a> {
             _ => false,
         }
     }
+}
 
-    fn expanded_arm_layouts(&self, arms: &[SwitchArm]) -> Vec<ArmLayout> {
-        arms.iter()
-            .map(|_| ArmLayout {
-                inline: false,
-                cols: Vec::new(),
-            })
-            .collect()
+fn arm_has_interior_comment(arm: &SwitchArm, comments: &[Node]) -> bool {
+    let (Some(start_row), Some(end_row)) = (arm_start_row(arm), arm_end_row(arm)) else {
+        return false;
+    };
+    comments
+        .iter()
+        .any(|c| (start_row..=end_row).contains(&c.start_position().row))
+}
+
+fn arm_structurally_inline(arm: &SwitchArm, comments: &[Node]) -> bool {
+    let Some(last_label) = arm.labels.last() else {
+        return false;
+    };
+    if arm.stmts.is_empty() {
+        return false;
     }
-
-    // Every arm forms one aligned run; assign_run_layout still demotes to block past the line limit.
-    fn collapsed_arm_layouts(&self, arms: &[SwitchArm]) -> Vec<ArmLayout> {
-        let mut layouts = self.expanded_arm_layouts(arms);
-        if !arms.is_empty() {
-            let indent_width = self.level * self.indent_unit.len();
-            self.assign_run_layout(arms, &mut layouts, indent_width);
-        }
-        layouts
+    let row = last_label.start_position().row;
+    if last_label.end_position().row != row {
+        return false;
     }
-
-    // Like switch_arm_structurally_inline but without requiring the statements to already share
-    // the label's row: the test for whether the arm *can* be joined onto one line.
-    fn collapsible_arm(&self, arm: &SwitchArm) -> bool {
-        let Some(last_label) = arm.labels.last() else {
-            return false;
-        };
-        if last_label.start_position().row != last_label.end_position().row {
-            return false;
-        }
-        let each_single_line = arm
-            .stmts
-            .iter()
-            .all(|s| s.start_position().row == s.end_position().row);
-        if !each_single_line {
-            return false;
-        }
-        let non_break = arm
-            .stmts
-            .iter()
-            .filter(|s| s.kind() != "break_stmt")
-            .count();
-        if non_break > 1 {
-            return false;
-        }
-        !self.arm_has_interior_comment(arm)
+    let same_row = arm
+        .stmts
+        .iter()
+        .all(|s| s.start_position().row == row && s.end_position().row == row);
+    if !same_row {
+        return false;
     }
+    let non_break = arm
+        .stmts
+        .iter()
+        .filter(|s| s.kind() != "break_stmt")
+        .count();
+    if non_break > 1 {
+        return false;
+    }
+    !arm_has_interior_comment(arm, comments)
+}
 
+/// Whether it is possible to collapse a switch arm onto one line
+fn collapsible_arm(arm: &SwitchArm, comments: &[Node]) -> bool {
+    let Some(last_label) = arm.labels.last() else {
+        return false;
+    };
+    if last_label.start_position().row != last_label.end_position().row {
+        return false;
+    }
+    let each_single_line = arm
+        .stmts
+        .iter()
+        .all(|s| s.start_position().row == s.end_position().row);
+    if !each_single_line {
+        return false;
+    }
+    let non_break = arm
+        .stmts
+        .iter()
+        .filter(|s| s.kind() != "break_stmt")
+        .count();
+    if non_break > 1 {
+        return false;
+    }
+    !arm_has_interior_comment(arm, comments)
+}
+
+impl<'t> LayoutCtx<'t> {
     pub(in crate::formatter) fn switch_toggle(&self, switch_node: Node) -> SwitchToggle {
-        let Some(block) = self.child_of_kind(switch_node, "switch_block") else {
+        let Some(block) = child_nodes(switch_node)
+            .into_iter()
+            .find(|n| n.kind() == "switch_block")
+        else {
             return SwitchToggle {
                 can_collapse: false,
                 can_expand: false,
@@ -351,22 +330,32 @@ impl<'a> Formatter<'a> {
         let stmt_arms: Vec<&SwitchArm> = arms.iter().filter(|a| !a.stmts.is_empty()).collect();
         let any_inline = stmt_arms
             .iter()
-            .any(|a| self.switch_arm_structurally_inline(a));
+            .any(|a| arm_structurally_inline(a, &self.comments));
         let any_block = stmt_arms
             .iter()
-            .any(|a| !self.switch_arm_structurally_inline(a));
-        let all_collapsible = stmt_arms.iter().all(|a| self.collapsible_arm(a));
-        // Collapse only when the aligned single-line result stays inline; otherwise the formatter
-        // would re-expand it, so offering collapse would produce output `just fmt` undoes.
-        let width_ok = all_collapsible && {
-            let layouts = self.collapsed_arm_layouts(&arms);
-            arms.iter()
-                .zip(&layouts)
-                .all(|(a, l)| a.stmts.is_empty() || l.inline)
-        };
+            .any(|a| !arm_structurally_inline(a, &self.comments));
+        let all_collapsible = stmt_arms.iter().all(|a| collapsible_arm(a, &self.comments));
+        let width_ok = all_collapsible && self.switch_collapse_fits(&stmt_arms);
         SwitchToggle {
             can_collapse: all_collapsible && width_ok && any_block,
             can_expand: any_inline,
         }
+    }
+
+    fn switch_collapse_fits(&self, stmt_arms: &[&SwitchArm]) -> bool {
+        // Labels sit one level inside the switch; the collapsed arm joins onto that line.
+        let indent = (self.level + 1) * self.indent_width;
+        stmt_arms.iter().all(|arm| {
+            let Some(last_label) = arm.labels.last() else {
+                return true;
+            };
+            let label_len = last_label.end_byte() - last_label.start_byte();
+            let stmts_len: usize = arm
+                .stmts
+                .iter()
+                .map(|s| 1 + (s.end_byte() - s.start_byte()))
+                .sum();
+            indent + label_len + stmts_len <= self.line_limit
+        })
     }
 }

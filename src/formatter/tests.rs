@@ -6,6 +6,7 @@ mod blank_lines;
 mod calls;
 mod colon_spacing;
 mod comments;
+mod if_action;
 mod line_breaking;
 mod structures;
 mod switch;

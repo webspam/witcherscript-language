@@ -1,8 +1,8 @@
 use lsp_types::request::CodeActionRequest;
 use lsp_types::{
-    CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, Diagnostic,
-    NumberOrString, PartialResultParams, Position, Range, TextDocumentIdentifier, Url,
-    WorkDoneProgressParams,
+    CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
+    CodeActionTriggerKind, Diagnostic, NumberOrString, PartialResultParams, Position, Range,
+    TextDocumentIdentifier, Url, WorkDoneProgressParams,
 };
 use serde_json::json;
 
@@ -95,6 +95,75 @@ async fn offers_collapse_rewrite_on_a_block_switch() {
         .expect("rewrite carries a WorkspaceEdit");
     assert!(
         edits[0].new_text.contains("case 0: Foo(); break;"),
+        "unexpected rewrite text: {}",
+        edits[0].new_text,
+    );
+}
+
+#[tokio::test]
+async fn automatic_trigger_suppresses_refactors() {
+    let uri: Url = "file:///main.ws".parse().unwrap();
+    let mut client = LspClient::spawn().await;
+    let source =
+        "function F() {\n    switch (x) {\n        case 0:\n            Foo();\n            break;\n    }\n}\n";
+    client.open(&uri, source).await;
+
+    // Cursor on the `switch` keyword, but the editor requested this automatically, not the user
+    let cursor = Position::new(1, 4);
+    let params = CodeActionParams {
+        text_document: TextDocumentIdentifier { uri },
+        range: Range::new(cursor, cursor),
+        context: CodeActionContext {
+            trigger_kind: Some(CodeActionTriggerKind::AUTOMATIC),
+            ..CodeActionContext::default()
+        },
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    };
+
+    let response = client.request::<CodeActionRequest>(params).await;
+    assert!(
+        response.is_none_or(|actions| actions.is_empty()),
+        "automatic trigger must not surface layout refactors",
+    );
+}
+
+#[tokio::test]
+async fn offers_collapse_rewrite_on_a_block_if() {
+    let uri: Url = "file:///main.ws".parse().unwrap();
+    let mut client = LspClient::spawn().await;
+    let source =
+        "function F() {\n    if (a) {\n        Foo();\n    }\n    else {\n        Bar();\n    }\n}\n";
+    client.open(&uri, source).await;
+
+    // Cursor on the `if` keyword (line 1, character 4).
+    let cursor = Position::new(1, 4);
+    let params = CodeActionParams {
+        text_document: TextDocumentIdentifier { uri },
+        range: Range::new(cursor, cursor),
+        context: CodeActionContext::default(),
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    };
+
+    let response = client
+        .request::<CodeActionRequest>(params)
+        .await
+        .expect("expected a code action response");
+    assert_eq!(response.len(), 1, "block if offers collapse only");
+    let CodeActionOrCommand::CodeAction(action) = &response[0] else {
+        panic!("expected a CodeAction, got {:?}", response[0]);
+    };
+    assert_eq!(action.title, "Collapse if/else to single-line bodies");
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_REWRITE));
+    let edits = action
+        .edit
+        .as_ref()
+        .and_then(|e| e.changes.as_ref())
+        .and_then(|c| c.values().next())
+        .expect("rewrite carries a WorkspaceEdit");
+    assert!(
+        edits[0].new_text.contains("if (a) Foo();"),
         "unexpected rewrite text: {}",
         edits[0].new_text,
     );

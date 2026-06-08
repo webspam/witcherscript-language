@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use async_lsp::{ErrorCode, ResponseError};
 use lsp_types::{
-    CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, Command,
+    CodeActionParams, CodeActionResponse, CodeActionTriggerKind, CodeLens, CodeLensParams, Command,
     DiagnosticServerCancellationData, DocumentDiagnosticParams, DocumentDiagnosticReport,
     DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentSymbolParams,
     DocumentSymbolResponse, FullDocumentDiagnosticReport, GotoDefinitionParams,
@@ -29,8 +29,8 @@ use witcherscript_language::symbols::{Symbol, SymbolKind};
 
 use crate::backend::{diagnostics_document_for, Backend};
 use crate::convert::{
-    base_script_conflict_code_actions, document_symbols, hover_markdown, infer_indent, inlay_hint,
-    lsp_range, refactor_code_actions, signature_help_response, source_position, source_range,
+    base_script_conflict_code_actions, document_symbols, hover_markdown, inlay_hint, lsp_range,
+    refactor_code_actions, signature_help_response, source_position, source_range,
 };
 use crate::diagnostics_publish::publish_url;
 
@@ -237,7 +237,10 @@ impl Backend {
         trace!(op = "code_action", uri = %uri, "start");
         let roots = self.workspace_roots.load_full();
         let mut actions = base_script_conflict_code_actions(&params.context.diagnostics, &roots);
-        actions.extend(self.refactor_actions(&uri, params.range.start));
+        // An Automatic trigger is the editor requesting code actions on its own, not the user asking
+        if params.context.trigger_kind != Some(CodeActionTriggerKind::AUTOMATIC) {
+            actions.extend(self.refactor_actions(&uri, params.range.start));
+        }
         trace!(
             op = "code_action",
             uri = %uri,
@@ -258,8 +261,8 @@ impl Backend {
         else {
             return Vec::new();
         };
-        let (use_tabs, tab_size) = infer_indent(&document.source);
-        let options = self.format_options(use_tabs, tab_size);
+        let cfg = self.config.load();
+        let options = self.format_options(!cfg.editor_insert_spaces, cfg.editor_tab_size);
         refactor_code_actions(uri, document, cursor, options)
     }
 
