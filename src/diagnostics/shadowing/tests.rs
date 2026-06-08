@@ -90,7 +90,7 @@ fn local_shadows_enclosing_class_field() {
     assert_eq!(a.len(), 1);
     assert_eq!(a[0].kind, "shadows_class_field");
     assert!(a[0].message.contains("Local 'x'"));
-    assert!(a[0].message.contains("C"));
+    assert!(a[0].message.contains('C'));
 }
 
 #[test]

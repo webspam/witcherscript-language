@@ -267,7 +267,7 @@ fn aligns_colons_and_defaults_on_same_line_pairs() {
         default_keyword_col(long, "someLongName"),
         "default keywords should align, got:\n{output}"
     );
-    let x_semi = x.find(";").expect("semicolon");
+    let x_semi = x.find(';').expect("semicolon");
     let x_default = default_keyword_col(x, "x");
     assert!(
         x_default - x_semi >= 3,
