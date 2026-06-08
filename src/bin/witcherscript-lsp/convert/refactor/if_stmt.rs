@@ -3,7 +3,7 @@ use witcherscript_language::formatter::{
     analyze_if, format_if_with_layout, if_stmt_on_keyword, IfLayout,
 };
 
-use super::{RefactorContext, Refactoring};
+use super::{Preference, RefactorContext, Refactoring};
 
 const COLLAPSE_TITLE: &str = "Collapse if/else to single-line bodies";
 const EXPAND_TITLE: &str = "Expand if/else to block bodies";
@@ -20,11 +20,11 @@ impl Refactoring for IfLayoutRefactoring {
         let mut actions = Vec::new();
         if toggle.can_collapse {
             let text = format_if_with_layout(if_node, ctx.source(), options, IfLayout::Collapse);
-            actions.push(ctx.rewrite(COLLAPSE_TITLE, if_node, text, true));
+            actions.push(ctx.rewrite(COLLAPSE_TITLE, if_node, text, Preference::Preferred));
         }
         if toggle.can_expand {
             let text = format_if_with_layout(if_node, ctx.source(), options, IfLayout::Expand);
-            actions.push(ctx.rewrite(EXPAND_TITLE, if_node, text, false));
+            actions.push(ctx.rewrite(EXPAND_TITLE, if_node, text, Preference::Alternative));
         }
         actions
     }

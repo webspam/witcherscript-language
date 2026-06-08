@@ -3,7 +3,7 @@ use witcherscript_language::formatter::{
     analyze_switch, format_switch_with_layout, switch_stmt_on_keyword, SwitchLayout,
 };
 
-use super::{RefactorContext, Refactoring};
+use super::{Preference, RefactorContext, Refactoring};
 
 const COLLAPSE_TITLE: &str = "Collapse switch cases to a single line";
 const EXPAND_TITLE: &str = "Expand switch cases onto multiple lines";
@@ -21,12 +21,12 @@ impl Refactoring for SwitchLayoutRefactoring {
         if toggle.can_collapse {
             let text =
                 format_switch_with_layout(switch, ctx.source(), options, SwitchLayout::Collapse);
-            actions.push(ctx.rewrite(COLLAPSE_TITLE, switch, text, true));
+            actions.push(ctx.rewrite(COLLAPSE_TITLE, switch, text, Preference::Preferred));
         }
         if toggle.can_expand {
             let text =
                 format_switch_with_layout(switch, ctx.source(), options, SwitchLayout::Expand);
-            actions.push(ctx.rewrite(EXPAND_TITLE, switch, text, false));
+            actions.push(ctx.rewrite(EXPAND_TITLE, switch, text, Preference::Alternative));
         }
         actions
     }

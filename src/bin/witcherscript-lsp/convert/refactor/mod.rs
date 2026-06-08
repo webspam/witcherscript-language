@@ -24,6 +24,11 @@ trait Refactoring {
     fn actions(&self, ctx: &RefactorContext) -> Vec<CodeActionOrCommand>;
 }
 
+enum Preference {
+    Preferred,
+    Alternative,
+}
+
 pub(crate) fn refactor_code_actions(
     uri: &Url,
     document: &ParsedDocument,
@@ -87,7 +92,7 @@ impl<'a> RefactorContext<'a> {
         title: &str,
         node: Node,
         new_text: String,
-        preferred: bool,
+        preference: Preference,
     ) -> CodeActionOrCommand {
         let range = lsp_range(self.document.line_index.byte_range_to_range(
             &self.document.source,
@@ -103,7 +108,7 @@ impl<'a> RefactorContext<'a> {
                 changes: Some(changes),
                 ..WorkspaceEdit::default()
             }),
-            is_preferred: preferred.then_some(true),
+            is_preferred: matches!(preference, Preference::Preferred).then_some(true),
             ..CodeAction::default()
         })
     }
