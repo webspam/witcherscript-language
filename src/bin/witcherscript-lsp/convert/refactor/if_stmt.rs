@@ -14,7 +14,7 @@ impl Refactoring for IfLayoutRefactoring {
             return Vec::new();
         };
         let options = ctx.options();
-        let toggle = analyze_if(if_node, ctx.source(), options);
+        let toggle = analyze_if(if_node, options);
         let mut actions = Vec::new();
         if toggle.can_collapse {
             let text = rewrite_if_layout(if_node, ctx.source(), options, IfLayout::Collapse);

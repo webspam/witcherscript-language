@@ -3,11 +3,9 @@ use tree_sitter::Node;
 use crate::cst::ancestors::find_ancestor_of_kind;
 use crate::cst::offsets::nodes_at_offset;
 
-use super::action::{
-    formatter_for, indent_unit_for, line_indent, node_indent_level, splice_subs, Substitution,
-};
+use super::action::{indent_unit_for, layout_ctx, line_indent, splice_subs, Substitution};
 use super::statements::{collect_switch_arms, SwitchArm};
-use super::{child_nodes, collect_comments, FormatOptions};
+use super::{child_nodes, FormatOptions};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SwitchLayout {
@@ -28,11 +26,8 @@ pub fn switch_stmt_at(root: Node, byte: usize) -> Option<Node> {
         .find_map(|n| find_ancestor_of_kind(n, &["switch_stmt"]))
 }
 
-pub fn analyze_switch(switch_node: Node, source: &str, options: FormatOptions) -> SwitchToggle {
-    let comments = collect_comments(switch_node);
-    let level = node_indent_level(switch_node, &options);
-    let f = formatter_for(source, options, comments, level);
-    f.switch_toggle(switch_node)
+pub fn analyze_switch(switch_node: Node, options: FormatOptions) -> SwitchToggle {
+    layout_ctx(switch_node, &options).switch_toggle(switch_node)
 }
 
 /// Verbatim structural rewrite of `switch_node` to `layout`: each arm's statements are joined onto

@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use super::{FormatOptions, Formatter};
+use super::{collect_comments, FormatOptions};
 
 pub(super) fn node_indent_level(node: Node, options: &FormatOptions) -> usize {
     let col = node.start_position().column;
@@ -56,25 +56,19 @@ pub(super) fn splice_subs(
     out
 }
 
-pub(super) fn formatter_for<'a>(
-    source: &'a str,
-    options: FormatOptions,
-    comments: Vec<Node<'a>>,
-    level: usize,
-) -> Formatter<'a> {
-    Formatter {
-        source,
-        indent_unit: indent_unit_for(&options),
-        level,
-        out: String::new(),
-        suppress_next_indent: false,
+// The formatter state a layout toggle reads, without a full `Formatter`'s rendering machinery.
+pub(super) struct LayoutCtx<'t> {
+    pub(super) level: usize,
+    pub(super) indent_width: usize,
+    pub(super) line_limit: usize,
+    pub(super) comments: Vec<Node<'t>>,
+}
+
+pub(super) fn layout_ctx<'t>(node: Node<'t>, options: &FormatOptions) -> LayoutCtx<'t> {
+    LayoutCtx {
+        level: node_indent_level(node, options),
+        indent_width: indent_unit_for(options).len(),
         line_limit: options.line_limit as usize,
-        compact_colon: options.compact_colon,
-        align_member_colons: options.align_member_colons,
-        annotation_placement: options.annotation_placement,
-        default_placement: options.default_placement,
-        colon_align_col: None,
-        comments,
-        comment_cursor: 0,
+        comments: collect_comments(node),
     }
 }

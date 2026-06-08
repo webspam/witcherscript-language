@@ -16,7 +16,7 @@ impl Refactoring for SwitchLayoutRefactoring {
             return Vec::new();
         };
         let options = ctx.options();
-        let toggle = analyze_switch(switch, ctx.source(), options);
+        let toggle = analyze_switch(switch, options);
         let mut actions = Vec::new();
         if toggle.can_collapse {
             let text = rewrite_switch_layout(switch, ctx.source(), options, SwitchLayout::Collapse);

@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use super::super::action::LayoutCtx;
 use super::super::{child_nodes, Formatter, SwitchToggle};
 
 // Spaces between aligned switch-arm columns (label -> statement -> break).
@@ -174,12 +175,12 @@ impl<'a> Formatter<'a> {
         let indent_width = self.level * self.indent_unit.len();
         let mut i = 0;
         while i < arms.len() {
-            if !self.switch_arm_structurally_inline(&arms[i]) {
+            if !arm_structurally_inline(&arms[i], &self.comments) {
                 i += 1;
                 continue;
             }
             let mut j = i;
-            while j + 1 < arms.len() && self.switch_arm_structurally_inline(&arms[j + 1]) {
+            while j + 1 < arms.len() && arm_structurally_inline(&arms[j + 1], &self.comments) {
                 j += 1;
             }
             self.assign_run_layout(&arms[i..=j], &mut layouts[i..=j], indent_width);
@@ -228,44 +229,6 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    fn switch_arm_structurally_inline(&self, arm: &SwitchArm) -> bool {
-        let Some(last_label) = arm.labels.last() else {
-            return false;
-        };
-        if arm.stmts.is_empty() {
-            return false;
-        }
-        let row = last_label.start_position().row;
-        if last_label.end_position().row != row {
-            return false;
-        }
-        let same_row = arm
-            .stmts
-            .iter()
-            .all(|s| s.start_position().row == row && s.end_position().row == row);
-        if !same_row {
-            return false;
-        }
-        let non_break = arm
-            .stmts
-            .iter()
-            .filter(|s| s.kind() != "break_stmt")
-            .count();
-        if non_break > 1 {
-            return false;
-        }
-        !self.arm_has_interior_comment(arm)
-    }
-
-    fn arm_has_interior_comment(&self, arm: &SwitchArm) -> bool {
-        let (Some(start_row), Some(end_row)) = (arm_start_row(arm), arm_end_row(arm)) else {
-            return false;
-        };
-        self.comments
-            .iter()
-            .any(|c| (start_row..=end_row).contains(&c.start_position().row))
-    }
-
     fn comment_between_arms(&self, a: &SwitchArm, b: &SwitchArm) -> bool {
         let a_end = a
             .stmts
@@ -285,9 +248,49 @@ impl<'a> Formatter<'a> {
             _ => false,
         }
     }
+}
 
-    // Like switch_arm_structurally_inline but without requiring the statements to already share
-    // the label's row: the test for whether the arm *can* be joined onto one line.
+fn arm_structurally_inline(arm: &SwitchArm, comments: &[Node]) -> bool {
+    let Some(last_label) = arm.labels.last() else {
+        return false;
+    };
+    if arm.stmts.is_empty() {
+        return false;
+    }
+    let row = last_label.start_position().row;
+    if last_label.end_position().row != row {
+        return false;
+    }
+    let same_row = arm
+        .stmts
+        .iter()
+        .all(|s| s.start_position().row == row && s.end_position().row == row);
+    if !same_row {
+        return false;
+    }
+    let non_break = arm
+        .stmts
+        .iter()
+        .filter(|s| s.kind() != "break_stmt")
+        .count();
+    if non_break > 1 {
+        return false;
+    }
+    !arm_has_interior_comment(arm, comments)
+}
+
+fn arm_has_interior_comment(arm: &SwitchArm, comments: &[Node]) -> bool {
+    let (Some(start_row), Some(end_row)) = (arm_start_row(arm), arm_end_row(arm)) else {
+        return false;
+    };
+    comments
+        .iter()
+        .any(|c| (start_row..=end_row).contains(&c.start_position().row))
+}
+
+impl<'t> LayoutCtx<'t> {
+    // Like arm_structurally_inline but without requiring the statements to already share the
+    // label's row: the test for whether the arm *can* be joined onto one line.
     fn collapsible_arm(&self, arm: &SwitchArm) -> bool {
         let Some(last_label) = arm.labels.last() else {
             return false;
@@ -310,11 +313,14 @@ impl<'a> Formatter<'a> {
         if non_break > 1 {
             return false;
         }
-        !self.arm_has_interior_comment(arm)
+        !arm_has_interior_comment(arm, &self.comments)
     }
 
     pub(in crate::formatter) fn switch_toggle(&self, switch_node: Node) -> SwitchToggle {
-        let Some(block) = self.child_of_kind(switch_node, "switch_block") else {
+        let Some(block) = child_nodes(switch_node)
+            .into_iter()
+            .find(|n| n.kind() == "switch_block")
+        else {
             return SwitchToggle {
                 can_collapse: false,
                 can_expand: false,
@@ -325,10 +331,10 @@ impl<'a> Formatter<'a> {
         let stmt_arms: Vec<&SwitchArm> = arms.iter().filter(|a| !a.stmts.is_empty()).collect();
         let any_inline = stmt_arms
             .iter()
-            .any(|a| self.switch_arm_structurally_inline(a));
+            .any(|a| arm_structurally_inline(a, &self.comments));
         let any_block = stmt_arms
             .iter()
-            .any(|a| !self.switch_arm_structurally_inline(a));
+            .any(|a| !arm_structurally_inline(a, &self.comments));
         let all_collapsible = stmt_arms.iter().all(|a| self.collapsible_arm(a));
         let width_ok = all_collapsible && self.switch_collapse_fits(&stmt_arms);
         SwitchToggle {
@@ -339,7 +345,7 @@ impl<'a> Formatter<'a> {
 
     fn switch_collapse_fits(&self, stmt_arms: &[&SwitchArm]) -> bool {
         // Labels sit one level inside the switch; the collapsed arm joins onto that line.
-        let indent = (self.level + 1) * self.indent_unit.len();
+        let indent = (self.level + 1) * self.indent_width;
         stmt_arms.iter().all(|arm| {
             let Some(last_label) = arm.labels.last() else {
                 return true;

@@ -3,11 +3,9 @@ use tree_sitter::Node;
 use crate::cst::ancestors::find_ancestor_of_kind;
 use crate::cst::offsets::nodes_at_offset;
 
-use super::action::{
-    formatter_for, indent_unit_for, line_indent, node_indent_level, splice_subs, Substitution,
-};
+use super::action::{indent_unit_for, layout_ctx, line_indent, splice_subs, Substitution};
 use super::statements::{block_single_stmt, body_expandable, chain_bodies};
-use super::{collect_comments, FormatOptions};
+use super::FormatOptions;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IfLayout {
@@ -42,11 +40,8 @@ fn if_chain_head(mut node: Node) -> Node {
     node
 }
 
-pub fn analyze_if(if_node: Node, source: &str, options: FormatOptions) -> IfToggle {
-    let comments = collect_comments(if_node);
-    let level = node_indent_level(if_node, &options);
-    let f = formatter_for(source, options, comments, level);
-    f.if_toggle(if_node)
+pub fn analyze_if(if_node: Node, options: FormatOptions) -> IfToggle {
+    layout_ctx(if_node, &options).if_toggle(if_node)
 }
 
 /// Verbatim structural rewrite of the if-chain at `if_node` to `layout`: braces are added or removed

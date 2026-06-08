@@ -65,7 +65,7 @@ fn analyze_reports_legal_directions(
     #[case] can_expand: bool,
 ) {
     let doc = parse_document(src).expect("should parse");
-    let toggle = analyze_switch(switch_of(&doc), &doc.source, FormatOptions::default());
+    let toggle = analyze_switch(switch_of(&doc), FormatOptions::default());
     assert_eq!(toggle.can_collapse, can_collapse, "can_collapse mismatch");
     assert_eq!(toggle.can_expand, can_expand, "can_expand mismatch");
 }
@@ -78,7 +78,7 @@ fn collapse_past_line_limit_is_not_offered() {
         ..Default::default()
     };
     let doc = parse_document(src).expect("should parse");
-    let toggle = analyze_switch(switch_of(&doc), &doc.source, options);
+    let toggle = analyze_switch(switch_of(&doc), options);
     assert!(
         !toggle.can_collapse,
         "over-limit collapse must not be offered"

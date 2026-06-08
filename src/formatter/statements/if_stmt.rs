@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use super::super::action::LayoutCtx;
 use super::super::{Formatter, IfToggle};
 use super::BodyLayout;
 
@@ -91,12 +92,14 @@ impl<'a> Formatter<'a> {
             indent + open + self.render_node(cond).len() + COND_CLOSE + self.text(body).len();
         line > self.line_limit
     }
+}
 
+impl<'t> LayoutCtx<'t> {
     pub(in crate::formatter) fn if_toggle(&self, if_node: Node) -> IfToggle {
         let bodies = chain_bodies(if_node);
         let any_block = bodies.iter().any(|b| b.kind() == "func_block");
         let can_expand = bodies.iter().any(|b| body_expandable(*b));
-        let all_collapsible = bodies.iter().all(|b| self.body_collapsible(*b));
+        let all_collapsible = bodies.iter().all(|b| body_collapsible(*b));
         // A comment anywhere in the chain can't survive being pulled onto one line.
         let no_comments = self.comments.is_empty();
         let can_collapse =
@@ -107,22 +110,14 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    fn body_collapsible(&self, body: Node) -> bool {
-        match body.kind() {
-            "func_block" => block_single_stmt(body).is_some_and(body_single_line),
-            "nop" => false,
-            _ => body_single_line(body),
-        }
-    }
-
     // A condition split across rows can't be joined verbatim, so such a chain isn't collapsible.
     fn if_chain_collapse_fits(&self, if_node: Node) -> bool {
-        let indent = self.level * self.indent_unit.len();
+        let indent = self.level * self.indent_width;
         let mut cur = Some(if_node);
         let mut first = true;
         while let Some(n) = cur {
             if n.kind() != "if_stmt" {
-                return indent + ELSE_OPEN + self.inline_body_byte_len(n) <= self.line_limit;
+                return indent + ELSE_OPEN + inline_body_byte_len(n) <= self.line_limit;
             }
             let cond = n.child_by_field_name("cond");
             if cond.is_some_and(|c| c.start_position().row != c.end_position().row) {
@@ -131,7 +126,7 @@ impl<'a> Formatter<'a> {
             let cond_len = cond.map(span_len).unwrap_or(0);
             let stmt_len = n
                 .child_by_field_name("body")
-                .map(|b| self.inline_body_byte_len(b))
+                .map(inline_body_byte_len)
                 .unwrap_or(0);
             let prefix = if first { IF_OPEN } else { ELSE_IF_OPEN };
             if indent + prefix + cond_len + COND_CLOSE + stmt_len > self.line_limit {
@@ -142,11 +137,19 @@ impl<'a> Formatter<'a> {
         }
         true
     }
+}
 
-    fn inline_body_byte_len(&self, body: Node) -> usize {
-        let effective = block_single_stmt(body).unwrap_or(body);
-        span_len(effective)
+fn body_collapsible(body: Node) -> bool {
+    match body.kind() {
+        "func_block" => block_single_stmt(body).is_some_and(body_single_line),
+        "nop" => false,
+        _ => body_single_line(body),
     }
+}
+
+fn inline_body_byte_len(body: Node) -> usize {
+    let effective = block_single_stmt(body).unwrap_or(body);
+    span_len(effective)
 }
 
 fn span_len(node: Node) -> usize {
