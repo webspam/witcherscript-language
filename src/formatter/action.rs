@@ -19,6 +19,16 @@ pub(super) fn indent_unit_for(options: &FormatOptions) -> String {
     }
 }
 
+pub(super) fn line_indent<'a>(source: &'a str, node: Node) -> &'a str {
+    let start = node.start_byte();
+    let line_start = source[..start].rfind('\n').map_or(0, |nl| nl + 1);
+    let prefix = &source[line_start..start];
+    let ws_len = prefix
+        .find(|c: char| c != ' ' && c != '\t')
+        .unwrap_or(prefix.len());
+    &prefix[..ws_len]
+}
+
 // One verbatim byte-range replacement inside the node a refactor is rewriting.
 pub(super) struct Substitution {
     pub start: usize,

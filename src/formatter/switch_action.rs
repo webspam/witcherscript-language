@@ -3,7 +3,9 @@ use tree_sitter::Node;
 use crate::cst::ancestors::find_ancestor_of_kind;
 use crate::cst::offsets::nodes_at_offset;
 
-use super::action::{formatter_for, indent_unit_for, node_indent_level, splice_subs, Substitution};
+use super::action::{
+    formatter_for, indent_unit_for, line_indent, node_indent_level, splice_subs, Substitution,
+};
 use super::statements::{collect_switch_arms, SwitchArm};
 use super::{child_nodes, collect_comments, FormatOptions};
 
@@ -43,8 +45,8 @@ pub fn rewrite_switch_layout(
     layout: SwitchLayout,
 ) -> String {
     let unit = indent_unit_for(&options);
-    let level = node_indent_level(switch_node, &options);
-    let subs = arm_substitutions(switch_node, source, layout, level, &unit);
+    let base = line_indent(source, switch_node);
+    let subs = arm_substitutions(switch_node, source, layout, base, &unit);
     splice_subs(
         source,
         switch_node.start_byte(),
@@ -57,7 +59,7 @@ fn arm_substitutions(
     switch_node: Node,
     source: &str,
     layout: SwitchLayout,
-    level: usize,
+    base: &str,
     unit: &str,
 ) -> Vec<Substitution> {
     let Some(block) = child_nodes(switch_node)
@@ -69,7 +71,7 @@ fn arm_substitutions(
     let children = child_nodes(block);
     collect_switch_arms(&children)
         .iter()
-        .filter_map(|arm| arm_substitution(arm, source, layout, level, unit))
+        .filter_map(|arm| arm_substitution(arm, source, layout, base, unit))
         .collect()
 }
 
@@ -77,7 +79,7 @@ fn arm_substitution(
     arm: &SwitchArm,
     source: &str,
     layout: SwitchLayout,
-    level: usize,
+    base: &str,
     unit: &str,
 ) -> Option<Substitution> {
     let last_label = arm.labels.last()?;
@@ -98,7 +100,7 @@ fn arm_substitution(
             if !arm_is_inline(arm) {
                 return None;
             }
-            let indent = unit.repeat(level + 2);
+            let indent = format!("{base}{unit}{unit}");
             arm.stmts
                 .iter()
                 .map(|s| format!("\n{indent}{}", &source[s.start_byte()..s.end_byte()]))

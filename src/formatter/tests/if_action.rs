@@ -159,6 +159,16 @@ fn expand_keeps_body_spacing_verbatim() {
     );
 }
 
+#[test]
+fn expand_indents_from_actual_whitespace() {
+    let src = "function F() {\n   if (cond) Do();\n}\n";
+    let got = apply(src, IfLayout::Expand);
+    assert_eq!(
+        got, "function F() {\n   if (cond) {\n       Do();\n   }\n}\n",
+        "expand must indent from the line's actual whitespace"
+    );
+}
+
 #[rstest]
 #[case::head_if("if (a)")]
 #[case::else_if("else if")]
