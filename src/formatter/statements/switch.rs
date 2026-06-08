@@ -250,6 +250,15 @@ impl<'a> Formatter<'a> {
     }
 }
 
+fn arm_has_interior_comment(arm: &SwitchArm, comments: &[Node]) -> bool {
+    let (Some(start_row), Some(end_row)) = (arm_start_row(arm), arm_end_row(arm)) else {
+        return false;
+    };
+    comments
+        .iter()
+        .any(|c| (start_row..=end_row).contains(&c.start_position().row))
+}
+
 fn arm_structurally_inline(arm: &SwitchArm, comments: &[Node]) -> bool {
     let Some(last_label) = arm.labels.last() else {
         return false;
@@ -277,15 +286,6 @@ fn arm_structurally_inline(arm: &SwitchArm, comments: &[Node]) -> bool {
         return false;
     }
     !arm_has_interior_comment(arm, comments)
-}
-
-fn arm_has_interior_comment(arm: &SwitchArm, comments: &[Node]) -> bool {
-    let (Some(start_row), Some(end_row)) = (arm_start_row(arm), arm_end_row(arm)) else {
-        return false;
-    };
-    comments
-        .iter()
-        .any(|c| (start_row..=end_row).contains(&c.start_position().row))
 }
 
 /// Whether it is possible to collapse a switch arm onto one line
