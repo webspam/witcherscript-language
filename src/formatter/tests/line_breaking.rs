@@ -29,43 +29,43 @@ fn long_line_forces_block_form() {
 #[case::long_func_signature_splits_params(
     "function LongFuncName(paramOne:int,paramTwo:bool,paramThree:string):bool{}",
     60,
-    expect![[r#"
+    expect![[r"
         function LongFuncName(
             paramOne : int,
             paramTwo : bool,
             paramThree : string
         ) : bool {}
-    "#]]
+    "]]
 )]
 #[case::short_func_signature_stays_inline(
     "function Short(a:int):bool{return true;}",
     100,
-    expect![[r#"
+    expect![[r"
         function Short(a : int) : bool {
             return true;
         }
-    "#]]
+    "]]
 )]
-#[case::no_param_func_never_splits("function NoParams():bool{return true;}", 10, expect![[r#"
+#[case::no_param_func_never_splits("function NoParams():bool{return true;}", 10, expect![[r"
     function NoParams() : bool {
         return true;
     }
-"#]])]
+"]])]
 #[case::long_unsplittable_if_condition_stays_inline(
     "function F() { if (thePlayer.GetWorldPosition()) continue; }",
     20,
-    expect![[r#"
+    expect![[r"
         function F() {
             if (thePlayer.GetWorldPosition()) {
                 continue;
             }
         }
-    "#]]
+    "]]
 )]
 #[case::long_if_condition_splits_onto_own_lines(
     "function F() { if (alpha || beta || gamma) return; }",
     30,
-    expect![[r#"
+    expect![[r"
         function F() {
             if (
                 alpha ||
@@ -75,12 +75,12 @@ fn long_line_forces_block_form() {
                 return;
             }
         }
-    "#]]
+    "]]
 )]
 #[case::long_if_condition_with_and_operators(
     "function F() { if (conditionAlpha && conditionBeta && conditionGamma) return; }",
     40,
-    expect![[r#"
+    expect![[r"
         function F() {
             if (
                 conditionAlpha &&
@@ -90,7 +90,7 @@ fn long_line_forces_block_form() {
                 return;
             }
         }
-    "#]]
+    "]]
 )]
 fn line_limited_breaking(#[case] input: &str, #[case] limit: u32, #[case] expected: Expect) {
     let output = fmt_limit(input, limit);
@@ -111,7 +111,7 @@ fn class_method_params_wrapped_when_body_has_error() {
         "    }\n",
         "}"
     );
-    expect![[r#"
+    expect![[r"
         class C {
             function SomeLongMethodName(
                 firstParam : SomeLongType,
@@ -121,16 +121,16 @@ fn class_method_params_wrapped_when_body_has_error() {
                 SomeCall() // missing semicolon
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt(input));
 }
 
 #[rstest]
-#[case::short_if_condition_not_split("function F() { if (x > 0) return; }", expect![[r#"
+#[case::short_if_condition_not_split("function F() { if (x > 0) return; }", expect![[r"
     function F() {
         if (x > 0) return;
     }
-"#]])]
+"]])]
 #[case::preserves_authored_break_in_return_chain(
     "function F() : bool {\n    return StrFindFirst(entity.ToString(), \"candle\") != -1\n        && StrFindFirst(entity.ToString(), \"candle_holder\") == -1;\n}",
     expect![[r#"
@@ -142,41 +142,41 @@ fn class_method_params_wrapped_when_body_has_error() {
 )]
 #[case::short_one_line_chain_stays_collapsed(
     "function F() : bool { return aaaa && bbbb; }",
-    expect![[r#"
+    expect![[r"
         function F() : bool {
             return aaaa && bbbb;
         }
-    "#]]
+    "]]
 )]
 #[case::partial_author_break_collapses(
     "function F() : bool { return aaaa && bbbb\n        && cccc; }",
-    expect![[r#"
+    expect![[r"
         function F() : bool {
             return aaaa && bbbb && cccc;
         }
-    "#]]
+    "]]
 )]
 #[case::preserves_authored_break_in_assignment(
     "function F() { x = longConditionAlpha\n        && longConditionBeta; }",
-    expect![[r#"
+    expect![[r"
         function F() {
             x = longConditionAlpha &&
                 longConditionBeta;
         }
-    "#]]
+    "]]
 )]
 #[case::preserves_authored_break_in_var_init(
     "function F() { var y : bool = condAlpha\n        && condBeta; }",
-    expect![[r#"
+    expect![[r"
         function F() {
             var y : bool = condAlpha &&
                 condBeta;
         }
-    "#]]
+    "]]
 )]
 #[case::authored_break_in_while_uses_paren_split(
     "function F() { while (condAlpha\n        && condBeta) { Foo(); } }",
-    expect![[r#"
+    expect![[r"
         function F() {
             while (
                 condAlpha &&
@@ -185,11 +185,11 @@ fn class_method_params_wrapped_when_body_has_error() {
                 Foo();
             }
         }
-    "#]]
+    "]]
 )]
 #[case::authored_break_in_do_while_uses_paren_split(
     "function F() { do { Foo(); } while (condAlpha\n        && condBeta); }",
-    expect![[r#"
+    expect![[r"
         function F() {
             do {
                 Foo();
@@ -198,7 +198,7 @@ fn class_method_params_wrapped_when_body_has_error() {
                 condBeta
             )
         }
-    "#]]
+    "]]
 )]
 fn default_limit_line_breaking(#[case] input: &str, #[case] expected: Expect) {
     let output = fmt(input);

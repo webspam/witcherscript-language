@@ -7,7 +7,7 @@ fn long_call_stmt_splits_args() {
     let src =
         "function F() { SetupEnemiesCollection(enemyCollectionDist, findMoveTargetDist, 10); }";
     let output = fmt_limit(src, 60);
-    expect![[r#"
+    expect![[r"
         function F() {
             SetupEnemiesCollection(
                 enemyCollectionDist,
@@ -15,7 +15,7 @@ fn long_call_stmt_splits_args() {
                 10
             );
         }
-    "#]]
+    "]]
     .assert_eq(&output);
     assert_eq!(
         output,
@@ -26,11 +26,11 @@ fn long_call_stmt_splits_args() {
 
 #[test]
 fn short_call_stmt_stays_inline() {
-    expect![[r#"
+    expect![[r"
         function F() {
             Foo(a, b);
         }
-    "#]]
+    "]]
     .assert_eq(&fmt("function F() { Foo(a, b); }"));
 }
 

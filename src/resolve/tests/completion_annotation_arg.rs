@@ -25,13 +25,13 @@ fn empty_annotation_parens_parse_shape() {
     let t = TestDb::new("@wrapMethod()\n");
     let mut out = String::new();
     dump(t.primary_doc().tree.root_node(), &mut out, 0);
-    expect![[r#"
+    expect![[r"
         script [0..14]
           ERROR [0..13]
             annotation_ident [0..11]
             ( [11..12]
             ) [12..13]
-    "#]]
+    "]]
     .assert_eq(&out);
 }
 

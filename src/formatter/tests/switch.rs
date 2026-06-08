@@ -6,7 +6,7 @@ use super::{fmt, fmt_limit};
 #[test]
 fn labels_are_indented_under_switch() {
     let src = "function F() {\nswitch (x) {\ncase 1:\nFoo();\nbreak;\n}\n}\n";
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
                 case 1:
@@ -14,14 +14,14 @@ fn labels_are_indented_under_switch() {
                     break;
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt(src));
 }
 
 #[test]
 fn inline_arms_align_without_break() {
     let src = "function F() {\nswitch (attrIndex) {\ncase 0: return 'brightness';\ncase 1: return 'radius';\ncase 2: return 'attenuation';\ndefault: return 'unknown';\n}\n}\n";
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (attrIndex) {
                 case 0:   return 'brightness';
@@ -30,14 +30,14 @@ fn inline_arms_align_without_break() {
                 default:  return 'unknown';
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt(src));
 }
 
 #[test]
 fn inline_arms_align_with_break_cell() {
     let src = "function F() {\nswitch (attrIndex) {\ncase 0: attrIndex = 'brightness'; break;\ncase 1: attrIndex = 'radius'; break;\ncase 2: attrIndex = 'attenuation'; break;\ndefault: attrIndex = 'unknown'; break;\n}\n}\n";
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (attrIndex) {
                 case 0:   attrIndex = 'brightness';   break;
@@ -46,27 +46,27 @@ fn inline_arms_align_with_break_cell() {
                 default:  attrIndex = 'unknown';      break;
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt(src));
 }
 
 #[test]
 fn single_non_break_statement_stays_inline() {
     let src = "function F() {\nswitch (x) {\ncase 1: Foo(); break;\n}\n}\n";
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
                 case 1: Foo(); break;
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt(src));
 }
 
 #[test]
 fn two_non_break_statements_force_block() {
     let src = "function F() {\nswitch (x) {\ncase 1: Foo(); Bar(); break;\n}\n}\n";
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
                 case 1:
@@ -75,42 +75,42 @@ fn two_non_break_statements_force_block() {
                     break;
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt(src));
 }
 
 #[test]
 fn multi_row_source_arm_stays_block() {
     let src = "function F() {\nswitch (x) {\ncase 1:\nFoo();\n}\n}\n";
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
                 case 1:
                     Foo();
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt(src));
 }
 
 #[test]
 fn fall_through_bare_labels() {
     let src = "function F() {\nswitch (x) {\ncase 1:\ncase 2: Foo(); break;\n}\n}\n";
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
                 case 1:
                 case 2: Foo(); break;
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt(src));
 }
 
 #[test]
 fn blank_line_is_preserved_but_does_not_break_run() {
     let src = "function F() {\nswitch (x) {\ncase 1: return 'a';\ncase 22: return 'b';\n\ncase 3: return 'c';\n}\n}\n";
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
                 case 1:   return 'a';
@@ -119,14 +119,14 @@ fn blank_line_is_preserved_but_does_not_break_run() {
                 case 3:   return 'c';
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt(src));
 }
 
 #[test]
 fn comment_inside_arm_forces_block() {
     let src = "function F() {\nswitch (x) {\ncase 1: /* note */ Foo(); break;\n}\n}\n";
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
                 case 1: /* note */
@@ -134,7 +134,7 @@ fn comment_inside_arm_forces_block() {
                     break;
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt(src));
 }
 
@@ -142,7 +142,7 @@ fn comment_inside_arm_forces_block() {
 fn comment_between_arms_is_preserved_within_run() {
     let src =
         "function F() {\nswitch (x) {\ncase 1: return 'a';\n// sep\ncase 22: return 'b';\n}\n}\n";
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
                 case 1:   return 'a';
@@ -150,14 +150,14 @@ fn comment_between_arms_is_preserved_within_run() {
                 case 22:  return 'b';
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt(src));
 }
 
 #[test]
 fn line_limit_demotes_run_to_block() {
     let src = "function F() {\nswitch (x) {\ncase 1: Foo(); break;\ncase 2: Bar(); break;\n}\n}\n";
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
                 case 1:
@@ -168,33 +168,33 @@ fn line_limit_demotes_run_to_block() {
                     break;
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt_limit(src, 20));
 }
 
 #[test]
 fn empty_switch() {
     let src = "function F() {\nswitch (x) {\n}\n}\n";
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt(src));
 }
 
 #[test]
 fn labels_only_no_statements() {
     let src = "function F() {\nswitch (x) {\ncase 1:\ndefault:\n}\n}\n";
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
                 case 1:
                 default:
             }
         }
-    "#]]
+    "]]
     .assert_eq(&fmt(src));
 }
 

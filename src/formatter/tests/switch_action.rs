@@ -87,14 +87,14 @@ fn collapse_past_line_limit_is_not_offered() {
 
 #[test]
 fn collapse_joins_each_case_onto_its_label() {
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
                 case 0: Foo(); break;
                 case 1: Bar(); break;
             }
         }
-    "#]]
+    "]]
     .assert_eq(&apply(
         include_str!("../../../tests/fixtures/formatter/switch_block.ws"),
         SwitchLayout::Collapse,
@@ -103,7 +103,7 @@ fn collapse_joins_each_case_onto_its_label() {
 
 #[test]
 fn expand_puts_each_statement_on_its_own_line() {
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
                 case 0:
@@ -114,7 +114,7 @@ fn expand_puts_each_statement_on_its_own_line() {
                     break;
             }
         }
-    "#]]
+    "]]
     .assert_eq(&apply(
         include_str!("../../../tests/fixtures/formatter/switch_inline.ws"),
         SwitchLayout::Expand,
@@ -123,7 +123,7 @@ fn expand_puts_each_statement_on_its_own_line() {
 
 #[test]
 fn expand_leaves_a_nested_switch_untouched() {
-    expect![[r#"
+    expect![[r"
         function F() {
             switch (x) {
                 case 0:
@@ -136,7 +136,7 @@ fn expand_leaves_a_nested_switch_untouched() {
                     break;
             }
         }
-    "#]]
+    "]]
     .assert_eq(&apply(
         include_str!("../../../tests/fixtures/formatter/switch_nested.ws"),
         SwitchLayout::Expand,

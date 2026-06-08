@@ -87,13 +87,13 @@ fn hand_broken_condition_is_not_collapsible() {
 
 #[test]
 fn collapse_joins_each_branch_onto_one_line() {
-    expect![[r#"
+    expect![[r"
         function F() {
             if (a) Foo();
             else if (b) Bar();
             else Baz();
         }
-    "#]]
+    "]]
     .assert_eq(&apply(
         include_str!("../../../tests/fixtures/formatter/if_block.ws"),
         IfLayout::Collapse,
@@ -102,7 +102,7 @@ fn collapse_joins_each_branch_onto_one_line() {
 
 #[test]
 fn expand_gives_each_branch_a_block_body() {
-    expect![[r#"
+    expect![[r"
         function F() {
             if (a) {
                 Foo();
@@ -114,7 +114,7 @@ fn expand_gives_each_branch_a_block_body() {
                 Baz();
             }
         }
-    "#]]
+    "]]
     .assert_eq(&apply(
         include_str!("../../../tests/fixtures/formatter/if_inline.ws"),
         IfLayout::Expand,
@@ -123,7 +123,7 @@ fn expand_gives_each_branch_a_block_body() {
 
 #[test]
 fn expand_leaves_a_nested_if_untouched() {
-    expect![[r#"
+    expect![[r"
         function F() {
             if (a) {
                 Foo();
@@ -132,7 +132,7 @@ fn expand_leaves_a_nested_if_untouched() {
                 if (b) Bar();
             }
         }
-    "#]]
+    "]]
     .assert_eq(&apply(
         include_str!("../../../tests/fixtures/formatter/if_nested.ws"),
         IfLayout::Expand,

@@ -19,12 +19,12 @@ fn formats_local_variable_as_markdown() {
         "//- /example.ws\n\
          function Make() {\n var dataObject : CScriptedFlashObject;\n $0dataObject = dataObject;\n}\n",
     );
-    expect![[r#"
+    expect![[r"
         ```witcherscript
         var dataObject : CScriptedFlashObject
         ```
 
-        Defined in [example.ws:2](file:///example.ws#L2)"#]]
+        Defined in [example.ws:2](file:///example.ws#L2)"]]
     .assert_eq(&actual);
     assert!(!actual.contains("Defined in file://"));
 }
@@ -35,13 +35,13 @@ fn formats_annotated_function_with_annotation_first() {
         "//- /fov.ws\n\
          @wrapMethod(CR4Player)\nfunction $0OnSpawned(spawnData : SEntitySpawnData) {\n}\n",
     );
-    expect![[r#"
+    expect![[r"
         ```witcherscript
         @wrapMethod(CR4Player)
         function OnSpawned(spawnData: SEntitySpawnData)
         ```
 
-        Defined in [fov.ws:2](file:///fov.ws#L2)"#]]
+        Defined in [fov.ws:2](file:///fov.ws#L2)"]]
     .assert_eq(&actual);
 }
 
@@ -51,12 +51,12 @@ fn formats_parameter_with_parenthesised_label() {
         "//- /example.ws\n\
          function Make(spawnData : SEntitySpawnData) {\n $0spawnData = spawnData;\n}\n",
     );
-    expect![[r#"
+    expect![[r"
         ```witcherscript
         (parameter) spawnData : SEntitySpawnData
         ```
 
-        Defined in [example.ws:1](file:///example.ws#L1)"#]]
+        Defined in [example.ws:1](file:///example.ws#L1)"]]
     .assert_eq(&actual);
 }
 
@@ -66,12 +66,12 @@ fn formats_method_with_owning_class_prefix() {
         "//- /example.ws\n\
          class CExample {\n public function $0DoThing(x : int) : bool {}\n}\n",
     );
-    expect![[r#"
+    expect![[r"
         ```witcherscript
         (method) CExample.DoThing(x: int): bool
         ```
 
-        Defined in [example.ws:2](file:///example.ws#L2)"#]]
+        Defined in [example.ws:2](file:///example.ws#L2)"]]
     .assert_eq(&actual);
 }
 
