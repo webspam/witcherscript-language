@@ -288,7 +288,7 @@ fn arm_has_interior_comment(arm: &SwitchArm, comments: &[Node]) -> bool {
         .any(|c| (start_row..=end_row).contains(&c.start_position().row))
 }
 
-// Like arm_structurally_inline, but the statements need not already share the label's row.
+/// Whether it is possible to collapse a switch arm onto one line
 fn collapsible_arm(arm: &SwitchArm, comments: &[Node]) -> bool {
     let Some(last_label) = arm.labels.last() else {
         return false;
