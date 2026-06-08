@@ -13,10 +13,10 @@ const COND_CLOSE: usize = ") ".len();
 impl<'a> Formatter<'a> {
     pub(in crate::formatter) fn format_if_stmt(&mut self, node: Node) {
         let layout = match self.layout_directive.take() {
-            Some(LayoutDirective::IfExpand) => BodyLayout::ForceBlock,
-            Some(LayoutDirective::IfCollapse) => BodyLayout::ForceInline,
-            _ if self.if_chain_needs_block(node) => BodyLayout::ForceBlock,
-            _ => BodyLayout::Auto,
+            Some(LayoutDirective::Expand) => BodyLayout::ForceBlock,
+            Some(LayoutDirective::Collapse) => BodyLayout::ForceInline,
+            None if self.if_chain_needs_block(node) => BodyLayout::ForceBlock,
+            None => BodyLayout::Auto,
         };
         self.format_if_stmt_emit(node, layout);
     }

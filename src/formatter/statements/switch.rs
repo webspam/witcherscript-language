@@ -167,9 +167,9 @@ impl<'a> Formatter<'a> {
 
     fn switch_arm_layouts(&self, arms: &[SwitchArm]) -> Vec<ArmLayout> {
         match self.layout_directive {
-            Some(LayoutDirective::SwitchExpand) => return self.expanded_arm_layouts(arms),
-            Some(LayoutDirective::SwitchCollapse) => return self.collapsed_arm_layouts(arms),
-            None | Some(LayoutDirective::IfCollapse) | Some(LayoutDirective::IfExpand) => {}
+            Some(LayoutDirective::Expand) => return self.expanded_arm_layouts(arms),
+            Some(LayoutDirective::Collapse) => return self.collapsed_arm_layouts(arms),
+            None => {}
         }
         let mut layouts: Vec<ArmLayout> = arms
             .iter()

@@ -16,10 +16,8 @@ pub use switch_action::{
 // One forced layout for the node a code action is rewriting; `None` during ordinary formatting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LayoutDirective {
-    SwitchCollapse,
-    SwitchExpand,
-    IfCollapse,
-    IfExpand,
+    Collapse,
+    Expand,
 }
 
 #[cfg(test)]

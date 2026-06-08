@@ -15,8 +15,8 @@ pub enum IfLayout {
 impl From<IfLayout> for LayoutDirective {
     fn from(layout: IfLayout) -> Self {
         match layout {
-            IfLayout::Collapse => LayoutDirective::IfCollapse,
-            IfLayout::Expand => LayoutDirective::IfExpand,
+            IfLayout::Collapse => LayoutDirective::Collapse,
+            IfLayout::Expand => LayoutDirective::Expand,
         }
     }
 }

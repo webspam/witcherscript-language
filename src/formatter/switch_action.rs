@@ -15,8 +15,8 @@ pub enum SwitchLayout {
 impl From<SwitchLayout> for LayoutDirective {
     fn from(layout: SwitchLayout) -> Self {
         match layout {
-            SwitchLayout::Collapse => LayoutDirective::SwitchCollapse,
-            SwitchLayout::Expand => LayoutDirective::SwitchExpand,
+            SwitchLayout::Collapse => LayoutDirective::Collapse,
+            SwitchLayout::Expand => LayoutDirective::Expand,
         }
     }
 }
