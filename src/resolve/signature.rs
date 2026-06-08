@@ -75,11 +75,11 @@ pub fn signature_help(
         parameters.push((start, end));
     }
     label.push(')');
-    if let Some(ret) = &definition.symbol.type_annotation {
-        if ret != "void" {
-            label.push_str(colon);
-            label.push_str(ret);
-        }
+    if let Some(ret) = &definition.symbol.type_annotation
+        && ret != "void"
+    {
+        label.push_str(colon);
+        label.push_str(ret);
     }
 
     let active_parameter = if params.is_empty() {

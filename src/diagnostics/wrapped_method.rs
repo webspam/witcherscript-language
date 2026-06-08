@@ -102,12 +102,11 @@ fn collect_wrapped_method_calls<'tree>(
     source: &[u8],
     out: &mut Vec<Node<'tree>>,
 ) {
-    if node.kind() == "func_call_expr" {
-        if let Some(ident) = bare_call_ident(node) {
-            if ident.utf8_text(source).ok() == Some("wrappedMethod") {
-                out.push(ident);
-            }
-        }
+    if node.kind() == "func_call_expr"
+        && let Some(ident) = bare_call_ident(node)
+        && ident.utf8_text(source).ok() == Some("wrappedMethod")
+    {
+        out.push(ident);
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {

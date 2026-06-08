@@ -128,7 +128,8 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
     }
 
     let branch_start = Instant::now();
-    let result = match role {
+
+    match role {
         IdentRole::Declaration => None,
         IdentRole::TypeRef => {
             if is_builtin_type_name(name) {
@@ -306,8 +307,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             ctx.telemetry.branch_bare_visits += 1;
             r
         }
-    };
-    result
+    }
 }
 
 fn classify<'tree>(ident: Node<'tree>, source: &[u8]) -> Option<IdentRole<'tree>> {
@@ -316,12 +316,11 @@ fn classify<'tree>(ident: Node<'tree>, source: &[u8]) -> Option<IdentRole<'tree>
     if parent.kind() == "member_access_expr" {
         let is_member = parent.child_by_field_name("member").map(|n| n.id()) == Some(ident.id());
         if is_member {
-            if let Some(grandparent) = parent.parent() {
-                if grandparent.kind() == "func_call_expr"
-                    && grandparent.child_by_field_name("func").map(|n| n.id()) == Some(parent.id())
-                {
-                    return None;
-                }
+            if let Some(grandparent) = parent.parent()
+                && grandparent.kind() == "func_call_expr"
+                && grandparent.child_by_field_name("func").map(|n| n.id()) == Some(parent.id())
+            {
+                return None;
             }
             let receiver = parent.child_by_field_name("accessor")?;
             return Some(IdentRole::MemberOfAccess(receiver));

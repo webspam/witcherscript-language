@@ -189,10 +189,10 @@ impl Backend {
         legacy_dirs: &[PathBuf],
         should_continue: &dyn Fn() -> bool,
     ) -> Option<Arc<DiagnosticsBundle>> {
-        if let Some((cached, bundle)) = self.diag_bundle_cache.lock().as_ref() {
-            if *cached == fingerprint {
-                return Some(bundle.clone());
-            }
+        if let Some((cached, bundle)) = self.diag_bundle_cache.lock().as_ref()
+            && *cached == fingerprint
+        {
+            return Some(bundle.clone());
         }
         let bundle = Arc::new(collect_workspace_diagnostics(
             workspace,

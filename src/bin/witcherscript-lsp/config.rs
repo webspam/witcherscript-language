@@ -206,10 +206,10 @@ impl Backend {
         let mut iter = values.into_iter();
         let mut next_cfg = prev_cfg.clone();
 
-        if let Some(Value::String(path_str)) = iter.next() {
-            if !path_str.is_empty() {
-                next_cfg.game_directory = Some(PathBuf::from(path_str));
-            }
+        if let Some(Value::String(path_str)) = iter.next()
+            && !path_str.is_empty()
+        {
+            next_cfg.game_directory = Some(PathBuf::from(path_str));
         }
         next_cfg.base_scripts_override = match iter.next() {
             Some(Value::String(s)) if !s.is_empty() => Some(PathBuf::from(s)),
@@ -221,15 +221,15 @@ impl Backend {
                 info!(level = %level_str, "log level updated");
             }
         }
-        if let Some(Value::Number(n)) = iter.next() {
-            if let Some(limit) = n.as_u64() {
-                next_cfg.formatter_line_limit = limit as u32;
-                log_setting_change(
-                    "formatter.lineLimit",
-                    prev_cfg.formatter_line_limit,
-                    next_cfg.formatter_line_limit,
-                );
-            }
+        if let Some(Value::Number(n)) = iter.next()
+            && let Some(limit) = n.as_u64()
+        {
+            next_cfg.formatter_line_limit = limit as u32;
+            log_setting_change(
+                "formatter.lineLimit",
+                prev_cfg.formatter_line_limit,
+                next_cfg.formatter_line_limit,
+            );
         }
         if let Some(Value::Bool(compact)) = iter.next() {
             next_cfg.formatter_compact_colon = compact;
@@ -297,12 +297,11 @@ impl Backend {
             Some(Value::Bool(b)) => b,
             _ => true,
         };
-        if let Some(Value::Number(n)) = iter.next() {
-            if let Some(size) = n.as_u64() {
-                if size > 0 {
-                    next_cfg.editor_tab_size = size as u32;
-                }
-            }
+        if let Some(Value::Number(n)) = iter.next()
+            && let Some(size) = n.as_u64()
+            && size > 0
+        {
+            next_cfg.editor_tab_size = size as u32;
         }
         next_cfg.editor_insert_spaces = match iter.next() {
             Some(Value::Bool(b)) => b,

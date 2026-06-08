@@ -24,10 +24,10 @@ pub fn collect_shadowing_diagnostics(
                     if let Some(diag) = script_global_shadow(sym, script_env) {
                         result.entry(uri.to_string()).or_default().push(diag);
                     }
-                    if sym.kind == SymbolKind::Variable {
-                        if let Some(diag) = class_field_shadow(sym, syms, index) {
-                            result.entry(uri.to_string()).or_default().push(diag);
-                        }
+                    if sym.kind == SymbolKind::Variable
+                        && let Some(diag) = class_field_shadow(sym, syms, index)
+                    {
+                        result.entry(uri.to_string()).or_default().push(diag);
                     }
                 }
                 SymbolKind::Field => {

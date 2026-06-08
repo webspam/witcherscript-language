@@ -128,10 +128,10 @@ impl Backend {
                         let processed_target = edit.target_parse_version;
                         backend.process_pending_edit(uri.clone(), edit);
                         let mut pending = backend.pending_edits.lock();
-                        if let Some(current) = pending.get(&uri) {
-                            if current.target_parse_version == processed_target {
-                                pending.remove(&uri);
-                            }
+                        if let Some(current) = pending.get(&uri)
+                            && current.target_parse_version == processed_target
+                        {
+                            pending.remove(&uri);
                         }
                     }
                 })

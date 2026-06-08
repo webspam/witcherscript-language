@@ -39,12 +39,12 @@ fn new_type_completions_inner(
         .filter(|def| def.symbol.kind == SymbolKind::Class)
         .collect();
 
-    if let Some(expected) = expected_type_for_new(uri, document, db, new_expr, byte_offset) {
-        if db.find_top_level(&expected).is_some() {
-            types.retain(|def| {
-                def.symbol.name == expected || db.inherits_from(&def.symbol.name, &expected)
-            });
-        }
+    if let Some(expected) = expected_type_for_new(uri, document, db, new_expr, byte_offset)
+        && db.find_top_level(&expected).is_some()
+    {
+        types.retain(|def| {
+            def.symbol.name == expected || db.inherits_from(&def.symbol.name, &expected)
+        });
     }
     Some(types)
 }

@@ -441,21 +441,20 @@ impl Backend {
             &self.merged_completion_cache_workspace
         };
         let mut slot = slot.lock();
-        if let Some(cached) = slot.as_ref() {
-            if cached.workspace_surface == workspace_surface
-                && cached.base_surface == base_surface
-                && cached.script_env_version == script_env_version
-            {
-                let cached = cached.clone();
-                debug!(
-                    op = "merged_completion_cache",
-                    uri = %uri,
-                    cache_hit = true,
-                    elapsed_us = started_at.elapsed().as_micros(),
-                    "complete",
-                );
-                return cached;
-            }
+        if let Some(cached) = slot.as_ref()
+            && cached.workspace_surface == workspace_surface
+            && cached.base_surface == base_surface
+            && cached.script_env_version == script_env_version
+        {
+            let cached = cached.clone();
+            debug!(
+                op = "merged_completion_cache",
+                uri = %uri,
+                cache_hit = true,
+                elapsed_us = started_at.elapsed().as_micros(),
+                "complete",
+            );
+            return cached;
         }
         let db = handles.db();
         let fresh = MergedCompletionCache::build(

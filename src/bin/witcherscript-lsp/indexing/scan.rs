@@ -196,12 +196,12 @@ impl Backend {
             return;
         }
 
-        if let Some(gd) = &game_dir_opt {
-            if let Some(env) = parse_script_environment(&gd.join(r"bin\redscripts.ini")) {
-                self.publish_compilation(|builder| {
-                    *builder.script_env_mut() = env;
-                });
-            }
+        if let Some(gd) = &game_dir_opt
+            && let Some(env) = parse_script_environment(&gd.join(r"bin\redscripts.ini"))
+        {
+            self.publish_compilation(|builder| {
+                *builder.script_env_mut() = env;
+            });
         }
 
         let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());

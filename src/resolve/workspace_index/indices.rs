@@ -55,30 +55,30 @@ impl WorkspaceIndex {
                 if sym.kind.is_object_type() {
                     retain_and_prune(&mut self.superclass_by_name, &sym.name, |(u, _)| u != uri);
                 }
-                if sym.kind == SymbolKind::State {
-                    if let Some(owner) = &sym.owner_class {
-                        retain_and_prune_nested(&mut self.states_by_owner, owner, &sym.name, |d| {
-                            d.uri != uri
-                        });
-                        let still_declared = self
-                            .states_by_owner
-                            .get(owner)
-                            .is_some_and(|states| states.contains_key(&sym.name));
-                        if !still_declared {
-                            self.state_backing_by_name
-                                .remove(&state_backing_class_name(owner, &sym.name));
-                        }
+                if sym.kind == SymbolKind::State
+                    && let Some(owner) = &sym.owner_class
+                {
+                    retain_and_prune_nested(&mut self.states_by_owner, owner, &sym.name, |d| {
+                        d.uri != uri
+                    });
+                    let still_declared = self
+                        .states_by_owner
+                        .get(owner)
+                        .is_some_and(|states| states.contains_key(&sym.name));
+                    if !still_declared {
+                        self.state_backing_by_name
+                            .remove(&state_backing_class_name(owner, &sym.name));
                     }
                 }
-                if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field) {
-                    if let Some(target) = annotation_target_class(&sym) {
-                        retain_and_prune_nested(
-                            &mut self.annotated_members_by_type,
-                            target,
-                            &sym.name,
-                            |d| d.uri != uri,
-                        );
-                    }
+                if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field)
+                    && let Some(target) = annotation_target_class(&sym)
+                {
+                    retain_and_prune_nested(
+                        &mut self.annotated_members_by_type,
+                        target,
+                        &sym.name,
+                        |d| d.uri != uri,
+                    );
                 }
             } else if let Some(cn) = &sym.container_name {
                 retain_and_prune_nested(&mut self.member_by_type, cn, &sym.name, |d| d.uri != uri);
@@ -99,42 +99,42 @@ impl WorkspaceIndex {
                         uri: uri.to_string(),
                         symbol: sym.clone(),
                     });
-                if sym.kind.is_object_type() {
-                    if let Some(superclass) = &sym.base_class {
-                        self.superclass_by_name
-                            .entry(sym.name.clone())
-                            .or_default()
-                            .push((uri.to_string(), superclass.clone()));
-                    }
+                if sym.kind.is_object_type()
+                    && let Some(superclass) = &sym.base_class
+                {
+                    self.superclass_by_name
+                        .entry(sym.name.clone())
+                        .or_default()
+                        .push((uri.to_string(), superclass.clone()));
                 }
-                if sym.kind == SymbolKind::State {
-                    if let Some(owner) = &sym.owner_class {
-                        self.states_by_owner
-                            .entry(owner.clone())
-                            .or_default()
-                            .entry(sym.name.clone())
-                            .or_default()
-                            .push(Definition {
-                                uri: uri.to_string(),
-                                symbol: sym.clone(),
-                            });
-                        self.state_backing_by_name
-                            .entry(state_backing_class_name(owner, &sym.name))
-                            .or_insert_with(|| (owner.clone(), sym.name.clone()));
-                    }
+                if sym.kind == SymbolKind::State
+                    && let Some(owner) = &sym.owner_class
+                {
+                    self.states_by_owner
+                        .entry(owner.clone())
+                        .or_default()
+                        .entry(sym.name.clone())
+                        .or_default()
+                        .push(Definition {
+                            uri: uri.to_string(),
+                            symbol: sym.clone(),
+                        });
+                    self.state_backing_by_name
+                        .entry(state_backing_class_name(owner, &sym.name))
+                        .or_insert_with(|| (owner.clone(), sym.name.clone()));
                 }
-                if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field) {
-                    if let Some(target) = annotation_target_class(sym) {
-                        self.annotated_members_by_type
-                            .entry(target.to_string())
-                            .or_default()
-                            .entry(sym.name.clone())
-                            .or_default()
-                            .push(Definition {
-                                uri: uri.to_string(),
-                                symbol: sym.clone(),
-                            });
-                    }
+                if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field)
+                    && let Some(target) = annotation_target_class(sym)
+                {
+                    self.annotated_members_by_type
+                        .entry(target.to_string())
+                        .or_default()
+                        .entry(sym.name.clone())
+                        .or_default()
+                        .push(Definition {
+                            uri: uri.to_string(),
+                            symbol: sym.clone(),
+                        });
                 }
             } else if let Some(cn) = &sym.container_name {
                 self.member_by_type

@@ -129,11 +129,11 @@ impl Backend {
             }
         };
 
-        if let (Some(prior), Some(disk)) = (prior_source, disk_text.as_deref()) {
-            if prior == disk {
-                debug!(op = "reindex_closed_file", uri = %uri, "unedited buffer; skipped reindex");
-                return false;
-            }
+        if let (Some(prior), Some(disk)) = (prior_source, disk_text.as_deref())
+            && prior == disk
+        {
+            debug!(op = "reindex_closed_file", uri = %uri, "unedited buffer; skipped reindex");
+            return false;
         }
 
         let parsed = match disk_text {

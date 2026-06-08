@@ -190,10 +190,10 @@ fn is_member_access_rhs(node: Node, parent: Node) -> bool {
 }
 
 fn classify_locally(node: Node, document: &ParsedDocument) -> Option<u32> {
-    if let Some(parent) = node.parent() {
-        if is_member_access_rhs(node, parent) {
-            return None;
-        }
+    if let Some(parent) = node.parent()
+        && is_member_access_rhs(node, parent)
+    {
+        return None;
     }
 
     let name = node.utf8_text(document.source.as_bytes()).ok()?;
@@ -203,23 +203,20 @@ fn classify_locally(node: Node, document: &ParsedDocument) -> Option<u32> {
     if let Some(callable) = document
         .symbols
         .enclosing_symbol_at(byte_offset, &callable_kinds)
-    {
-        if let Some(sym) = document
+        && let Some(sym) = document
             .symbols
             .local_at_byte(callable.id, name, byte_offset)
-        {
-            return Some(symbol_kind_to_token_type(sym.kind));
-        }
+    {
+        return Some(symbol_kind_to_token_type(sym.kind));
     }
 
     let type_kinds = [SymbolKind::Class, SymbolKind::Struct, SymbolKind::State];
     if let Some(class) = document
         .symbols
         .enclosing_symbol_at(byte_offset, &type_kinds)
+        && let Some(sym) = document.symbols.member_of(class.id, name).next()
     {
-        if let Some(sym) = document.symbols.member_of(class.id, name).next() {
-            return Some(symbol_kind_to_token_type(sym.kind));
-        }
+        return Some(symbol_kind_to_token_type(sym.kind));
     }
 
     document

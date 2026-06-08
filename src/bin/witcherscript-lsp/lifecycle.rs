@@ -58,15 +58,15 @@ impl Backend {
         // we have a value even before that round-trip completes.
         if let Some(opts) = &params.initialization_options {
             let mut cfg = (**self.config.load()).clone();
-            if let Some(p) = opts.get("gameDirectory").and_then(|v| v.as_str()) {
-                if !p.is_empty() {
-                    cfg.game_directory = Some(PathBuf::from(p));
-                }
+            if let Some(p) = opts.get("gameDirectory").and_then(|v| v.as_str())
+                && !p.is_empty()
+            {
+                cfg.game_directory = Some(PathBuf::from(p));
             }
-            if let Some(p) = opts.get("baseScriptsDirectory").and_then(|v| v.as_str()) {
-                if !p.is_empty() {
-                    cfg.base_scripts_override = Some(PathBuf::from(p));
-                }
+            if let Some(p) = opts.get("baseScriptsDirectory").and_then(|v| v.as_str())
+                && !p.is_empty()
+            {
+                cfg.base_scripts_override = Some(PathBuf::from(p));
             }
             if let Some(arr) = opts
                 .get("additionalScriptDirectories")
@@ -101,10 +101,10 @@ impl Backend {
             if let Some(b) = opts.get("detectProjectManifests").and_then(|v| v.as_bool()) {
                 cfg.auto_detect_project_manifests = b;
             }
-            if let Some(diag) = opts.get("diagnostics") {
-                if let Some(s) = diag.get("scope").and_then(|v| v.as_str()) {
-                    cfg.diagnostics_scope = DiagnosticsScope::from_setting(s);
-                }
+            if let Some(diag) = opts.get("diagnostics")
+                && let Some(s) = diag.get("scope").and_then(|v| v.as_str())
+            {
+                cfg.diagnostics_scope = DiagnosticsScope::from_setting(s);
             }
             if let Some(b) = opts
                 .get("codeLens")

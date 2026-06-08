@@ -14,14 +14,12 @@ impl Backend {
     pub(crate) fn effective_legacy_dirs(&self) -> Vec<PathBuf> {
         let cfg = self.config.load();
         let mut dirs = cfg.legacy_script_dirs.clone();
-        if cfg.auto_load_mod_shared_imports {
-            if let Some(gd) = cfg.game_directory.as_ref() {
-                if let Some(msi) = mod_shared_imports_dir(gd) {
-                    if !dirs.contains(&msi) {
-                        dirs.push(msi);
-                    }
-                }
-            }
+        if cfg.auto_load_mod_shared_imports
+            && let Some(gd) = cfg.game_directory.as_ref()
+            && let Some(msi) = mod_shared_imports_dir(gd)
+            && !dirs.contains(&msi)
+        {
+            dirs.push(msi);
         }
         for dir in self.manifest_legacy_dirs.lock().values() {
             if !dirs.contains(dir) {

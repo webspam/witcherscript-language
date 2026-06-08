@@ -62,10 +62,10 @@ pub(crate) fn build_index_segments(
     let mut seen: HashSet<PathBuf> = HashSet::new();
     let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
 
-    if let Some(base) = base_scripts_dir {
-        if seen.insert(canon(base)) {
-            segments.push(("gameDirectory", base.to_path_buf()));
-        }
+    if let Some(base) = base_scripts_dir
+        && seen.insert(canon(base))
+    {
+        segments.push(("gameDirectory", base.to_path_buf()));
     }
 
     for extra in extras {

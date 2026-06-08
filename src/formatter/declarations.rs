@@ -162,10 +162,10 @@ impl<'a> Formatter<'a> {
             if child.is_missing() || child.kind() == "annotation" {
                 continue;
             }
-            if let Some(p) = prev {
-                if self.gap_between(p, *child, parent_kind) {
-                    width += 1;
-                }
+            if let Some(p) = prev
+                && self.gap_between(p, *child, parent_kind)
+            {
+                width += 1;
             }
             width += self.render_node(*child).len();
             prev = Some(*child);
@@ -368,10 +368,11 @@ impl<'a> Formatter<'a> {
                 }
                 _ => {}
             }
-            if let Some(p) = prev {
-                if !self.out.ends_with('\n') && self.gap_between(p, *child, node.kind()) {
-                    self.emit(" ");
-                }
+            if let Some(p) = prev
+                && !self.out.ends_with('\n')
+                && self.gap_between(p, *child, node.kind())
+            {
+                self.emit(" ");
             }
             if child.child_count() == 0 {
                 self.emit_verbatim(*child);
@@ -405,10 +406,10 @@ impl<'a> Formatter<'a> {
                 self.format_enum_def(*child);
                 return;
             }
-            if let Some(p) = prev {
-                if self.gap_between(p, *child, node.kind()) {
-                    self.emit(" ");
-                }
+            if let Some(p) = prev
+                && self.gap_between(p, *child, node.kind())
+            {
+                self.emit(" ");
             }
             if child.child_count() == 0 {
                 self.emit_verbatim(*child);
@@ -432,10 +433,10 @@ impl<'a> Formatter<'a> {
             self.emit_block_open(*o);
         }
         if members.is_empty() {
-            if let Some(cl) = close {
-                if !cl.is_missing() {
-                    self.emit_verbatim(*cl);
-                }
+            if let Some(cl) = close
+                && !cl.is_missing()
+            {
+                self.emit_verbatim(*cl);
             }
             self.nl();
             return;
@@ -467,10 +468,10 @@ impl<'a> Formatter<'a> {
         self.flush_before_close(close.copied());
         self.level -= 1;
         self.emit_indent();
-        if let Some(cl) = close {
-            if !cl.is_missing() {
-                self.emit_verbatim(*cl);
-            }
+        if let Some(cl) = close
+            && !cl.is_missing()
+        {
+            self.emit_verbatim(*cl);
         }
         self.nl();
     }
@@ -489,11 +490,11 @@ impl<'a> Formatter<'a> {
             self.emit_block_open(*o);
         }
         if members.is_empty() {
-            if let Some(cl) = close {
-                if !cl.is_missing() {
-                    let t = self.text(*cl).to_string();
-                    self.emit(&t);
-                }
+            if let Some(cl) = close
+                && !cl.is_missing()
+            {
+                let t = self.text(*cl).to_string();
+                self.emit(&t);
             }
             self.nl();
             return;
@@ -563,11 +564,11 @@ impl<'a> Formatter<'a> {
         self.flush_before_close(close.copied());
         self.level -= 1;
         self.emit_indent();
-        if let Some(cl) = close {
-            if !cl.is_missing() {
-                let t = self.text(*cl).to_string();
-                self.emit(&t);
-            }
+        if let Some(cl) = close
+            && !cl.is_missing()
+        {
+            let t = self.text(*cl).to_string();
+            self.emit(&t);
         }
         self.nl();
     }
@@ -578,8 +579,8 @@ impl<'a> Formatter<'a> {
             return true;
         }
         let mut c = node.walk();
-        let has_comment_child = node.children(&mut c).any(|n| n.kind() == "comment");
-        has_comment_child
+
+        node.children(&mut c).any(|n| n.kind() == "comment")
     }
 
     fn format_class_member(&mut self, node: Node, colon_align_col: Option<usize>) {
@@ -619,26 +620,26 @@ impl<'a> Formatter<'a> {
         let close = children.iter().rfind(|n| n.kind() == "}");
 
         self.emit_indent();
-        if let Some(kw) = children.iter().find(|n| n.kind() == "defaults") {
-            if !kw.is_missing() {
-                let t = self.text(*kw).to_string();
-                self.emit(&t);
-            }
+        if let Some(kw) = children.iter().find(|n| n.kind() == "defaults")
+            && !kw.is_missing()
+        {
+            let t = self.text(*kw).to_string();
+            self.emit(&t);
         }
         self.emit(" ");
 
-        if let Some(o) = open {
-            if !o.is_missing() {
-                let t = self.text(*o).to_string();
-                self.emit(&t);
-            }
+        if let Some(o) = open
+            && !o.is_missing()
+        {
+            let t = self.text(*o).to_string();
+            self.emit(&t);
         }
         if members.is_empty() {
-            if let Some(cl) = close {
-                if !cl.is_missing() {
-                    let t = self.text(*cl).to_string();
-                    self.emit(&t);
-                }
+            if let Some(cl) = close
+                && !cl.is_missing()
+            {
+                let t = self.text(*cl).to_string();
+                self.emit(&t);
             }
             self.nl();
             return;
@@ -661,11 +662,11 @@ impl<'a> Formatter<'a> {
         self.flush_before_close(close.copied());
         self.level -= 1;
         self.emit_indent();
-        if let Some(cl) = close {
-            if !cl.is_missing() {
-                let t = self.text(*cl).to_string();
-                self.emit(&t);
-            }
+        if let Some(cl) = close
+            && !cl.is_missing()
+        {
+            let t = self.text(*cl).to_string();
+            self.emit(&t);
         }
         self.nl();
     }

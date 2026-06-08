@@ -105,27 +105,27 @@ pub(super) struct BoolPart {
 }
 
 fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<BoolPart>) {
-    if node.kind() == "binary_op_expr" {
-        if let Some(op_node) = node.child_by_field_name("op") {
-            let op_str: Option<&'static str> = match op_node.kind() {
-                "binary_op_or" => Some("||"),
-                "binary_op_and" => Some("&&"),
-                _ => None,
-            };
-            if let Some(op) = op_str {
-                if let (Some(left), Some(right)) = (
-                    node.child_by_field_name("left"),
-                    node.child_by_field_name("right"),
-                ) {
-                    collect_bool_parts(left, source, parts);
-                    if let Some(last) = parts.last_mut() {
-                        last.op = Some(op);
-                        last.break_after = right.start_position().row > left.end_position().row;
-                    }
-                    collect_bool_parts(right, source, parts);
-                    return;
-                }
+    if node.kind() == "binary_op_expr"
+        && let Some(op_node) = node.child_by_field_name("op")
+    {
+        let op_str: Option<&'static str> = match op_node.kind() {
+            "binary_op_or" => Some("||"),
+            "binary_op_and" => Some("&&"),
+            _ => None,
+        };
+        if let Some(op) = op_str
+            && let (Some(left), Some(right)) = (
+                node.child_by_field_name("left"),
+                node.child_by_field_name("right"),
+            )
+        {
+            collect_bool_parts(left, source, parts);
+            if let Some(last) = parts.last_mut() {
+                last.op = Some(op);
+                last.break_after = right.start_position().row > left.end_position().row;
             }
+            collect_bool_parts(right, source, parts);
+            return;
         }
     }
     parts.push(BoolPart {

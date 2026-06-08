@@ -283,19 +283,19 @@ impl SymbolExtractor<'_> {
         let access = self.node_access_level(node);
         let is_optional = {
             let mut c = node.walk();
-            let result = node.children(&mut c).any(|child| {
+
+            node.children(&mut c).any(|child| {
                 child.kind() == "specifier"
                     && &self.source[child.start_byte()..child.end_byte()] == "optional"
-            });
-            result
+            })
         };
         let is_out = {
             let mut c = node.walk();
-            let result = node.children(&mut c).any(|child| {
+
+            node.children(&mut c).any(|child| {
                 child.kind() == "specifier"
                     && &self.source[child.start_byte()..child.end_byte()] == "out"
-            });
-            result
+            })
         };
         let mut cursor = node.walk();
         let names_field = if node.kind() == "autobind_decl" {

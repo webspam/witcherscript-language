@@ -79,10 +79,10 @@ fn is_declaration(ident: Node, parent: Node) -> bool {
         }
         "func_param_group" | "local_var_decl_stmt" | "member_var_decl" => {
             let mut cursor = parent.walk();
-            let found = parent
+
+            parent
                 .children_by_field_name("names", &mut cursor)
-                .any(|n| n.id() == ident.id());
-            found
+                .any(|n| n.id() == ident.id())
         }
         _ => false,
     }

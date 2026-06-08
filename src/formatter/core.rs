@@ -48,8 +48,8 @@ impl<'a> Formatter<'a> {
 
     pub(super) fn child_of_kind<'t>(&self, node: Node<'t>, kind: &str) -> Option<Node<'t>> {
         let mut c = node.walk();
-        let result = node.children(&mut c).find(|n| n.kind() == kind);
-        result
+
+        node.children(&mut c).find(|n| n.kind() == kind)
     }
 
     pub(super) fn current_line_len(&self) -> usize {
@@ -202,13 +202,13 @@ impl<'a> Formatter<'a> {
             if child.kind() == "comment" {
                 continue;
             }
-            if child.kind() == ":" {
-                if let Some(col) = self.colon_align_col.take() {
-                    let mut len = self.current_line_len();
-                    while len < col {
-                        self.emit(" ");
-                        len += 1;
-                    }
+            if child.kind() == ":"
+                && let Some(col) = self.colon_align_col.take()
+            {
+                let mut len = self.current_line_len();
+                while len < col {
+                    self.emit(" ");
+                    len += 1;
                 }
             }
             if let Some(p) = prev {
@@ -296,10 +296,10 @@ impl<'a> Formatter<'a> {
             if child.is_missing() {
                 continue;
             }
-            if let Some(p) = prev {
-                if self.gap_between(p, *child, node.kind()) {
-                    s.push(' ');
-                }
+            if let Some(p) = prev
+                && self.gap_between(p, *child, node.kind())
+            {
+                s.push(' ');
             }
             if child.child_count() == 0 {
                 s.push_str(self.text(*child));

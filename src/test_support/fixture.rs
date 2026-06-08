@@ -58,59 +58,59 @@ impl Fixture {
 
             started = true;
 
-            if let Some(after_slashes) = trimmed.strip_prefix("//") {
-                if after_slashes.trim_start().starts_with('^') {
-                    let mut byte_idx: usize = 0;
-                    let mut caret_start_char: Option<usize> = None;
-                    let mut caret_end_char: usize = 0;
-                    let mut caret_end_byte: usize = 0;
-                    for (char_idx, c) in raw_line.chars().enumerate() {
-                        if c == '^' {
-                            if caret_start_char.is_none() {
-                                caret_start_char = Some(char_idx);
-                            }
-                            caret_end_char = char_idx + 1;
-                            caret_end_byte = byte_idx + c.len_utf8();
-                        } else if caret_start_char.is_some() {
-                            break;
+            if let Some(after_slashes) = trimmed.strip_prefix("//")
+                && after_slashes.trim_start().starts_with('^')
+            {
+                let mut byte_idx: usize = 0;
+                let mut caret_start_char: Option<usize> = None;
+                let mut caret_end_char: usize = 0;
+                let mut caret_end_byte: usize = 0;
+                for (char_idx, c) in raw_line.chars().enumerate() {
+                    if c == '^' {
+                        if caret_start_char.is_none() {
+                            caret_start_char = Some(char_idx);
                         }
-                        byte_idx += c.len_utf8();
+                        caret_end_char = char_idx + 1;
+                        caret_end_byte = byte_idx + c.len_utf8();
+                    } else if caret_start_char.is_some() {
+                        break;
                     }
-                    let start_char = caret_start_char.expect("caret confirmed above");
-
-                    let prev_line = prev_content_line.as_deref().unwrap_or("");
-                    let mut prev_chars = prev_line.chars();
-                    let mut col_u16: u32 = 0;
-                    let mut start_col_u16: u32 = 0;
-                    let mut end_col_u16: u32 = 0;
-                    for i in 0..caret_end_char {
-                        let c = prev_chars.next().unwrap_or(' ');
-                        if i == start_char {
-                            start_col_u16 = col_u16;
-                        }
-                        col_u16 += c.len_utf16() as u32;
-                        if i + 1 == caret_end_char {
-                            end_col_u16 = col_u16;
-                        }
-                    }
-
-                    let label = raw_line[caret_end_byte..].trim();
-                    if let Some(prev_idx) = last_content_line_idx {
-                        let range = SourceRange {
-                            start: SourcePosition {
-                                line: prev_idx,
-                                character: start_col_u16,
-                            },
-                            end: SourcePosition {
-                                line: prev_idx,
-                                character: end_col_u16,
-                            },
-                        };
-                        let prev = spans.insert(label.to_string(), (current_uri.clone(), range));
-                        assert!(prev.is_none(), "fixture: duplicate span label {label:?}");
-                    }
-                    continue;
+                    byte_idx += c.len_utf8();
                 }
+                let start_char = caret_start_char.expect("caret confirmed above");
+
+                let prev_line = prev_content_line.as_deref().unwrap_or("");
+                let mut prev_chars = prev_line.chars();
+                let mut col_u16: u32 = 0;
+                let mut start_col_u16: u32 = 0;
+                let mut end_col_u16: u32 = 0;
+                for i in 0..caret_end_char {
+                    let c = prev_chars.next().unwrap_or(' ');
+                    if i == start_char {
+                        start_col_u16 = col_u16;
+                    }
+                    col_u16 += c.len_utf16() as u32;
+                    if i + 1 == caret_end_char {
+                        end_col_u16 = col_u16;
+                    }
+                }
+
+                let label = raw_line[caret_end_byte..].trim();
+                if let Some(prev_idx) = last_content_line_idx {
+                    let range = SourceRange {
+                        start: SourcePosition {
+                            line: prev_idx,
+                            character: start_col_u16,
+                        },
+                        end: SourcePosition {
+                            line: prev_idx,
+                            character: end_col_u16,
+                        },
+                    };
+                    let prev = spans.insert(label.to_string(), (current_uri.clone(), range));
+                    assert!(prev.is_none(), "fixture: duplicate span label {label:?}");
+                }
+                continue;
             }
 
             let mut out_line = String::new();
