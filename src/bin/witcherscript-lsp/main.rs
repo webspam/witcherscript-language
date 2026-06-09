@@ -222,9 +222,8 @@ where
 
 fn spawn_log_forwarder(mut client: ClientSocket, log_rx_holder: LogRxHolder) {
     spawn_logged("log forwarder", async move {
-        let mut log_rx = match log_rx_holder.lock().await.take() {
-            Some(rx) => rx,
-            None => return,
+        let Some(mut log_rx) = log_rx_holder.lock().await.take() else {
+            return;
         };
         while let Some((typ, message)) = log_rx.recv().await {
             if client
