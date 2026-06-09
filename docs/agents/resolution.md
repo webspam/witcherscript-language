@@ -1,6 +1,6 @@
 # Resolution and workspace indexing
 
-**Module:** `src/resolve/` - split across `mod.rs` (helpers, `Definition`, `ObservationSet`), `workspace_index/` (`WorkspaceIndex`: `mod`, `indices`, `subscribers`, `lookup`), `symbol_db/` (`SymbolDb`: `mod`, `lookup`, `generics`), `definition.rs` (`resolve_definition` and self/super/this resolution), `references.rs` (`find_references`), `inference.rs` (`infer_expr_type` and type-context helpers), `signature.rs` (`signature_help`, `hover_text`), `ast.rs` (re-exports the shared `cst/` navigation helpers; defines `BUILTIN_TYPES`), and `completion/{members,types,body_function,body_class,body_script,headers}.rs`. Tests live under `src/resolve/tests/`.
+**Module:** `src/resolve/` - split across `mod.rs` (helpers, `Definition`, `ObservationSet`), `workspace_index/` (`WorkspaceIndex`: `mod`, `indices`, `subscribers`, `lookup`), `symbol_db/` (`SymbolDb`: `mod`, `lookup`, `generics`), `definition.rs` (`resolve_definition` and self/super/this resolution), `references.rs` (`find_references`), `inference.rs` (`infer_type` and type-context helpers), `signature.rs` (`signature_help`, `hover_text`, `render_signature`), `ast.rs` (re-exports the shared `cst/` navigation helpers; defines `BUILTIN_TYPES`), and `completion/{members,types,body_function,body_class,body_script,headers}.rs`. Tests live under `src/resolve/tests/`.
 
 ## WorkspaceIndex
 
@@ -8,7 +8,7 @@ The persistent cross-document symbol store. One instance exists for the user wor
 
 ```rust
 pub struct WorkspaceIndex {
-    documents: HashMap<String, Vec<Symbol>>,               // uri → all symbols (for parameters_of)
+    documents: HashMap<String, Vec<Symbol>>,               // uri → all symbols (for full_parameters_of)
     top_level_by_name: HashMap<String, Definition>,        // name → top-level symbol (class, fn, etc.)
     superclass_by_name: HashMap<String, String>,           // class name → base class name
     member_by_type: HashMap<String, HashMap<String, Definition>>, // container → {member name → def}
@@ -33,7 +33,7 @@ direct_member_of(container, name, min_access)     // O(1) lookup with access che
 direct_members_of(container, min_access)          // all direct members of a type
 superclass_of(class_name)                         // one hop up the chain
 members_of(container, min_access)                 // full chain including inherited
-parameters_of(uri, callable_id)                   // non-optional params of a callable
+full_parameters_of(uri, callable_id)              // Parameter symbols of a callable, in order
 all_types()                                       // all Class/Struct/State/Enum symbols
 all_top_level_callables()                         // all Function/Event, excluding exec/quest
 ```
@@ -167,7 +167,7 @@ Called in class/struct/state body. Returns `Vec<&'static str>` - the keyword can
 
 `signature_help(uri, document, db, position)` powers `textDocument/signatureHelp`. It finds the innermost call site around the cursor - a closed `func_call_expr`, or an unclosed call that tree-sitter recovers as an `ERROR` node containing a callee, `(`, and optional `func_call_args` - resolves the callee via `resolve_definition_at_byte`, and builds a `SignatureHelpInfo`:
 
-- `label` - `Name(p1 : T1, optional p2 : T2) : Ret`, built from `db.full_parameters_of()` so **all** parameters (including optional/out, in order) appear.
+- `label` - `Name(p1 : T1, optional p2 : T2) : Ret`, built from `db.display_parameters_of()` so **all** parameters (including optional/out, in order) appear, with generic element types substituted.
 - `parameters` - `[start, end)` UTF-16 offsets of each parameter substring within `label`.
 - `active_parameter` - index derived by counting `,` tokens before the cursor, clamped to the last parameter; `None` when the callee takes no parameters.
 
@@ -189,11 +189,13 @@ For each candidate document, the `doc_idents` index is consulted first to skip d
 
 Formats a symbol as a multi-line string for LSP hover:
 
+Callable parameter lists come from `render_signature(db.display_parameters_of(..), return_type)`.
+
 | Kind | Format |
 |------|--------|
-| `Method` | `(method) ClassName.name(params) : ReturnType` |
-| `Field` | `(field) var name : Type` (or full signature text) |
-| `Function` | full signature text |
+| `Method` | `(method) ClassName.name(params): ReturnType` |
+| `Field` | `(field) <declaration as written>` (falls back to `(field) name : Type`) |
+| `Function` | `function name(params): ReturnType` |
 | `Class`/`Struct`/`State` | `class Name` + `extends Base` on next line |
 | `Enum` | `enum Name` |
 | `EnumMember` | `enum member Name` |
@@ -252,8 +254,8 @@ This list is closed - do not add more entries without confirming the engine actu
 
 ## Key constraints
 
-- Exec/quest functions are **excluded** from `all_top_level_callables()` and therefore from statement completions. Their signatures start with `"exec "` or `"quest "`.
-- `parameters_of()` excludes parameters where `is_optional == true`.
+- Exec/quest functions are **excluded** from `all_top_level_callables()` and therefore from statement completions, matched on `Symbol.flavour`.
+- Optional parameters are excluded from completion snippet slots (`completion_item` in the LSP binary filters `is_optional`).
 - The inheritance depth cap is **32** in both `WorkspaceIndex` (single-index chain) and `SymbolDb` (cross-index chain).
-- Superclass is stored in `Symbol.base_class` (used for classes, structs, and states' `extends` clause). It is mirrored into `Symbol.detail` for display as `"extends ClassName"` - never parse `detail` for structural queries, use the typed field.
-- State owner is stored in `Symbol.owner_class`; mirrored into `detail` as `"in OwnerClass"` (or `"in OwnerClass extends BaseState"` when the state also extends another state). For `parent` keyword resolution only `Public` members of the owner are accessible.
+- Superclass is stored in `Symbol.base_class` (used for classes, structs, and states' `extends` clause). The display string `"extends ClassName"` is rendered on demand by `Symbol::display_detail()` - never parse it for structural queries, use the typed field.
+- State owner is stored in `Symbol.owner_class`; rendered by `display_detail()` as `"in OwnerClass"` (or `"in OwnerClass extends BaseState"` when the state also extends another state). For `parent` keyword resolution only `Public` members of the owner are accessible.
