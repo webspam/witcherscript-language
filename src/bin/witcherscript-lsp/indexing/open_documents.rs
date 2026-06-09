@@ -20,7 +20,7 @@ use super::helpers::{index_open_document, reindex_into, remove_document_all_spel
 fn route_document_to_index(
     builder: &mut CompilationBuilder,
     uri: &Url,
-    scope: &FileScope,
+    scope: FileScope,
     document: &witcherscript_language::document::ParsedDocument,
 ) -> (Vec<ObservedKey>, Vec<ObservedKey>) {
     // Only workspace and loose changes feed invalidation (there is no invalidated_base), so base-script keys are dropped.
@@ -84,14 +84,14 @@ impl Backend {
         let mut invalidated: HashSet<String> = HashSet::new();
         self.publish_compilation(|builder| {
             let docs = builder.base.documents.clone();
-            for (uri, scope) in &scopes {
-                let Some(document) = docs.get(uri) else {
+            for (uri, scope) in scopes {
+                let Some(document) = docs.get(&uri) else {
                     continue;
                 };
-                let (ws, loose) = route_document_to_index(builder, uri, scope, document.as_ref());
+                let (ws, loose) = route_document_to_index(builder, &uri, scope, document.as_ref());
                 ws_changed.extend(ws);
                 loose_changed.extend(loose);
-                invalidated.insert(canonical_uri(uri));
+                invalidated.insert(canonical_uri(&uri));
             }
         });
         invalidated.extend(self.invalidated_workspace(&ws_changed));
@@ -272,7 +272,7 @@ impl Backend {
         let mut ws_changed: Vec<ObservedKey> = Vec::new();
         let mut loose_changed: Vec<ObservedKey> = Vec::new();
         self.publish_compilation(|builder| {
-            let (ws, loose) = route_document_to_index(builder, uri, &scope, document.as_ref());
+            let (ws, loose) = route_document_to_index(builder, uri, scope, document.as_ref());
             ws_changed.extend(ws);
             loose_changed.extend(loose);
             builder
