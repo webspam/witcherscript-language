@@ -31,9 +31,7 @@ impl Backend {
 
     pub(crate) fn refresh_manifest_legacy_dirs(&self) -> bool {
         let prev: HashSet<PathBuf> = self.manifest_legacy_dirs.lock().values().cloned().collect();
-        let next: HashMap<String, PathBuf> = if !self.config.load().auto_detect_project_manifests {
-            HashMap::new()
-        } else {
+        let next: HashMap<String, PathBuf> = if self.config.load().auto_detect_project_manifests {
             let roots = self.workspace_roots.load_full();
             if roots.is_empty() {
                 HashMap::new()
@@ -48,6 +46,8 @@ impl Backend {
                     })
                     .collect()
             }
+        } else {
+            HashMap::new()
         };
         let next_set: HashSet<PathBuf> = next.values().cloned().collect();
         let changed = prev != next_set;

@@ -205,11 +205,11 @@ impl Backend {
         let legacy_dirs_valid: Vec<PathBuf> = legacy_dirs
             .iter()
             .filter(|p| {
-                if !p.is_dir() {
+                if p.is_dir() {
+                    true
+                } else {
                     warn!(path = %p.display(), "legacyScriptDirectories entry is not a directory; skipping");
                     false
-                } else {
-                    true
                 }
             })
             .cloned()

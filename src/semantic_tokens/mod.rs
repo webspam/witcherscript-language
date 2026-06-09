@@ -125,10 +125,10 @@ fn classify(
         "literal_int" | "literal_float" | "literal_hex" => Some((TT_NUMBER, 0)),
         "specifier" | "func_flavour" | "autobind_single" => Some((TT_MODIFIER, 0)),
         _ => {
-            if !node.is_named() {
-                classify_anonymous_keyword(node.kind()).map(|t| (t, 0))
-            } else {
+            if node.is_named() {
                 None
+            } else {
+                classify_anonymous_keyword(node.kind()).map(|t| (t, 0))
             }
         }
     }
