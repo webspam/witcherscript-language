@@ -596,11 +596,6 @@ impl Formatter<'_> {
         match node.kind() {
             "func_decl" | "event_decl" => self.format_func_decl(node),
             "member_default_val_block" => self.format_defaults_block(node),
-            "member_default_val" => {
-                self.emit_indent();
-                self.format_children(node);
-                self.nl();
-            }
             "member_var_decl" => self.format_member_var_decl(node, colon_align_col, None),
             _ => {
                 self.emit_indent();
