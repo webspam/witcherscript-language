@@ -121,8 +121,51 @@ fn multi_name_param_group_produces_separate_parameters() {
     ))
     .expect("signature help with multi-name param group");
 
+    assert_eq!(info.label, "M(a : int, b : int)");
     assert_eq!(info.parameters.len(), 2);
     assert_eq!(info.active_parameter, Some(1));
+}
+
+#[test]
+fn alias_param_and_return_types_are_normalised() {
+    let info = help(concat!(
+        "function F(x : Float, y : Int32) : Int32 {}\n",
+        "function Test() {\n",
+        "  F($0);\n",
+        "}\n",
+    ))
+    .expect("signature help with engine-alias types");
+
+    assert_eq!(info.label, "F(x : float, y : int) : int");
+}
+
+#[test]
+fn generic_param_type_drops_source_spacing() {
+    let info = help(concat!(
+        "function F(xs : array< Foo >) {}\n",
+        "function Test() {\n",
+        "  F($0);\n",
+        "}\n",
+    ))
+    .expect("signature help with spaced generic param");
+
+    assert_eq!(info.label, "F(xs : array<Foo>)");
+}
+
+#[test]
+fn array_method_substitutes_placeholder_in_signature() {
+    let t = TestDb::new(concat!(
+        "function Test() {\n",
+        "  var xs : array<int>;\n",
+        "  xs.PushBack($0);\n",
+        "}\n",
+    ))
+    .with_builtins_index();
+    let (uri, pos) = t.cursor();
+    let info = signature_help(&uri, t.doc_for(&uri), &t.db(), pos, false)
+        .expect("signature help on array method");
+
+    assert_eq!(info.label, "PushBack(value : int)");
 }
 
 #[test]
