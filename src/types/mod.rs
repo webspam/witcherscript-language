@@ -59,7 +59,9 @@ impl Type {
             Type::Array(elem) => {
                 Type::Array(Box::new(elem.substitute_named(placeholder, replacement)))
             }
-            _ => self.clone(),
+            Type::Void | Type::Primitive(_) | Type::Named(_) | Type::Null | Type::Unknown => {
+                self.clone()
+            }
         }
     }
 }
