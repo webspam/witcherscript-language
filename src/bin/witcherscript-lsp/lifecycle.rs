@@ -94,11 +94,11 @@ impl Backend {
             }
             if let Some(b) = opts
                 .get("autoLoadModSharedImports")
-                .and_then(|v| v.as_bool())
+                .and_then(serde_json::Value::as_bool)
             {
                 cfg.auto_load_mod_shared_imports = b;
             }
-            if let Some(b) = opts.get("detectProjectManifests").and_then(|v| v.as_bool()) {
+            if let Some(b) = opts.get("detectProjectManifests").and_then(serde_json::Value::as_bool) {
                 cfg.auto_detect_project_manifests = b;
             }
             if let Some(diag) = opts.get("diagnostics")
@@ -109,14 +109,14 @@ impl Backend {
             if let Some(b) = opts
                 .get("codeLens")
                 .and_then(|v| v.get("overriddenSymbols"))
-                .and_then(|v| v.as_bool())
+                .and_then(serde_json::Value::as_bool)
             {
                 cfg.code_lens_overridden_symbols = b;
             }
             if let Some(b) = opts
                 .get("codeLens")
                 .and_then(|v| v.get("references"))
-                .and_then(|v| v.as_bool())
+                .and_then(serde_json::Value::as_bool)
             {
                 cfg.code_lens_references = b;
             }
@@ -124,13 +124,13 @@ impl Backend {
                 cfg.log_level = level_to_u8(level_from_str(level_str));
             }
             if let Some(formatter) = opts.get("formatter") {
-                if let Some(limit) = formatter.get("lineLimit").and_then(|v| v.as_u64()) {
+                if let Some(limit) = formatter.get("lineLimit").and_then(serde_json::Value::as_u64) {
                     cfg.formatter_line_limit = limit as u32;
                 }
-                if let Some(compact) = formatter.get("compactColon").and_then(|v| v.as_bool()) {
+                if let Some(compact) = formatter.get("compactColon").and_then(serde_json::Value::as_bool) {
                     cfg.formatter_compact_colon = compact;
                 }
-                if let Some(align) = formatter.get("alignMemberColons").and_then(|v| v.as_bool()) {
+                if let Some(align) = formatter.get("alignMemberColons").and_then(serde_json::Value::as_bool) {
                     cfg.formatter_align_member_colons = align;
                 }
                 if let Some(placement) = formatter

@@ -48,7 +48,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
                 // A response carries our id and no `method`. A server->client request also has an
                 // id (its own namespace) and must be answered, not mistaken for our response.
                 let is_response =
-                    v.get("method").is_none() && v.get("id").and_then(|i| i.as_i64()) == Some(id);
+                    v.get("method").is_none() && v.get("id").and_then(serde_json::Value::as_i64) == Some(id);
                 if is_response {
                     return v;
                 }
@@ -176,7 +176,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
                 let count = v
                     .pointer("/params/items")
                     .and_then(|i| i.as_array())
-                    .map_or(0, |a| a.len());
+                    .map_or(0, std::vec::Vec::len);
                 Value::Array(vec![Value::Null; count])
             }
             _ => Value::Null,

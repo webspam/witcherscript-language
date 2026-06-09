@@ -115,10 +115,10 @@ fn legacy_base_replacements_maps_only_real_overrides() {
         },
     ];
     for c in cases {
-        let base: Vec<String> = c.base.iter().map(|s| s.to_string()).collect();
-        let legacy: Vec<String> = c.legacy.iter().map(|s| s.to_string()).collect();
+        let base: Vec<String> = c.base.iter().map(std::string::ToString::to_string).collect();
+        let legacy: Vec<String> = c.legacy.iter().map(std::string::ToString::to_string).collect();
         let (skip, map) = legacy_base_replacements(&base, &legacy);
-        let expect_skip: HashSet<String> = c.expect_skip.iter().map(|s| s.to_string()).collect();
+        let expect_skip: HashSet<String> = c.expect_skip.iter().map(std::string::ToString::to_string).collect();
         let expect_map: HashMap<String, String> = c
             .expect_map
             .iter()

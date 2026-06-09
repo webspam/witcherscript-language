@@ -234,12 +234,12 @@ impl Formatter<'_> {
             .stmts
             .last()
             .or_else(|| a.labels.last())
-            .map(|n| n.end_byte());
+            .map(tree_sitter::Node::end_byte);
         let b_start = b
             .labels
             .first()
             .or_else(|| b.stmts.first())
-            .map(|n| n.start_byte());
+            .map(tree_sitter::Node::start_byte);
         match (a_end, b_start) {
             (Some(e), Some(s)) => self
                 .comments

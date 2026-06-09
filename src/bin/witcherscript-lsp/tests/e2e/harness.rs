@@ -39,7 +39,7 @@ const RETRY_BACKOFF: std::time::Duration = std::time::Duration::from_millis(5);
 
 fn error_code(err: &Value) -> Option<ErrorCode> {
     err.get("code")
-        .and_then(|c| c.as_i64())
+        .and_then(serde_json::Value::as_i64)
         .map(|c| ErrorCode(c as i32))
 }
 
@@ -49,7 +49,7 @@ fn is_retriggerable_cancellation(err: &Value) -> bool {
         return false;
     }
     err.pointer("/data/retriggerRequest")
-        .and_then(|r| r.as_bool())
+        .and_then(serde_json::Value::as_bool)
         .unwrap_or(true)
 }
 

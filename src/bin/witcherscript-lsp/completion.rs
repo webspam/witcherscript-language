@@ -247,7 +247,7 @@ impl Backend {
                 let merged_cache = stmt
                     .needs_globals
                     .then(|| self.merged_completion_cache(&uri, &handles));
-                let stmt_globals = merged_cache.as_ref().map(|c| c.globals()).unwrap_or(&[]);
+                let stmt_globals = merged_cache.as_ref().map(super::completion_cache::MergedCompletionCache::globals).unwrap_or(&[]);
                 let mut items: Vec<CompletionItem> = Vec::new();
                 if stmt.has_this {
                     items.push(this_super_item("this"));
@@ -300,7 +300,7 @@ impl Backend {
                 let merged_cache = expr
                     .needs_globals
                     .then(|| self.merged_completion_cache(&uri, &handles));
-                let expr_globals = merged_cache.as_ref().map(|c| c.globals()).unwrap_or(&[]);
+                let expr_globals = merged_cache.as_ref().map(super::completion_cache::MergedCompletionCache::globals).unwrap_or(&[]);
                 let mut items: Vec<CompletionItem> = Vec::new();
                 if expr.has_this {
                     items.push(this_super_item("this"));
