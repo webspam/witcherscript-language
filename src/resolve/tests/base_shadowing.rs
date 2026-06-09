@@ -59,8 +59,7 @@ fn find_references_includes_shadowed_base_file() {
     let refs = find_references(&def, &mod_doc, &search, &db, true);
     assert!(
         refs.iter().any(|(uri, _)| uri == base_uri),
-        "references must include the shadowed vanilla base file, got {:?}",
-        refs
+        "references must include the shadowed vanilla base file, got {refs:?}"
     );
 }
 
@@ -100,8 +99,7 @@ fn find_references_skips_unrelated_idents_in_shadowed_base_file() {
         !refs
             .iter()
             .any(|(uri, r)| uri == base_uri && *r == local_range),
-        "unrelated locals in the shadowed base file must not count as references, got {:?}",
-        refs
+        "unrelated locals in the shadowed base file must not count as references, got {refs:?}"
     );
 }
 
@@ -140,7 +138,6 @@ fn find_references_omits_suppressed_base_declaration_when_excluded() {
         !refs
             .iter()
             .any(|(uri, r)| uri == base_uri && *r == class_decl_range),
-        "suppressed base declaration must be omitted when include_declaration is false, got {:?}",
-        refs
+        "suppressed base declaration must be omitted when include_declaration is false, got {refs:?}"
     );
 }

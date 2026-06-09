@@ -277,11 +277,7 @@ fn declaration_sites_get_expected_token_types(
     assert_eq!(
         got,
         Some(expected),
-        "case '{}': ident '{}' expected token type {}, all tokens: {:?}",
-        name,
-        ident,
-        expected,
-        toks
+        "case '{name}': ident '{ident}' expected token type {expected}, all tokens: {toks:?}"
     );
 }
 
@@ -330,13 +326,7 @@ fn references_classify_like_their_declarations(
         .count();
     assert!(
         count >= min_count,
-        "case '{}': expected at least {} tokens of type {} for ident '{}', got {} (all: {:?})",
-        name,
-        min_count,
-        expected_kind,
-        ident,
-        count,
-        toks
+        "case '{name}': expected at least {min_count} tokens of type {expected_kind} for ident '{ident}', got {count} (all: {toks:?})"
     );
 }
 

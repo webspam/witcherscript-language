@@ -135,8 +135,7 @@ fn result_id_for(
     legacy_db_generation: u64,
 ) -> String {
     format!(
-        "{}-{:x}-{:x}-{:x}-{:x}",
-        parse_version, workspace_surface, base_surface, env_version, legacy_db_generation,
+        "{parse_version}-{workspace_surface:x}-{base_surface:x}-{env_version:x}-{legacy_db_generation:x}",
     )
 }
 
