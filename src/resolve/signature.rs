@@ -61,17 +61,7 @@ pub fn signature_help(
             label.push_str(", ");
         }
         let start = label.encode_utf16().count() as u32;
-        if param.is_optional {
-            label.push_str("optional ");
-        }
-        if param.is_out {
-            label.push_str("out ");
-        }
-        label.push_str(&param.name);
-        if let Some(ty) = &param.type_annotation {
-            label.push_str(colon);
-            label.push_str(&ty.to_string());
-        }
+        push_parameter(&mut label, param, colon);
         let end = label.encode_utf16().count() as u32;
         parameters.push((start, end));
     }
@@ -179,6 +169,20 @@ fn call_site_of(node: Node, byte_offset: usize) -> Option<CallSite> {
     }
 }
 
+fn push_parameter(label: &mut String, param: &Symbol, colon: &str) {
+    if param.is_optional {
+        label.push_str("optional ");
+    }
+    if param.is_out {
+        label.push_str("out ");
+    }
+    label.push_str(&param.name);
+    if let Some(ty) = &param.type_annotation {
+        label.push_str(colon);
+        label.push_str(&ty.to_string());
+    }
+}
+
 /// Single renderer so hover and completion detail stay identical.
 pub fn render_signature(params: &[Symbol], return_type: Option<&Type>) -> String {
     let mut out = String::from("(");
@@ -186,17 +190,7 @@ pub fn render_signature(params: &[Symbol], return_type: Option<&Type>) -> String
         if i > 0 {
             out.push_str(", ");
         }
-        if param.is_optional {
-            out.push_str("optional ");
-        }
-        if param.is_out {
-            out.push_str("out ");
-        }
-        out.push_str(&param.name);
-        if let Some(ty) = &param.type_annotation {
-            out.push_str(": ");
-            out.push_str(&ty.to_string());
-        }
+        push_parameter(&mut out, param, ": ");
     }
     out.push(')');
     if let Some(ret) = return_type {
