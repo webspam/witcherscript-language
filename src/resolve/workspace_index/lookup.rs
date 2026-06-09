@@ -26,10 +26,7 @@ impl WorkspaceIndex {
     }
 
     pub fn all_top_level_with_name(&self, name: &str) -> &[Definition] {
-        self.top_level_by_name
-            .get(name)
-            .map(Vec::as_slice)
-            .unwrap_or(&[])
+        self.top_level_by_name.get(name).map_or(&[], Vec::as_slice)
     }
 
     pub fn find_state_in_owner(&self, owner: &str, name: &str) -> Option<Definition> {

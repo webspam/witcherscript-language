@@ -104,11 +104,10 @@ fn assemble_diagnostics_for_key(
     document: &ParsedDocument,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = lsp_diagnostics(document);
-    let base_conflicts = bundle
+    let base_conflicts: &[WorkspaceDiagnostic] = bundle
         .base_conflict
         .get(diag_key)
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
+        .map_or(&[], Vec::as_slice);
     if let Some(dups) = bundle.dup.get(diag_key) {
         diagnostics.extend(
             duplicates_not_explained_by_conflict(dups, base_conflicts)
