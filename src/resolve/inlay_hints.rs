@@ -15,7 +15,7 @@ pub struct InlayHintInfo {
 }
 
 /// Parameter-name hints for every resolvable call whose span intersects `range`.
-/// Returns `None` if cancelled mid-walk (the caller maps that to CONTENT_MODIFIED).
+/// Returns `None` if cancelled mid-walk (the caller maps that to `CONTENT_MODIFIED`).
 pub fn inlay_hints(
     uri: &str,
     document: &ParsedDocument,
