@@ -196,7 +196,8 @@ fn script_env_globals_appear_in_statement_completions() {
     assert_eq!(global.symbol.kind, SymbolKind::Variable);
     assert_eq!(
         global.symbol.type_annotation,
-        Some(crate::types::Type::from_annotation("CR4Game"))
+        Some(crate::types::Type::from_annotation("CR4Game")),
+        "theGame must be typed CR4Game"
     );
 }
 

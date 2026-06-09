@@ -110,5 +110,9 @@ fn memo_avoids_redundant_inference() {
 fn memo_key_is_byte_range() {
     let mut memo: HashMap<(usize, usize), Type> = HashMap::new();
     memo.insert((10, 20), Type::Named("Foo".to_string()));
-    assert_eq!(memo.get(&(10, 20)), Some(&Type::Named("Foo".to_string())));
+    assert_eq!(
+        memo.get(&(10, 20)),
+        Some(&Type::Named("Foo".to_string())),
+        "memoised type must be retrievable by byte range"
+    );
 }

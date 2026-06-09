@@ -19,7 +19,11 @@ fn array_members_are_indexed_with_placeholder_types() {
     assert_eq!(push_back.symbol.kind, SymbolKind::Method);
     let params = index.full_parameters_of(BUILTIN_ARRAY_URI, push_back.symbol.id);
     let types: Vec<_> = params.iter().map(|s| s.type_annotation.clone()).collect();
-    assert_eq!(types, vec![Some(Type::from_annotation("T"))]);
+    assert_eq!(
+        types,
+        vec![Some(Type::from_annotation("T"))],
+        "PushBack parameter must keep the placeholder type"
+    );
 }
 
 #[test]
@@ -30,6 +34,7 @@ fn last_method_returns_placeholder() {
         .expect("Last indexed");
     assert_eq!(
         last.symbol.type_annotation,
-        Some(Type::from_annotation("T"))
+        Some(Type::from_annotation("T")),
+        "Last must return the placeholder type"
     );
 }

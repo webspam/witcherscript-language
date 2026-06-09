@@ -73,6 +73,7 @@ fn autobind_decl_is_extracted_as_a_field() {
     assert_eq!(field.kind, SymbolKind::Field);
     assert_eq!(
         field.type_annotation,
-        Some(crate::types::Type::from_annotation("CInputManager"))
+        Some(crate::types::Type::from_annotation("CInputManager")),
+        "autobind field must keep its declared type"
     );
 }

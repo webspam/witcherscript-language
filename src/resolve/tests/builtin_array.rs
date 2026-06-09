@@ -47,7 +47,8 @@ fn array_method_returning_placeholder_substitutes_return_type() {
 
     assert_eq!(
         def.symbol.type_annotation,
-        Some(Type::from_annotation("CEntity"))
+        Some(Type::from_annotation("CEntity")),
+        "Last on array<CEntity> must return CEntity"
     );
 }
 
@@ -65,7 +66,11 @@ fn array_method_with_concrete_param_type_is_unchanged() {
         Some(Type::from_annotation("int")),
         "concrete parameter type must be unchanged"
     );
-    assert_eq!(def.symbol.type_annotation, Some(Type::Void));
+    assert_eq!(
+        def.symbol.type_annotation,
+        Some(Type::Void),
+        "Resize must return void"
+    );
 }
 
 #[test]
@@ -194,7 +199,8 @@ fn nested_array_substitutes_one_level() {
         .expect("Last on array<array<int>>");
     assert_eq!(
         def.symbol.type_annotation,
-        Some(Type::from_annotation("array<int>"))
+        Some(Type::from_annotation("array<int>")),
+        "nested return type must substitute one level"
     );
 
     let push = db
