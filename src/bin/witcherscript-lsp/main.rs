@@ -131,7 +131,7 @@ pub(crate) fn register_notification_handlers(router: &mut Router<Backend>) {
             );
             let backend = backend.clone();
             spawn_logged("did_change_workspace_folders handler", async move {
-                backend._did_change_workspace_folders(params).await
+                backend._did_change_workspace_folders(params).await;
             });
             ControlFlow::Continue(())
         })

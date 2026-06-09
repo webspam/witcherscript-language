@@ -537,7 +537,7 @@ impl LanguageServer for Backend {
     fn initialized(&mut self, params: InitializedParams) -> Self::NotifyResult {
         let backend = self.clone();
         crate::spawn_logged("initialized handler", async move {
-            backend._initialized(params).await
+            backend._initialized(params).await;
         });
         ControlFlow::Continue(())
     }
@@ -575,7 +575,7 @@ impl LanguageServer for Backend {
     ) -> Self::NotifyResult {
         let backend = self.clone();
         crate::spawn_logged("did_change_configuration handler", async move {
-            backend._did_change_configuration(params).await
+            backend._did_change_configuration(params).await;
         });
         ControlFlow::Continue(())
     }

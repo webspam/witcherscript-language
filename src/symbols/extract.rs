@@ -70,16 +70,16 @@ impl SymbolExtractor<'_> {
             "enum_decl" => self.visit_enum_decl(node, container, annotations),
             "state_decl" => self.visit_state_decl(node, container, annotations),
             "func_decl" => {
-                self.visit_callable_decl(node, container, annotations, SymbolKind::Function)
+                self.visit_callable_decl(node, container, annotations, SymbolKind::Function);
             }
             "event_decl" => {
-                self.visit_callable_decl(node, container, annotations, SymbolKind::Event)
+                self.visit_callable_decl(node, container, annotations, SymbolKind::Event);
             }
             "member_var_decl" | "autobind_decl" => {
-                self.visit_var_decl(node, container, annotations, SymbolKind::Field)
+                self.visit_var_decl(node, container, annotations, SymbolKind::Field);
             }
             "local_var_decl_stmt" => {
-                self.visit_var_decl(node, container, annotations, SymbolKind::Variable)
+                self.visit_var_decl(node, container, annotations, SymbolKind::Variable);
             }
             _ => self.visit_children(node, container, annotations),
         }
