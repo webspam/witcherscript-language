@@ -75,7 +75,10 @@ fn hint_labels(source: &str) -> Vec<String> {
     &["outer:", "inner:"],
 )]
 fn parameter_hint_labels(#[case] source: &str, #[case] expected: &[&str]) {
-    let expected: Vec<String> = expected.iter().map(std::string::ToString::to_string).collect();
+    let expected: Vec<String> = expected
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
     assert_eq!(
         hint_labels(source),
         expected,

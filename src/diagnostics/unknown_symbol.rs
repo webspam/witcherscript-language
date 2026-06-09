@@ -245,10 +245,9 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             let r = match resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident) {
                 Some(_) => None,
                 None => {
-                    let collides_with_type = ctx
-                        .db
-                        .find_top_level(name)
-                        .is_some_and(|d| matches!(d.symbol.kind, SymbolKind::Class | SymbolKind::Enum));
+                    let collides_with_type = ctx.db.find_top_level(name).is_some_and(|d| {
+                        matches!(d.symbol.kind, SymbolKind::Class | SymbolKind::Enum)
+                    });
                     if collides_with_type {
                         push(
                             ctx,

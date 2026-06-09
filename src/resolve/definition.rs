@@ -123,8 +123,7 @@ fn resolve_for_ident_no_site_fallback(
     let name = ident.utf8_text(document.source.as_bytes()).ok()?;
 
     if let Some(member_access) = ident.parent().filter(|p| p.kind() == "member_access_expr") {
-        let is_receiver = first_named_child(member_access)
-            .is_some_and(|r| r.id() == ident.id());
+        let is_receiver = first_named_child(member_access).is_some_and(|r| r.id() == ident.id());
         if !is_receiver {
             return resolve_member_access(uri, document, db, ident, name);
         }

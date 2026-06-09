@@ -50,7 +50,10 @@ impl SymbolExtractor<'_> {
         let mut annotations = pending_annotations;
         let mut cursor = node.walk();
 
-        for child in node.children(&mut cursor).filter(tree_sitter::Node::is_named) {
+        for child in node
+            .children(&mut cursor)
+            .filter(tree_sitter::Node::is_named)
+        {
             if child.kind() == "annotation" {
                 if let Some(annotation) = self.annotation(child) {
                     annotations.push(annotation);
@@ -158,7 +161,10 @@ impl SymbolExtractor<'_> {
 
     fn visit_enum_members(&mut self, node: Node, enum_id: SymbolId) {
         let mut cursor = node.walk();
-        for child in node.children(&mut cursor).filter(tree_sitter::Node::is_named) {
+        for child in node
+            .children(&mut cursor)
+            .filter(tree_sitter::Node::is_named)
+        {
             if child.kind() == "enum_decl_variant" {
                 if let Some(name_node) = first_child_kind(child, "ident") {
                     self.push_symbol(

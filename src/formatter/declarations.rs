@@ -518,8 +518,8 @@ impl Formatter<'_> {
                 None => child_row.saturating_sub(open_row),
             };
             let is_callable = matches!(member.kind(), "func_decl" | "event_decl");
-            let both_bodiless = is_bodiless_callable(member)
-                && prev_member.is_some_and(is_bodiless_callable);
+            let both_bodiless =
+                is_bodiless_callable(member) && prev_member.is_some_and(is_bodiless_callable);
             let want_blank = source_gap >= 2
                 || (is_callable && prev_end_row.is_some() && !prev_was_comment && !both_bodiless);
             prev_was_comment = member.kind() == "comment";

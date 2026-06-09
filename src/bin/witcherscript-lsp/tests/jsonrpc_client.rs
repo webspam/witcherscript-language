@@ -47,8 +47,8 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
                 let v = self.read_raw().await;
                 // A response carries our id and no `method`. A server->client request also has an
                 // id (its own namespace) and must be answered, not mistaken for our response.
-                let is_response =
-                    v.get("method").is_none() && v.get("id").and_then(serde_json::Value::as_i64) == Some(id);
+                let is_response = v.get("method").is_none()
+                    && v.get("id").and_then(serde_json::Value::as_i64) == Some(id);
                 if is_response {
                     return v;
                 }
