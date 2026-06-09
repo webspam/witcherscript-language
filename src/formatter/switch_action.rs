@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use tree_sitter::Node;
 
 use crate::cst::ancestors::find_ancestor_of_kind;
@@ -87,20 +89,20 @@ fn arm_substitution(
             if arm_is_inline(arm) {
                 return None;
             }
-            arm.stmts
-                .iter()
-                .map(|s| format!(" {}", &source[s.start_byte()..s.end_byte()]))
-                .collect()
+            arm.stmts.iter().fold(String::new(), |mut acc, s| {
+                let _ = write!(acc, " {}", &source[s.start_byte()..s.end_byte()]);
+                acc
+            })
         }
         SwitchLayout::Expand => {
             if !arm_is_inline(arm) {
                 return None;
             }
             let indent = format!("{base}{unit}{unit}");
-            arm.stmts
-                .iter()
-                .map(|s| format!("\n{indent}{}", &source[s.start_byte()..s.end_byte()]))
-                .collect()
+            arm.stmts.iter().fold(String::new(), |mut acc, s| {
+                let _ = write!(acc, "\n{indent}{}", &source[s.start_byte()..s.end_byte()]);
+                acc
+            })
         }
     };
     Some(Substitution { start, end, text })

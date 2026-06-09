@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::fmt::Write;
 
 use expect_test::expect_file;
 use tree_sitter::Language;
@@ -29,15 +30,14 @@ fn render_module(what: &str, names: &BTreeSet<&str>) -> String {
          //! Regenerate after a grammar bump: `UPDATE_EXPECT=1 cargo test sourcegen`\n\
          #![allow(dead_code)] // covers the whole grammar; unused consts are expected\n\n"
     );
-    let consts: String = names
-        .iter()
-        .map(|name| {
-            format!(
-                "pub(crate) const {}: &str = \"{name}\";\n",
-                name.to_uppercase()
-            )
-        })
-        .collect();
+    let consts: String = names.iter().fold(String::new(), |mut acc, s| {
+        let _ = writeln!(
+            acc,
+            "pub(crate) const {}: &str = \"{s}\";",
+            s.to_uppercase()
+        );
+        acc
+    });
     header + &consts
 }
 
