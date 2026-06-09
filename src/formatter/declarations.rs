@@ -425,7 +425,7 @@ impl Formatter<'_> {
         let children = child_nodes(node);
         // Exhaustive: all named children - enum_decl_variant AND comment extras.
         // Anonymous tokens ({, ,, }) are excluded by is_named() and handled directly.
-        let members: Vec<Node> = children.iter().filter(|n| n.is_named()).cloned().collect();
+        let members: Vec<Node> = children.iter().filter(|n| n.is_named()).copied().collect();
         let open = children.iter().find(|n| n.kind() == "{");
         let close = children.iter().rfind(|n| n.kind() == "}");
 
@@ -481,7 +481,7 @@ impl Formatter<'_> {
         let members: Vec<Node> = children
             .iter()
             .filter(|n| n.is_named() && n.kind() != "nop")
-            .cloned()
+            .copied()
             .collect();
         let open = children.iter().find(|n| n.kind() == "{");
         let close = children.iter().rfind(|n| n.kind() == "}");
@@ -615,7 +615,7 @@ impl Formatter<'_> {
         // Exhaustive: all named children - member_default_val_block_assign AND
         // comment extras. The `defaults` keyword and {/} braces are anonymous
         // tokens and are excluded by is_named(), then handled directly below.
-        let members: Vec<Node> = children.iter().filter(|n| n.is_named()).cloned().collect();
+        let members: Vec<Node> = children.iter().filter(|n| n.is_named()).copied().collect();
         let open = children.iter().find(|n| n.kind() == "{");
         let close = children.iter().rfind(|n| n.kind() == "}");
 
