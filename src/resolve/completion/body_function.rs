@@ -225,6 +225,11 @@ fn function_body_completions<'a>(
     boundary: fn(Node) -> bool,
     writer_kinds: &[&str],
 ) -> Option<(Vec<Node<'a>>, FunctionBodyContext)> {
+    const STMT_KEYWORD_KINDS: &[&str] = &[
+        "if", "else", "var", "return", "do", "while", "for", "switch", "case", "default", "break",
+        "continue",
+    ];
+
     let byte_offset = document
         .line_index
         .position_to_byte(&document.source, position)?;
@@ -282,10 +287,6 @@ fn function_body_completions<'a>(
         .and_then(|t| t.base_class.as_deref())
         .is_some();
 
-    const STMT_KEYWORD_KINDS: &[&str] = &[
-        "if", "else", "var", "return", "do", "while", "for", "switch", "case", "default", "break",
-        "continue",
-    ];
     let writing_keyword = nodes
         .last()
         .is_some_and(|n| is_kind_or_error_wrapped_kind(*n, STMT_KEYWORD_KINDS));

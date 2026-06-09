@@ -41,12 +41,12 @@ fn diagnostics_scope_parses_setting_string() {
 
 #[test]
 fn config_change_default_is_no_op() {
-    let c = ConfigChange::default();
     struct Case {
         name: &'static str,
         change: ConfigChange,
         expect_any_action: bool,
     }
+    let c = ConfigChange::default();
     let cases = [
         Case {
             name: "default → nothing to do",
