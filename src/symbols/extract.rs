@@ -2,6 +2,7 @@ use tree_sitter::Node;
 
 use crate::cst::nav::{first_child_kind, nth_child_kind};
 use crate::line_index::LineIndex;
+use crate::types::Type;
 
 use super::types::{AccessLevel, Annotation, DocumentSymbols, Symbol, SymbolId, SymbolKind};
 use super::util::{base_type, callable_signature, direct_child_text, node_text};
@@ -28,7 +29,7 @@ struct SymbolExtractor<'a> {
 struct SymbolSpec {
     container: Option<SymbolId>,
     annotations: Vec<Annotation>,
-    type_annotation: Option<String>,
+    type_annotation: Option<Type>,
     signature: Option<String>,
     base_class: Option<String>,
     owner_class: Option<String>,
@@ -232,7 +233,8 @@ impl SymbolExtractor<'_> {
             default_kind
         };
         let signature = callable_signature(node, self.source);
-        let type_annotation = direct_child_text(node, "type_annot", self.source);
+        let type_annotation =
+            direct_child_text(node, "type_annot", self.source).map(|t| Type::from_annotation(&t));
         let flavour = first_child_kind(node, "func_flavour").map(|n| node_text(n, self.source));
         let access = self.node_access_level(node);
         let id = self.push_symbol(
@@ -280,7 +282,8 @@ impl SymbolExtractor<'_> {
         kind: SymbolKind,
     ) {
         annotations.extend(self.direct_annotations(node));
-        let type_annotation = direct_child_text(node, "type_annot", self.source);
+        let type_annotation =
+            direct_child_text(node, "type_annot", self.source).map(|t| Type::from_annotation(&t));
         let field_signature = if kind == SymbolKind::Field {
             Some(node_text(node, self.source))
         } else {

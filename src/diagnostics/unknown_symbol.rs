@@ -7,8 +7,7 @@ use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
 use crate::resolve::{
-    NameContext, SymbolDb, classify_ident_context, infer_expr_type_memo,
-    resolve_definition_at_ident,
+    NameContext, SymbolDb, classify_ident_context, infer_type_memo, resolve_definition_at_ident,
 };
 use crate::symbols::{AccessLevel, SymbolKind};
 use crate::types::is_builtin_type_name;
@@ -152,14 +151,15 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
         IdentRole::MemberOfAccess(receiver) => {
             ctx.telemetry.type_inferences += 1;
             let infer_start = Instant::now();
-            let receiver_type = infer_expr_type_memo(
+            let receiver_type = infer_type_memo(
                 ctx.uri,
                 ctx.document,
                 ctx.db,
                 receiver,
                 ident.start_byte(),
                 ctx.type_memo,
-            );
+            )
+            .to_db_string();
             ctx.telemetry.member_access_infer_us += infer_start.elapsed().as_micros() as u64;
             let r = (|| {
                 let receiver_type = receiver_type?;

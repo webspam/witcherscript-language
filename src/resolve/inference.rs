@@ -19,35 +19,21 @@ pub(super) struct TypeContext {
     pub(super) owner_class: Option<String>,
 }
 
-pub(crate) fn infer_expr_type_memo(
+pub(crate) fn infer_type_memo(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
     node: Node,
     context_byte: usize,
-    memo: &mut HashMap<(usize, usize), Option<String>>,
-) -> Option<String> {
+    memo: &mut HashMap<(usize, usize), Type>,
+) -> Type {
     let key = (node.start_byte(), node.end_byte());
     if let Some(cached) = memo.get(&key) {
         return cached.clone();
     }
-    let value = infer_expr_type(uri, document, db, node, context_byte);
+    let value = infer_type(uri, document, db, node, context_byte);
     memo.insert(key, value.clone());
     value
-}
-
-/// Adapter over [`infer_type`]: `None` == not confidently known (the legacy `String`-keyed contract).
-pub(crate) fn infer_expr_type(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    node: Node,
-    context_byte: usize,
-) -> Option<String> {
-    match infer_type(uri, document, db, node, context_byte) {
-        Type::Unknown | Type::Null => None,
-        t => t.to_db_string(),
-    }
 }
 
 /// Infer an expression's [`Type`]. [`Type::Unknown`] means not-confident; callers must treat it as "do not report".
@@ -63,7 +49,7 @@ pub(crate) fn infer_type(
             let Ok(name) = node.utf8_text(document.source.as_bytes()) else {
                 return Type::Unknown;
             };
-            named_or_unknown(infer_name_type(uri, document, db, context_byte, name))
+            infer_name_type(uri, document, db, context_byte, name).unwrap_or(Type::Unknown)
         }
         "func_call_expr" => match call_callee(node) {
             Some(func) => infer_type(uri, document, db, func, context_byte),
@@ -144,7 +130,8 @@ fn infer_member_access_type(
         AccessLevel::Public,
     )
     .or_else(|| db.find_member(&container_type, member_name, AccessLevel::Public));
-    named_or_unknown(def.and_then(|d| d.symbol.type_annotation))
+    def.and_then(|d| d.symbol.type_annotation)
+        .unwrap_or(Type::Unknown)
 }
 
 pub(super) fn resolve_member_access(
@@ -184,12 +171,14 @@ pub(super) fn resolve_member_access(
         }
         "ident" => {
             let receiver_name = receiver.utf8_text(document.source.as_bytes()).ok()?;
-            let type_name = infer_name_type(uri, document, db, ident.start_byte(), receiver_name)?;
+            let type_name = infer_name_type(uri, document, db, ident.start_byte(), receiver_name)?
+                .to_db_string()?;
             resolve_document_member(uri, document, &type_name, name, AccessLevel::Public)
                 .or_else(|| db.find_member(&type_name, name, AccessLevel::Public))
         }
         "func_call_expr" | "member_access_expr" => {
-            let type_name = infer_expr_type(uri, document, db, receiver, ident.start_byte())?;
+            let type_name =
+                infer_type(uri, document, db, receiver, ident.start_byte()).to_db_string()?;
             resolve_document_member(uri, document, &type_name, name, AccessLevel::Public)
                 .or_else(|| db.find_member(&type_name, name, AccessLevel::Public))
         }
@@ -266,10 +255,14 @@ fn resolve_document_top_level_filtered(
     })
 }
 
-pub(super) fn definition_type_name(definition: &Definition) -> Option<String> {
+pub(super) fn definition_type(definition: &Definition) -> Option<Type> {
     definition.symbol.type_annotation.clone().or_else(|| {
         if definition.symbol.kind == SymbolKind::EnumMember {
-            definition.symbol.container_name.clone()
+            definition
+                .symbol
+                .container_name
+                .as_deref()
+                .map(Type::from_annotation)
         } else {
             None
         }
@@ -282,10 +275,13 @@ pub(super) fn infer_name_type(
     db: &SymbolDb,
     byte_offset: usize,
     name: &str,
-) -> Option<String> {
+) -> Option<Type> {
     resolve_name_in_context(uri, document, db, byte_offset, name, &NameContext::Value)
-        .and_then(|def| definition_type_name(&def))
-        .or_else(|| db.script_global_type(name))
+        .and_then(|def| definition_type(&def))
+        .or_else(|| {
+            db.script_global_type(name)
+                .map(|t| Type::from_annotation(&t))
+        })
 }
 
 pub(super) fn resolve_local_or_parameter(

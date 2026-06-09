@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::line_index::SourceRange;
+use crate::types::Type;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SymbolId(pub usize);
@@ -90,7 +91,7 @@ pub struct Symbol {
     pub selection_byte_range: std::ops::Range<usize>,
     pub container: Option<SymbolId>,
     pub container_name: Option<String>,
-    pub type_annotation: Option<String>,
+    pub type_annotation: Option<Type>,
     pub signature: Option<String>,
     pub base_class: Option<String>,
     pub owner_class: Option<String>,

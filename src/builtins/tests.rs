@@ -1,5 +1,6 @@
 use super::*;
 use crate::symbols::SymbolKind;
+use crate::types::Type;
 
 #[test]
 fn array_class_is_indexed() {
@@ -17,11 +18,8 @@ fn array_members_are_indexed_with_placeholder_types() {
         .expect("PushBack indexed");
     assert_eq!(push_back.symbol.kind, SymbolKind::Method);
     let params = index.full_parameters_of(BUILTIN_ARRAY_URI, push_back.symbol.id);
-    let types: Vec<_> = params
-        .iter()
-        .map(|s| s.type_annotation.as_deref().unwrap_or(""))
-        .collect();
-    assert_eq!(types, vec!["T"]);
+    let types: Vec<_> = params.iter().map(|s| s.type_annotation.clone()).collect();
+    assert_eq!(types, vec![Some(Type::from_annotation("T"))]);
 }
 
 #[test]
@@ -30,5 +28,8 @@ fn last_method_returns_placeholder() {
     let last = index
         .direct_member_of("array", "Last", crate::symbols::AccessLevel::Public)
         .expect("Last indexed");
-    assert_eq!(last.symbol.type_annotation.as_deref(), Some("T"));
+    assert_eq!(
+        last.symbol.type_annotation,
+        Some(Type::from_annotation("T"))
+    );
 }

@@ -2,7 +2,7 @@ use super::super::{completion_members, hover_text, resolve_definition};
 use crate::builtins::BUILTIN_ARRAY_URI;
 use crate::symbols::AccessLevel;
 use crate::test_support::TestDb;
-use crate::types::parse_generic_type;
+use crate::types::{Type, parse_generic_type};
 
 #[test]
 fn parse_generic_type_handles_basic_and_nested() {
@@ -45,7 +45,10 @@ fn array_method_returning_placeholder_substitutes_return_type() {
         .find_member("array<CEntity>", "Last", AccessLevel::Public)
         .expect("Last should resolve on array<CEntity>");
 
-    assert_eq!(def.symbol.type_annotation.as_deref(), Some("CEntity"));
+    assert_eq!(
+        def.symbol.type_annotation,
+        Some(Type::from_annotation("CEntity"))
+    );
 }
 
 #[test]
@@ -58,7 +61,7 @@ fn array_method_with_concrete_param_type_is_unchanged() {
 
     let sig = def.symbol.signature.as_deref().unwrap_or("");
     assert!(sig.contains(": int"), "got: {sig}");
-    assert_eq!(def.symbol.type_annotation.as_deref(), Some("void"));
+    assert_eq!(def.symbol.type_annotation, Some(Type::Void));
 }
 
 #[test]
@@ -175,7 +178,10 @@ fn nested_array_substitutes_one_level() {
     let def = db
         .find_member("array<array<int>>", "Last", AccessLevel::Public)
         .expect("Last on array<array<int>>");
-    assert_eq!(def.symbol.type_annotation.as_deref(), Some("array<int>"));
+    assert_eq!(
+        def.symbol.type_annotation,
+        Some(Type::from_annotation("array<int>"))
+    );
 
     let push = db
         .find_member("array<array<int>>", "PushBack", AccessLevel::Public)

@@ -4,6 +4,7 @@ use crate::cst::grammar::callee_ident;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
+use crate::types::Type;
 
 use super::Definition;
 use super::ast::{nodes_at_offset, significant_node_before_byte};
@@ -69,17 +70,17 @@ pub fn signature_help(
         label.push_str(&param.name);
         if let Some(ty) = &param.type_annotation {
             label.push_str(colon);
-            label.push_str(ty);
+            label.push_str(&ty.to_string());
         }
         let end = label.encode_utf16().count() as u32;
         parameters.push((start, end));
     }
     label.push(')');
     if let Some(ret) = &definition.symbol.type_annotation
-        && ret != "void"
+        && *ret != Type::Void
     {
         label.push_str(colon);
-        label.push_str(ret);
+        label.push_str(&ret.to_string());
     }
 
     let active_parameter = if params.is_empty() {

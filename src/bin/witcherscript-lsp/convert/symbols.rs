@@ -20,7 +20,7 @@ pub(crate) fn document_symbols(
             name: symbol.name.clone(),
             detail: symbol
                 .display_detail()
-                .or_else(|| symbol.type_annotation.clone()),
+                .or_else(|| symbol.type_annotation.as_ref().map(ToString::to_string)),
             kind: lsp_symbol_kind(symbol.kind),
             tags: None,
             deprecated: None,

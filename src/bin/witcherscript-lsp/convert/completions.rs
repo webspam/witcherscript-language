@@ -5,6 +5,7 @@ use lsp_types::{
 };
 use witcherscript_language::resolve::{Definition, SignatureHelpInfo, SymbolDb};
 use witcherscript_language::symbols::{Symbol, SymbolKind};
+use witcherscript_language::types::Type;
 
 use super::symbols::hover_markdown;
 
@@ -21,7 +22,7 @@ pub(crate) fn completion_item(definition: &Definition, params: &[String]) -> Com
     let detail = symbol
         .signature
         .clone()
-        .or_else(|| symbol.type_annotation.clone());
+        .or_else(|| symbol.type_annotation.as_ref().map(ToString::to_string));
     let (insert_text, insert_text_format) = if is_callable {
         if params.is_empty() {
             (
@@ -98,7 +99,7 @@ fn method_signature(name: &str, params: &[Symbol]) -> String {
             s.push_str(&p.name);
             if let Some(ty) = &p.type_annotation {
                 s.push_str(" : ");
-                s.push_str(ty);
+                s.push_str(&ty.to_string());
             }
             s
         })
@@ -119,8 +120,8 @@ pub(crate) fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String 
         || method
             .symbol
             .type_annotation
-            .as_deref()
-            .is_some_and(|t| t != "void");
+            .as_ref()
+            .is_some_and(|t| *t != Type::Void);
     let body = if has_return {
         format!("{{\n\t$0\n\n\treturn wrappedMethod({call_args});\n}}")
     } else {

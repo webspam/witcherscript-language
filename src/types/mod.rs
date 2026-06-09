@@ -7,8 +7,8 @@ mod tests;
 
 pub(crate) use parse::{is_builtin_type_name, native_type_accepts, native_type_names};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Type {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Type {
     Void,
     Primitive(Primitive),
     /// A class, struct, enum, or state, by name.
@@ -20,8 +20,8 @@ pub(crate) enum Type {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Primitive {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Primitive {
     Bool,
     Byte,
     Int,
@@ -50,6 +50,16 @@ impl Type {
             Type::Named(name) => Some(name.clone()),
             Type::Array(elem) => Some(format!("array<{}>", elem.to_db_string()?)),
             Type::Null | Type::Unknown => None,
+        }
+    }
+
+    pub(crate) fn substitute_named(&self, placeholder: &str, replacement: &Type) -> Type {
+        match self {
+            Type::Named(name) if name == placeholder => replacement.clone(),
+            Type::Array(elem) => {
+                Type::Array(Box::new(elem.substitute_named(placeholder, replacement)))
+            }
+            _ => self.clone(),
         }
     }
 }

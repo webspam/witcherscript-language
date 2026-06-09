@@ -1,6 +1,7 @@
 use rstest::rstest;
 
 use super::*;
+use crate::types::Type;
 
 fn write_temp(name: &str, content: &str) -> std::path::PathBuf {
     let path = std::env::temp_dir().join(name);
@@ -38,7 +39,7 @@ fn symbol_has_correct_position() {
     let sym = &env.find("theGame").unwrap().symbol;
     assert_eq!(sym.selection_range.start.line, 1);
     assert_eq!(sym.selection_range.start.character, 0);
-    assert_eq!(sym.type_annotation.as_deref(), Some("CR4Game"));
+    assert_eq!(sym.type_annotation, Some(Type::from_annotation("CR4Game")));
     assert_eq!(sym.kind, SymbolKind::Variable);
 }
 
@@ -49,8 +50,8 @@ fn camera_injected_when_absent_from_ini() {
     let camera = env.find("theCamera").expect("theCamera injected");
     assert_eq!(camera.type_name, "CCameraDirector");
     assert_eq!(
-        camera.symbol.type_annotation.as_deref(),
-        Some("CCameraDirector")
+        camera.symbol.type_annotation,
+        Some(Type::from_annotation("CCameraDirector"))
     );
 }
 
@@ -66,7 +67,10 @@ fn camera_override_respects_ini_state(
     let env = parse_script_environment(&path).unwrap();
     let camera = env.find("theCamera").unwrap();
     assert_eq!(camera.type_name, expected);
-    assert_eq!(camera.symbol.type_annotation.as_deref(), Some(expected));
+    assert_eq!(
+        camera.symbol.type_annotation,
+        Some(Type::from_annotation(expected))
+    );
 }
 
 #[test]
