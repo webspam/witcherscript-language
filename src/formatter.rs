@@ -239,28 +239,6 @@ fn collect_comments(root: Node) -> Vec<Node> {
     }
 }
 
-/// Renders the parameter list and return type of a callable declaration node as a
-/// clean, normalised string - comments stripped, whitespace canonical.
-/// Returns `None` if the node has no `func_params` child.
-pub fn render_callable_signature(node: Node, source: &str) -> Option<String> {
-    let f = Formatter {
-        source,
-        indent_unit: String::new(),
-        level: 0,
-        out: String::new(),
-        suppress_next_indent: false,
-        line_limit: usize::MAX,
-        compact_colon: true,
-        align_member_colons: false,
-        annotation_placement: AnnotationPlacement::Preserve,
-        default_placement: AnnotationPlacement::Preserve,
-        colon_align_col: None,
-        comments: Vec::new(),
-        comment_cursor: 0,
-    };
-    f.render_sig(node)
-}
-
 pub fn format_document(root: Node, source: &str, options: FormatOptions) -> String {
     let indent_unit = if options.use_tabs {
         "\t".to_string()

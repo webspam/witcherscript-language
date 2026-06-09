@@ -38,7 +38,7 @@ pub enum Primitive {
 
 impl Type {
     /// Parse a type-annotation string. Recurses `array<...>`, canonicalises aliases; empty -> `Unknown`, unknown word -> `Named`.
-    pub(crate) fn from_annotation(s: &str) -> Type {
+    pub fn from_annotation(s: &str) -> Type {
         parse::from_annotation(s)
     }
 

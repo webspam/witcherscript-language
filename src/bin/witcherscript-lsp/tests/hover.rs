@@ -8,9 +8,10 @@ use crate::convert::hover_markdown;
 fn markdown_at_cursor(fixture: &str) -> String {
     let t = TestDb::new(fixture);
     let (uri, pos) = t.cursor();
-    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
-        .expect("symbol must resolve at cursor");
-    hover_markdown(&def)
+    let db = t.db();
+    let def =
+        resolve_definition(&uri, t.doc_for(&uri), &db, pos).expect("symbol must resolve at cursor");
+    hover_markdown(&def, &db)
 }
 
 #[test]
@@ -80,7 +81,7 @@ fn formats_class_hover_with_extends_on_single_line() {
     let t = TestDb::new("class Y {}\nclass $0X extends Y {}\n");
     let (uri, pos) = t.cursor();
     let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("class must resolve");
-    let text = witcherscript_language::resolve::hover_text(&def);
+    let text = witcherscript_language::resolve::hover_text(&def, &t.db());
     expect!["class X extends Y"].assert_eq(&text);
 }
 
@@ -95,7 +96,7 @@ fn inherited_method_hover_includes_defining_class_and_return_type() {
     let (uri, pos) = t.cursor();
     let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
         .expect("inherited method must resolve");
-    let text = witcherscript_language::resolve::hover_text(&def);
+    let text = witcherscript_language::resolve::hover_text(&def, &t.db());
     assert!(text.starts_with("(method) "), "got {text:?}");
     assert!(text.contains("B."), "got {text:?}");
     assert!(text.contains("Inherited"), "got {text:?}");
@@ -107,7 +108,7 @@ fn field_hover_includes_name_and_type() {
     let t = TestDb::new("class CExample {\n protected editable var $0ignore : bool;\n}\n");
     let (uri, pos) = t.cursor();
     let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("field must resolve");
-    let text = witcherscript_language::resolve::hover_text(&def);
+    let text = witcherscript_language::resolve::hover_text(&def, &t.db());
     assert!(text.starts_with("(field) "), "got {text:?}");
     assert!(text.contains("ignore"), "got {text:?}");
     assert!(text.contains("bool"), "got {text:?}");

@@ -92,7 +92,8 @@ pub struct Symbol {
     pub container: Option<SymbolId>,
     pub container_name: Option<String>,
     pub type_annotation: Option<Type>,
-    pub signature: Option<String>,
+    /// Field declaration as written in source; display only, never parsed.
+    pub declaration_text: Option<String>,
     pub base_class: Option<String>,
     pub owner_class: Option<String>,
     pub flavour: Option<String>,

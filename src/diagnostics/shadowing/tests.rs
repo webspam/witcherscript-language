@@ -23,7 +23,7 @@ fn env(names_and_types: &[(&str, &str)]) -> ScriptEnvironment {
                 container: None,
                 container_name: None,
                 type_annotation: Some(Type::from_annotation(ty)),
-                signature: None,
+                declaration_text: None,
                 base_class: None,
                 owner_class: None,
                 flavour: None,

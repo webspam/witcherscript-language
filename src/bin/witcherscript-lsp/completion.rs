@@ -12,8 +12,8 @@ use witcherscript_language::resolve::{
     annotation_name_completions, class_body_keyword_completions, class_header_keyword_completions,
     completion_members, default_or_hint_member_completions, expression_completions,
     extends_completions, new_lifetime_completions, new_type_completions, override_completions,
-    position_in_comment, script_body_completions, state_owner_completions, statement_completions,
-    type_completions_arc,
+    position_in_comment, render_signature, script_body_completions, state_owner_completions,
+    statement_completions, type_completions_arc,
 };
 use witcherscript_language::symbols::SymbolKind;
 
@@ -35,8 +35,7 @@ fn triggered_by_dot(params: &CompletionParams) -> bool {
 }
 
 fn sorted_completion_item(db: &SymbolDb, def: &Definition, tier: u8) -> CompletionItem {
-    let params = db.parameters_of(&def.uri, def.symbol.id);
-    let mut item = completion_item(def, &params);
+    let mut item = completion_item(def, db);
     item.sort_text = Some(format!("{}_{}", tier, def.symbol.name));
     item
 }
@@ -162,7 +161,10 @@ impl Backend {
                         CompletionItem {
                             label: def.symbol.name.clone(),
                             kind: Some(item_kind),
-                            detail: def.symbol.signature.clone(),
+                            detail: Some(render_signature(
+                                &db.display_parameters_of(def),
+                                def.symbol.type_annotation.as_ref(),
+                            )),
                             insert_text: Some(insert_text),
                             insert_text_format: Some(InsertTextFormat::SNIPPET),
                             ..CompletionItem::default()

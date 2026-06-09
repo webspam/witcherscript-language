@@ -10,10 +10,6 @@ pub(super) fn direct_child_text(node: Node, kind: &str, source: &str) -> Option<
     first_child_kind(node, kind).map(|child| node_text(child, source))
 }
 
-pub(super) fn callable_signature(node: Node, source: &str) -> Option<String> {
-    crate::formatter::render_callable_signature(node, source)
-}
-
 pub(super) fn base_type(node: Node, source: &str) -> Option<String> {
     nth_child_kind(node, "ident", 1).map(|base| node_text(base, source))
 }

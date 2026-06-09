@@ -394,7 +394,7 @@ impl Backend {
             Ok(Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
-                    value: hover_markdown(&definition),
+                    value: hover_markdown(&definition, &db),
                 }),
                 range: Some(lsp_range(definition.symbol.selection_range)),
             }))

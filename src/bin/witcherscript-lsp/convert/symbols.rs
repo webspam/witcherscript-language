@@ -1,7 +1,7 @@
 use std::fmt::Write;
 
 use lsp_types::{DocumentSymbol, Url};
-use witcherscript_language::resolve::{Definition, hover_text};
+use witcherscript_language::resolve::{Definition, SymbolDb, hover_text};
 use witcherscript_language::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
 
 use super::positions::lsp_range;
@@ -49,8 +49,8 @@ fn lsp_symbol_kind(kind: SymbolKind) -> lsp_types::SymbolKind {
     }
 }
 
-pub(crate) fn hover_markdown(definition: &Definition) -> String {
-    let mut markdown = format!("```witcherscript\n{}\n```", hover_text(definition));
+pub(crate) fn hover_markdown(definition: &Definition, db: &SymbolDb) -> String {
+    let mut markdown = format!("```witcherscript\n{}\n```", hover_text(definition, db));
     write!(
         markdown,
         "\n\nDefined in {}",

@@ -132,7 +132,7 @@ pub fn script_env(name: &str, type_name: &str) -> ScriptEnvironment {
             container: None,
             container_name: None,
             type_annotation: Some(Type::from_annotation(type_name)),
-            signature: None,
+            declaration_text: None,
             base_class: None,
             owner_class: None,
             flavour: None,

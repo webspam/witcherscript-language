@@ -52,7 +52,7 @@ fn completion_item_method_has_method_kind() {
 
     assert!(!members.is_empty(), "should have completion members");
     let (_, def) = &members[0];
-    let item = completion_item(def, &[]);
+    let item = completion_item(def, &t.db());
     assert_eq!(item.label, "DoThing");
     assert_eq!(item.kind, Some(CompletionItemKind::METHOD));
     assert_eq!(item.insert_text.as_deref(), Some("DoThing()"));
@@ -84,8 +84,7 @@ fn completion_item_snippet_includes_param_placeholders() {
         .iter()
         .find(|(_, d)| d.symbol.name == "Find")
         .expect("Find should appear in completions");
-    let params = db.parameters_of(&find_def.uri, find_def.symbol.id);
-    let item = completion_item(find_def, &params);
+    let item = completion_item(find_def, &db);
 
     assert_eq!(item.kind, Some(CompletionItemKind::METHOD));
     assert_eq!(item.insert_text_format, Some(InsertTextFormat::SNIPPET));
@@ -97,6 +96,41 @@ fn completion_item_snippet_includes_param_placeholders() {
         item.command.as_ref().map(|c| c.command.as_str()),
         Some("editor.action.triggerParameterHints"),
         "callable with params should open signature help after insertion"
+    );
+}
+
+#[test]
+fn completion_item_snippet_excludes_optional_params() {
+    use witcherscript_language::resolve::completion_members;
+
+    let t = TestDb::new(concat!(
+        "class CExample {\n",
+        "  public function Find(findName : string, optional range : float) : int {}\n",
+        "}\n",
+        "function Test() {\n",
+        "  var e : CExample;\n",
+        "  e.$0\n",
+        "}\n",
+    ));
+    let (uri, pos) = t.cursor();
+    let db = t.db();
+    let members = completion_members(&uri, t.doc_for(&uri), &db, pos);
+
+    let (_, find_def) = members
+        .iter()
+        .find(|(_, d)| d.symbol.name == "Find")
+        .expect("Find should appear in completions");
+    let item = completion_item(find_def, &db);
+
+    assert_eq!(
+        item.insert_text.as_deref(),
+        Some("Find(${1:findName})$0"),
+        "optional parameter must not become a snippet slot"
+    );
+    assert_eq!(
+        item.detail.as_deref(),
+        Some("(findName: string, optional range: float): int"),
+        "detail must render the full parameter list"
     );
 }
 

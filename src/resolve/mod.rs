@@ -47,7 +47,7 @@ pub use inlay_hints::{InlayHintInfo, inlay_hints};
 pub use name_context::{NameContext, classify_ident_context};
 pub use overrides::{OverriddenSymbol, overridden_top_level};
 pub use references::find_references;
-pub use signature::{SignatureHelpInfo, hover_text, signature_help};
+pub use signature::{SignatureHelpInfo, hover_text, render_signature, signature_help};
 pub use subscription_registry::SubscriptionRegistry;
 pub use symbol_db::{FilteredBaseCatalogs, SymbolDb};
 pub use type_definition::resolve_type_definition;

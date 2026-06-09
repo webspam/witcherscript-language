@@ -332,7 +332,7 @@ fn wrapped_method_macro_resolves_to_wrapped_method() {
     assert_eq!(def.symbol.kind, SymbolKind::Method);
     assert_eq!(def.symbol.container_name.as_deref(), Some("CPlayer"));
     assert!(
-        hover_text(&def).contains("(method) CPlayer.OnSpawned"),
+        hover_text(&def, &t.db()).contains("(method) CPlayer.OnSpawned"),
         "hover should describe the wrapped method"
     );
 

@@ -3,6 +3,7 @@ use witcherscript_language::document::parse_document;
 use witcherscript_language::line_index::SourcePosition;
 use witcherscript_language::resolve::{SymbolDb, WorkspaceIndex, resolve_definition};
 use witcherscript_language::symbols::SymbolKind;
+use witcherscript_language::types::Type;
 
 #[test]
 fn extracts_outline_symbols_from_mod_annotations_fixture() {
@@ -214,8 +215,12 @@ fn builtin_array_methods_resolve_through_fixture() {
 
     assert_eq!(def.uri, BUILTIN_ARRAY_URI);
     assert_eq!(def.symbol.name, "PushBack");
-    let sig = def.symbol.signature.as_deref().unwrap_or("");
-    assert!(sig.contains(": int"), "got signature: {sig}");
+    let params = db.display_parameters_of(&def);
+    assert_eq!(
+        params[0].type_annotation,
+        Some(Type::from_annotation("int")),
+        "parameter type must be substituted"
+    );
 }
 
 fn assert_symbol(

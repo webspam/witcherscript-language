@@ -5,7 +5,7 @@ use crate::line_index::LineIndex;
 use crate::types::Type;
 
 use super::types::{AccessLevel, Annotation, DocumentSymbols, Symbol, SymbolId, SymbolKind};
-use super::util::{base_type, callable_signature, direct_child_text, node_text};
+use super::util::{base_type, direct_child_text, node_text};
 
 pub fn extract_symbols(root: Node, source: &str, line_index: &LineIndex) -> DocumentSymbols {
     let mut extractor = SymbolExtractor {
@@ -30,7 +30,7 @@ struct SymbolSpec {
     container: Option<SymbolId>,
     annotations: Vec<Annotation>,
     type_annotation: Option<Type>,
-    signature: Option<String>,
+    declaration_text: Option<String>,
     base_class: Option<String>,
     owner_class: Option<String>,
     flavour: Option<String>,
@@ -232,7 +232,6 @@ impl SymbolExtractor<'_> {
         } else {
             default_kind
         };
-        let signature = callable_signature(node, self.source);
         let type_annotation =
             direct_child_text(node, "type_annot", self.source).map(|t| Type::from_annotation(&t));
         let flavour = first_child_kind(node, "func_flavour").map(|n| node_text(n, self.source));
@@ -245,7 +244,6 @@ impl SymbolExtractor<'_> {
                 container,
                 annotations,
                 type_annotation,
-                signature,
                 flavour,
                 access,
                 ..Default::default()
@@ -284,7 +282,7 @@ impl SymbolExtractor<'_> {
         annotations.extend(self.direct_annotations(node));
         let type_annotation =
             direct_child_text(node, "type_annot", self.source).map(|t| Type::from_annotation(&t));
-        let field_signature = if kind == SymbolKind::Field {
+        let declaration_text = if kind == SymbolKind::Field {
             Some(node_text(node, self.source))
         } else {
             None
@@ -323,7 +321,7 @@ impl SymbolExtractor<'_> {
                         container,
                         annotations: annotations.clone(),
                         type_annotation: type_annotation.clone(),
-                        signature: field_signature.clone(),
+                        declaration_text: declaration_text.clone(),
                         access,
                         is_optional,
                         is_out,
@@ -383,7 +381,7 @@ impl SymbolExtractor<'_> {
             container: spec.container,
             container_name,
             type_annotation: spec.type_annotation,
-            signature: spec.signature,
+            declaration_text: spec.declaration_text,
             base_class: spec.base_class,
             owner_class: spec.owner_class,
             flavour: spec.flavour,

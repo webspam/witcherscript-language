@@ -3,7 +3,7 @@ use tree_sitter::Node;
 use crate::cst::grammar::callee_ident;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
-use crate::symbols::SymbolKind;
+use crate::symbols::{Symbol, SymbolKind};
 use crate::types::Type;
 
 use super::Definition;
@@ -49,7 +49,7 @@ pub fn signature_help(
         return None;
     }
 
-    let params = db.full_parameters_of(&definition.uri, definition.symbol.id);
+    let params = db.display_parameters_of(&definition);
     let colon = if compact_colon { ": " } else { " : " };
 
     let mut label = String::new();
@@ -179,7 +179,34 @@ fn call_site_of(node: Node, byte_offset: usize) -> Option<CallSite> {
     }
 }
 
-pub fn hover_text(definition: &Definition) -> String {
+/// Single renderer so hover and completion detail stay identical.
+pub fn render_signature(params: &[Symbol], return_type: Option<&Type>) -> String {
+    let mut out = String::from("(");
+    for (i, param) in params.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        if param.is_optional {
+            out.push_str("optional ");
+        }
+        if param.is_out {
+            out.push_str("out ");
+        }
+        out.push_str(&param.name);
+        if let Some(ty) = &param.type_annotation {
+            out.push_str(": ");
+            out.push_str(&ty.to_string());
+        }
+    }
+    out.push(')');
+    if let Some(ret) = return_type {
+        out.push_str(": ");
+        out.push_str(&ret.to_string());
+    }
+    out
+}
+
+pub fn hover_text(definition: &Definition, db: &SymbolDb) -> String {
     let symbol = &definition.symbol;
     let mut lines = Vec::new();
 
@@ -198,7 +225,10 @@ pub fn hover_text(definition: &Definition) -> String {
 
     match symbol.kind {
         SymbolKind::Method => {
-            let params_and_return = symbol.signature.as_deref().unwrap_or("");
+            let params_and_return = render_signature(
+                &db.display_parameters_of(definition),
+                symbol.type_annotation.as_ref(),
+            );
             let class_prefix = symbol
                 .container_name
                 .as_deref()
@@ -210,8 +240,8 @@ pub fn hover_text(definition: &Definition) -> String {
             ));
         }
         SymbolKind::Field => {
-            if let Some(sig) = &symbol.signature {
-                lines.push(format!("(field) {sig}"));
+            if let Some(text) = &symbol.declaration_text {
+                lines.push(format!("(field) {text}"));
             } else if let Some(type_annotation) = &symbol.type_annotation {
                 lines.push(format!("(field) {} : {type_annotation}", symbol.name));
             } else {
@@ -232,7 +262,11 @@ pub fn hover_text(definition: &Definition) -> String {
                 SymbolKind::Event => "event",
                 SymbolKind::Method | SymbolKind::Field => unreachable!(),
             };
-            if let Some(sig) = &symbol.signature {
+            if symbol.kind.is_callable() {
+                let sig = render_signature(
+                    &db.display_parameters_of(definition),
+                    symbol.type_annotation.as_ref(),
+                );
                 let flavour_prefix = symbol
                     .flavour
                     .as_deref()
