@@ -171,10 +171,7 @@ pub fn resolve_all_definitions(
     all_declarations_of(&primary, db)
 }
 
-fn resolution_ident(
-    document: &ParsedDocument,
-    byte_offset: usize,
-) -> Option<Node<'_>> {
+fn resolution_ident(document: &ParsedDocument, byte_offset: usize) -> Option<Node<'_>> {
     let root = document.tree.root_node();
     identifier_at(root, byte_offset)
         .or_else(|| ident_before_trailing_semicolon(document, byte_offset))

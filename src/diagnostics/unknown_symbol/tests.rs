@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use rstest::rstest;
 
 use super::collect_unknown_symbol_diagnostics;
@@ -10,11 +12,13 @@ use crate::test_support::{TestDb, script_env};
 fn parallel_run_is_deterministic() {
     let mut src = String::new();
     for i in 0..40 {
-        src.push_str(&format!(
+        writeln!(
+            src,
             "class C{i} extends Missing{i} {{ var f{i} : MissingType{i}; }} \
              function Fn{i}() {{ var x{i} : int; x{i} = unknownBare{i}; UnknownCall{i}(); }} \
-             function Fn2_{i}() {{ var c{i} : C{i}; c{i}.bogus{i} = 1; }}\n"
-        ));
+             function Fn2_{i}() {{ var c{i} : C{i}; c{i}.bogus{i} = 1; }}"
+        )
+        .unwrap();
     }
     let doc = parse_document(&src).expect("parse should succeed");
     let mut idx = WorkspaceIndex::default();

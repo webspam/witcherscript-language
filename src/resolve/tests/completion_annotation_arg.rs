@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use expect_test::expect;
 use rstest::rstest;
 
@@ -10,12 +12,14 @@ use crate::test_support::TestDb;
 fn empty_annotation_parens_parse_shape() {
     fn dump(node: tree_sitter::Node, out: &mut String, depth: usize) {
         out.push_str(&"  ".repeat(depth));
-        out.push_str(&format!(
-            "{} [{}..{}]\n",
+        writeln!(
+            out,
+            "{} [{}..{}]",
             node.kind(),
             node.start_byte(),
             node.end_byte()
-        ));
+        )
+        .unwrap();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             dump(child, out, depth + 1);
