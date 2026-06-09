@@ -57,7 +57,7 @@ pub(crate) fn cst_diagnostics_with_cache(
     let mut misses: Vec<(&String, &ParsedDocument)> = Vec::new();
     {
         let cache = cache.lock();
-        for (uri, document) in documents.iter() {
+        for (uri, document) in documents {
             let cached = cache.get(uri).filter(|e| {
                 e.parse_version == document.parse_version && e.db_fingerprint == fingerprint
             });

@@ -393,7 +393,7 @@ impl Backend {
 
         let mut items: Vec<WorkspaceDocumentDiagnosticReport> = Vec::with_capacity(diag_docs.len());
         let mut emitted: HashSet<String> = HashSet::with_capacity(diag_docs.len());
-        for (diag_key, document) in diag_docs.iter() {
+        for (diag_key, document) in &diag_docs {
             let Some(publish_uri) = publish_url(diag_key) else {
                 continue;
             };

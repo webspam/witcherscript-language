@@ -52,11 +52,11 @@ pub(crate) fn diagnostics_document_set<'a>(
 ) -> HashMap<String, &'a ParsedDocument> {
     let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
     if whole_workspace {
-        for (uri, doc) in workspace_docs.iter() {
+        for (uri, doc) in workspace_docs {
             merged.insert(uri.clone(), doc.as_ref());
         }
     }
-    for (url, doc) in open_documents.iter() {
+    for (url, doc) in open_documents {
         merged.insert(canonical_uri(url), doc.as_ref());
     }
     merged
