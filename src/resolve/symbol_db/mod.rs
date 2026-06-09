@@ -52,21 +52,25 @@ impl<'a> SymbolDb<'a> {
         }
     }
 
+    #[must_use]
     pub fn with_suppressed_base_uris(mut self, uris: &'a HashSet<String>) -> Self {
         self.suppressed_base_uris = Some(uris);
         self
     }
 
+    #[must_use]
     pub fn with_prefiltered_base(mut self, catalogs: &'a FilteredBaseCatalogs) -> Self {
         self.prefiltered_base = Some(catalogs);
         self
     }
 
+    #[must_use]
     pub fn with_script_env(mut self, env: &'a ScriptEnvironment) -> Self {
         self.script_env = Some(env);
         self
     }
 
+    #[must_use]
     pub fn with_builtins(mut self, builtins: &'a WorkspaceIndex) -> Self {
         self.builtins = Some(builtins);
         self

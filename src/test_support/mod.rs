@@ -43,12 +43,14 @@ impl TestDb {
         }
     }
 
+    #[must_use]
     pub fn with_base_doc(mut self, uri: &str, source: &str) -> Self {
         let doc = parse_document(source).expect("test_support: base source must parse");
         self.base.update_document(uri, &doc);
         self
     }
 
+    #[must_use]
     pub fn with_builtins_index(mut self) -> Self {
         self.builtins = Some(crate::builtins::load_builtins_index());
         self
