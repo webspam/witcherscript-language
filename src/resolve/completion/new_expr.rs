@@ -109,14 +109,10 @@ fn new_lifetime_completions_inner(
 }
 
 fn is_class_typed(type_annotation: Option<&Type>, db: &SymbolDb) -> bool {
-    let Some(name) = type_annotation.and_then(Type::to_db_string) else {
+    let Some(lookup) = type_annotation.and_then(Type::to_lookup_ctor) else {
         return false;
     };
-    let lookup = match crate::types::parse_generic_type(&name) {
-        Some((ctor, _)) => ctor,
-        None => name.as_str(),
-    };
-    db.find_top_level(lookup)
+    db.find_top_level(&lookup)
         .is_some_and(|def| def.symbol.kind == SymbolKind::Class)
 }
 

@@ -1,6 +1,5 @@
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
-use crate::types::parse_generic_type;
 
 use super::Definition;
 use super::definition::resolve_definition;
@@ -21,7 +20,6 @@ fn type_target_for(def: &Definition, db: &SymbolDb<'_>) -> Option<Definition> {
     if def.symbol.kind.is_type() {
         return Some(def.clone());
     }
-    let raw = definition_type(def)?.to_db_string()?;
-    let lookup = parse_generic_type(&raw).map_or(raw.as_str(), |(ctor, _)| ctor);
-    db.find_top_level(lookup)
+    let lookup = definition_type(def)?.to_lookup_ctor()?;
+    db.find_top_level(&lookup)
 }

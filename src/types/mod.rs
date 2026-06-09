@@ -53,6 +53,15 @@ impl Type {
         }
     }
 
+    /// The top-level name for `SymbolDb` lookups: `array<X>` collapses to "array".
+    pub(crate) fn to_lookup_ctor(&self) -> Option<String> {
+        let raw = self.to_db_string()?;
+        Some(match parse_generic_type(&raw) {
+            Some((ctor, _)) => ctor.to_string(),
+            None => raw,
+        })
+    }
+
     pub(crate) fn substitute_named(&self, placeholder: &str, replacement: &Type) -> Type {
         match self {
             Type::Named(name) if name == placeholder => replacement.clone(),
