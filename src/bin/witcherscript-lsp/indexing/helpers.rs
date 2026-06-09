@@ -125,15 +125,12 @@ pub(super) fn reindex_into(
     if client_uri != canonical {
         changed.extend(index.remove_document(client_uri));
     }
-    match parsed {
-        Some(document) => {
-            changed.extend(index.update_document(canonical, &document));
-            docs.insert(canonical.to_string(), Arc::new(document));
-        }
-        None => {
-            changed.extend(index.remove_document(canonical));
-            docs.remove(canonical);
-        }
+    if let Some(document) = parsed {
+        changed.extend(index.update_document(canonical, &document));
+        docs.insert(canonical.to_string(), Arc::new(document));
+    } else {
+        changed.extend(index.remove_document(canonical));
+        docs.remove(canonical);
     }
     changed
 }

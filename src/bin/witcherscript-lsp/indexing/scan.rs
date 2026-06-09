@@ -74,12 +74,9 @@ impl Backend {
 
         let parse_start = Instant::now();
         let join_result = tokio::task::spawn_blocking(move || {
-            let files = match collect_witcherscript_files(&roots, &exclude_globs) {
-                Ok(f) => f,
-                Err(_) => {
-                    warn!("failed to collect workspace files");
-                    return None;
-                }
+            let Ok(files) = collect_witcherscript_files(&roots, &exclude_globs) else {
+                warn!("failed to collect workspace files");
+                return None;
             };
             let file_count = files.len();
             trace!(op = "index_workspace", file_count, files = ?files, "workspace files");

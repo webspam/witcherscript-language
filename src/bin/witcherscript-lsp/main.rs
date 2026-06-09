@@ -150,12 +150,11 @@ fn parse_listen_port() -> Option<u16> {
                 eprintln!("witcherscript-lsp: --listen requires a port number");
                 std::process::exit(2);
             };
-            match raw.parse::<u16>() {
-                Ok(p) => Some(p),
-                Err(_) => {
-                    eprintln!("witcherscript-lsp: invalid --listen port: {raw}");
-                    std::process::exit(2);
-                }
+            if let Ok(p) = raw.parse::<u16>() {
+                Some(p)
+            } else {
+                eprintln!("witcherscript-lsp: invalid --listen port: {raw}");
+                std::process::exit(2);
             }
         }
         "--stdio" => None,

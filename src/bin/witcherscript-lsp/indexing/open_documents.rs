@@ -115,18 +115,17 @@ impl Backend {
         );
         let canonical = canonical_uri(uri);
         let is_base = self.is_base_script_uri(uri);
-        let disk_text = match uri.to_file_path() {
-            Ok(path) => match read_text_file(&path) {
+        let disk_text = if let Ok(path) = uri.to_file_path() {
+            match read_text_file(&path) {
                 Ok(text) => Some(text),
                 Err(e) => {
                     warn!(uri = %uri, error = %e, "failed to read closed file");
                     None
                 }
-            },
-            Err(_) => {
-                warn!(uri = %uri, "closed file URI is not a file path");
-                None
             }
+        } else {
+            warn!(uri = %uri, "closed file URI is not a file path");
+            None
         };
 
         if let (Some(prior), Some(disk)) = (prior_source, disk_text.as_deref())
