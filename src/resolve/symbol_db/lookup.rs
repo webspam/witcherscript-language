@@ -323,7 +323,9 @@ impl SymbolDb<'_> {
         let ws = self.workspace.types_catalog();
         let base = self.base_types_for_merge();
         match self.builtins {
-            Some(_) => merge_ws_base_three(ws, base, crate::builtins::types_completion_catalog()),
+            Some(_) => {
+                merge_ws_base_three(&ws, &base, &crate::builtins::types_completion_catalog())
+            }
             None => merge_ws_base(ws, base),
         }
     }
@@ -332,7 +334,7 @@ impl SymbolDb<'_> {
         let ws = self.workspace.enum_members_catalog();
         let base = self.base_enum_members_for_merge();
         match self.builtins {
-            Some(b) => merge_ws_base_three(ws, base, b.enum_members_catalog()),
+            Some(b) => merge_ws_base_three(&ws, &base, &b.enum_members_catalog()),
             None => merge_ws_base(ws, base),
         }
     }

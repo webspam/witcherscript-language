@@ -78,9 +78,9 @@ pub fn merge_ws_base(ws: Arc<[Definition]>, base: Arc<[Definition]>) -> Arc<[Def
 }
 
 pub fn merge_ws_base_three(
-    ws: Arc<[Definition]>,
-    base: Arc<[Definition]>,
-    builtins: Arc<[Definition]>,
+    ws: &Arc<[Definition]>,
+    base: &Arc<[Definition]>,
+    builtins: &Arc<[Definition]>,
 ) -> Arc<[Definition]> {
     let mut shadowed = HashSet::with_capacity(ws.len());
     let mut out = Vec::with_capacity(ws.len() + base.len() + builtins.len());

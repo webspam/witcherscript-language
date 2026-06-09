@@ -18,11 +18,11 @@ impl Refactoring for IfLayoutRefactoring {
         let mut actions = Vec::new();
         if toggle.can_collapse {
             let text = rewrite_if_layout(if_node, ctx.source(), options, IfLayout::Collapse);
-            actions.push(ctx.rewrite(COLLAPSE_TITLE, if_node, text, Preference::Preferred));
+            actions.push(ctx.rewrite(COLLAPSE_TITLE, if_node, text, &Preference::Preferred));
         }
         if toggle.can_expand {
             let text = rewrite_if_layout(if_node, ctx.source(), options, IfLayout::Expand);
-            actions.push(ctx.rewrite(EXPAND_TITLE, if_node, text, Preference::Alternative));
+            actions.push(ctx.rewrite(EXPAND_TITLE, if_node, text, &Preference::Alternative));
         }
         actions
     }

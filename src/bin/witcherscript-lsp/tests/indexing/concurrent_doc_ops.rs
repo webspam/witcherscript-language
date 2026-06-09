@@ -180,7 +180,7 @@ fn compute_workspace_diagnostic_report_bails_when_version_advanced() {
         .state_version
         .store(stale_version + 100, Ordering::Release);
 
-    let result = backend.compute_workspace_diagnostic_report(HashMap::new(), stale_version);
+    let result = backend.compute_workspace_diagnostic_report(&HashMap::new(), stale_version);
     assert!(
         result.is_none(),
         "stale-version workspace pull must bail instead of returning a report",

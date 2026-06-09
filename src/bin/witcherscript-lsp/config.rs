@@ -90,7 +90,7 @@ impl Default for Config {
     }
 }
 
-fn log_setting_change<T: PartialEq + std::fmt::Display>(setting: &str, prev: T, new: T) {
+fn log_setting_change<T: PartialEq + std::fmt::Display>(setting: &str, prev: &T, new: &T) {
     if prev != new {
         trace!(setting, prev = %prev, new = %new, "setting changed");
     }
@@ -227,40 +227,40 @@ impl Backend {
             next_cfg.formatter_line_limit = limit as u32;
             log_setting_change(
                 "formatter.lineLimit",
-                prev_cfg.formatter_line_limit,
-                next_cfg.formatter_line_limit,
+                &prev_cfg.formatter_line_limit,
+                &next_cfg.formatter_line_limit,
             );
         }
         if let Some(Value::Bool(compact)) = iter.next() {
             next_cfg.formatter_compact_colon = compact;
             log_setting_change(
                 "formatter.compactColon",
-                prev_cfg.formatter_compact_colon,
-                next_cfg.formatter_compact_colon,
+                &prev_cfg.formatter_compact_colon,
+                &next_cfg.formatter_compact_colon,
             );
         }
         if let Some(Value::Bool(align)) = iter.next() {
             next_cfg.formatter_align_member_colons = align;
             log_setting_change(
                 "formatter.alignMemberColons",
-                prev_cfg.formatter_align_member_colons,
-                next_cfg.formatter_align_member_colons,
+                &prev_cfg.formatter_align_member_colons,
+                &next_cfg.formatter_align_member_colons,
             );
         }
         if let Some(Value::String(placement)) = iter.next() {
             next_cfg.formatter_annotation_placement = AnnotationPlacement::from_setting(&placement);
             log_setting_change(
                 "formatter.annotationPlacement",
-                prev_cfg.formatter_annotation_placement,
-                next_cfg.formatter_annotation_placement,
+                &prev_cfg.formatter_annotation_placement,
+                &next_cfg.formatter_annotation_placement,
             );
         }
         if let Some(Value::String(placement)) = iter.next() {
             next_cfg.formatter_default_placement = AnnotationPlacement::from_setting(&placement);
             log_setting_change(
                 "formatter.defaultPlacement",
-                prev_cfg.formatter_default_placement,
-                next_cfg.formatter_default_placement,
+                &prev_cfg.formatter_default_placement,
+                &next_cfg.formatter_default_placement,
             );
         }
         if let Some(Value::Object(map)) = iter.next() {

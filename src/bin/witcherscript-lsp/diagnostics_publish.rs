@@ -344,7 +344,7 @@ impl Backend {
 
     pub(crate) fn compute_workspace_diagnostic_report(
         &self,
-        previous: HashMap<String, String>,
+        previous: &HashMap<String, String>,
         version: u64,
     ) -> Option<WorkspaceDiagnosticReport> {
         let started_at = Instant::now();
