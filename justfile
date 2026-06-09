@@ -3,6 +3,9 @@ set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
 alias b := build
 alias r := release
 alias t := test
+alias f := fmt
+alias c := clippy
+alias s := lsp-listen
 alias serve := lsp-listen
 
 # Show available recipes.
@@ -10,23 +13,32 @@ default:
     @just --list
 
 # Format Rust code, run clippy & tests - optimised for agents
-test: ci
+test: fmt clippy
+    cargo nextest run
 
-# Run the standard local verification.
+# Format all Rust code
+fmt:
+    cargo fmt --all
+
+# Run clippy
+clippy:
+    cargo clippy --all-targets --all-features
+
+# Run CI checks - skips clippy pedantic
 ci:
     cargo fmt --all -- --check
     cargo clippy --all-targets --all-features -- -D warnings -A clippy::pedantic
     cargo nextest run
 
-# Build dev binary.
+# Build dev binary
 build:
     cargo build
 
-# Build the optimised release binary.
+# Build the optimised release binary
 release:
     cargo build --release
 
-# Run criterion library benches (wall-clock, local).
+# Run criterion library benches (wall-clock, local)
 bench:
     cargo bench --bench lib_parse --bench lib_symbols --bench lib_index --bench lib_resolve --bench lib_completion
 
@@ -34,15 +46,15 @@ bench:
 bench-baseline name:
     cargo bench --bench lib_parse --bench lib_symbols --bench lib_index --bench lib_resolve --bench lib_completion -- --save-baseline {{name}}
 
-# Compare current run against a saved baseline.
+# Compare current run against a saved baseline
 bench-compare name:
     cargo bench --bench lib_parse --bench lib_symbols --bench lib_index --bench lib_resolve --bench lib_completion -- --baseline {{name}}
 
-# Run iai-callgrind benches (instruction counts; requires valgrind, Linux or WSL).
+# Run iai-callgrind benches (instruction counts; requires valgrind, Linux or WSL)
 bench-iai:
     cargo bench --bench iai_lib
 
-# Run the local LSP smoke benches against the release-built binary.
+# Run the local LSP smoke benches against the release-built binary
 bench-lsp:
     cargo bench --bench lsp_smoke
 
