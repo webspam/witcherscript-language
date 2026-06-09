@@ -176,8 +176,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
                 let count = v
                     .pointer("/params/items")
                     .and_then(|i| i.as_array())
-                    .map(|a| a.len())
-                    .unwrap_or(0);
+                    .map_or(0, |a| a.len());
                 Value::Array(vec![Value::Null; count])
             }
             _ => Value::Null,

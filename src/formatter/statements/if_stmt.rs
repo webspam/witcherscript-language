@@ -123,11 +123,10 @@ impl LayoutCtx<'_> {
             if cond.is_some_and(|c| c.start_position().row != c.end_position().row) {
                 return false;
             }
-            let cond_len = cond.map(span_len).unwrap_or(0);
+            let cond_len = cond.map_or(0, span_len);
             let stmt_len = n
                 .child_by_field_name("body")
-                .map(inline_body_byte_len)
-                .unwrap_or(0);
+                .map_or(0, inline_body_byte_len);
             let prefix = if first { IF_OPEN } else { ELSE_IF_OPEN };
             if indent + prefix + cond_len + COND_CLOSE + stmt_len > self.line_limit {
                 return false;

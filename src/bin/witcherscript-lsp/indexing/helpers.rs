@@ -39,9 +39,7 @@ pub(crate) fn legacy_base_replacements(
             continue;
         };
         let canonical = Url::parse(legacy_uri)
-            .ok()
-            .map(|u| canonical_uri(&u))
-            .unwrap_or_else(|| legacy_uri.clone());
+            .ok().map_or_else(|| legacy_uri.clone(), |u| canonical_uri(&u));
         for base_uri in candidates {
             if legacy_replaces_base(base_uri, legacy_uri) {
                 skip_base.insert((*base_uri).clone());

@@ -65,9 +65,7 @@ impl TestDb {
     pub fn doc_for(&self, uri: &str) -> &ParsedDocument {
         self.docs
             .iter()
-            .find(|(u, _)| u == uri)
-            .map(|(_, d)| d)
-            .unwrap_or_else(|| panic!("test_support: no document for uri {uri:?}"))
+            .find(|(u, _)| u == uri).map_or_else(|| panic!("test_support: no document for uri {uri:?}"), |(_, d)| d)
     }
 
     pub fn search_docs(&self) -> Vec<(&str, &ParsedDocument)> {

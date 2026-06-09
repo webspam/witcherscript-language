@@ -116,8 +116,7 @@ fn is_class_typed(type_annotation: Option<&str>, db: &SymbolDb) -> bool {
         None => name,
     };
     db.find_top_level(lookup)
-        .map(|def| def.symbol.kind == SymbolKind::Class)
-        .unwrap_or(false)
+        .is_some_and(|def| def.symbol.kind == SymbolKind::Class)
 }
 
 // Falls back to the `new` keyword node when tree-sitter only recovered the

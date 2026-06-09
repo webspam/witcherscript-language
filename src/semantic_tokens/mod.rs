@@ -184,8 +184,7 @@ fn is_member_access_rhs(node: Node, parent: Node) -> bool {
     let is_receiver = parent
         .named_children(&mut cursor)
         .next()
-        .map(|c| c.id() == node.id())
-        .unwrap_or(false);
+        .is_some_and(|c| c.id() == node.id());
     !is_receiver
 }
 

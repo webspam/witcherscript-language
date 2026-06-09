@@ -124,8 +124,7 @@ fn resolve_for_ident_no_site_fallback(
 
     if let Some(member_access) = ident.parent().filter(|p| p.kind() == "member_access_expr") {
         let is_receiver = first_named_child(member_access)
-            .map(|r| r.id() == ident.id())
-            .unwrap_or(false);
+            .is_some_and(|r| r.id() == ident.id());
         if !is_receiver {
             return resolve_member_access(uri, document, db, ident, name);
         }

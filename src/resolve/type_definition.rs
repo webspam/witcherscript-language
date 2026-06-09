@@ -23,7 +23,6 @@ fn type_target_for(def: &Definition, db: &SymbolDb<'_>) -> Option<Definition> {
     }
     let raw = definition_type_name(def)?;
     let lookup = parse_generic_type(&raw)
-        .map(|(ctor, _)| ctor)
-        .unwrap_or(raw.as_str());
+        .map_or(raw.as_str(), |(ctor, _)| ctor);
     db.find_top_level(lookup)
 }

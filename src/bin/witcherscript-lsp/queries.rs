@@ -208,9 +208,7 @@ impl Backend {
             .previous_result_ids
             .into_iter()
             .map(|p| {
-                let key = publish_url(p.uri.as_str())
-                    .map(|u| u.to_string())
-                    .unwrap_or_else(|| p.uri.to_string());
+                let key = publish_url(p.uri.as_str()).map_or_else(|| p.uri.to_string(), |u| u.to_string());
                 (key, p.value)
             })
             .collect();

@@ -35,8 +35,7 @@ impl Formatter<'_> {
                 if child.is_named() && child.kind() != "nop" && child.kind() != "comment" {
                     let trailing_semi = children
                         .get(i + 1)
-                        .map(|n| n.kind() == ";" || n.kind() == "nop")
-                        .unwrap_or(false);
+                        .is_some_and(|n| n.kind() == ";" || n.kind() == "nop");
                     Some((*child, trailing_semi))
                 } else {
                     None
@@ -281,7 +280,7 @@ impl Formatter<'_> {
                 self.emit_indent();
                 self.emit("do");
                 let cond = node.child_by_field_name("cond");
-                let cond_len = cond.map(|c| self.render_node(c).len()).unwrap_or(0);
+                let cond_len = cond.map_or(0, |c| self.render_node(c).len());
                 let trailing = " while (".len() + cond_len + ")".len();
                 self.emit_stmt_body_trailing(
                     node.child_by_field_name("body"),
@@ -351,7 +350,7 @@ impl Formatter<'_> {
                 self.emit_indent();
                 self.emit(")");
                 let semi = self.child_of_kind(node, ";");
-                if semi.map(|n| !n.is_missing()).unwrap_or(false) {
+                if semi.is_some_and(|n| !n.is_missing()) {
                     self.emit(";");
                 }
                 self.nl();
@@ -362,7 +361,7 @@ impl Formatter<'_> {
             }
         }
         let semi = self.child_of_kind(node, ";");
-        if semi.map(|n| !n.is_missing()).unwrap_or(false) {
+        if semi.is_some_and(|n| !n.is_missing()) {
             self.emit(";");
         }
         self.nl();

@@ -53,7 +53,7 @@ impl<'a> Formatter<'a> {
     }
 
     pub(super) fn current_line_len(&self) -> usize {
-        let last_nl = self.out.rfind('\n').map(|i| i + 1).unwrap_or(0);
+        let last_nl = self.out.rfind('\n').map_or(0, |i| i + 1);
         self.out[last_nl..].len()
     }
 

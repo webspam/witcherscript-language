@@ -87,13 +87,12 @@ pub fn signature_help(
     } else {
         let comma_count = call
             .args
-            .map(|args| {
+            .map_or(0, |args| {
                 let mut cursor = args.walk();
                 args.children(&mut cursor)
                     .filter(|c| c.kind() == "," && c.start_byte() < byte_offset)
                     .count()
-            })
-            .unwrap_or(0);
+            });
         Some((comma_count as u32).min(params.len() as u32 - 1))
     };
 

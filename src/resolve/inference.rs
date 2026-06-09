@@ -111,8 +111,7 @@ pub(crate) fn infer_type(
 
 fn named_or_unknown(annotation: Option<String>) -> Type {
     annotation
-        .map(|s| Type::from_annotation(&s))
-        .unwrap_or(Type::Unknown)
+        .map_or(Type::Unknown, |s| Type::from_annotation(&s))
 }
 
 fn infer_member_access_type(
