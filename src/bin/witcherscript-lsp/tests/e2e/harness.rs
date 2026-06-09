@@ -181,9 +181,11 @@ impl LspClient {
         for _ in 0..CANCELLATION_RETRY_LIMIT {
             let v = self.raw_request(R::METHOD, params.clone()).await;
             if let Some(err) = v.get("error") {
-                if !is_retriggerable_cancellation(err) {
-                    panic!("request {} returned error: {err}", R::METHOD);
-                }
+                assert!(
+                    is_retriggerable_cancellation(err),
+                    "request {} returned error: {err}",
+                    R::METHOD
+                );
                 tokio::time::sleep(RETRY_BACKOFF).await;
                 continue;
             }

@@ -151,9 +151,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
         loop {
             let mut line = String::new();
             let n = self.read.read_line(&mut line).await.expect("read header");
-            if n == 0 {
-                panic!("server closed connection");
-            }
+            assert!(n != 0, "server closed connection");
             let trimmed = line.trim_end_matches(['\r', '\n']);
             if trimmed.is_empty() {
                 break;
