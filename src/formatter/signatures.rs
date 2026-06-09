@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use super::{Formatter, named_child_nodes};
+use super::Formatter;
 
 impl Formatter<'_> {
     pub(super) fn format_func_params(&mut self, func_node: Node) {
@@ -80,12 +80,6 @@ impl Formatter<'_> {
         }
     }
 
-    fn collect_func_param_nodes<'t>(&self, func_node: Node<'t>) -> Vec<Node<'t>> {
-        self.child_of_kind(func_node, "func_params")
-            .map(named_child_nodes)
-            .unwrap_or_default()
-    }
-
     fn render_param_group(&self, node: Node) -> String {
         self.render_node(node)
     }
@@ -107,21 +101,5 @@ impl Formatter<'_> {
             }
         }
         String::new()
-    }
-
-    pub(super) fn render_sig(&self, func_node: Node) -> Option<String> {
-        let param_groups: Vec<String> = self
-            .collect_func_param_nodes(func_node)
-            .into_iter()
-            .filter(|n| n.kind() == "func_param_group")
-            .map(|n| self.render_param_group(n))
-            .collect();
-
-        // Guard: no func_params means this isn't a callable we can render.
-        self.child_of_kind(func_node, "func_params")?;
-
-        let ret_str = self.return_type_suffix(func_node);
-
-        Some(format!("({}){}", param_groups.join(", "), ret_str))
     }
 }

@@ -33,12 +33,12 @@ When a query asks for members of `array<int>`:
 1. `parse_generic_type("array<int>") → ("array", "int")`.
 2. The chain looks up `array` (no generics) in workspace → base → builtins.
 3. Each returned `Definition` is passed through `substitute_in_definition(def, "array<int>", "int")`, which:
-   - Replaces whole-ident occurrences of `T` with `int` in `type_annotation`, `signature`, `detail`.
-   - Rewrites `container_name` from `array` to `array<int>` so hover shows `(method) array<int>.PushBack(param1: int) : void`.
+   - Structurally replaces `Type::Named("T")` with the element type inside `type_annotation` (`Type::substitute_named`, recursing through `Type::Array`).
+   - Rewrites `container_name` from `array` to `array<int>` so hover shows `(method) array<int>.PushBack(value: int): void`.
 
-Whole-ident substitution: `T`, `<T>`, `: T)`, `: T;` all match; `TArray`, `MyT`, `T_x` do not. See `substitute_placeholder()` in `src/resolve/symbol_db/generics.rs`.
+Parameter types are substituted at display time: `SymbolDb::display_parameters_of(&definition)` fetches the callable's `Parameter` symbols and applies the same substitution when `container_name` parses as a generic instance. Hover, signature help, and completion detail all render from it.
 
-Nested generics (`array<array<int>>`) substitute one level: `Last() : T` becomes `Last() : array<int>`.
+Nested generics (`array<array<int>>`) substitute one level: `Last()` resolves with `type_annotation` `array<int>`.
 
 ## Guardrails
 

@@ -6,7 +6,7 @@
 |------|---------|
 | `types.rs` | `SymbolId`, `SymbolKind`, `Symbol`, `DocumentSymbols` and index queries |
 | `extract.rs` | `extract_symbols`, `SymbolExtractor` CST walk |
-| `util.rs` | `node_text`, signature/base-type helpers |
+| `util.rs` | `node_text`, child-text/base-type helpers |
 | `tests.rs` | Unit tests |
 
 ## SymbolKind
@@ -42,9 +42,8 @@ pub struct Symbol {
     pub selection_byte_range: Range<usize>,   // Identifier token byte offsets
     pub container: Option<SymbolId>,          // Parent symbol ID; None = top-level
     pub container_name: Option<String>,       // Cached parent name for fast index inserts
-    pub type_annotation: Option<String>,      // "int", "CR4Player", etc.
-    pub signature: Option<String>,            // Full text from flavour/event keyword to "{" for callables;
-                                              // full node text for Fields
+    pub type_annotation: Option<Type>,        // Parsed declared type (var/field/param type, callable return)
+    pub declaration_text: Option<String>,     // Field declaration as written; display only, never parsed
     pub base_class: Option<String>,           // Raw superclass name for Class/Struct/State
     pub owner_class: Option<String>,          // Raw owner class name for State (second ident in state_decl)
     pub flavour: Option<String>,              // func_flavour text for callables (e.g. "quest", "timer")
@@ -54,6 +53,8 @@ pub struct Symbol {
     pub is_out: bool,                         // true if specifier "out" present (Parameters only)
 }
 ```
+
+Callables carry no signature text. Their display signature is rendered on demand by `render_signature()` in `resolve/signature.rs` from the callable's `Parameter` symbols plus its `type_annotation` (the return type).
 
 **`Symbol::display_detail()`** renders the human-readable detail string used in hover popups and the document outline. It reads from `base_class` / `owner_class`:
 - Class/Struct: `"extends BaseClass"` (or `None` if no base)
@@ -125,9 +126,9 @@ The vec is the only storage; `SymbolId(n)` directly indexes `symbols[n]`. IDs ar
 | `local_var_decl_stmt` | `SymbolKind::Variable` |
 | `func_param_group` | `SymbolKind::Parameter` (one per `ident` in the group) |
 | `annotation` | Parsed into `Annotation`, attached to next symbol |
-| `type_annot` | Text extracted as `type_annotation` |
+| `type_annot` | Parsed via `Type::from_annotation` into `type_annotation` |
 | `specifier` | Sets `access` (`private`/`protected`) or `is_optional` (`optional`) |
-| `func_flavour` | Included in `signature` text |
+| `func_flavour` | Stored in `flavour` |
 | `func_block` | Scope for locals and parameters |
 
 ## extract_symbols walk

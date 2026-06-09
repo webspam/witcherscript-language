@@ -194,7 +194,11 @@ fn script_env_globals_appear_in_statement_completions() {
         .find(|d| d.symbol.name == "theGame")
         .expect("script env global must appear");
     assert_eq!(global.symbol.kind, SymbolKind::Variable);
-    assert_eq!(global.symbol.type_annotation.as_deref(), Some("CR4Game"));
+    assert_eq!(
+        global.symbol.type_annotation,
+        Some(crate::types::Type::from_annotation("CR4Game")),
+        "theGame must be typed CR4Game"
+    );
 }
 
 #[test]

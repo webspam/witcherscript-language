@@ -13,7 +13,7 @@ use crate::symbols::SymbolKind;
 
 use super::WorkspaceDiagnostic;
 
-pub(crate) type TypeMemo = HashMap<(usize, usize), Option<String>>;
+pub(crate) type TypeMemo = HashMap<(usize, usize), crate::types::Type>;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct RuleTelemetry {

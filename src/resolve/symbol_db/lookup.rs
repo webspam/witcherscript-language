@@ -8,6 +8,7 @@ use super::super::{MAX_INHERITANCE_DEPTH, dedup_by_name, dedup_definitions};
 use super::SymbolDb;
 use super::generics::{generic_lookup_target, substitute_in_definition};
 use crate::resolve::{Definition, NameContext};
+use crate::types::Type;
 
 const OBJECT_BASE_CLASS: &str = "CObject";
 const STATE_BASE_CLASS: &str = "CScriptableState";
@@ -25,7 +26,14 @@ impl SymbolDb<'_> {
         })
     }
 
-    pub(crate) fn script_global_type(&self, name: &str) -> Option<String> {
+    pub(crate) fn script_global_type(&self, name: &str) -> Option<Type> {
+        self.script_env?
+            .find(name)
+            .and_then(|g| g.symbol.type_annotation.clone())
+    }
+
+    /// The raw ini spelling, for comparison against symbol names.
+    pub(crate) fn script_global_type_name(&self, name: &str) -> Option<String> {
         self.script_env?.find(name).map(|g| g.type_name.clone())
     }
 
@@ -353,20 +361,6 @@ impl SymbolDb<'_> {
             .unwrap_or_default()
     }
 
-    pub fn parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<String> {
-        let params = self.workspace.parameters_of(uri, callable_id);
-        if !params.is_empty() {
-            return params;
-        }
-        let params = self.shadowed_base().parameters_of(uri, callable_id);
-        if !params.is_empty() {
-            return params;
-        }
-        self.builtins
-            .map(|b| b.parameters_of(uri, callable_id))
-            .unwrap_or_default()
-    }
-
     pub fn full_parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<Symbol> {
         let params = self.workspace.full_parameters_of(uri, callable_id);
         if !params.is_empty() {
@@ -379,5 +373,27 @@ impl SymbolDb<'_> {
         self.builtins
             .map(|b| b.full_parameters_of(uri, callable_id))
             .unwrap_or_default()
+    }
+
+    /// Parameters of a callable with the generic element type applied, for display.
+    pub fn display_parameters_of(&self, definition: &Definition) -> Vec<Symbol> {
+        let mut params = self.full_parameters_of(&definition.uri, definition.symbol.id);
+        let Some((_, element)) = definition
+            .symbol
+            .container_name
+            .as_deref()
+            .and_then(crate::types::parse_generic_type)
+        else {
+            return params;
+        };
+        let element_type = crate::types::Type::from_annotation(element);
+        for param in &mut params {
+            if let Some(t) = param.type_annotation.take() {
+                param.type_annotation = Some(
+                    t.substitute_named(crate::builtins::GENERIC_ELEMENT_PLACEHOLDER, &element_type),
+                );
+            }
+        }
+        params
     }
 }

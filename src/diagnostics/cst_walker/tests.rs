@@ -5,8 +5,9 @@ use tree_sitter::Node;
 
 use super::{CstRule, CstRuleCtx, run_rules_on_document};
 use crate::cst::grammar::call_callee;
-use crate::resolve::infer_expr_type_memo;
+use crate::resolve::infer_type_memo;
 use crate::test_support::TestDb;
+use crate::types::Type;
 
 struct CountingRule {
     kind: &'static str,
@@ -48,7 +49,7 @@ impl CstRule for InferenceCountingRule {
             return;
         };
         let before = ctx.type_memo.len();
-        let _ = infer_expr_type_memo(
+        let _ = infer_type_memo(
             ctx.uri,
             ctx.document,
             ctx.db,
@@ -107,7 +108,11 @@ fn memo_avoids_redundant_inference() {
 
 #[test]
 fn memo_key_is_byte_range() {
-    let mut memo: HashMap<(usize, usize), Option<String>> = HashMap::new();
-    memo.insert((10, 20), Some("Foo".to_string()));
-    assert_eq!(memo.get(&(10, 20)).unwrap().as_deref(), Some("Foo"));
+    let mut memo: HashMap<(usize, usize), Type> = HashMap::new();
+    memo.insert((10, 20), Type::Named("Foo".to_string()));
+    assert_eq!(
+        memo.get(&(10, 20)),
+        Some(&Type::Named("Foo".to_string())),
+        "memoised type must be retrievable by byte range"
+    );
 }

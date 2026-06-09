@@ -215,7 +215,7 @@ Methods, functions, and events get snippet insertions with parameter placeholder
 FunctionName(${1:param1}, ${2:param2})$0
 ```
 
-The parameter names come from `db.parameters_of(uri, callable_id)`, which excludes optional parameters.
+The parameter names come from `db.display_parameters_of(&definition)`; `completion_item` excludes optional parameters from the snippet slots. The same parameter list renders the item's `detail` via `render_signature`.
 
 Documentation includes a markdown code block (from `hover_text`) and a file:line location link.
 

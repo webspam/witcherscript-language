@@ -3,12 +3,13 @@ use lsp_types::{
     InsertTextFormat, MarkupContent, MarkupKind, ParameterInformation, ParameterLabel, Range,
     SignatureHelp, SignatureInformation, TextEdit,
 };
-use witcherscript_language::resolve::{Definition, SignatureHelpInfo, SymbolDb};
+use witcherscript_language::resolve::{Definition, SignatureHelpInfo, SymbolDb, render_signature};
 use witcherscript_language::symbols::{Symbol, SymbolKind};
+use witcherscript_language::types::Type;
 
 use super::symbols::hover_markdown;
 
-pub(crate) fn completion_item(definition: &Definition, params: &[String]) -> CompletionItem {
+pub(crate) fn completion_item(definition: &Definition, db: &SymbolDb) -> CompletionItem {
     let symbol = &definition.symbol;
     let is_callable = symbol.kind.is_callable();
     let kind = Some(match symbol.kind {
@@ -18,18 +19,31 @@ pub(crate) fn completion_item(definition: &Definition, params: &[String]) -> Com
         SymbolKind::Variable | SymbolKind::Parameter => CompletionItemKind::VARIABLE,
         _ => CompletionItemKind::TEXT,
     });
-    let detail = symbol
-        .signature
-        .clone()
-        .or_else(|| symbol.type_annotation.clone());
+    let (detail, snippet_params) = if is_callable {
+        let params = db.display_parameters_of(definition);
+        let detail = render_signature(&params, symbol.type_annotation.as_ref());
+        // Optional parameters stay out of snippet slots (AGENTS.md key invariant #5).
+        let snippet_params: Vec<String> = params
+            .into_iter()
+            .filter(|p| !p.is_optional)
+            .map(|p| p.name)
+            .collect();
+        (Some(detail), snippet_params)
+    } else {
+        let detail = symbol
+            .declaration_text
+            .clone()
+            .or_else(|| symbol.type_annotation.as_ref().map(ToString::to_string));
+        (detail, Vec::new())
+    };
     let (insert_text, insert_text_format) = if is_callable {
-        if params.is_empty() {
+        if snippet_params.is_empty() {
             (
                 Some(format!("{}()", symbol.name)),
                 Some(InsertTextFormat::SNIPPET),
             )
         } else {
-            let args = params
+            let args = snippet_params
                 .iter()
                 .enumerate()
                 .map(|(i, name)| format!("${{{}:{}}}", i + 1, name))
@@ -43,7 +57,7 @@ pub(crate) fn completion_item(definition: &Definition, params: &[String]) -> Com
     } else {
         (None, None)
     };
-    let command = (is_callable && !params.is_empty()).then(|| Command {
+    let command = (is_callable && !snippet_params.is_empty()).then(|| Command {
         title: "Trigger parameter hints".to_string(),
         command: "editor.action.triggerParameterHints".to_string(),
         arguments: None,
@@ -54,7 +68,7 @@ pub(crate) fn completion_item(definition: &Definition, params: &[String]) -> Com
         detail,
         documentation: Some(Documentation::MarkupContent(MarkupContent {
             kind: MarkupKind::Markdown,
-            value: hover_markdown(definition),
+            value: hover_markdown(definition, db),
         })),
         insert_text,
         insert_text_format,
@@ -98,7 +112,7 @@ fn method_signature(name: &str, params: &[Symbol]) -> String {
             s.push_str(&p.name);
             if let Some(ty) = &p.type_annotation {
                 s.push_str(" : ");
-                s.push_str(ty);
+                s.push_str(&ty.to_string());
             }
             s
         })
@@ -119,8 +133,8 @@ pub(crate) fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String 
         || method
             .symbol
             .type_annotation
-            .as_deref()
-            .is_some_and(|t| t != "void");
+            .as_ref()
+            .is_some_and(|t| *t != Type::Void);
     let body = if has_return {
         format!("{{\n\t$0\n\n\treturn wrappedMethod({call_args});\n}}")
     } else {

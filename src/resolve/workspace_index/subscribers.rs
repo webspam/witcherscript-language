@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 use crate::document::ParsedDocument;
-use crate::symbols::{Symbol, SymbolKind};
+use crate::symbols::{Symbol, SymbolId, SymbolKind};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ObservedKey {
@@ -17,6 +17,20 @@ pub(super) fn outward_hash_map(symbols: &[Symbol]) -> HashMap<ObservedKey, u64> 
     for s in symbols.iter().filter(|s| is_outward_visible(s)) {
         let key = outward_key_for(s);
         let hash = outward_symbol_hash(s);
+        out.entry(key).and_modify(|h| *h ^= hash).or_insert(hash);
+    }
+    // Parameters fold into their callable's entry; dependents must see parameter-list changes.
+    let mut ordinals: HashMap<SymbolId, u64> = HashMap::new();
+    for s in symbols.iter().filter(|s| s.kind == SymbolKind::Parameter) {
+        let Some(callable) = s.container.and_then(|id| symbols.get(id.0)) else {
+            // Extraction always parents parameters under their callable; reaching here is a breach.
+            tracing::warn!(parameter = %s.name, "parameter has no resolvable container symbol");
+            continue;
+        };
+        let ordinal = ordinals.entry(callable.id).or_insert(0);
+        let hash = outward_parameter_hash(s, *ordinal);
+        *ordinal += 1;
+        let key = outward_key_for(callable);
         out.entry(key).and_modify(|h| *h ^= hash).or_insert(hash);
     }
     out
@@ -42,7 +56,7 @@ fn hash_symbol_fields<H: std::hash::Hasher>(s: &Symbol, h: &mut H) {
     (s.kind as u8).hash(h);
     s.container_name.hash(h);
     s.type_annotation.hash(h);
-    s.signature.hash(h);
+    s.declaration_text.hash(h);
     s.base_class.hash(h);
     s.owner_class.hash(h);
     s.flavour.hash(h);
@@ -61,6 +75,16 @@ fn outward_symbol_hash(s: &Symbol) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::Hasher;
     let mut h = DefaultHasher::new();
+    hash_symbol_fields(s, &mut h);
+    h.finish()
+}
+
+// The ordinal keeps the XOR fold sensitive to parameter reordering.
+fn outward_parameter_hash(s: &Symbol, ordinal: u64) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hasher;
+    let mut h = DefaultHasher::new();
+    h.write_u64(ordinal);
     hash_symbol_fields(s, &mut h);
     h.finish()
 }
@@ -99,9 +123,10 @@ pub(super) fn doc_surface_hash(uri: &str, symbols: &[Symbol]) -> u64 {
 
     let mut h = DefaultHasher::new();
     uri.hash(&mut h);
+    // Parameters count as surface: callers' diagnostics depend on them.
     let externally_visible = symbols
         .iter()
-        .filter(|s| !matches!(s.kind, SymbolKind::Variable | SymbolKind::Parameter));
+        .filter(|s| !matches!(s.kind, SymbolKind::Variable));
     h.write_usize(externally_visible.clone().count());
     for s in externally_visible {
         hash_symbol_fields(s, &mut h);

@@ -131,10 +131,9 @@ fn check_call_args<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         return;
     }
     for (i, arg) in slots.iter().enumerate() {
-        let Some(target_annot) = params[i].type_annotation.as_deref() else {
+        let Some(target) = params[i].type_annotation.clone() else {
             continue;
         };
-        let target = Type::from_annotation(target_annot);
         let value_type = infer_type(ctx.uri, ctx.document, ctx.db, *arg, arg.start_byte());
         if is_incompatible(&value_type, &target, ctx.db) {
             emit(
@@ -161,10 +160,9 @@ fn check_return<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     ) else {
         return;
     };
-    let Some(return_annot) = callable.type_annotation.as_deref() else {
+    let Some(target) = callable.type_annotation.clone() else {
         return;
     };
-    let target = Type::from_annotation(return_annot);
     let value_type = infer_type(ctx.uri, ctx.document, ctx.db, value, value.start_byte());
     if is_incompatible(&value_type, &target, ctx.db) {
         emit(
@@ -193,10 +191,9 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     if def.symbol.kind != SymbolKind::Field {
         return;
     }
-    let Some(field_annot) = def.symbol.type_annotation.as_deref() else {
+    let Some(target) = def.symbol.type_annotation.clone() else {
         return;
     };
-    let target = Type::from_annotation(field_annot);
     // The compiler accepts a constant string literal as a `name`/`CName` default
     if value.kind() == "literal_string" && matches!(target, Type::Primitive(Primitive::Name)) {
         emit(

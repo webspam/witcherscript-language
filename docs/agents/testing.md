@@ -28,7 +28,7 @@ For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writ
 | `inheritance.rs` | `this`/`super`/`parent`, access levels, inherited method resolution |
 | `chaining.rs` | Method-on-return-value, multi-level chained calls |
 | `script_globals.rs` | INI globals, redirect to class, local shadows global |
-| `parameters.rs` | `parameters_of`, `wrap_method_snippet` |
+| `parameters.rs` | `display_parameters_of` - ordering, optional flags, multi-name groups |
 | `completion_members.rs` | `completion_members` - dot-access, tier ordering |
 | `completion_statement.rs` | `statement_completions` - locals, members, globals, has_this/has_super, in_loop/in_switch |
 | `completion_type.rs` | `type_completions`, `extends_completions`, `state_owner_completions`, `class_header_keyword_completions` |

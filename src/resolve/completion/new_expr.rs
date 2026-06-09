@@ -7,8 +7,9 @@ use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::super::Definition;
 use super::super::ast::{nodes_at_offset, significant_node_before_byte};
-use super::super::inference::{enclosing_type_context, infer_expr_type};
+use super::super::inference::{enclosing_type_context, infer_type};
 use super::super::symbol_db::SymbolDb;
+use crate::types::Type;
 
 pub fn new_type_completions(
     uri: &str,
@@ -86,7 +87,7 @@ fn new_lifetime_completions_inner(
             matches!(sym.kind, SymbolKind::Variable | SymbolKind::Parameter)
                 && sym.selection_byte_range.start <= byte_offset
         })
-        .filter(|sym| is_class_typed(sym.type_annotation.as_deref(), db))
+        .filter(|sym| is_class_typed(sym.type_annotation.as_ref(), db))
         .cloned()
         .map(|symbol| Definition {
             uri: uri.to_string(),
@@ -99,7 +100,7 @@ fn new_lifetime_completions_inner(
         .unwrap_or_default()
         .into_iter()
         .filter(|def| def.symbol.kind == SymbolKind::Field)
-        .filter(|def| is_class_typed(def.symbol.type_annotation.as_deref(), db))
+        .filter(|def| is_class_typed(def.symbol.type_annotation.as_ref(), db))
         .collect();
 
     let mut out = locals;
@@ -107,15 +108,11 @@ fn new_lifetime_completions_inner(
     Some(out)
 }
 
-fn is_class_typed(type_annotation: Option<&str>, db: &SymbolDb) -> bool {
-    let Some(name) = type_annotation else {
+fn is_class_typed(type_annotation: Option<&Type>, db: &SymbolDb) -> bool {
+    let Some(lookup) = type_annotation.and_then(Type::to_lookup_ctor) else {
         return false;
     };
-    let lookup = match crate::types::parse_generic_type(name) {
-        Some((ctor, _)) => ctor,
-        None => name,
-    };
-    db.find_top_level(lookup)
+    db.find_top_level(&lookup)
         .is_some_and(|def| def.symbol.kind == SymbolKind::Class)
 }
 
@@ -164,11 +161,12 @@ fn expected_type_for_new(
     while let Some(parent) = cur.parent() {
         match parent.kind() {
             "local_var_decl_stmt" | "member_var_decl" => {
-                return type_annot_text(parent, &document.source);
+                let text = type_annot_text(parent, &document.source)?;
+                return Type::from_annotation(&text).to_db_string();
             }
             "assign_op_expr" => {
                 let lhs = parent.child_by_field_name("left")?;
-                return infer_expr_type(uri, document, db, lhs, byte_offset);
+                return infer_type(uri, document, db, lhs, byte_offset).to_db_string();
             }
             "func_call_expr" | "func_call_args" | "func_block" | "script" => return None,
             _ => cur = parent,

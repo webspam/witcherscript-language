@@ -146,14 +146,6 @@ impl WorkspaceIndex {
             .map(|(_, base)| base.clone())
     }
 
-    pub fn parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<String> {
-        self.full_parameters_of(uri, callable_id)
-            .into_iter()
-            .filter(|s| !s.is_optional)
-            .map(|s| s.name)
-            .collect()
-    }
-
     pub fn full_parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<Symbol> {
         let Some(symbols) = self.documents.get(uri) else {
             return vec![];

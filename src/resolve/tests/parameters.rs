@@ -7,33 +7,37 @@ use crate::test_support::TestDb;
 #[case::three_named_in_order(
     "function Find(findName : string, range : float, shouldScanAllObjects : bool) : int {}",
     "Find",
-    &["findName", "range", "shouldScanAllObjects"],
+    &[("findName", false), ("range", false), ("shouldScanAllObjects", false)],
 )]
 #[case::zero_params("function NoArgs() {}", "NoArgs", &[])]
-#[case::skips_optional(
+#[case::optional_is_flagged(
     "function Find(name : string, optional range : float) : int {}",
     "Find",
-    &["name"],
+    &[("name", false), ("range", true)],
 )]
 #[case::multi_name_group(
     "function Multi(a, b : int, c : string) {}",
     "Multi",
-    &["a", "b", "c"],
+    &[("a", false), ("b", false), ("c", false)],
 )]
 fn parameters_of_top_level(
     #[case] source: &str,
     #[case] callable: &str,
-    #[case] expected: &[&str],
+    #[case] expected: &[(&str, bool)],
 ) {
     let t = TestDb::new(source);
     let db = t.db();
     let def = db
         .find_top_level(callable)
         .unwrap_or_else(|| panic!("{callable} should be indexed"));
-    let params = db.parameters_of(&def.uri, def.symbol.id);
-    let expected: Vec<String> = expected
+    let params: Vec<(String, bool)> = db
+        .display_parameters_of(&def)
+        .into_iter()
+        .map(|p| (p.name, p.is_optional))
+        .collect();
+    let expected: Vec<(String, bool)> = expected
         .iter()
-        .map(std::string::ToString::to_string)
+        .map(|(name, optional)| ((*name).to_string(), *optional))
         .collect();
     assert_eq!(params, expected);
 }
@@ -62,7 +66,11 @@ fn parameters_of_class_member(
     let def = db
         .find_member(class, member, AccessLevel::Public)
         .unwrap_or_else(|| panic!("{class}.{member} should be indexed"));
-    let params = db.parameters_of(&def.uri, def.symbol.id);
+    let params: Vec<String> = db
+        .display_parameters_of(&def)
+        .into_iter()
+        .map(|p| p.name)
+        .collect();
     let expected: Vec<String> = expected
         .iter()
         .map(std::string::ToString::to_string)

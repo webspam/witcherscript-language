@@ -4,7 +4,7 @@ use crate::symbols::AccessLevel;
 
 use super::super::Definition;
 use super::super::ast::{find_ancestor_of_kind, first_named_child, nodes_at_offset};
-use super::super::inference::{enclosing_type_context, infer_expr_type};
+use super::super::inference::{enclosing_type_context, infer_type};
 use super::super::symbol_db::SymbolDb;
 
 pub fn completion_members(
@@ -45,7 +45,7 @@ fn completion_members_inner(
             let current_type = enclosing_type_context(document, db, context_byte)?;
             current_type.owner_class?
         }
-        _ => infer_expr_type(uri, document, db, expr, context_byte)?,
+        _ => infer_type(uri, document, db, expr, context_byte).to_db_string()?,
     };
 
     Some(db.members_of_tiered(&type_name, AccessLevel::Public))

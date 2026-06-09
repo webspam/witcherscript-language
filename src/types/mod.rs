@@ -7,8 +7,8 @@ mod tests;
 
 pub(crate) use parse::{is_builtin_type_name, native_type_accepts, native_type_names};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Type {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Type {
     Void,
     Primitive(Primitive),
     /// A class, struct, enum, or state, by name.
@@ -20,8 +20,8 @@ pub(crate) enum Type {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Primitive {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Primitive {
     Bool,
     Byte,
     Int,
@@ -38,7 +38,7 @@ pub(crate) enum Primitive {
 
 impl Type {
     /// Parse a type-annotation string. Recurses `array<...>`, canonicalises aliases; empty -> `Unknown`, unknown word -> `Named`.
-    pub(crate) fn from_annotation(s: &str) -> Type {
+    pub fn from_annotation(s: &str) -> Type {
         parse::from_annotation(s)
     }
 
@@ -50,6 +50,27 @@ impl Type {
             Type::Named(name) => Some(name.clone()),
             Type::Array(elem) => Some(format!("array<{}>", elem.to_db_string()?)),
             Type::Null | Type::Unknown => None,
+        }
+    }
+
+    /// The top-level name for `SymbolDb` lookups: `array<X>` collapses to "array".
+    pub(crate) fn to_lookup_ctor(&self) -> Option<String> {
+        let raw = self.to_db_string()?;
+        Some(match parse_generic_type(&raw) {
+            Some((ctor, _)) => ctor.to_string(),
+            None => raw,
+        })
+    }
+
+    pub(crate) fn substitute_named(&self, placeholder: &str, replacement: &Type) -> Type {
+        match self {
+            Type::Named(name) if name == placeholder => replacement.clone(),
+            Type::Array(elem) => {
+                Type::Array(Box::new(elem.substitute_named(placeholder, replacement)))
+            }
+            Type::Void | Type::Primitive(_) | Type::Named(_) | Type::Null | Type::Unknown => {
+                self.clone()
+            }
         }
     }
 }

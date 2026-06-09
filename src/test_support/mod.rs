@@ -7,6 +7,7 @@ use crate::line_index::{SourcePosition, SourceRange};
 use crate::resolve::{Definition, SymbolDb, WorkspaceIndex};
 use crate::script_env::{ScriptEnvironment, ScriptGlobal};
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+use crate::types::Type;
 
 pub struct TestDb {
     pub docs: Vec<(String, ParsedDocument)>,
@@ -130,8 +131,8 @@ pub fn script_env(name: &str, type_name: &str) -> ScriptEnvironment {
             selection_byte_range: 0..name.len(),
             container: None,
             container_name: None,
-            type_annotation: Some(type_name.to_string()),
-            signature: None,
+            type_annotation: Some(Type::from_annotation(type_name)),
+            declaration_text: None,
             base_class: None,
             owner_class: None,
             flavour: None,

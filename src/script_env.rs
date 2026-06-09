@@ -6,6 +6,7 @@ use lsp_types::Url;
 use crate::files::read_text_file;
 use crate::line_index::{SourcePosition, SourceRange};
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+use crate::types::Type;
 
 static SCRIPT_ENV_VERSION: AtomicU64 = AtomicU64::new(0);
 
@@ -132,7 +133,7 @@ fn override_stock_global(
     match globals.iter_mut().find(|g| g.name == name) {
         Some(existing) if existing.type_name == stock_type => {
             existing.type_name = override_type.to_string();
-            existing.symbol.type_annotation = Some(override_type.to_string());
+            existing.symbol.type_annotation = Some(Type::from_annotation(override_type));
         }
         // retyped by the user to a custom class; leave their choice alone
         Some(_) => {}
@@ -180,8 +181,8 @@ fn global_symbol(
         selection_byte_range: byte_range,
         container: None,
         container_name: None,
-        type_annotation: Some(type_name.to_string()),
-        signature: None,
+        type_annotation: Some(Type::from_annotation(type_name)),
+        declaration_text: None,
         base_class: None,
         owner_class: None,
         flavour: None,

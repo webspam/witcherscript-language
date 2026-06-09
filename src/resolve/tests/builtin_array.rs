@@ -2,7 +2,7 @@ use super::super::{completion_members, hover_text, resolve_definition};
 use crate::builtins::BUILTIN_ARRAY_URI;
 use crate::symbols::AccessLevel;
 use crate::test_support::TestDb;
-use crate::types::parse_generic_type;
+use crate::types::{Type, parse_generic_type};
 
 #[test]
 fn parse_generic_type_handles_basic_and_nested() {
@@ -29,11 +29,11 @@ fn array_int_member_is_resolved_with_substituted_param_type() {
         .expect("PushBack should resolve on array<int>");
 
     assert_eq!(def.symbol.name, "PushBack");
-    let sig = def.symbol.signature.as_deref().unwrap_or("");
-    assert!(sig.contains(": int"), "got signature: {sig}");
-    assert!(
-        !sig.contains(": T"),
-        "signature should not still contain T: {sig}"
+    let params = db.display_parameters_of(&def);
+    assert_eq!(
+        params[0].type_annotation,
+        Some(Type::from_annotation("int")),
+        "parameter type must be substituted, not left as T"
     );
 }
 
@@ -45,32 +45,44 @@ fn array_method_returning_placeholder_substitutes_return_type() {
         .find_member("array<CEntity>", "Last", AccessLevel::Public)
         .expect("Last should resolve on array<CEntity>");
 
-    assert_eq!(def.symbol.type_annotation.as_deref(), Some("CEntity"));
+    assert_eq!(
+        def.symbol.type_annotation,
+        Some(Type::from_annotation("CEntity")),
+        "Last on array<CEntity> must return CEntity"
+    );
 }
 
 #[test]
 fn array_method_with_concrete_param_type_is_unchanged() {
     let t = TestDb::new("").with_builtins_index();
-    let def = t
-        .db()
+    let db = t.db();
+    let def = db
         .find_member("array<CEntity>", "Resize", AccessLevel::Public)
         .expect("Resize resolves");
 
-    let sig = def.symbol.signature.as_deref().unwrap_or("");
-    assert!(sig.contains(": int"), "got: {sig}");
-    assert_eq!(def.symbol.type_annotation.as_deref(), Some("void"));
+    let params = db.display_parameters_of(&def);
+    assert_eq!(
+        params[0].type_annotation,
+        Some(Type::from_annotation("int")),
+        "concrete parameter type must be unchanged"
+    );
+    assert_eq!(
+        def.symbol.type_annotation,
+        Some(Type::Void),
+        "Resize must return void"
+    );
 }
 
 #[test]
 fn array_method_container_name_becomes_generic_instance() {
     let t = TestDb::new("").with_builtins_index();
-    let def = t
-        .db()
+    let db = t.db();
+    let def = db
         .find_member("array<int>", "PushBack", AccessLevel::Public)
         .expect("PushBack resolves");
 
     assert_eq!(def.symbol.container_name.as_deref(), Some("array<int>"));
-    let hover = hover_text(&def);
+    let hover = hover_text(&def, &db);
     assert!(
         hover.contains("array<int>.PushBack"),
         "hover should show generic instance: {hover}"
@@ -81,7 +93,8 @@ fn array_method_container_name_becomes_generic_instance() {
 #[test]
 fn members_of_array_int_lists_all_methods_substituted() {
     let t = TestDb::new("").with_builtins_index();
-    let members = t.db().members_of_tiered("array<int>", AccessLevel::Public);
+    let db = t.db();
+    let members = db.members_of_tiered("array<int>", AccessLevel::Public);
     let names: Vec<&str> = members
         .iter()
         .map(|(_, d)| d.symbol.name.as_str())
@@ -108,8 +121,12 @@ fn members_of_array_int_lists_all_methods_substituted() {
         .iter()
         .find(|(_, d)| d.symbol.name == "PushBack")
         .expect("PushBack present");
-    let sig = push_back.1.symbol.signature.as_deref().unwrap_or("");
-    assert!(sig.contains(": int"), "got: {sig}");
+    let params = db.display_parameters_of(&push_back.1);
+    assert_eq!(
+        params[0].type_annotation,
+        Some(Type::from_annotation("int")),
+        "parameter type must be substituted"
+    );
 }
 
 #[test]
@@ -122,7 +139,8 @@ fn completion_after_dot_on_array_var_returns_methods() {
     ))
     .with_builtins_index();
     let (uri, pos) = t.cursor();
-    let members = completion_members(&uri, t.doc_for(&uri), &t.db(), pos);
+    let db = t.db();
+    let members = completion_members(&uri, t.doc_for(&uri), &db, pos);
 
     let names: Vec<&str> = members
         .iter()
@@ -135,8 +153,12 @@ fn completion_after_dot_on_array_var_returns_methods() {
         .iter()
         .find(|(_, d)| d.symbol.name == "PushBack")
         .unwrap();
-    let sig = push_back.1.symbol.signature.as_deref().unwrap_or("");
-    assert!(sig.contains(": int"), "got: {sig}");
+    let params = db.display_parameters_of(&push_back.1);
+    assert_eq!(
+        params[0].type_annotation,
+        Some(Type::from_annotation("int")),
+        "parameter type must be substituted"
+    );
 }
 
 #[test]
@@ -175,11 +197,19 @@ fn nested_array_substitutes_one_level() {
     let def = db
         .find_member("array<array<int>>", "Last", AccessLevel::Public)
         .expect("Last on array<array<int>>");
-    assert_eq!(def.symbol.type_annotation.as_deref(), Some("array<int>"));
+    assert_eq!(
+        def.symbol.type_annotation,
+        Some(Type::from_annotation("array<int>")),
+        "nested return type must substitute one level"
+    );
 
     let push = db
         .find_member("array<array<int>>", "PushBack", AccessLevel::Public)
         .expect("PushBack on array<array<int>>");
-    let sig = push.symbol.signature.as_deref().unwrap_or("");
-    assert!(sig.contains(": array<int>"), "got: {sig}");
+    let params = db.display_parameters_of(&push);
+    assert_eq!(
+        params[0].type_annotation,
+        Some(Type::from_annotation("array<int>")),
+        "nested element type must substitute one level"
+    );
 }

@@ -3,6 +3,7 @@ use crate::line_index::{SourcePosition, SourceRange};
 use crate::script_env::{ScriptEnvironment, ScriptGlobal};
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 use crate::test_support::TestDb;
+use crate::types::Type;
 
 fn env(names_and_types: &[(&str, &str)]) -> ScriptEnvironment {
     let globals = names_and_types
@@ -21,8 +22,8 @@ fn env(names_and_types: &[(&str, &str)]) -> ScriptEnvironment {
                 selection_byte_range: 0..0,
                 container: None,
                 container_name: None,
-                type_annotation: Some(ty.to_string()),
-                signature: None,
+                type_annotation: Some(Type::from_annotation(ty)),
+                declaration_text: None,
                 base_class: None,
                 owner_class: None,
                 flavour: None,

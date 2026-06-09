@@ -111,13 +111,6 @@ impl<'a> ShadowedBase<'a> {
         filter_catalog(self.index.enum_members_catalog(), self.suppressed)
     }
 
-    pub(super) fn parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<String> {
-        if !self.uri_visible(uri) {
-            return Vec::new();
-        }
-        self.index.parameters_of(uri, callable_id)
-    }
-
     pub(super) fn full_parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<Symbol> {
         if !self.uri_visible(uri) {
             return Vec::new();
