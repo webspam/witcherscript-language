@@ -131,7 +131,7 @@ pub(crate) fn register_notification_handlers(router: &mut Router<Backend>) {
             );
             let backend = backend.clone();
             spawn_logged("did_change_workspace_folders handler", async move {
-                backend._did_change_workspace_folders(params).await
+                backend._did_change_workspace_folders(params).await;
             });
             ControlFlow::Continue(())
         })
@@ -150,12 +150,11 @@ fn parse_listen_port() -> Option<u16> {
                 eprintln!("witcherscript-lsp: --listen requires a port number");
                 std::process::exit(2);
             };
-            match raw.parse::<u16>() {
-                Ok(p) => Some(p),
-                Err(_) => {
-                    eprintln!("witcherscript-lsp: invalid --listen port: {raw}");
-                    std::process::exit(2);
-                }
+            if let Ok(p) = raw.parse::<u16>() {
+                Some(p)
+            } else {
+                eprintln!("witcherscript-lsp: invalid --listen port: {raw}");
+                std::process::exit(2);
             }
         }
         "--stdio" => None,
@@ -223,9 +222,8 @@ where
 
 fn spawn_log_forwarder(mut client: ClientSocket, log_rx_holder: LogRxHolder) {
     spawn_logged("log forwarder", async move {
-        let mut log_rx = match log_rx_holder.lock().await.take() {
-            Some(rx) => rx,
-            None => return,
+        let Some(mut log_rx) = log_rx_holder.lock().await.take() else {
+            return;
         };
         while let Some((typ, message)) = log_rx.recv().await {
             if client

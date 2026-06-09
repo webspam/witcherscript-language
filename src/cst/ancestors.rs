@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-pub(crate) fn node_and_ancestors<'tree>(node: Node<'tree>) -> impl Iterator<Item = Node<'tree>> {
+pub(crate) fn node_and_ancestors(node: Node<'_>) -> impl Iterator<Item = Node<'_>> {
     let mut next = Some(node);
     std::iter::from_fn(move || {
         let current = next?;

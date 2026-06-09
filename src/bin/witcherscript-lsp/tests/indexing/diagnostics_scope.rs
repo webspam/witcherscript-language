@@ -42,7 +42,7 @@ fn close_params(uri: &Url) -> DidCloseTextDocumentParams {
 fn workspace_report_for(backend: &Backend, url: &Url) -> Option<WorkspaceDocumentDiagnosticReport> {
     let version = backend.state_version.load(Ordering::Acquire);
     let report = backend
-        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .compute_workspace_diagnostic_report(&HashMap::new(), version)
         .expect("workspace pull must not bail in tests with a stable version");
     report.items.into_iter().find(|item| match item {
         WorkspaceDocumentDiagnosticReport::Full(full) => &full.uri == url,
@@ -69,7 +69,7 @@ async fn none_scope_workspace_pull_returns_no_items_when_client_has_no_prior_sta
 
     let version = backend.state_version.load(Ordering::Acquire);
     let report = backend
-        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .compute_workspace_diagnostic_report(&HashMap::new(), version)
         .expect("workspace pull must not bail");
     assert!(
         report.items.is_empty(),
@@ -90,7 +90,7 @@ async fn none_scope_workspace_pull_clears_prior_client_state() {
     let mut previous = HashMap::new();
     previous.insert(url.to_string(), "prior-id".to_string());
     let report = backend
-        .compute_workspace_diagnostic_report(previous, version)
+        .compute_workspace_diagnostic_report(&previous, version)
         .expect("workspace pull must not bail");
     let entry = report
         .items
@@ -226,7 +226,7 @@ async fn body_only_reindex_keeps_subscriber_cache_entries() {
 
     let version = backend.state_version.load(Ordering::Acquire);
     let _ = backend
-        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .compute_workspace_diagnostic_report(&HashMap::new(), version)
         .expect("initial pull populates the CST cache");
     assert!(
         backend
@@ -266,7 +266,7 @@ async fn single_file_pull_does_not_evict_other_cached_files() {
 
     let version = backend.state_version.load(Ordering::Acquire);
     let _ = backend
-        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .compute_workspace_diagnostic_report(&HashMap::new(), version)
         .expect("workspace pull populates the cache");
     assert_eq!(backend.cst_diag_cache.lock().len(), 2);
 
@@ -302,7 +302,7 @@ async fn workspace_pull_prunes_cache_entries_for_vanished_files() {
 
     let version = backend.state_version.load(Ordering::Acquire);
     let _ = backend
-        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .compute_workspace_diagnostic_report(&HashMap::new(), version)
         .expect("workspace pull");
 
     assert!(
@@ -423,7 +423,7 @@ async fn workspace_pull_returns_unchanged_for_open_file_when_client_echoes_emitt
 
     let version = backend.state_version.load(Ordering::Acquire);
     let initial = backend
-        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .compute_workspace_diagnostic_report(&HashMap::new(), version)
         .expect("initial workspace pull must not bail");
     let (emitted_uri, emitted_result_id) = initial
         .items
@@ -442,7 +442,7 @@ async fn workspace_pull_returns_unchanged_for_open_file_when_client_echoes_emitt
     previous.insert(emitted_uri.to_string(), emitted_result_id);
     let version = backend.state_version.load(Ordering::Acquire);
     let second = backend
-        .compute_workspace_diagnostic_report(previous, version)
+        .compute_workspace_diagnostic_report(&previous, version)
         .expect("second workspace pull must not bail");
     let entry = second
         .items
@@ -469,7 +469,7 @@ async fn workspace_pull_explicitly_clears_files_that_left_the_diagnosed_set() {
 
     let version = backend.state_version.load(Ordering::Acquire);
     let initial = backend
-        .compute_workspace_diagnostic_report(HashMap::new(), version)
+        .compute_workspace_diagnostic_report(&HashMap::new(), version)
         .expect("initial workspace pull must not bail");
     let prior_result_id = initial
         .items
@@ -491,7 +491,7 @@ async fn workspace_pull_explicitly_clears_files_that_left_the_diagnosed_set() {
     let mut previous = HashMap::new();
     previous.insert(url.to_string(), prior_result_id);
     let cleared = backend
-        .compute_workspace_diagnostic_report(previous, version)
+        .compute_workspace_diagnostic_report(&previous, version)
         .expect("workspace pull after scope narrow must not bail");
     let entry = cleared
         .items

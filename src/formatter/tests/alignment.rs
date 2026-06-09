@@ -9,24 +9,24 @@ fn default_keyword_col(line: &str, field: &str) -> usize {
 
 #[test]
 fn member_colons_not_aligned_by_default() {
-    expect![[r#"
+    expect![[r"
         class C {
             var x : int;
             var someLongName : string;
         }
-    "#]]
+    "]]
     .assert_eq(&fmt("class C { var x : int; var someLongName : string; }"));
 }
 
 #[test]
 fn aligns_consecutive_member_colons() {
-    expect![[r#"
+    expect![[r"
         class C {
             var x            : int;
             var someLongName : string;
             var ab           : bool;
         }
-    "#]]
+    "]]
     .assert_eq(&fmt_aligned(
         "class C { var x : int; var someLongName : string; var ab : bool; }",
     ));
@@ -34,7 +34,7 @@ fn aligns_consecutive_member_colons() {
 
 #[test]
 fn blank_line_breaks_alignment_run() {
-    expect![[r#"
+    expect![[r"
         class C {
             var x            : int;
             var someLongName : string;
@@ -42,7 +42,7 @@ fn blank_line_breaks_alignment_run() {
             var y              : int;
             var anotherLongOne : bool;
         }
-    "#]].assert_eq(&fmt_aligned("class C {\n    var x : int;\n    var someLongName : string;\n\n    var y : int;\n    var anotherLongOne : bool;\n}"));
+    "]].assert_eq(&fmt_aligned("class C {\n    var x : int;\n    var someLongName : string;\n\n    var y : int;\n    var anotherLongOne : bool;\n}"));
 }
 
 #[test]
@@ -53,34 +53,34 @@ fn doc_comment_between_plain_fields_does_not_break_colon_alignment() {
          /** doc */\n    \
          var someLongName : string;\n}",
     );
-    expect![[r#"
+    expect![[r"
         class C {
             var x            : int;
             /** doc */
             var someLongName : string;
         }
-    "#]]
+    "]]
     .assert_eq(&output);
 }
 
 #[test]
 fn single_field_is_not_padded() {
-    expect![[r#"
+    expect![[r"
         class C {
             var x : int;
         }
-    "#]]
+    "]]
     .assert_eq(&fmt_aligned("class C { var x : int; }"));
 }
 
 #[test]
 fn alignment_accounts_for_specifiers_and_name_lists() {
-    expect![[r#"
+    expect![[r"
         class C {
             private var a, bb : int;
             var c             : float;
         }
-    "#]]
+    "]]
     .assert_eq(&fmt_aligned(
         "class C {\n    private var a, bb : int;\n    var c : float;\n}",
     ));
@@ -114,11 +114,11 @@ fn aligns_consecutive_same_line_defaults() {
 
 #[test]
 fn single_same_line_default_is_not_padded() {
-    expect![[r#"
+    expect![[r"
         class C {
             private const var RESET_TIME : float;  default RESET_TIME = 0.750;
         }
-    "#]]
+    "]]
     .assert_eq(&fmt_aligned_with_default_placement(
         "class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }",
         AnnotationPlacement::SameLine,
@@ -206,14 +206,14 @@ fn annotated_field_excluded_from_default_alignment_run() {
 
 #[test]
 fn own_line_default_placement_skips_default_alignment() {
-    expect![[r#"
+    expect![[r"
         class C {
             private const var RESET_TIME : float;
             default RESET_TIME = 0.750;
             private const var OTHER : int;
             default OTHER = 1;
         }
-    "#]]
+    "]]
     .assert_eq(&fmt_aligned_with_default_placement(
         "class C {\n    \
          private const var RESET_TIME : float; default RESET_TIME = 0.750;\n    \
@@ -267,7 +267,7 @@ fn aligns_colons_and_defaults_on_same_line_pairs() {
         default_keyword_col(long, "someLongName"),
         "default keywords should align, got:\n{output}"
     );
-    let x_semi = x.find(";").expect("semicolon");
+    let x_semi = x.find(';').expect("semicolon");
     let x_default = default_keyword_col(x, "x");
     assert!(
         x_default - x_semi >= 3,
@@ -346,7 +346,7 @@ fn doc_comment_between_pairs_does_not_break_default_alignment() {
          private const var GAMMA : int; default GAMMA = 1;\n}",
         AnnotationPlacement::SameLine,
     );
-    expect![[r#"
+    expect![[r"
         class C {
             /** first */
             private const var ALPHA : int;    default ALPHA = 6;
@@ -355,7 +355,7 @@ fn doc_comment_between_pairs_does_not_break_default_alignment() {
             /** third */
             private const var GAMMA : int;    default GAMMA = 1;
         }
-    "#]]
+    "]]
     .assert_eq(&output);
 }
 
@@ -371,7 +371,7 @@ fn blank_line_with_comment_still_breaks_default_alignment_run() {
          var anotherLong : float; default anotherLong = 1.0;\n}",
         AnnotationPlacement::SameLine,
     );
-    expect![[r#"
+    expect![[r"
         class C {
             var a        : int;    default a = 1;
             var longName : float;  default longName = 0.5;
@@ -380,19 +380,19 @@ fn blank_line_with_comment_still_breaks_default_alignment_run() {
             var b           : int;    default b = 2;
             var anotherLong : float;  default anotherLong = 1.0;
         }
-    "#]]
+    "]]
     .assert_eq(&output);
 }
 
 #[test]
 fn annotated_field_excluded_from_colon_alignment_run() {
-    expect![[r#"
+    expect![[r"
         class C {
             @addField(CClass)
             public var x : int;
             public var someLongName : string;
         }
-    "#]].assert_eq(&fmt_aligned(
+    "]].assert_eq(&fmt_aligned(
         "class C {\n    @addField(CClass)\n    public var x : int;\n    public var someLongName : string;\n}",
     ));
 }

@@ -36,7 +36,7 @@ fn missing_call_flagged() {
     let result = collect_wrapped_method_diagnostics(&t.search_docs(), &t.db());
     let diags = result.get(t.primary_uri()).unwrap();
     assert_eq!(kinds(diags), vec!["missing_wrapped_method"]);
-    assert!(diags[0].message.contains("W"));
+    assert!(diags[0].message.contains('W'));
 }
 
 #[test]

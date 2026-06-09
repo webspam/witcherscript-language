@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use lsp_types::{DocumentSymbol, Url};
 use witcherscript_language::resolve::{Definition, hover_text};
 use witcherscript_language::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
@@ -42,19 +44,19 @@ fn lsp_symbol_kind(kind: SymbolKind) -> lsp_types::SymbolKind {
         SymbolKind::Function => lsp_types::SymbolKind::FUNCTION,
         SymbolKind::Method | SymbolKind::Event => lsp_types::SymbolKind::METHOD,
         SymbolKind::Field => lsp_types::SymbolKind::FIELD,
-        SymbolKind::Variable => lsp_types::SymbolKind::VARIABLE,
-        SymbolKind::Parameter => lsp_types::SymbolKind::VARIABLE,
-        SymbolKind::State => lsp_types::SymbolKind::OBJECT,
-        SymbolKind::NativeType => lsp_types::SymbolKind::OBJECT,
+        SymbolKind::Variable | SymbolKind::Parameter => lsp_types::SymbolKind::VARIABLE,
+        SymbolKind::State | SymbolKind::NativeType => lsp_types::SymbolKind::OBJECT,
     }
 }
 
 pub(crate) fn hover_markdown(definition: &Definition) -> String {
     let mut markdown = format!("```witcherscript\n{}\n```", hover_text(definition));
-    markdown.push_str(&format!(
+    write!(
+        markdown,
         "\n\nDefined in {}",
         hover_location_markdown(definition)
-    ));
+    )
+    .unwrap();
     markdown
 }
 

@@ -72,7 +72,7 @@ impl<'a> RefactorContext<'a> {
         title: &str,
         node: Node,
         new_text: String,
-        preference: Preference,
+        preference: &Preference,
     ) -> CodeActionOrCommand {
         let range = lsp_range(self.document.line_index.byte_range_to_range(
             &self.document.source,

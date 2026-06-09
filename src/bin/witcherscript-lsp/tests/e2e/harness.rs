@@ -39,7 +39,7 @@ const RETRY_BACKOFF: std::time::Duration = std::time::Duration::from_millis(5);
 
 fn error_code(err: &Value) -> Option<ErrorCode> {
     err.get("code")
-        .and_then(|c| c.as_i64())
+        .and_then(serde_json::Value::as_i64)
         .map(|c| ErrorCode(c as i32))
 }
 
@@ -49,7 +49,7 @@ fn is_retriggerable_cancellation(err: &Value) -> bool {
         return false;
     }
     err.pointer("/data/retriggerRequest")
-        .and_then(|r| r.as_bool())
+        .and_then(serde_json::Value::as_bool)
         .unwrap_or(true)
 }
 
@@ -181,9 +181,11 @@ impl LspClient {
         for _ in 0..CANCELLATION_RETRY_LIMIT {
             let v = self.raw_request(R::METHOD, params.clone()).await;
             if let Some(err) = v.get("error") {
-                if !is_retriggerable_cancellation(err) {
-                    panic!("request {} returned error: {err}", R::METHOD);
-                }
+                assert!(
+                    is_retriggerable_cancellation(err),
+                    "request {} returned error: {err}",
+                    R::METHOD
+                );
                 tokio::time::sleep(RETRY_BACKOFF).await;
                 continue;
             }

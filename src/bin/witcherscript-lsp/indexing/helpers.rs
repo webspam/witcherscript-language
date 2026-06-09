@@ -40,8 +40,7 @@ pub(crate) fn legacy_base_replacements(
         };
         let canonical = Url::parse(legacy_uri)
             .ok()
-            .map(|u| canonical_uri(&u))
-            .unwrap_or_else(|| legacy_uri.clone());
+            .map_or_else(|| legacy_uri.clone(), |u| canonical_uri(&u));
         for base_uri in candidates {
             if legacy_replaces_base(base_uri, legacy_uri) {
                 skip_base.insert((*base_uri).clone());
@@ -126,15 +125,12 @@ pub(super) fn reindex_into(
     if client_uri != canonical {
         changed.extend(index.remove_document(client_uri));
     }
-    match parsed {
-        Some(document) => {
-            changed.extend(index.update_document(canonical, &document));
-            docs.insert(canonical.to_string(), Arc::new(document));
-        }
-        None => {
-            changed.extend(index.remove_document(canonical));
-            docs.remove(canonical);
-        }
+    if let Some(document) = parsed {
+        changed.extend(index.update_document(canonical, &document));
+        docs.insert(canonical.to_string(), Arc::new(document));
+    } else {
+        changed.extend(index.remove_document(canonical));
+        docs.remove(canonical);
     }
     changed
 }

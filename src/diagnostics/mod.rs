@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::ops::Range;
 use std::path::Path;
 
@@ -298,8 +299,9 @@ fn format_node(node: Node, depth: usize, output: &mut String) {
         ""
     };
 
-    output.push_str(&format!(
-        "{}{}{} [{}:{}-{}:{}] bytes {}..{}\n",
+    writeln!(
+        output,
+        "{}{}{} [{}:{}-{}:{}] bytes {}..{}",
         indent,
         node.kind(),
         marker,
@@ -309,7 +311,8 @@ fn format_node(node: Node, depth: usize, output: &mut String) {
         end.column + 1,
         node.start_byte(),
         node.end_byte()
-    ));
+    )
+    .unwrap();
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {

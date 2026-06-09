@@ -4,7 +4,7 @@ use super::{Formatter, child_nodes, is_alignable_field, is_bodiless_callable};
 
 const DEFAULT_GAP: &str = "  ";
 
-impl<'a> Formatter<'a> {
+impl Formatter<'_> {
     // ---- Top level ----
 
     pub(super) fn format_script(&mut self, node: Node) {
@@ -425,7 +425,7 @@ impl<'a> Formatter<'a> {
         let children = child_nodes(node);
         // Exhaustive: all named children - enum_decl_variant AND comment extras.
         // Anonymous tokens ({, ,, }) are excluded by is_named() and handled directly.
-        let members: Vec<Node> = children.iter().filter(|n| n.is_named()).cloned().collect();
+        let members: Vec<Node> = children.iter().filter(|n| n.is_named()).copied().collect();
         let open = children.iter().find(|n| n.kind() == "{");
         let close = children.iter().rfind(|n| n.kind() == "}");
 
@@ -481,7 +481,7 @@ impl<'a> Formatter<'a> {
         let members: Vec<Node> = children
             .iter()
             .filter(|n| n.is_named() && n.kind() != "nop")
-            .cloned()
+            .copied()
             .collect();
         let open = children.iter().find(|n| n.kind() == "{");
         let close = children.iter().rfind(|n| n.kind() == "}");
@@ -518,8 +518,8 @@ impl<'a> Formatter<'a> {
                 None => child_row.saturating_sub(open_row),
             };
             let is_callable = matches!(member.kind(), "func_decl" | "event_decl");
-            let both_bodiless = is_bodiless_callable(member)
-                && prev_member.map(is_bodiless_callable).unwrap_or(false);
+            let both_bodiless =
+                is_bodiless_callable(member) && prev_member.is_some_and(is_bodiless_callable);
             let want_blank = source_gap >= 2
                 || (is_callable && prev_end_row.is_some() && !prev_was_comment && !both_bodiless);
             prev_was_comment = member.kind() == "comment";
@@ -596,11 +596,6 @@ impl<'a> Formatter<'a> {
         match node.kind() {
             "func_decl" | "event_decl" => self.format_func_decl(node),
             "member_default_val_block" => self.format_defaults_block(node),
-            "member_default_val" => {
-                self.emit_indent();
-                self.format_children(node);
-                self.nl();
-            }
             "member_var_decl" => self.format_member_var_decl(node, colon_align_col, None),
             _ => {
                 self.emit_indent();
@@ -615,7 +610,7 @@ impl<'a> Formatter<'a> {
         // Exhaustive: all named children - member_default_val_block_assign AND
         // comment extras. The `defaults` keyword and {/} braces are anonymous
         // tokens and are excluded by is_named(), then handled directly below.
-        let members: Vec<Node> = children.iter().filter(|n| n.is_named()).cloned().collect();
+        let members: Vec<Node> = children.iter().filter(|n| n.is_named()).copied().collect();
         let open = children.iter().find(|n| n.kind() == "{");
         let close = children.iter().rfind(|n| n.kind() == "}");
 

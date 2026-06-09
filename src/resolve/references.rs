@@ -268,8 +268,8 @@ pub fn find_references(
     results
 }
 
-fn collect_ident_occurrences<'tree>(
-    node: Node<'tree>,
+fn collect_ident_occurrences(
+    node: Node<'_>,
     source: &[u8],
     name: &str,
     scope: Option<&std::ops::Range<usize>>,

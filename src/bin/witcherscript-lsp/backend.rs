@@ -52,11 +52,11 @@ pub(crate) fn diagnostics_document_set<'a>(
 ) -> HashMap<String, &'a ParsedDocument> {
     let mut merged: HashMap<String, &ParsedDocument> = HashMap::new();
     if whole_workspace {
-        for (uri, doc) in workspace_docs.iter() {
+        for (uri, doc) in workspace_docs {
             merged.insert(uri.clone(), doc.as_ref());
         }
     }
-    for (url, doc) in open_documents.iter() {
+    for (url, doc) in open_documents {
         merged.insert(canonical_uri(url), doc.as_ref());
     }
     merged
@@ -537,12 +537,12 @@ impl LanguageServer for Backend {
     fn initialized(&mut self, params: InitializedParams) -> Self::NotifyResult {
         let backend = self.clone();
         crate::spawn_logged("initialized handler", async move {
-            backend._initialized(params).await
+            backend._initialized(params).await;
         });
         ControlFlow::Continue(())
     }
 
-    fn shutdown(&mut self, _: ()) -> BoxFuture<'static, Result<()>> {
+    fn shutdown(&mut self, (): ()) -> BoxFuture<'static, Result<()>> {
         Box::pin(async move { Ok(()) })
     }
 
@@ -575,7 +575,7 @@ impl LanguageServer for Backend {
     ) -> Self::NotifyResult {
         let backend = self.clone();
         crate::spawn_logged("did_change_configuration handler", async move {
-            backend._did_change_configuration(params).await
+            backend._did_change_configuration(params).await;
         });
         ControlFlow::Continue(())
     }

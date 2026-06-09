@@ -73,21 +73,20 @@ impl Backend {
             let range = change
                 .range
                 .map(|r| source_range(source_position(r.start), source_position(r.end)));
-            match apply_content_change(&source, &line_index, range, &change.text) {
-                Some((next, edit)) => {
-                    match edit {
-                        Some(edit) if prior_tree_valid => prior_tree.edit(&edit),
-                        // A None edit means full-document replace; drop the prior tree.
-                        None => prior_tree_valid = false,
-                        _ => {}
-                    }
-                    line_index = LineIndex::new(&next);
-                    source = next;
+            if let Some((next, edit)) =
+                apply_content_change(&source, &line_index, range, &change.text)
+            {
+                match edit {
+                    Some(edit) if prior_tree_valid => prior_tree.edit(&edit),
+                    // A None edit means full-document replace; drop the prior tree.
+                    None => prior_tree_valid = false,
+                    _ => {}
                 }
-                None => {
-                    error!(uri = %uri, "out-of-range incremental change; dropping batch");
-                    return;
-                }
+                line_index = LineIndex::new(&next);
+                source = next;
+            } else {
+                error!(uri = %uri, "out-of-range incremental change; dropping batch");
+                return;
             }
         }
 

@@ -104,11 +104,10 @@ fn assemble_diagnostics_for_key(
     document: &ParsedDocument,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = lsp_diagnostics(document);
-    let base_conflicts = bundle
+    let base_conflicts: &[WorkspaceDiagnostic] = bundle
         .base_conflict
         .get(diag_key)
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
+        .map_or(&[], Vec::as_slice);
     if let Some(dups) = bundle.dup.get(diag_key) {
         diagnostics.extend(
             duplicates_not_explained_by_conflict(dups, base_conflicts)
@@ -136,8 +135,7 @@ fn result_id_for(
     legacy_db_generation: u64,
 ) -> String {
     format!(
-        "{}-{:x}-{:x}-{:x}-{:x}",
-        parse_version, workspace_surface, base_surface, env_version, legacy_db_generation,
+        "{parse_version}-{workspace_surface:x}-{base_surface:x}-{env_version:x}-{legacy_db_generation:x}",
     )
 }
 
@@ -346,7 +344,7 @@ impl Backend {
 
     pub(crate) fn compute_workspace_diagnostic_report(
         &self,
-        previous: HashMap<String, String>,
+        previous: &HashMap<String, String>,
         version: u64,
     ) -> Option<WorkspaceDiagnosticReport> {
         let started_at = Instant::now();
@@ -393,7 +391,7 @@ impl Backend {
 
         let mut items: Vec<WorkspaceDocumentDiagnosticReport> = Vec::with_capacity(diag_docs.len());
         let mut emitted: HashSet<String> = HashSet::with_capacity(diag_docs.len());
-        for (diag_key, document) in diag_docs.iter() {
+        for (diag_key, document) in &diag_docs {
             let Some(publish_uri) = publish_url(diag_key) else {
                 continue;
             };

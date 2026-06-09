@@ -27,7 +27,7 @@ fn parse_script_files(files: &[PathBuf], label: &str) -> Vec<(String, ParsedDocu
                 .map_err(|e| warn!(path = %path.display(), label, error = %e, "failed to parse script"))
                 .ok()?;
             let uri = Url::from_file_path(path)
-                .map_err(|_| warn!(path = %path.display(), label, "failed to convert script path to URI"))
+                .map_err(|()| warn!(path = %path.display(), label, "failed to convert script path to URI"))
                 .ok()?;
             Some((uri.to_string(), document))
         })
@@ -74,12 +74,9 @@ impl Backend {
 
         let parse_start = Instant::now();
         let join_result = tokio::task::spawn_blocking(move || {
-            let files = match collect_witcherscript_files(&roots, &exclude_globs) {
-                Ok(f) => f,
-                Err(_) => {
-                    warn!("failed to collect workspace files");
-                    return None;
-                }
+            let Ok(files) = collect_witcherscript_files(&roots, &exclude_globs) else {
+                warn!("failed to collect workspace files");
+                return None;
             };
             let file_count = files.len();
             trace!(op = "index_workspace", file_count, files = ?files, "workspace files");
@@ -100,7 +97,7 @@ impl Backend {
                         )
                         .ok()?;
                     let uri = Url::from_file_path(path)
-                        .map_err(|_| warn!(path = %path.display(), "failed to convert path to URI"))
+                        .map_err(|()| warn!(path = %path.display(), "failed to convert path to URI"))
                         .ok()?;
                     debug!(uri = %uri, "indexed workspace file");
                     Some((uri.to_string(), document))
@@ -208,11 +205,11 @@ impl Backend {
         let legacy_dirs_valid: Vec<PathBuf> = legacy_dirs
             .iter()
             .filter(|p| {
-                if !p.is_dir() {
+                if p.is_dir() {
+                    true
+                } else {
                     warn!(path = %p.display(), "legacyScriptDirectories entry is not a directory; skipping");
                     false
-                } else {
-                    true
                 }
             })
             .cloned()

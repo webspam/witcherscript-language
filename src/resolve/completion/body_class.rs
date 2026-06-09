@@ -149,8 +149,7 @@ fn class_body_child_at_cursor(class_body: Node, byte_offset: usize) -> Option<No
 fn enclosing_body_kind(mut node: Node) -> Option<ClassBodyKind> {
     loop {
         match node.kind() {
-            "func_block" | "member_default_val_block" => return None,
-            "script" => return None,
+            "func_block" | "member_default_val_block" | "script" => return None,
             "class_def" => {
                 return node.parent().and_then(|p| match p.kind() {
                     "class_decl" => Some(ClassBodyKind::Class),

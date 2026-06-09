@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use lsp_types::Url;
 use witcherscript_language::builtins::load_builtins_index;
 use witcherscript_language::document::{ParsedDocument, parse_document};
@@ -31,30 +33,25 @@ pub fn synth_file(num_classes: usize, methods_per_class: usize) -> String {
 
     for class_idx in 0..num_classes {
         if class_idx == 0 {
-            out.push_str(&format!("class Class{class_idx} {{\n"));
+            writeln!(out, "class Class{class_idx} {{").unwrap();
         } else {
-            out.push_str(&format!(
-                "class Class{class_idx} extends Class{} {{\n",
+            writeln!(
+                out,
+                "class Class{class_idx} extends Class{} {{",
                 class_idx - 1
-            ));
+            )
+            .unwrap();
         }
-        out.push_str(&format!("  var field{class_idx}_a : int;\n"));
-        out.push_str(&format!("  var field{class_idx}_b : string;\n"));
+        writeln!(out, "  var field{class_idx}_a : int;").unwrap();
+        writeln!(out, "  var field{class_idx}_b : string;").unwrap();
         for method_idx in 0..methods_per_class {
-            out.push_str(&format!(
-                "  function method{method_idx}(arg: int) : int {{\n"
-            ));
-            out.push_str(&format!("    var local{method_idx} : int = arg;\n"));
-            out.push_str(&format!(
-                "    this.field{class_idx}_a = local{method_idx};\n"
-            ));
+            writeln!(out, "  function method{method_idx}(arg: int) : int {{").unwrap();
+            writeln!(out, "    var local{method_idx} : int = arg;").unwrap();
+            writeln!(out, "    this.field{class_idx}_a = local{method_idx};").unwrap();
             if method_idx > 0 {
-                out.push_str(&format!(
-                    "    this.method{}(local{method_idx});\n",
-                    method_idx - 1
-                ));
+                writeln!(out, "    this.method{}(local{method_idx});", method_idx - 1).unwrap();
             }
-            out.push_str(&format!("    return local{method_idx};\n"));
+            writeln!(out, "    return local{method_idx};").unwrap();
             out.push_str("  }\n");
         }
         out.push_str("}\n\n");

@@ -30,7 +30,7 @@ fn emits_quickfix_for_base_script_conflict() {
     };
     assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
     assert_eq!(action.is_preferred, Some(true));
-    assert_eq!(action.diagnostics.as_ref().map(|d| d.len()), Some(1));
+    assert_eq!(action.diagnostics.as_ref().map(std::vec::Vec::len), Some(1));
     assert!(
         action.title.contains("D:\\MyMod\\scripts")
             && action.title.contains("legacyScriptDirectories"),
@@ -72,7 +72,7 @@ fn many_conflicts_in_one_directory_yield_a_single_quickfix() {
         panic!("expected a CodeAction, got {:?}", actions[0]);
     };
     assert_eq!(
-        action.diagnostics.as_ref().map(|d| d.len()),
+        action.diagnostics.as_ref().map(std::vec::Vec::len),
         Some(2),
         "the action should claim both conflict diagnostics",
     );

@@ -75,10 +75,10 @@ fn comment_order_is_preserved_across_all_constructs() {
 fn comments_around_return_type_keep_source_order() {
     let input = include_str!("../../../tests/fixtures/formatter/comments_around_return_type.ws");
     let output = fmt(input);
-    expect![[r#"
+    expect![[r"
         function f2(/* a*/ b /*c */ : bool) /* d */ : /* e */ bool //test
         {}
-    "#]]
+    "]]
     .assert_eq(&output);
     assert_eq!(output, fmt(&output), "formatting must be idempotent");
 }
@@ -86,125 +86,125 @@ fn comments_around_return_type_keep_source_order() {
 #[rstest]
 #[case::trailing_comment_on_error_member_var_preserved(
     "class C {\n    var x : int // trailing comment\n}",
-    expect![[r#"
+    expect![[r"
         class C {
             var x : int // trailing comment
         }
-    "#]]
+    "]]
 )]
 #[case::trailing_comment_on_member_default_val_preserved(
     "class C {\n    var x : int;\n    default x = OT_None // keep me\n    ;\n}",
-    expect![[r#"
+    expect![[r"
         class C {
             var x : int;
             default x = OT_None // keep me
             ;
         }
-    "#]]
+    "]]
 )]
 #[case::comment_before_param_preserved(
     "function lossy(/* comment */ param1 : bool) {}",
-    expect![[r#"
+    expect![[r"
         function lossy(/* comment */ param1 : bool) {}
-    "#]]
+    "]]
 )]
 #[case::comment_between_params_preserved(
     "function F(a : int, /* mid */ b : bool) {}",
-    expect![[r#"
+    expect![[r"
         function F(a : int, /* mid */ b : bool) {}
-    "#]]
+    "]]
 )]
-#[case::comment_in_enum_body_preserved("enum EKind {\n    // a comment\n    A,\n    B\n}", expect![[r#"
+#[case::comment_in_enum_body_preserved("enum EKind {\n    // a comment\n    A,\n    B\n}", expect![[r"
     enum EKind {
         // a comment
         A,
         B
     }
-"#]])]
+"]])]
 #[case::comment_in_defaults_block_preserved(
     "class C {\n    defaults {\n        // a comment\n        x = 1;\n    }\n}",
-    expect![[r#"
+    expect![[r"
         class C {
             defaults {
                 // a comment
                 x = 1;
             }
         }
-    "#]]
+    "]]
 )]
-#[case::comment_trailing_param_preserved("function F(a : int /* trailing */) {}", expect![[r#"
+#[case::comment_trailing_param_preserved("function F(a : int /* trailing */) {}", expect![[r"
     function F(a : int /* trailing */) {}
-"#]])]
+"]])]
 #[case::comment_between_params_comma_position(
     "function F(a : bool /*b*/,/*a*/ i : int) {}",
-    expect![[r#"
+    expect![[r"
         function F(a : bool /*b*/, /*a*/ i : int) {}
-    "#]]
+    "]]
 )]
 // /*f*/ appears before the comma in source; /*g*/ appears after. The formatter
 // must not collapse both onto one side of the comma.
 #[case::comment_between_params_keeps_source_comma_position(
     "function lossy(   /*a*/   a   /*b*/  /*c*/  :/*d*//*e*/bool/*f*/,/*g*/i:int) {}",
-    expect![[r#"
+    expect![[r"
         function lossy(/*a*/ a /*b*/ /*c*/ : /*d*/ /*e*/ bool /*f*/, /*g*/ i : int) {}
-    "#]]
+    "]]
 )]
 #[case::line_comment_between_statements_does_not_swallow_next(
     "function f() {\n    var y : int = a // c\n        + b;\n}",
-    expect![[r#"
+    expect![[r"
         function f() {
             var y : int = a // c
                 + b;
         }
-    "#]]
+    "]]
 )]
 #[case::trailing_line_comment_after_statement_stays_and_terminates(
     "function f() {\n    doSomething(); // explain\n    other();\n}",
-    expect![[r#"
+    expect![[r"
         function f() {
             doSomething(); // explain
             other();
         }
-    "#]]
+    "]]
 )]
 #[case::trailing_comment_after_class_member_stays_trailing(
     "class C {\n    var x : int; // trailing\n    var y : int;\n}",
-    expect![[r#"
+    expect![[r"
         class C {
             var x : int; // trailing
             var y : int;
         }
-    "#]]
+    "]]
 )]
 #[case::trailing_comment_after_enum_variant_keeps_comma_order(
     "enum E {\n    A, // first\n    B\n}",
-    expect![[r#"
+    expect![[r"
         enum E {
             A, // first
             B
         }
-    "#]]
+    "]]
 )]
 #[case::trailing_comment_in_defaults_block_stays_trailing(
     "class C {\n    defaults {\n        x = 1; // trailing\n    }\n}",
-    expect![[r#"
+    expect![[r"
         class C {
             defaults {
                 x = 1; // trailing
             }
         }
-    "#]]
+    "]]
 )]
 #[case::own_line_comment_in_nested_block_is_indented(
     "function f() {\n    if (x) {\n        // note\n        a();\n    }\n}",
-    expect![[r#"
+    expect![[r"
         function f() {
             if (x) {
                 // note
                 a();
             }
         }
-    "#]]
+    "]]
 )]
 fn comment_preservation(#[case] input: &str, #[case] expected: Expect) {
     expected.assert_eq(&fmt(input));
@@ -230,7 +230,7 @@ fn line_comment_before_brace_moves_brace_to_own_indented_line() {
     let input =
         include_str!("../../../tests/fixtures/formatter/line_comment_before_brace_function.ws");
     let output = fmt(input);
-    expect![[r#"
+    expect![[r"
         function fn() // c0
         {
             if (true) // c1
@@ -239,7 +239,7 @@ fn line_comment_before_brace_moves_brace_to_own_indented_line() {
             }
             // c3
         }
-    "#]]
+    "]]
     .assert_eq(&output);
     assert_eq!(output, fmt(&output), "formatting must be idempotent");
 }

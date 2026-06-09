@@ -13,7 +13,7 @@ const OBJECT_BASE_CLASS: &str = "CObject";
 const STATE_BASE_CLASS: &str = "CScriptableState";
 const OBJECT_ROOT_CHAIN: [&str; 3] = ["CObject", "IScriptable", "ISerializable"];
 
-impl<'a> SymbolDb<'a> {
+impl SymbolDb<'_> {
     pub(crate) fn find_script_global(&self, name: &str) -> Option<Definition> {
         let g = self.script_env?.find(name)?;
         if let Some(class_def) = self.find_top_level(&g.type_name) {
@@ -234,7 +234,7 @@ impl<'a> SymbolDb<'a> {
         let (lookup, element) = generic_lookup_target(container);
         let mut seen: HashMap<String, (u8, Definition)> = HashMap::new();
         self.try_in_chain::<(), _>(lookup, |c, depth| {
-            let tier = if depth == 0 { 0u8 } else { 1u8 };
+            let tier = u8::from(depth != 0);
             for def in self
                 .workspace
                 .direct_members_of(c, AccessLevel::Private)
@@ -323,7 +323,9 @@ impl<'a> SymbolDb<'a> {
         let ws = self.workspace.types_catalog();
         let base = self.base_types_for_merge();
         match self.builtins {
-            Some(_) => merge_ws_base_three(ws, base, crate::builtins::types_completion_catalog()),
+            Some(_) => {
+                merge_ws_base_three(&ws, &base, &crate::builtins::types_completion_catalog())
+            }
             None => merge_ws_base(ws, base),
         }
     }
@@ -332,7 +334,7 @@ impl<'a> SymbolDb<'a> {
         let ws = self.workspace.enum_members_catalog();
         let base = self.base_enum_members_for_merge();
         match self.builtins {
-            Some(b) => merge_ws_base_three(ws, base, b.enum_members_catalog()),
+            Some(b) => merge_ws_base_three(&ws, &base, &b.enum_members_catalog()),
             None => merge_ws_base(ws, base),
         }
     }

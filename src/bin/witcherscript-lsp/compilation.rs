@@ -42,7 +42,7 @@ fn cow_clone_mut<'a, T: Clone>(slot: &'a mut Option<T>, base: &Arc<T>) -> &'a mu
 }
 
 fn resolve<T: Clone>(slot: Option<T>, base: &Arc<T>) -> Arc<T> {
-    slot.map(Arc::new).unwrap_or_else(|| base.clone())
+    slot.map_or_else(|| base.clone(), Arc::new)
 }
 
 impl CompilationBuilder {

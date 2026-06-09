@@ -31,7 +31,10 @@ fn parameters_of_top_level(
         .find_top_level(callable)
         .unwrap_or_else(|| panic!("{callable} should be indexed"));
     let params = db.parameters_of(&def.uri, def.symbol.id);
-    let expected: Vec<String> = expected.iter().map(|s| s.to_string()).collect();
+    let expected: Vec<String> = expected
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
     assert_eq!(params, expected);
 }
 
@@ -60,6 +63,9 @@ fn parameters_of_class_member(
         .find_member(class, member, AccessLevel::Public)
         .unwrap_or_else(|| panic!("{class}.{member} should be indexed"));
     let params = db.parameters_of(&def.uri, def.symbol.id);
-    let expected: Vec<String> = expected.iter().map(|s| s.to_string()).collect();
+    let expected: Vec<String> = expected
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
     assert_eq!(params, expected);
 }

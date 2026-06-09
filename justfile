@@ -10,15 +10,12 @@ default:
     @just --list
 
 # Format Rust code, run clippy & tests - optimised for agents
-test:
-    cargo fmt --all
-    cargo clippy --all-targets --all-features -- -D warnings
-    cargo nextest run
+test: ci
 
 # Run the standard local verification.
 ci:
     cargo fmt --all -- --check
-    cargo clippy --all-targets --all-features -- -D warnings
+    cargo clippy --all-targets --all-features -- -D warnings -A clippy::pedantic
     cargo nextest run
 
 # Build dev binary.

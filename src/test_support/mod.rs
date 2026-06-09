@@ -43,12 +43,14 @@ impl TestDb {
         }
     }
 
+    #[must_use]
     pub fn with_base_doc(mut self, uri: &str, source: &str) -> Self {
         let doc = parse_document(source).expect("test_support: base source must parse");
         self.base.update_document(uri, &doc);
         self
     }
 
+    #[must_use]
     pub fn with_builtins_index(mut self) -> Self {
         self.builtins = Some(crate::builtins::load_builtins_index());
         self
@@ -63,11 +65,10 @@ impl TestDb {
     }
 
     pub fn doc_for(&self, uri: &str) -> &ParsedDocument {
-        self.docs
-            .iter()
-            .find(|(u, _)| u == uri)
-            .map(|(_, d)| d)
-            .unwrap_or_else(|| panic!("test_support: no document for uri {uri:?}"))
+        self.docs.iter().find(|(u, _)| u == uri).map_or_else(
+            || panic!("test_support: no document for uri {uri:?}"),
+            |(_, d)| d,
+        )
     }
 
     pub fn search_docs(&self) -> Vec<(&str, &ParsedDocument)> {

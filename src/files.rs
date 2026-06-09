@@ -14,8 +14,7 @@ pub fn canonical_uri(uri: &Url) -> String {
     };
     Url::from_file_path(path)
         .ok()
-        .map(|u| u.to_string())
-        .unwrap_or_else(|| uri.to_string())
+        .map_or_else(|| uri.to_string(), |u| u.to_string())
 }
 
 pub fn build_overrides(root: &Path, exclude_globs: &[String]) -> Result<Override, ignore::Error> {

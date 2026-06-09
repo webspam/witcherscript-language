@@ -50,7 +50,10 @@ impl SymbolExtractor<'_> {
         let mut annotations = pending_annotations;
         let mut cursor = node.walk();
 
-        for child in node.children(&mut cursor).filter(|child| child.is_named()) {
+        for child in node
+            .children(&mut cursor)
+            .filter(tree_sitter::Node::is_named)
+        {
             if child.kind() == "annotation" {
                 if let Some(annotation) = self.annotation(child) {
                     annotations.push(annotation);
@@ -70,16 +73,16 @@ impl SymbolExtractor<'_> {
             "enum_decl" => self.visit_enum_decl(node, container, annotations),
             "state_decl" => self.visit_state_decl(node, container, annotations),
             "func_decl" => {
-                self.visit_callable_decl(node, container, annotations, SymbolKind::Function)
+                self.visit_callable_decl(node, container, annotations, SymbolKind::Function);
             }
             "event_decl" => {
-                self.visit_callable_decl(node, container, annotations, SymbolKind::Event)
+                self.visit_callable_decl(node, container, annotations, SymbolKind::Event);
             }
             "member_var_decl" | "autobind_decl" => {
-                self.visit_var_decl(node, container, annotations, SymbolKind::Field)
+                self.visit_var_decl(node, container, annotations, SymbolKind::Field);
             }
             "local_var_decl_stmt" => {
-                self.visit_var_decl(node, container, annotations, SymbolKind::Variable)
+                self.visit_var_decl(node, container, annotations, SymbolKind::Variable);
             }
             _ => self.visit_children(node, container, annotations),
         }
@@ -158,7 +161,10 @@ impl SymbolExtractor<'_> {
 
     fn visit_enum_members(&mut self, node: Node, enum_id: SymbolId) {
         let mut cursor = node.walk();
-        for child in node.children(&mut cursor).filter(|child| child.is_named()) {
+        for child in node
+            .children(&mut cursor)
+            .filter(tree_sitter::Node::is_named)
+        {
             if child.kind() == "enum_decl_variant" {
                 if let Some(name_node) = first_child_kind(child, "ident") {
                     self.push_symbol(

@@ -41,7 +41,7 @@ pub use definition::{
     classify_definition_at_ident, resolve_all_definitions, resolve_definition,
     resolve_definition_at_byte, resolve_definition_at_ident,
 };
-pub use inference::infer_expr_type_memo;
+pub(crate) use inference::infer_expr_type_memo;
 pub(crate) use inference::infer_type;
 pub use inlay_hints::{InlayHintInfo, inlay_hints};
 pub use name_context::{NameContext, classify_ident_context};

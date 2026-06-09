@@ -48,7 +48,7 @@ pub(crate) struct ReferenceLensData {
 }
 
 // Custom command, not a built-in: VS Code built-ins reject raw JSON args, so the extension wrapper reconstructs vscode types from this Location.
-fn base_definition_lens(overridden: OverriddenSymbol) -> Option<CodeLens> {
+fn base_definition_lens(overridden: &OverriddenSymbol) -> Option<CodeLens> {
     let uri = match Url::parse(&overridden.base.uri) {
         Ok(uri) => uri,
         Err(err) => {
@@ -209,12 +209,11 @@ impl Backend {
             .into_iter()
             .map(|p| {
                 let key = publish_url(p.uri.as_str())
-                    .map(|u| u.to_string())
-                    .unwrap_or_else(|| p.uri.to_string());
+                    .map_or_else(|| p.uri.to_string(), |u| u.to_string());
                 (key, p.value)
             })
             .collect();
-        let result = match self.compute_workspace_diagnostic_report(previous, version) {
+        let result = match self.compute_workspace_diagnostic_report(&previous, version) {
             Some(report) => Ok(WorkspaceDiagnosticReportResult::Report(report)),
             None => Err(diagnostics_server_cancelled(
                 "workspace state changed while computing diagnostics",
@@ -505,7 +504,7 @@ impl Backend {
                 lenses.extend(
                     overridden_top_level(document.symbols.all(), &snap.base_scripts_index)
                         .into_iter()
-                        .filter_map(base_definition_lens),
+                        .filter_map(|o| base_definition_lens(&o)),
                 );
             }
             trace!(
@@ -538,20 +537,20 @@ impl Backend {
             )
         })?;
         self.await_initial_index().await;
-        self.spawn_compute(move |b| b._code_lens_resolve_blocking(lens, uri, position))
+        self.spawn_compute(move |b| b._code_lens_resolve_blocking(lens, &uri, position))
             .await
     }
 
     pub(crate) fn _code_lens_resolve_blocking(
         &self,
         mut lens: CodeLens,
-        uri: Url,
+        uri: &Url,
         position: Position,
     ) -> Result<CodeLens> {
         let started_at = Instant::now();
         trace!(op = "code_lens_resolve", uri = %uri, "start");
         let locations = self
-            .reference_locations(&uri, position, false)
+            .reference_locations(uri, position, false)
             .unwrap_or_default();
         let count = locations.len();
         let title = if count == 1 {
@@ -560,7 +559,7 @@ impl Backend {
             format!("{count} references")
         };
         let arguments = vec![
-            serde_json::to_value(&uri).expect("Url always serializes"),
+            serde_json::to_value(uri).expect("Url always serializes"),
             serde_json::to_value(position).expect("Position always serializes"),
             serde_json::to_value(&locations).expect("Locations always serialize"),
         ];

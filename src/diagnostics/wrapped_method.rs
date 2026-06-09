@@ -114,7 +114,7 @@ fn collect_wrapped_method_calls<'tree>(
     }
 }
 
-fn bare_call_ident<'tree>(call: Node<'tree>) -> Option<Node<'tree>> {
+fn bare_call_ident(call: Node<'_>) -> Option<Node<'_>> {
     let func = call_callee(call)?;
     if func.kind() == "ident" {
         Some(func)

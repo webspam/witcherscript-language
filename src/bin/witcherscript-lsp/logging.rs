@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -126,7 +127,7 @@ impl EventVisitor {
         if !self.fields.is_empty() {
             self.fields.push(' ');
         }
-        self.fields.push_str(&format!("{name}={value}"));
+        write!(self.fields, "{name}={value}").unwrap();
     }
 }
 

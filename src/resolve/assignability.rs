@@ -49,10 +49,12 @@ pub(crate) fn assignability(from: &Type, to: &Type, db: &SymbolDb) -> Assignabil
         return Assignability::Identical;
     }
 
+    // Explicit `Incompatible` arms document the intent clearly
+    #[allow(clippy::match_same_arms)]
     match (from, to) {
-        (Type::Unknown, _) | (_, Type::Unknown) => Assignability::Incompatible,
-        (Type::Void, _) | (_, Type::Void) => Assignability::Incompatible,
-
+        (Type::Unknown | Type::Void, _) | (_, Type::Unknown | Type::Void) => {
+            Assignability::Incompatible
+        }
         (Type::Null, Type::Named(t)) if is_object_type(db, t) => {
             Assignability::ImplicitCast(CastKind::NullToRef)
         }

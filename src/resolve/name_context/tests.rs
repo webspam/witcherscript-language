@@ -4,7 +4,7 @@ use super::{NameContext, classify_ident_context};
 use crate::document::parse_document;
 use crate::symbols::SymbolKind;
 
-fn find_ident_at_offset<'a>(root: Node<'a>, byte_offset: usize) -> Option<Node<'a>> {
+fn find_ident_at_offset(root: Node<'_>, byte_offset: usize) -> Option<Node<'_>> {
     let node = root.descendant_for_byte_range(byte_offset, byte_offset)?;
     if node.kind() == "ident" {
         return Some(node);

@@ -20,11 +20,11 @@ impl Refactoring for SwitchLayoutRefactoring {
         let mut actions = Vec::new();
         if toggle.can_collapse {
             let text = rewrite_switch_layout(switch, ctx.source(), options, SwitchLayout::Collapse);
-            actions.push(ctx.rewrite(COLLAPSE_TITLE, switch, text, Preference::Preferred));
+            actions.push(ctx.rewrite(COLLAPSE_TITLE, switch, text, &Preference::Preferred));
         }
         if toggle.can_expand {
             let text = rewrite_switch_layout(switch, ctx.source(), options, SwitchLayout::Expand);
-            actions.push(ctx.rewrite(EXPAND_TITLE, switch, text, Preference::Alternative));
+            actions.push(ctx.rewrite(EXPAND_TITLE, switch, text, &Preference::Alternative));
         }
         actions
     }

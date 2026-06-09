@@ -122,9 +122,9 @@ pub(crate) fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String 
             .as_deref()
             .is_some_and(|t| t != "void");
     let body = if has_return {
-        format!("{{\n\t$0\n\n\treturn wrappedMethod({});\n}}", call_args)
+        format!("{{\n\t$0\n\n\treturn wrappedMethod({call_args});\n}}")
     } else {
-        format!("{{\n\twrappedMethod({});\n\n\t$0\n}}", call_args)
+        format!("{{\n\twrappedMethod({call_args});\n\n\t$0\n}}")
     };
     format!("{signature} {body}")
 }

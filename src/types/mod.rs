@@ -1,4 +1,4 @@
-//! Structured value model for WitcherScript types: the typed front-end over bare-`String` `type_annotation`s.
+//! Structured value model for `WitcherScript` types: the typed front-end over bare-`String` `type_annotation`s.
 
 mod parse;
 

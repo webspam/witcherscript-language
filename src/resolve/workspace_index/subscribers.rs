@@ -121,8 +121,8 @@ pub(super) fn scan_ident_occurrences(
     map
 }
 
-fn collect_all_idents<'tree>(
-    node: Node<'tree>,
+fn collect_all_idents(
+    node: Node<'_>,
     source: &[u8],
     map: &mut HashMap<String, Vec<std::ops::Range<usize>>>,
 ) {
