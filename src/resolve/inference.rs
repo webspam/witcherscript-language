@@ -19,7 +19,7 @@ pub(super) struct TypeContext {
     pub(super) owner_class: Option<String>,
 }
 
-pub fn infer_expr_type_memo(
+pub(crate) fn infer_expr_type_memo(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
