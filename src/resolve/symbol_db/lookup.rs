@@ -234,7 +234,7 @@ impl SymbolDb<'_> {
         let (lookup, element) = generic_lookup_target(container);
         let mut seen: HashMap<String, (u8, Definition)> = HashMap::new();
         self.try_in_chain::<(), _>(lookup, |c, depth| {
-            let tier = if depth == 0 { 0u8 } else { 1u8 };
+            let tier = u8::from(depth != 0);
             for def in self
                 .workspace
                 .direct_members_of(c, AccessLevel::Private)
