@@ -542,7 +542,7 @@ impl LanguageServer for Backend {
         ControlFlow::Continue(())
     }
 
-    fn shutdown(&mut self, _: ()) -> BoxFuture<'static, Result<()>> {
+    fn shutdown(&mut self, (): ()) -> BoxFuture<'static, Result<()>> {
         Box::pin(async move { Ok(()) })
     }
 

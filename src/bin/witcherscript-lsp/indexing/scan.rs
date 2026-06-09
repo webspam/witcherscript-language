@@ -27,7 +27,7 @@ fn parse_script_files(files: &[PathBuf], label: &str) -> Vec<(String, ParsedDocu
                 .map_err(|e| warn!(path = %path.display(), label, error = %e, "failed to parse script"))
                 .ok()?;
             let uri = Url::from_file_path(path)
-                .map_err(|_| warn!(path = %path.display(), label, "failed to convert script path to URI"))
+                .map_err(|()| warn!(path = %path.display(), label, "failed to convert script path to URI"))
                 .ok()?;
             Some((uri.to_string(), document))
         })
@@ -97,7 +97,7 @@ impl Backend {
                         )
                         .ok()?;
                     let uri = Url::from_file_path(path)
-                        .map_err(|_| warn!(path = %path.display(), "failed to convert path to URI"))
+                        .map_err(|()| warn!(path = %path.display(), "failed to convert path to URI"))
                         .ok()?;
                     debug!(uri = %uri, "indexed workspace file");
                     Some((uri.to_string(), document))
