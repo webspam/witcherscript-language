@@ -23,6 +23,8 @@ pub(super) fn outward_hash_map(symbols: &[Symbol]) -> HashMap<ObservedKey, u64> 
     let mut ordinals: HashMap<SymbolId, u64> = HashMap::new();
     for s in symbols.iter().filter(|s| s.kind == SymbolKind::Parameter) {
         let Some(callable) = s.container.and_then(|id| symbols.get(id.0)) else {
+            // Extraction always parents parameters under their callable; reaching here is a breach.
+            tracing::warn!(parameter = %s.name, "parameter has no resolvable container symbol");
             continue;
         };
         let ordinal = ordinals.entry(callable.id).or_insert(0);
