@@ -278,10 +278,7 @@ pub(super) fn infer_name_type(
 ) -> Option<Type> {
     resolve_name_in_context(uri, document, db, byte_offset, name, &NameContext::Value)
         .and_then(|def| definition_type(&def))
-        .or_else(|| {
-            db.script_global_type(name)
-                .map(|t| Type::from_annotation(&t))
-        })
+        .or_else(|| db.script_global_type(name))
 }
 
 pub(super) fn resolve_local_or_parameter(

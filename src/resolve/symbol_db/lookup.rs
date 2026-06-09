@@ -8,6 +8,7 @@ use super::super::{MAX_INHERITANCE_DEPTH, dedup_by_name, dedup_definitions};
 use super::SymbolDb;
 use super::generics::{generic_lookup_target, substitute_in_definition};
 use crate::resolve::{Definition, NameContext};
+use crate::types::Type;
 
 const OBJECT_BASE_CLASS: &str = "CObject";
 const STATE_BASE_CLASS: &str = "CScriptableState";
@@ -25,7 +26,14 @@ impl SymbolDb<'_> {
         })
     }
 
-    pub(crate) fn script_global_type(&self, name: &str) -> Option<String> {
+    pub(crate) fn script_global_type(&self, name: &str) -> Option<Type> {
+        self.script_env?
+            .find(name)
+            .and_then(|g| g.symbol.type_annotation.clone())
+    }
+
+    /// The raw ini spelling, for comparison against symbol names.
+    pub(crate) fn script_global_type_name(&self, name: &str) -> Option<String> {
         self.script_env?.find(name).map(|g| g.type_name.clone())
     }
 

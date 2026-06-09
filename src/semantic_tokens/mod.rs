@@ -233,7 +233,7 @@ fn script_global_override(
     def: &crate::resolve::Definition,
 ) -> (u32, u32) {
     let kind = def.symbol.kind;
-    let Some(global_type) = db.script_global_type(name) else {
+    let Some(global_type) = db.script_global_type_name(name) else {
         return (symbol_kind_to_token_type(kind), 0);
     };
     let matches_global =
