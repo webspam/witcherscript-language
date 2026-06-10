@@ -425,7 +425,7 @@ impl Formatter<'_> {
 
     fn format_enum_def(&mut self, node: Node) {
         let children = child_nodes(node);
-        // Exhaustive: all named children - enum_decl_variant AND comment extras.
+        // Exhaustive: all named children - enum_member_decl AND comment extras.
         // Anonymous tokens ({, ,, }) are excluded by is_named() and handled directly.
         let members: Vec<Node> = children.iter().filter(|n| n.is_named()).copied().collect();
         let open = children.iter().find(|n| n.kind() == "{");
@@ -447,7 +447,7 @@ impl Formatter<'_> {
         self.level += 1;
         let member_count = members
             .iter()
-            .filter(|n| n.kind() == kinds::ENUM_DECL_VARIANT)
+            .filter(|n| n.kind() == kinds::ENUM_MEMBER_DECL)
             .count();
         let mut emitted_members = 0;
         for member in &members {
@@ -456,7 +456,7 @@ impl Formatter<'_> {
                 continue;
             }
             self.emit_indent();
-            if member.kind() == kinds::ENUM_DECL_VARIANT {
+            if member.kind() == kinds::ENUM_MEMBER_DECL {
                 self.format_children(*member);
                 emitted_members += 1;
                 if emitted_members < member_count {

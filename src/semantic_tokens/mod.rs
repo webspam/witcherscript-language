@@ -157,7 +157,7 @@ fn classify_ident(
     match parent.kind() {
         kinds::CLASS_DECL | kinds::STRUCT_DECL | kinds::STATE_DECL => Some((TT_CLASS, 0)),
         kinds::ENUM_DECL => Some((TT_ENUM, 0)),
-        kinds::ENUM_DECL_VARIANT => Some((TT_ENUM_MEMBER, 0)),
+        kinds::ENUM_MEMBER_DECL => Some((TT_ENUM_MEMBER, 0)),
         kinds::FUNC_DECL | kinds::EVENT_DECL => Some((TT_FUNCTION, 0)),
         kinds::FUNC_PARAM_GROUP => Some((TT_PARAMETER, 0)),
         kinds::MEMBER_VAR_DECL | kinds::AUTOBIND_DECL => Some((TT_PROPERTY, 0)),

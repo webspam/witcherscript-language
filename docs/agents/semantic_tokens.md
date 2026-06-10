@@ -61,7 +61,7 @@ The `classify()` function dispatches on `node.kind()`:
 |---|---|
 | `class_decl`, `struct_decl`, `state_decl` | `class` (0) |
 | `enum_decl` | `enum` (1) |
-| `enum_decl_variant` | `enumMember` (2) |
+| `enum_member_decl` | `enumMember` (2) |
 | `func_decl`, `event_decl` | `function` (3) |
 | `func_param_group` | `parameter` (4) |
 | `member_var_decl` | `property` (6) |

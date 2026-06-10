@@ -170,7 +170,7 @@ impl<'a> SymbolExtractor<'a> {
     }
 
     fn enter_in_enum(&mut self, node: Node, enum_id: SymbolId) -> Visit {
-        if node.kind() == kinds::ENUM_DECL_VARIANT {
+        if node.kind() == kinds::ENUM_MEMBER_DECL {
             if let Some(name_node) = first_child_kind(node, kinds::IDENT) {
                 self.push_symbol(
                     node,
