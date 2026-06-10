@@ -19,6 +19,7 @@ mod completion_statement;
 mod completion_type;
 mod definition;
 mod document_highlight;
+mod extract_var;
 mod index;
 mod inference;
 mod inheritance;

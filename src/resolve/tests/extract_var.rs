@@ -1,0 +1,245 @@
+use expect_test::expect;
+use rstest::rstest;
+
+use super::super::{VariableExtraction, extract_variable};
+use crate::formatter::FormatOptions;
+use crate::test_support::TestDb;
+
+fn run(src: &str, needle: &str, options: FormatOptions) -> (String, Option<VariableExtraction>) {
+    let t = TestDb::new(src);
+    let uri = t.primary_uri();
+    let doc = t.doc_for(uri);
+    let start = doc
+        .source
+        .find(needle)
+        .unwrap_or_else(|| panic!("needle {needle:?} not found in fixture"));
+    let result = extract_variable(uri, doc, &t.db(), start..start + needle.len(), options);
+    (doc.source.clone(), result)
+}
+
+fn extraction(src: &str, needle: &str) -> VariableExtraction {
+    run(src, needle, FormatOptions::default())
+        .1
+        .unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"))
+}
+
+fn applied_with(src: &str, needle: &str, options: FormatOptions) -> String {
+    let (source, result) = run(src, needle, options);
+    let x = result.unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"));
+    let mut out = source;
+    out.replace_range(x.replace_range.clone(), &x.name);
+    out.insert_str(x.insert_at, &x.new_text);
+    out
+}
+
+fn applied(src: &str, needle: &str) -> String {
+    applied_with(src, needle, FormatOptions::default())
+}
+
+fn refused(src: &str, needle: &str) -> bool {
+    run(src, needle, FormatOptions::default()).1.is_none()
+}
+
+#[rstest]
+#[case::argument_uses_parameter_name(
+    "function Take(amount : int) {}\nfunction F() {\n    Take(2 + 3);\n}\n",
+    "2 + 3",
+    "amount"
+)]
+#[case::call_uses_method_name_lowercased(
+    "class C {\n    function GetPos() : int { return 1; }\n}\nfunction F() {\n    var c : C;\n    var r : int;\n    r = c.GetPos();\n}\n",
+    "c.GetPos()",
+    "getPos"
+)]
+#[case::member_access_uses_member_name(
+    "class C {\n    var someField : int;\n}\nfunction F() {\n    var c : C;\n    var r : int;\n    r = c.someField + 1;\n}\n",
+    "c.someField",
+    "someField"
+)]
+#[case::fallback_name(
+    "function F() {\n    var r : int;\n    r = 1 + 2;\n}\n",
+    "1 + 2",
+    "newVar"
+)]
+#[case::collision_appends_suffix(
+    "function F() {\n    var newVar : int;\n    var r : int;\n    r = 1 + 2;\n}\n",
+    "1 + 2",
+    "newVar1"
+)]
+fn names_new_variable(#[case] src: &str, #[case] needle: &str, #[case] expected: &str) {
+    assert_eq!(
+        extraction(src, needle).name,
+        expected,
+        "name for {needle:?}"
+    );
+}
+
+#[test]
+fn inserts_after_last_leading_var_decl() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    var b : int;\n    Use(a + b);\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            var b : int;
+            var x : int = a + b;
+            Use(x);
+        }
+    "]]
+    .assert_eq(&applied(src, "a + b"));
+}
+
+#[test]
+fn inserts_after_open_brace_when_no_var_decls() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    Use(1 + 2);\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var x : int = 1 + 2;
+            Use(x);
+        }
+    "]]
+    .assert_eq(&applied(src, "1 + 2"));
+}
+
+#[test]
+fn inserts_before_decl_when_selection_in_its_initializer() {
+    let src = "function F() {\n    var a : int = 1 + 2;\n    var b : int;\n}\n";
+    expect![[r"
+        function F() {
+            var newVar : int = 1 + 2;
+            var a : int = newVar;
+            var b : int;
+        }
+    "]]
+    .assert_eq(&applied(src, "1 + 2"));
+}
+
+#[test]
+fn hoists_from_nested_block_to_callable_top() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    if (true) {\n        Use(a * 2);\n    }\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            var x : int = a * 2;
+            if (true) {
+                Use(x);
+            }
+        }
+    "]]
+    .assert_eq(&applied(src, "a * 2"));
+}
+
+#[test]
+fn works_in_event_body() {
+    let src = "function Use(x : int) {}\nclass C {\n    event OnSpawned() {\n        Use(1 + 2);\n    }\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        class C {
+            event OnSpawned() {
+                var x : int = 1 + 2;
+                Use(x);
+            }
+        }
+    "]]
+    .assert_eq(&applied(src, "1 + 2"));
+}
+
+#[test]
+fn trims_whitespace_around_selection() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    Use( 1 + 2 );\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var x : int = 1 + 2;
+            Use( x );
+        }
+    "]]
+    .assert_eq(&applied(src, " 1 + 2 "));
+}
+
+#[test]
+fn indent_follows_tab_indented_source() {
+    let src = "function Use(x : int) {}\nfunction F() {\n\tvar a : int;\n\tUse(a + 1);\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+        	var a : int;
+        	var x : int = a + 1;
+        	Use(x);
+        }
+    "]]
+    .assert_eq(&applied(src, "a + 1"));
+}
+
+#[test]
+fn compact_colon_option_changes_spacing() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    Use(1 + 2);\n}\n";
+    let options = FormatOptions {
+        compact_colon: true,
+        ..FormatOptions::default()
+    };
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var x: int = 1 + 2;
+            Use(x);
+        }
+    "]]
+    .assert_eq(&applied_with(src, "1 + 2", options));
+}
+
+#[test]
+fn name_plus_name_extracts_as_string() {
+    let src = "function F() {\n    var r : string;\n    r = 'a' + 'b';\n}\n";
+    expect![[r"
+        function F() {
+            var r : string;
+            var newVar : string = 'a' + 'b';
+            r = newVar;
+        }
+    "]]
+    .assert_eq(&applied(src, "'a' + 'b'"));
+}
+
+#[test]
+fn returns_none_for_empty_selection() {
+    let t = TestDb::new("function Use(x : int) {}\nfunction F() {\n    Use(1 + 2);\n}\n");
+    let uri = t.primary_uri();
+    let doc = t.doc_for(uri);
+    let start = doc.source.find("1 + 2").expect("needle present");
+    assert!(
+        extract_variable(uri, doc, &t.db(), start..start, FormatOptions::default()).is_none(),
+        "empty selection must not extract"
+    );
+}
+
+#[rstest]
+#[case::partial_expression(
+    "function F() {\n    var a : int;\n    var b : int;\n    var r : int;\n    r = a + b;\n}\n",
+    "a +"
+)]
+#[case::assignment_expression("function F() {\n    var x : int;\n    x = 5;\n}\n", "x = 5")]
+#[case::ternary_expression(
+    "function F() {\n    var c : bool;\n    var a : int;\n    var b : int;\n    var r : int;\n    r = c ? a : b;\n}\n",
+    "c ? a : b"
+)]
+#[case::defaults_block_is_outside_callable(
+    "class C {\n    var x : int;\n    default x = 5;\n}\n",
+    "5"
+)]
+#[case::unresolvable_call_has_unknown_type(
+    "function F() {\n    var r : int;\n    r = Mystery();\n}\n",
+    "Mystery()"
+)]
+#[case::null_literal(
+    "class C {}\nfunction F() {\n    var c : C;\n    var ok : bool;\n    ok = c == NULL;\n}\n",
+    "NULL"
+)]
+fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
+    assert!(
+        refused(src, needle),
+        "selection {needle:?} must not be extractable"
+    );
+}
