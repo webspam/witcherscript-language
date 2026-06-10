@@ -131,8 +131,7 @@ pub(crate) fn run_rules_on_document(
         telemetry: RuleTelemetry::default(),
         rule_times: vec![(Duration::ZERO, 0); rules.len()],
         diagnostics: Vec::new(),
-        depth: 0,
-        error_depth: None,
+        error_tracker: ErrorSubtreeTracker::default(),
     };
     walk(document.tree.root_node(), &mut rule_walk);
     for ((elapsed, visits), rule) in rule_walk.rule_times.iter().zip(rules.iter()) {
@@ -159,6 +158,31 @@ fn is_error_subtree_root(node: Node) -> bool {
     node.is_error() || node.is_missing() || node.kind() == kinds::INCOMPLETE_MEMBER_ACCESS_EXPR
 }
 
+// Marks the outermost error-subtree root; relies on walk pairing every enter with one leave.
+#[derive(Default)]
+struct ErrorSubtreeTracker {
+    depth: usize,
+    // Depth of the outermost error-subtree root; nodes below it are in the error subtree.
+    error_depth: Option<usize>,
+}
+
+impl ErrorSubtreeTracker {
+    fn enter(&mut self, node: Node) -> bool {
+        if self.error_depth.is_none() && is_error_subtree_root(node) {
+            self.error_depth = Some(self.depth);
+        }
+        self.depth += 1;
+        self.error_depth.is_some()
+    }
+
+    fn leave(&mut self) {
+        self.depth -= 1;
+        if self.error_depth == Some(self.depth) {
+            self.error_depth = None;
+        }
+    }
+}
+
 struct RuleWalk<'a, 'db> {
     uri: &'a str,
     document: &'a ParsedDocument,
@@ -168,17 +192,12 @@ struct RuleWalk<'a, 'db> {
     telemetry: RuleTelemetry,
     rule_times: Vec<(Duration, usize)>,
     diagnostics: Vec<WorkspaceDiagnostic>,
-    depth: usize,
-    // Depth of the outermost error-subtree root; rules below it see in_error_subtree.
-    error_depth: Option<usize>,
+    error_tracker: ErrorSubtreeTracker,
 }
 
 impl<'tree> CstVisitor<'tree> for RuleWalk<'_, '_> {
     fn enter(&mut self, node: Node<'tree>) -> Visit {
-        if self.error_depth.is_none() && is_error_subtree_root(node) {
-            self.error_depth = Some(self.depth);
-        }
-        let in_error_subtree = self.error_depth.is_some();
+        let in_error_subtree = self.error_tracker.enter(node);
         let kind = node.kind();
         let rules = self.rules;
         for (i, rule) in rules.iter().enumerate() {
@@ -199,15 +218,11 @@ impl<'tree> CstVisitor<'tree> for RuleWalk<'_, '_> {
                 self.rule_times[i].1 += 1;
             }
         }
-        self.depth += 1;
         Visit::Children
     }
 
     fn leave(&mut self, _node: Node<'tree>) {
-        self.depth -= 1;
-        if self.error_depth == Some(self.depth) {
-            self.error_depth = None;
-        }
+        self.error_tracker.leave();
     }
 }
 
@@ -226,8 +241,7 @@ pub(crate) fn collect_nodes_with_error_subtree<'tree>(
     let mut collector = NodeCollector {
         predicate,
         out: Vec::new(),
-        depth: 0,
-        error_depth: None,
+        error_tracker: ErrorSubtreeTracker::default(),
     };
     walk(root, &mut collector);
     collector.out
@@ -236,27 +250,20 @@ pub(crate) fn collect_nodes_with_error_subtree<'tree>(
 struct NodeCollector<'tree, P> {
     predicate: P,
     out: Vec<(Node<'tree>, bool)>,
-    depth: usize,
-    error_depth: Option<usize>,
+    error_tracker: ErrorSubtreeTracker,
 }
 
 impl<'tree, P: Fn(&str) -> bool> CstVisitor<'tree> for NodeCollector<'tree, P> {
     fn enter(&mut self, node: Node<'tree>) -> Visit {
-        if self.error_depth.is_none() && is_error_subtree_root(node) {
-            self.error_depth = Some(self.depth);
-        }
+        let in_error_subtree = self.error_tracker.enter(node);
         if (self.predicate)(node.kind()) {
-            self.out.push((node, self.error_depth.is_some()));
+            self.out.push((node, in_error_subtree));
         }
-        self.depth += 1;
         Visit::Children
     }
 
     fn leave(&mut self, _node: Node<'tree>) {
-        self.depth -= 1;
-        if self.error_depth == Some(self.depth) {
-            self.error_depth = None;
-        }
+        self.error_tracker.leave();
     }
 }
 
