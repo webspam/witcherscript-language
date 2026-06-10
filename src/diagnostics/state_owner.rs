@@ -61,6 +61,7 @@ pub fn collect_state_owner_diagnostics(
 // The statemachine keyword is not inherited: only the literal owner's flag is checked.
 fn check_state_owner<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {
     let owner_ident = node.child_by_field_name(fields::PARENT)?;
+    // safe: ident nodes are sliced from a UTF-8 String on char-aligned boundaries
     let owner_name = owner_ident.utf8_text(ctx.document.source.as_bytes()).ok()?;
     let owner = ctx.db.find_top_level(owner_name)?;
 
