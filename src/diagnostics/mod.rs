@@ -37,6 +37,7 @@ pub use unknown_symbol::collect_unknown_symbol_diagnostics;
 pub use wrapped_method::collect_wrapped_method_diagnostics;
 
 use crate::cst::kinds;
+use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use abstract_instantiation::AbstractInstantiationRule;
@@ -138,9 +139,9 @@ impl ParseDiagnostic {
 }
 
 pub fn collect_diagnostics(root: Node, source: &str) -> Vec<ParseDiagnostic> {
-    let mut diagnostics = Vec::new();
-    collect_walk(root, source, &mut diagnostics);
-    diagnostics
+    let mut syntax = SyntaxDiagnostics::new(source);
+    walk(root, &mut syntax);
+    syntax.finish()
 }
 
 pub fn format_tree(root: Node) -> String {
@@ -149,26 +150,46 @@ pub fn format_tree(root: Node) -> String {
     output
 }
 
-fn collect_walk(node: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>) {
-    if node.is_error() || node.is_missing() {
-        diagnostics.push(tree_error_diagnostic(node, source));
-    }
-    if node.kind() == kinds::INCOMPLETE_MEMBER_ACCESS_EXPR {
-        diagnostics.push(incomplete_member_access_diagnostic(node, source));
-    }
-    if node.kind() == kinds::TERNARY_COND_EXPR {
-        diagnostics.push(ternary_expr_diagnostic(node, source));
-    }
-    if node.kind() == kinds::FUNC_BLOCK {
-        collect_late_local_vars_in_block(node, source, diagnostics);
-    }
-    if node.kind() == kinds::STRUCT_DEF {
-        collect_struct_prop_access_modifiers(node, source, diagnostics);
+pub(crate) struct SyntaxDiagnostics<'s> {
+    source: &'s str,
+    diagnostics: Vec<ParseDiagnostic>,
+}
+
+impl<'s> SyntaxDiagnostics<'s> {
+    pub(crate) fn new(source: &'s str) -> Self {
+        Self {
+            source,
+            diagnostics: Vec::new(),
+        }
     }
 
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_walk(child, source, diagnostics);
+    pub(crate) fn finish(self) -> Vec<ParseDiagnostic> {
+        self.diagnostics
+    }
+}
+
+impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
+    // Always descends: MISSING tokens are often anonymous and must still be seen.
+    fn enter(&mut self, node: Node<'tree>) -> Visit {
+        if node.is_error() || node.is_missing() {
+            self.diagnostics
+                .push(tree_error_diagnostic(node, self.source));
+        }
+        if node.kind() == kinds::INCOMPLETE_MEMBER_ACCESS_EXPR {
+            self.diagnostics
+                .push(incomplete_member_access_diagnostic(node, self.source));
+        }
+        if node.kind() == kinds::TERNARY_COND_EXPR {
+            self.diagnostics
+                .push(ternary_expr_diagnostic(node, self.source));
+        }
+        if node.kind() == kinds::FUNC_BLOCK {
+            collect_late_local_vars_in_block(node, self.source, &mut self.diagnostics);
+        }
+        if node.kind() == kinds::STRUCT_DEF {
+            collect_struct_prop_access_modifiers(node, self.source, &mut self.diagnostics);
+        }
+        Visit::Children
     }
 }
 
