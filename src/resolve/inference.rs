@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 use crate::cst::grammar::{call_callee, member_access_member};
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::symbols::{AccessLevel, Symbol, SymbolKind};
 use crate::types::{Primitive, Type};
@@ -45,46 +46,48 @@ pub(crate) fn infer_type(
     context_byte: usize,
 ) -> Type {
     match node.kind() {
-        "ident" => {
+        kinds::IDENT => {
             let Ok(name) = node.utf8_text(document.source.as_bytes()) else {
                 return Type::Unknown;
             };
             infer_name_type(uri, document, db, context_byte, name).unwrap_or(Type::Unknown)
         }
-        "func_call_expr" => match call_callee(node) {
+        kinds::FUNC_CALL_EXPR => match call_callee(node) {
             Some(func) => infer_type(uri, document, db, func, context_byte),
             None => Type::Unknown,
         },
-        "member_access_expr" => infer_member_access_type(uri, document, db, node, context_byte),
-        "this_expr" => named_or_unknown(current_type_name(document, db, context_byte)),
-        "literal_int" | "literal_hex" => Type::Primitive(Primitive::Int),
-        "literal_float" => Type::Primitive(Primitive::Float),
-        "literal_bool" => Type::Primitive(Primitive::Bool),
-        "literal_string" => Type::Primitive(Primitive::String),
-        "literal_name" => Type::Primitive(Primitive::Name),
-        "literal_null" => Type::Null,
-        "new_expr" => match node
-            .child_by_field_name("class")
-            .filter(|c| c.kind() == "ident")
+        kinds::MEMBER_ACCESS_EXPR => {
+            infer_member_access_type(uri, document, db, node, context_byte)
+        }
+        kinds::THIS_EXPR => named_or_unknown(current_type_name(document, db, context_byte)),
+        kinds::LITERAL_INT | kinds::LITERAL_HEX => Type::Primitive(Primitive::Int),
+        kinds::LITERAL_FLOAT => Type::Primitive(Primitive::Float),
+        kinds::LITERAL_BOOL => Type::Primitive(Primitive::Bool),
+        kinds::LITERAL_STRING => Type::Primitive(Primitive::String),
+        kinds::LITERAL_NAME => Type::Primitive(Primitive::Name),
+        kinds::LITERAL_NULL => Type::Null,
+        kinds::NEW_EXPR => match node
+            .child_by_field_name(fields::CLASS)
+            .filter(|c| c.kind() == kinds::IDENT)
             .and_then(|c| c.utf8_text(document.source.as_bytes()).ok())
         {
             Some(name) => Type::from_annotation(name),
             None => Type::Unknown,
         },
         // A cast asserts the target type regardless of the inner value's type.
-        "cast_expr" => match node
-            .child_by_field_name("type")
-            .filter(|c| c.kind() == "ident")
+        kinds::CAST_EXPR => match node
+            .child_by_field_name(fields::TYPE)
+            .filter(|c| c.kind() == kinds::IDENT)
             .and_then(|c| c.utf8_text(document.source.as_bytes()).ok())
         {
             Some(name) => Type::from_annotation(name),
             None => Type::Unknown,
         },
-        "nested_expr" => match first_named_child(node) {
+        kinds::NESTED_EXPR => match first_named_child(node) {
             Some(inner) => infer_type(uri, document, db, inner, context_byte),
             None => Type::Unknown,
         },
-        "array_expr" => match node.child_by_field_name("accessor") {
+        kinds::ARRAY_EXPR => match node.child_by_field_name(fields::ACCESSOR) {
             Some(accessor) => match infer_type(uri, document, db, accessor, context_byte) {
                 Type::Array(elem) => *elem,
                 _ => Type::Unknown,
@@ -112,7 +115,7 @@ fn infer_member_access_type(
     let Some(member) = member_access_member(node) else {
         return Type::Unknown;
     };
-    if member.kind() != "ident" {
+    if member.kind() != kinds::IDENT {
         return Type::Unknown;
     }
     let Ok(member_name) = member.utf8_text(document.source.as_bytes()) else {
@@ -142,18 +145,18 @@ pub(super) fn resolve_member_access(
     name: &str,
 ) -> Option<Definition> {
     let parent = ident.parent()?;
-    if parent.kind() != "member_access_expr" {
+    if parent.kind() != kinds::MEMBER_ACCESS_EXPR {
         return None;
     }
 
     let receiver = first_named_child(parent)?;
     match receiver.kind() {
-        "this_expr" => {
+        kinds::THIS_EXPR => {
             let current_type = current_type_name(document, db, ident.start_byte())?;
             resolve_document_member(uri, document, &current_type, name, AccessLevel::Private)
                 .or_else(|| db.find_member(&current_type, name, AccessLevel::Private))
         }
-        "super_expr" | "virtual_parent_expr" => {
+        kinds::SUPER_EXPR | kinds::VIRTUAL_PARENT_EXPR => {
             let current_type = enclosing_type_context(document, db, ident.start_byte())?;
             db.find_member(
                 current_type.base_class.as_deref()?,
@@ -161,7 +164,7 @@ pub(super) fn resolve_member_access(
                 AccessLevel::Protected,
             )
         }
-        "parent_expr" => {
+        kinds::PARENT_EXPR => {
             let current_type = enclosing_type_context(document, db, ident.start_byte())?;
             db.find_member(
                 current_type.owner_class.as_deref()?,
@@ -169,14 +172,14 @@ pub(super) fn resolve_member_access(
                 AccessLevel::Public,
             )
         }
-        "ident" => {
+        kinds::IDENT => {
             let receiver_name = receiver.utf8_text(document.source.as_bytes()).ok()?;
             let type_name = infer_name_type(uri, document, db, ident.start_byte(), receiver_name)?
                 .to_db_string()?;
             resolve_document_member(uri, document, &type_name, name, AccessLevel::Public)
                 .or_else(|| db.find_member(&type_name, name, AccessLevel::Public))
         }
-        "func_call_expr" | "member_access_expr" => {
+        kinds::FUNC_CALL_EXPR | kinds::MEMBER_ACCESS_EXPR => {
             let type_name =
                 infer_type(uri, document, db, receiver, ident.start_byte()).to_db_string()?;
             resolve_document_member(uri, document, &type_name, name, AccessLevel::Public)

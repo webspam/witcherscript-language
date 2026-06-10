@@ -36,6 +36,8 @@ pub use unknown_method::collect_unknown_method_diagnostics;
 pub use unknown_symbol::collect_unknown_symbol_diagnostics;
 pub use wrapped_method::collect_wrapped_method_diagnostics;
 
+use crate::cst::kinds;
+use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use abstract_instantiation::AbstractInstantiationRule;
@@ -137,9 +139,9 @@ impl ParseDiagnostic {
 }
 
 pub fn collect_diagnostics(root: Node, source: &str) -> Vec<ParseDiagnostic> {
-    let mut diagnostics = Vec::new();
-    collect_walk(root, source, &mut diagnostics);
-    diagnostics
+    let mut syntax = SyntaxDiagnostics::new(source);
+    walk(root, &mut syntax);
+    syntax.finish()
 }
 
 pub fn format_tree(root: Node) -> String {
@@ -148,26 +150,46 @@ pub fn format_tree(root: Node) -> String {
     output
 }
 
-fn collect_walk(node: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>) {
-    if node.is_error() || node.is_missing() {
-        diagnostics.push(tree_error_diagnostic(node, source));
-    }
-    if node.kind() == "incomplete_member_access_expr" {
-        diagnostics.push(incomplete_member_access_diagnostic(node, source));
-    }
-    if node.kind() == "ternary_cond_expr" {
-        diagnostics.push(ternary_expr_diagnostic(node, source));
-    }
-    if node.kind() == "func_block" {
-        collect_late_local_vars_in_block(node, source, diagnostics);
-    }
-    if node.kind() == "struct_def" {
-        collect_struct_prop_access_modifiers(node, source, diagnostics);
+pub(crate) struct SyntaxDiagnostics<'s> {
+    source: &'s str,
+    diagnostics: Vec<ParseDiagnostic>,
+}
+
+impl<'s> SyntaxDiagnostics<'s> {
+    pub(crate) fn new(source: &'s str) -> Self {
+        Self {
+            source,
+            diagnostics: Vec::new(),
+        }
     }
 
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_walk(child, source, diagnostics);
+    pub(crate) fn finish(self) -> Vec<ParseDiagnostic> {
+        self.diagnostics
+    }
+}
+
+impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
+    // Always descends: MISSING tokens are often anonymous and must still be seen.
+    fn enter(&mut self, node: Node<'tree>) -> Visit {
+        if node.is_error() || node.is_missing() {
+            self.diagnostics
+                .push(tree_error_diagnostic(node, self.source));
+        }
+        if node.kind() == kinds::INCOMPLETE_MEMBER_ACCESS_EXPR {
+            self.diagnostics
+                .push(incomplete_member_access_diagnostic(node, self.source));
+        }
+        if node.kind() == kinds::TERNARY_COND_EXPR {
+            self.diagnostics
+                .push(ternary_expr_diagnostic(node, self.source));
+        }
+        if node.kind() == kinds::FUNC_BLOCK {
+            collect_late_local_vars_in_block(node, self.source, &mut self.diagnostics);
+        }
+        if node.kind() == kinds::STRUCT_DEF {
+            collect_struct_prop_access_modifiers(node, self.source, &mut self.diagnostics);
+        }
+        Visit::Children
     }
 }
 
@@ -204,11 +226,11 @@ fn collect_late_local_vars_in_block(
     let mut cursor = block.walk();
 
     for child in block.children(&mut cursor) {
-        if !child.is_named() || matches!(child.kind(), "comment" | "nop") {
+        if !child.is_named() || matches!(child.kind(), kinds::COMMENT | kinds::NOP) {
             continue;
         }
 
-        if child.kind() == "local_var_decl_stmt" {
+        if child.kind() == kinds::LOCAL_VAR_DECL_STMT {
             if saw_code_statement {
                 diagnostics.push(late_local_var_diagnostic(child, source));
             }
@@ -226,13 +248,13 @@ fn collect_struct_prop_access_modifiers(
 ) {
     let mut cursor = struct_def.walk();
     for prop in struct_def.children(&mut cursor) {
-        if prop.kind() != "member_var_decl" {
+        if prop.kind() != kinds::MEMBER_VAR_DECL {
             continue;
         }
 
         let mut prop_cursor = prop.walk();
         for specifier in prop.children(&mut prop_cursor) {
-            if specifier.kind() != "specifier" {
+            if specifier.kind() != kinds::SPECIFIER {
                 continue;
             }
             let keyword = &source[specifier.start_byte()..specifier.end_byte()];

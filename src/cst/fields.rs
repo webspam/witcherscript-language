@@ -1,0 +1,40 @@
+//! Generated registry of grammar field names. Do not edit.
+//! Regenerate after a grammar bump: `UPDATE_EXPECT=1 cargo test sourcegen`
+#![allow(dead_code)] // covers the whole grammar; unused consts are expected
+
+pub(crate) const ACCESSOR: &str = "accessor";
+pub(crate) const ALT: &str = "alt";
+pub(crate) const ANNOTATION: &str = "annotation";
+pub(crate) const ARG: &str = "arg";
+pub(crate) const ARGS: &str = "args";
+pub(crate) const AUTOBIND_TYPE: &str = "autobind_type";
+pub(crate) const BASE: &str = "base";
+pub(crate) const BODY: &str = "body";
+pub(crate) const CLASS: &str = "class";
+pub(crate) const COND: &str = "cond";
+pub(crate) const CONSEQ: &str = "conseq";
+pub(crate) const DEFINITION: &str = "definition";
+pub(crate) const ELSE: &str = "else";
+pub(crate) const FLAVOUR: &str = "flavour";
+pub(crate) const FUNC: &str = "func";
+pub(crate) const INDEX: &str = "index";
+pub(crate) const INIT: &str = "init";
+pub(crate) const INIT_VALUE: &str = "init_value";
+pub(crate) const ITER: &str = "iter";
+pub(crate) const LEFT: &str = "left";
+pub(crate) const LIFETIME_OBJ: &str = "lifetime_obj";
+pub(crate) const MEMBER: &str = "member";
+pub(crate) const NAME: &str = "name";
+pub(crate) const NAMES: &str = "names";
+pub(crate) const OP: &str = "op";
+pub(crate) const PARAM_TYPE: &str = "param_type";
+pub(crate) const PARAMS: &str = "params";
+pub(crate) const PARENT: &str = "parent";
+pub(crate) const RETURN_TYPE: &str = "return_type";
+pub(crate) const RIGHT: &str = "right";
+pub(crate) const SPECIFIERS: &str = "specifiers";
+pub(crate) const TYPE: &str = "type";
+pub(crate) const TYPE_ARG: &str = "type_arg";
+pub(crate) const TYPE_NAME: &str = "type_name";
+pub(crate) const VALUE: &str = "value";
+pub(crate) const VAR_TYPE: &str = "var_type";

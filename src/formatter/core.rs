@@ -1,5 +1,7 @@
 use tree_sitter::Node;
 
+use crate::cst::kinds;
+
 use super::{Formatter, child_nodes, is_expr_node};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -175,17 +177,21 @@ impl<'a> Formatter<'a> {
             return;
         }
         match node.kind() {
-            "script" => self.format_script(node),
-            "func_decl" | "event_decl" => self.format_func_decl(node),
-            "class_decl" | "struct_decl" | "state_decl" => self.format_class_decl(node),
-            "enum_decl" => self.format_enum_decl(node),
-            "member_var_decl" => self.format_member_var_decl(node, None, None),
-            "class_def" | "struct_def" => self.format_class_def(node),
-            "func_block" => self.format_func_block(node),
-            "if_stmt" => self.format_if_stmt(node),
-            "while_stmt" | "do_while_stmt" | "for_stmt" => self.format_loop_stmt(node),
-            "switch_stmt" => self.format_switch_stmt(node),
-            "expr_stmt" => self.format_expr_stmt(node),
+            kinds::SCRIPT => self.format_script(node),
+            kinds::FUNC_DECL | kinds::EVENT_DECL => self.format_func_decl(node),
+            kinds::CLASS_DECL | kinds::STRUCT_DECL | kinds::STATE_DECL => {
+                self.format_class_decl(node);
+            }
+            kinds::ENUM_DECL => self.format_enum_decl(node),
+            kinds::MEMBER_VAR_DECL => self.format_member_var_decl(node, None, None),
+            kinds::CLASS_DEF | kinds::STRUCT_DEF => self.format_class_def(node),
+            kinds::FUNC_BLOCK => self.format_func_block(node),
+            kinds::IF_STMT => self.format_if_stmt(node),
+            kinds::WHILE_STMT | kinds::DO_WHILE_STMT | kinds::FOR_STMT => {
+                self.format_loop_stmt(node);
+            }
+            kinds::SWITCH_STMT => self.format_switch_stmt(node),
+            kinds::EXPR_STMT => self.format_expr_stmt(node),
             _ if is_expr_node(node.kind()) => self.format_children(node),
             _ => self.format_children(node),
         }
@@ -195,11 +201,11 @@ impl<'a> Formatter<'a> {
         let children = child_nodes(node);
         let mut prev: Option<Node> = None;
         for child in &children {
-            if child.is_missing() || child.kind() == "annotation" {
+            if child.is_missing() || child.kind() == kinds::ANNOTATION {
                 continue;
             }
             self.flush_comments_before(child.start_byte());
-            if child.kind() == "comment" {
+            if child.kind() == kinds::COMMENT {
                 continue;
             }
             if child.kind() == ":"
@@ -234,7 +240,7 @@ impl<'a> Formatter<'a> {
         let bk = before.kind();
         let ak = after.kind();
         // An empty call argument is two adjacent commas; render the gap as one space.
-        if parent_kind == "func_call_args" && bk == "," && ak == "," {
+        if parent_kind == kinds::FUNC_CALL_ARGS && bk == "," && ak == "," {
             return true;
         }
         if matches!(ak, "," | ";" | ")" | "]" | "<" | ">") {
@@ -243,18 +249,21 @@ impl<'a> Formatter<'a> {
         if matches!(bk, "(" | "[" | "<") {
             return false;
         }
-        if parent_kind == "cast_expr" && bk == ")" {
+        if parent_kind == kinds::CAST_EXPR && bk == ")" {
             return false;
         }
-        if parent_kind == "unary_op_expr"
+        if parent_kind == kinds::UNARY_OP_EXPR
             && matches!(
                 bk,
-                "unary_op_not" | "unary_op_neg" | "unary_op_bitnot" | "unary_op_plus"
+                kinds::UNARY_OP_NOT
+                    | kinds::UNARY_OP_NEG
+                    | kinds::UNARY_OP_BITNOT
+                    | kinds::UNARY_OP_PLUS
             )
         {
             return false;
         }
-        if ak == "func_params" {
+        if ak == kinds::FUNC_PARAMS {
             return false;
         }
         if ak == "(" || ak == "[" {
@@ -265,13 +274,13 @@ impl<'a> Formatter<'a> {
         }
         if ak == ":" {
             match parent_kind {
-                "switch_case_label" | "switch_default_label" => return false,
-                "local_var_decl_stmt"
-                | "member_var_decl"
-                | "func_param_group"
-                | "event_decl"
-                | "func_decl"
-                | "autobind_decl" => return !self.compact_colon,
+                kinds::SWITCH_CASE_LABEL | kinds::SWITCH_DEFAULT_LABEL => return false,
+                kinds::LOCAL_VAR_DECL_STMT
+                | kinds::MEMBER_VAR_DECL
+                | kinds::FUNC_PARAM_GROUP
+                | kinds::EVENT_DECL
+                | kinds::FUNC_DECL
+                | kinds::AUTOBIND_DECL => return !self.compact_colon,
                 _ => {}
             }
         }

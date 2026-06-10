@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
+use crate::cst::kinds;
+use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::document::ParsedDocument;
 use crate::resolve::{SymbolDb, classify_definition_at_ident};
 use crate::symbols::{SymbolId, SymbolKind};
@@ -63,48 +65,58 @@ pub fn collect_semantic_tokens_cancellable(
     db: &SymbolDb,
     should_continue: &dyn Fn() -> bool,
 ) -> Option<Vec<u32>> {
-    let mut tokens: Vec<RawToken> = Vec::new();
-    let mut cache: ClassifyCache = HashMap::new();
+    let mut collector = TokenCollector {
+        uri,
+        document,
+        db,
+        cache: HashMap::new(),
+        tokens: Vec::new(),
+    };
     let root = document.tree.root_node();
     let mut cursor = root.walk();
     for child in root.children(&mut cursor) {
         if !should_continue() {
             return None;
         }
-        collect(child, uri, document, db, &mut cache, &mut tokens);
+        walk(child, &mut collector);
     }
-    Some(encode(&tokens))
+    Some(encode(&collector.tokens))
 }
 
 type ClassifyCache = HashMap<(String, Option<SymbolId>), Option<(u32, u32)>>;
 
-fn collect(
-    node: Node,
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    cache: &mut ClassifyCache,
-    out: &mut Vec<RawToken>,
-) {
-    if let Some((token_type, token_modifiers)) = classify(node, uri, document, db, cache) {
-        let range = document.line_index.byte_range_to_range(
-            &document.source,
-            node.start_byte(),
-            node.end_byte(),
-        );
-        if range.start.line == range.end.line && range.end.character > range.start.character {
-            out.push(RawToken {
-                line: range.start.line,
-                start_char: range.start.character,
-                length: range.end.character - range.start.character,
-                token_type,
-                token_modifiers,
-            });
-        }
-    } else if node.is_named() {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            collect(child, uri, document, db, cache, out);
+struct TokenCollector<'a, 'db> {
+    uri: &'a str,
+    document: &'a ParsedDocument,
+    db: &'a SymbolDb<'db>,
+    cache: ClassifyCache,
+    tokens: Vec<RawToken>,
+}
+
+impl<'tree> CstVisitor<'tree> for TokenCollector<'_, '_> {
+    fn enter(&mut self, node: Node<'tree>) -> Visit {
+        if let Some((token_type, token_modifiers)) =
+            classify(node, self.uri, self.document, self.db, &mut self.cache)
+        {
+            let range = self.document.line_index.byte_range_to_range(
+                &self.document.source,
+                node.start_byte(),
+                node.end_byte(),
+            );
+            if range.start.line == range.end.line && range.end.character > range.start.character {
+                self.tokens.push(RawToken {
+                    line: range.start.line,
+                    start_char: range.start.character,
+                    length: range.end.character - range.start.character,
+                    token_type,
+                    token_modifiers,
+                });
+            }
+            Visit::SkipChildren
+        } else if node.is_named() {
+            Visit::Children
+        } else {
+            Visit::SkipChildren
         }
     }
 }
@@ -117,13 +129,13 @@ fn classify(
     cache: &mut ClassifyCache,
 ) -> Option<(u32, u32)> {
     match node.kind() {
-        "ident" => classify_ident(node, uri, document, db, cache),
-        "annotation_ident" => Some((TT_DECORATOR, 0)),
-        "comment" => Some((TT_COMMENT, 0)),
-        "literal_name" => Some((TT_ENUM_MEMBER, 0)),
-        "literal_string" => Some((TT_STRING, 0)),
-        "literal_int" | "literal_float" | "literal_hex" => Some((TT_NUMBER, 0)),
-        "specifier" | "func_flavour" | "autobind_single" => Some((TT_MODIFIER, 0)),
+        kinds::IDENT => classify_ident(node, uri, document, db, cache),
+        kinds::ANNOTATION_IDENT => Some((TT_DECORATOR, 0)),
+        kinds::COMMENT => Some((TT_COMMENT, 0)),
+        kinds::LITERAL_NAME => Some((TT_ENUM_MEMBER, 0)),
+        kinds::LITERAL_STRING => Some((TT_STRING, 0)),
+        kinds::LITERAL_INT | kinds::LITERAL_FLOAT | kinds::LITERAL_HEX => Some((TT_NUMBER, 0)),
+        kinds::SPECIFIER | kinds::FUNC_FLAVOUR | kinds::AUTOBIND_SINGLE => Some((TT_MODIFIER, 0)),
         _ => {
             if node.is_named() {
                 None
@@ -143,13 +155,13 @@ fn classify_ident(
 ) -> Option<(u32, u32)> {
     let parent = node.parent()?;
     match parent.kind() {
-        "class_decl" | "struct_decl" | "state_decl" => Some((TT_CLASS, 0)),
-        "enum_decl" => Some((TT_ENUM, 0)),
-        "enum_decl_variant" => Some((TT_ENUM_MEMBER, 0)),
-        "func_decl" | "event_decl" => Some((TT_FUNCTION, 0)),
-        "func_param_group" => Some((TT_PARAMETER, 0)),
-        "member_var_decl" | "autobind_decl" => Some((TT_PROPERTY, 0)),
-        "local_var_decl_stmt" => Some((TT_VARIABLE, 0)),
+        kinds::CLASS_DECL | kinds::STRUCT_DECL | kinds::STATE_DECL => Some((TT_CLASS, 0)),
+        kinds::ENUM_DECL => Some((TT_ENUM, 0)),
+        kinds::ENUM_DECL_VARIANT => Some((TT_ENUM_MEMBER, 0)),
+        kinds::FUNC_DECL | kinds::EVENT_DECL => Some((TT_FUNCTION, 0)),
+        kinds::FUNC_PARAM_GROUP => Some((TT_PARAMETER, 0)),
+        kinds::MEMBER_VAR_DECL | kinds::AUTOBIND_DECL => Some((TT_PROPERTY, 0)),
+        kinds::LOCAL_VAR_DECL_STMT => Some((TT_VARIABLE, 0)),
         _ => {
             if let Some(t) = classify_locally(node, document) {
                 return Some((t, 0));
@@ -177,7 +189,7 @@ fn classify_ident(
 }
 
 fn is_member_access_rhs(node: Node, parent: Node) -> bool {
-    if parent.kind() != "member_access_expr" {
+    if parent.kind() != kinds::MEMBER_ACCESS_EXPR {
         return false;
     }
     let mut cursor = parent.walk();

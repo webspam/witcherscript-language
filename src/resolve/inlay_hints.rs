@@ -1,6 +1,7 @@
 use tree_sitter::Node;
 
 use crate::cst::grammar::{arg_slots, call_callee, callee_ident};
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::line_index::{SourcePosition, SourceRange};
 use crate::symbols::node_text;
@@ -60,7 +61,7 @@ impl Walk<'_, '_> {
         if node.end_byte() <= self.lo || node.start_byte() >= self.hi {
             return true;
         }
-        if node.kind() == "func_call_expr" {
+        if node.kind() == kinds::FUNC_CALL_EXPR {
             if !(self.should_continue)() {
                 return false;
             }
@@ -97,7 +98,7 @@ impl Walk<'_, '_> {
         for (param, arg) in params.iter().zip(slots.iter()) {
             // Suppress a redundant name echo, except for `out` params whose write-through is the point.
             if !param.is_out
-                && arg.kind() == "ident"
+                && arg.kind() == kinds::IDENT
                 && node_text(*arg, &self.document.source) == param.name
             {
                 continue;

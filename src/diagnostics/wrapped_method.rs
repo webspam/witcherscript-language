@@ -5,6 +5,7 @@ use tree_sitter::Node;
 
 use crate::cst::grammar::call_callee;
 use crate::cst::nav::first_child_kind;
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use crate::symbols::SymbolKind;
@@ -19,7 +20,7 @@ impl CstRule for WrappedMethodRule {
     }
 
     fn interested_in(&self, kind: &str) -> bool {
-        kind == "func_decl"
+        kind == kinds::FUNC_DECL
     }
 
     fn visit<'tree>(&self, node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
@@ -66,13 +67,13 @@ fn check_func_decl<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) ->
         return None;
     }
 
-    let body = first_child_kind(node, "func_block")?;
+    let body = first_child_kind(node, kinds::FUNC_BLOCK)?;
 
     let mut calls: Vec<Node<'tree>> = Vec::new();
     collect_wrapped_method_calls(body, ctx.document.source.as_bytes(), &mut calls);
 
     if calls.is_empty() {
-        let name_node = node.child_by_field_name("name")?;
+        let name_node = node.child_by_field_name(fields::NAME)?;
         push(
             ctx,
             name_node,
@@ -102,7 +103,7 @@ fn collect_wrapped_method_calls<'tree>(
     source: &[u8],
     out: &mut Vec<Node<'tree>>,
 ) {
-    if node.kind() == "func_call_expr"
+    if node.kind() == kinds::FUNC_CALL_EXPR
         && let Some(ident) = bare_call_ident(node)
         && ident.utf8_text(source).ok() == Some("wrappedMethod")
     {
@@ -116,7 +117,7 @@ fn collect_wrapped_method_calls<'tree>(
 
 fn bare_call_ident(call: Node<'_>) -> Option<Node<'_>> {
     let func = call_callee(call)?;
-    if func.kind() == "ident" {
+    if func.kind() == kinds::IDENT {
         Some(func)
     } else {
         None

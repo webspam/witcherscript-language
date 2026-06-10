@@ -4,6 +4,7 @@ use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::grammar::{call_callee, member_access_member};
+use crate::cst::kinds;
 use crate::cst::nav::first_named_child;
 use crate::document::ParsedDocument;
 use crate::resolve::{SymbolDb, infer_type_memo};
@@ -22,7 +23,7 @@ impl CstRule for UnknownMethodRule {
     }
 
     fn interested_in(&self, kind: &str) -> bool {
-        kind == "func_call_expr"
+        kind == kinds::FUNC_CALL_EXPR
     }
 
     fn visit<'tree>(&self, node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
@@ -64,7 +65,7 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         return;
     };
 
-    if func.kind() != "member_access_expr" {
+    if func.kind() != kinds::MEMBER_ACCESS_EXPR {
         return;
     }
 
@@ -76,7 +77,7 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         return;
     };
 
-    if method_ident.kind() != "ident" {
+    if method_ident.kind() != kinds::IDENT {
         return;
     }
 

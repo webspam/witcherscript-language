@@ -1,5 +1,7 @@
 use tree_sitter::Node;
 
+use crate::cst::kinds;
+
 use super::{Formatter, child_nodes, is_alignable_field, is_bodiless_callable};
 
 const DEFAULT_GAP: &str = "  ";
@@ -10,14 +12,14 @@ impl Formatter<'_> {
     pub(super) fn format_script(&mut self, node: Node) {
         let children: Vec<Node> = child_nodes(node)
             .into_iter()
-            .filter(|n| n.is_named() && n.kind() != "nop")
+            .filter(|n| n.is_named() && n.kind() != kinds::NOP)
             .collect();
         let mut prev_end_row: Option<usize> = None;
         let mut prev_was_comment = false;
         let mut prev_node: Option<Node> = None;
         for child in &children {
             let child_row = child.start_position().row;
-            let child_is_comment = child.kind() == "comment";
+            let child_is_comment = child.kind() == kinds::COMMENT;
             let trailing = child_is_comment && self.is_trailing_comment(prev_node, *child);
             if let Some(prev) = prev_end_row {
                 let source_gap = child_row.saturating_sub(prev);
@@ -31,8 +33,8 @@ impl Formatter<'_> {
                     self.nl();
                 }
             }
-            prev_was_comment = child.kind() == "comment";
-            if child.kind() == "comment" {
+            prev_was_comment = child.kind() == kinds::COMMENT;
+            if child.kind() == kinds::COMMENT {
                 self.flush_comments_before(child.end_byte());
             } else {
                 self.format_node(*child);
@@ -48,7 +50,7 @@ impl Formatter<'_> {
         let ann_row = ann.end_position().row;
         let mut c = node.walk();
         for child in node.children(&mut c) {
-            if child.is_missing() || child.kind() == "annotation" {
+            if child.is_missing() || child.kind() == kinds::ANNOTATION {
                 continue;
             }
             return child.start_position().row == ann_row;
@@ -57,14 +59,14 @@ impl Formatter<'_> {
     }
 
     fn is_add_field_annotation(&self, ann: Node) -> bool {
-        self.child_of_kind(ann, "annotation_ident")
+        self.child_of_kind(ann, kinds::ANNOTATION_IDENT)
             .is_some_and(|ident| self.text(ident).trim_start_matches('@') == "addField")
     }
 
     fn is_add_field_decl(&self, node: Node) -> bool {
-        node.kind() == "member_var_decl"
+        node.kind() == kinds::MEMBER_VAR_DECL
             && self
-                .child_of_kind(node, "annotation")
+                .child_of_kind(node, kinds::ANNOTATION)
                 .is_some_and(|ann| self.is_add_field_annotation(ann))
     }
 
@@ -95,7 +97,7 @@ impl Formatter<'_> {
     }
 
     fn first_ident_text(&self, node: Node) -> Option<&str> {
-        self.child_of_kind(node, "ident").map(|n| self.text(n))
+        self.child_of_kind(node, kinds::IDENT).map(|n| self.text(n))
     }
 
     fn paired_member_default(&self, var_decl: Node, default_val: Node) -> bool {
@@ -126,7 +128,7 @@ impl Formatter<'_> {
         colon_align_col: Option<usize>,
         trailing_default: Option<(Node, Option<usize>)>,
     ) {
-        let same_line = if let Some(ann) = self.child_of_kind(node, "annotation") {
+        let same_line = if let Some(ann) = self.child_of_kind(node, kinds::ANNOTATION) {
             if self.is_add_field_annotation(ann) {
                 self.emit_add_field_annotation(node, ann)
             } else {
@@ -159,7 +161,7 @@ impl Formatter<'_> {
         let mut width = 0;
         let mut prev: Option<Node> = None;
         for child in children {
-            if child.is_missing() || child.kind() == "annotation" {
+            if child.is_missing() || child.kind() == kinds::ANNOTATION {
                 continue;
             }
             if let Some(p) = prev
@@ -249,8 +251,8 @@ impl Formatter<'_> {
         let Some(default) = members.get(var_idx + 1) else {
             return false;
         };
-        members[var_idx].kind() == "member_var_decl"
-            && default.kind() == "member_default_val"
+        members[var_idx].kind() == kinds::MEMBER_VAR_DECL
+            && default.kind() == kinds::MEMBER_DEFAULT_VAL
             && is_alignable_field(members[var_idx])
             && self.default_on_same_line(members[var_idx], *default)
     }
@@ -274,7 +276,7 @@ impl Formatter<'_> {
             if gap >= 2 {
                 break;
             }
-            if members[scan].kind() == "comment" {
+            if members[scan].kind() == kinds::COMMENT {
                 prev = scan;
                 scan += 1;
                 continue;
@@ -335,7 +337,7 @@ impl Formatter<'_> {
     }
 
     pub(super) fn format_func_decl(&mut self, node: Node) {
-        if let Some(ann) = self.child_of_kind(node, "annotation") {
+        if let Some(ann) = self.child_of_kind(node, kinds::ANNOTATION) {
             self.emit_annotation(ann);
         }
         self.emit_indent();
@@ -343,24 +345,24 @@ impl Formatter<'_> {
         let children = child_nodes(node);
         let mut prev: Option<Node> = None;
         for child in &children {
-            if child.is_missing() || child.kind() == "annotation" {
+            if child.is_missing() || child.kind() == kinds::ANNOTATION {
                 continue;
             }
             self.flush_comments_before(child.start_byte());
-            if child.kind() == "comment" {
+            if child.kind() == kinds::COMMENT {
                 continue;
             }
             match child.kind() {
-                "func_params" => {
+                kinds::FUNC_PARAMS => {
                     self.format_func_params(node);
                     prev = Some(*child);
                     continue;
                 }
-                "func_block" => {
+                kinds::FUNC_BLOCK => {
                     self.format_func_block(*child);
                     return;
                 }
-                "nop" => {
+                kinds::NOP => {
                     let t = self.text(*child).to_string();
                     self.emit(&t);
                     self.nl();
@@ -398,10 +400,10 @@ impl Formatter<'_> {
                 continue;
             }
             // Defer to the brace's flush, else a `//` comment here swallows the brace.
-            if child.kind() == "comment" {
+            if child.kind() == kinds::COMMENT {
                 continue;
             }
-            if child.kind() == "enum_def" {
+            if child.kind() == kinds::ENUM_DEF {
                 self.emit(" ");
                 self.format_enum_def(*child);
                 return;
@@ -445,16 +447,16 @@ impl Formatter<'_> {
         self.level += 1;
         let member_count = members
             .iter()
-            .filter(|n| n.kind() == "enum_decl_variant")
+            .filter(|n| n.kind() == kinds::ENUM_DECL_VARIANT)
             .count();
         let mut emitted_members = 0;
         for member in &members {
-            if member.kind() == "comment" {
+            if member.kind() == kinds::COMMENT {
                 self.flush_comments_before(member.end_byte());
                 continue;
             }
             self.emit_indent();
-            if member.kind() == "enum_decl_variant" {
+            if member.kind() == kinds::ENUM_DECL_VARIANT {
                 self.format_children(*member);
                 emitted_members += 1;
                 if emitted_members < member_count {
@@ -480,7 +482,7 @@ impl Formatter<'_> {
         let children = child_nodes(node);
         let members: Vec<Node> = children
             .iter()
-            .filter(|n| n.is_named() && n.kind() != "nop")
+            .filter(|n| n.is_named() && n.kind() != kinds::NOP)
             .copied()
             .collect();
         let open = children.iter().find(|n| n.kind() == "{");
@@ -517,14 +519,14 @@ impl Formatter<'_> {
                 Some(prev) => child_row.saturating_sub(prev),
                 None => child_row.saturating_sub(open_row),
             };
-            let is_callable = matches!(member.kind(), "func_decl" | "event_decl");
+            let is_callable = matches!(member.kind(), kinds::FUNC_DECL | kinds::EVENT_DECL);
             let both_bodiless =
                 is_bodiless_callable(member) && prev_member.is_some_and(is_bodiless_callable);
             let want_blank = source_gap >= 2
                 || (is_callable && prev_end_row.is_some() && !prev_was_comment && !both_bodiless);
-            prev_was_comment = member.kind() == "comment";
+            prev_was_comment = member.kind() == kinds::COMMENT;
 
-            if member.kind() == "comment" {
+            if member.kind() == kinds::COMMENT {
                 let trailing = self.is_trailing_comment(prev_member, member);
                 if want_blank && !trailing {
                     self.nl();
@@ -539,10 +541,10 @@ impl Formatter<'_> {
                 self.nl();
             }
 
-            if member.kind() == "member_var_decl"
+            if member.kind() == kinds::MEMBER_VAR_DECL
                 && !self.renders_verbatim(member)
                 && idx + 1 < members.len()
-                && members[idx + 1].kind() == "member_default_val"
+                && members[idx + 1].kind() == kinds::MEMBER_DEFAULT_VAL
                 && self.default_on_same_line(member, members[idx + 1])
             {
                 self.format_member_var_decl(
@@ -580,7 +582,7 @@ impl Formatter<'_> {
         }
         let mut c = node.walk();
 
-        node.children(&mut c).any(|n| n.kind() == "comment")
+        node.children(&mut c).any(|n| n.kind() == kinds::COMMENT)
     }
 
     fn format_class_member(&mut self, node: Node, colon_align_col: Option<usize>) {
@@ -594,9 +596,9 @@ impl Formatter<'_> {
             return;
         }
         match node.kind() {
-            "func_decl" | "event_decl" => self.format_func_decl(node),
-            "member_default_val_block" => self.format_defaults_block(node),
-            "member_var_decl" => self.format_member_var_decl(node, colon_align_col, None),
+            kinds::FUNC_DECL | kinds::EVENT_DECL => self.format_func_decl(node),
+            kinds::MEMBER_DEFAULT_VAL_BLOCK => self.format_defaults_block(node),
+            kinds::MEMBER_VAR_DECL => self.format_member_var_decl(node, colon_align_col, None),
             _ => {
                 self.emit_indent();
                 self.format_children(node);
@@ -642,12 +644,12 @@ impl Formatter<'_> {
         self.nl();
         self.level += 1;
         for member in &members {
-            if member.kind() == "comment" {
+            if member.kind() == kinds::COMMENT {
                 self.flush_comments_before(member.end_byte());
                 continue;
             }
             self.emit_indent();
-            if member.kind() == "member_default_val_block_assign" {
+            if member.kind() == kinds::MEMBER_DEFAULT_VAL_BLOCK_ASSIGN {
                 self.format_children(*member);
             } else {
                 self.emit_verbatim(*member);

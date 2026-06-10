@@ -7,6 +7,8 @@ use parking_lot::Mutex;
 use rayon::prelude::*;
 use tree_sitter::Node;
 
+use crate::cst::kinds;
+use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::document::ParsedDocument;
 use crate::resolve::{Definition, ObservationSet, SymbolDb, annotation_target_class};
 use crate::symbols::SymbolKind;
@@ -120,23 +122,19 @@ pub(crate) fn run_rules_on_document(
     db: &SymbolDb<'_>,
     rules: &[&dyn CstRule],
 ) -> Vec<WorkspaceDiagnostic> {
-    let mut diagnostics = Vec::new();
-    let mut memo: TypeMemo = HashMap::new();
-    let mut telemetry = RuleTelemetry::default();
-    let mut rule_times: Vec<(Duration, usize)> = vec![(Duration::ZERO, 0); rules.len()];
-    walk(
-        document.tree.root_node(),
+    let mut rule_walk = RuleWalk {
         uri,
         document,
         db,
         rules,
-        &mut memo,
-        &mut telemetry,
-        &mut rule_times,
-        &mut diagnostics,
-        false,
-    );
-    for ((elapsed, visits), rule) in rule_times.iter().zip(rules.iter()) {
+        memo: HashMap::new(),
+        telemetry: RuleTelemetry::default(),
+        rule_times: vec![(Duration::ZERO, 0); rules.len()],
+        diagnostics: Vec::new(),
+        error_tracker: ErrorSubtreeTracker::default(),
+    };
+    walk(document.tree.root_node(), &mut rule_walk);
+    for ((elapsed, visits), rule) in rule_walk.rule_times.iter().zip(rules.iter()) {
         tracing::trace!(
             rule = rule.name(),
             visits = visits,
@@ -145,68 +143,86 @@ pub(crate) fn run_rules_on_document(
         );
     }
     tracing::trace!(
-        top_level = telemetry.top_level_lookups,
-        member = telemetry.member_lookups,
-        enum_member = telemetry.enum_member_lookups,
-        type_inference = telemetry.type_inferences,
-        definition = telemetry.definition_resolutions,
-        memo_size = memo.len(),
+        top_level = rule_walk.telemetry.top_level_lookups,
+        member = rule_walk.telemetry.member_lookups,
+        enum_member = rule_walk.telemetry.enum_member_lookups,
+        type_inference = rule_walk.telemetry.type_inferences,
+        definition = rule_walk.telemetry.definition_resolutions,
+        memo_size = rule_walk.memo.len(),
         "cst lookup counts"
     );
-    diagnostics
+    rule_walk.diagnostics
 }
 
 fn is_error_subtree_root(node: Node) -> bool {
-    node.is_error() || node.is_missing() || node.kind() == "incomplete_member_access_expr"
+    node.is_error() || node.is_missing() || node.kind() == kinds::INCOMPLETE_MEMBER_ACCESS_EXPR
 }
 
-#[allow(clippy::too_many_arguments)]
-fn walk(
-    node: Node<'_>,
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb<'_>,
-    rules: &[&dyn CstRule],
-    memo: &mut TypeMemo,
-    telemetry: &mut RuleTelemetry,
-    rule_times: &mut [(Duration, usize)],
-    diagnostics: &mut Vec<WorkspaceDiagnostic>,
-    in_error_subtree: bool,
-) {
-    let kind = node.kind();
-    let in_error_subtree = in_error_subtree || is_error_subtree_root(node);
-    for (i, rule) in rules.iter().enumerate() {
-        if rule.interested_in(kind) {
-            let start = Instant::now();
-            let mut ctx = CstRuleCtx {
-                uri,
-                document,
-                db,
-                type_memo: memo,
-                telemetry,
-                diagnostics,
-                in_error_subtree,
-                _tree: PhantomData,
-            };
-            rule.visit(node, &mut ctx);
-            rule_times[i].0 += start.elapsed();
-            rule_times[i].1 += 1;
+// Marks the outermost error-subtree root; relies on walk pairing every enter with one leave.
+#[derive(Default)]
+struct ErrorSubtreeTracker {
+    depth: usize,
+    // Depth of the outermost error-subtree root; nodes below it are in the error subtree.
+    error_depth: Option<usize>,
+}
+
+impl ErrorSubtreeTracker {
+    fn enter(&mut self, node: Node) -> bool {
+        if self.error_depth.is_none() && is_error_subtree_root(node) {
+            self.error_depth = Some(self.depth);
+        }
+        self.depth += 1;
+        self.error_depth.is_some()
+    }
+
+    fn leave(&mut self) {
+        self.depth -= 1;
+        if self.error_depth == Some(self.depth) {
+            self.error_depth = None;
         }
     }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        walk(
-            child,
-            uri,
-            document,
-            db,
-            rules,
-            memo,
-            telemetry,
-            rule_times,
-            diagnostics,
-            in_error_subtree,
-        );
+}
+
+struct RuleWalk<'a, 'db> {
+    uri: &'a str,
+    document: &'a ParsedDocument,
+    db: &'a SymbolDb<'db>,
+    rules: &'a [&'a dyn CstRule],
+    memo: TypeMemo,
+    telemetry: RuleTelemetry,
+    rule_times: Vec<(Duration, usize)>,
+    diagnostics: Vec<WorkspaceDiagnostic>,
+    error_tracker: ErrorSubtreeTracker,
+}
+
+impl<'tree> CstVisitor<'tree> for RuleWalk<'_, '_> {
+    fn enter(&mut self, node: Node<'tree>) -> Visit {
+        let in_error_subtree = self.error_tracker.enter(node);
+        let kind = node.kind();
+        let rules = self.rules;
+        for (i, rule) in rules.iter().enumerate() {
+            if rule.interested_in(kind) {
+                let start = Instant::now();
+                let mut ctx = CstRuleCtx {
+                    uri: self.uri,
+                    document: self.document,
+                    db: self.db,
+                    type_memo: &mut self.memo,
+                    telemetry: &mut self.telemetry,
+                    diagnostics: &mut self.diagnostics,
+                    in_error_subtree,
+                    _tree: PhantomData,
+                };
+                rule.visit(node, &mut ctx);
+                self.rule_times[i].0 += start.elapsed();
+                self.rule_times[i].1 += 1;
+            }
+        }
+        Visit::Children
+    }
+
+    fn leave(&mut self, _node: Node<'tree>) {
+        self.error_tracker.leave();
     }
 }
 
@@ -222,25 +238,32 @@ pub(crate) fn collect_nodes_with_error_subtree(
     root: Node<'_>,
     predicate: impl Fn(&str) -> bool,
 ) -> Vec<(Node<'_>, bool)> {
-    let mut out = Vec::new();
-    collect_nodes_walk(root, false, &predicate, &mut out);
-    out
+    let mut collector = NodeCollector {
+        predicate,
+        out: Vec::new(),
+        error_tracker: ErrorSubtreeTracker::default(),
+    };
+    walk(root, &mut collector);
+    collector.out
 }
 
-fn collect_nodes_walk<'tree>(
-    node: Node<'tree>,
-    in_error_subtree: bool,
-    predicate: &impl Fn(&str) -> bool,
-    out: &mut Vec<(Node<'tree>, bool)>,
-) {
-    let kind = node.kind();
-    let in_error_subtree = in_error_subtree || is_error_subtree_root(node);
-    if predicate(kind) {
-        out.push((node, in_error_subtree));
+struct NodeCollector<'tree, P> {
+    predicate: P,
+    out: Vec<(Node<'tree>, bool)>,
+    error_tracker: ErrorSubtreeTracker,
+}
+
+impl<'tree, P: Fn(&str) -> bool> CstVisitor<'tree> for NodeCollector<'tree, P> {
+    fn enter(&mut self, node: Node<'tree>) -> Visit {
+        let in_error_subtree = self.error_tracker.enter(node);
+        if (self.predicate)(node.kind()) {
+            self.out.push((node, in_error_subtree));
+        }
+        Visit::Children
     }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_nodes_walk(child, in_error_subtree, predicate, out);
+
+    fn leave(&mut self, _node: Node<'tree>) {
+        self.error_tracker.leave();
     }
 }
 

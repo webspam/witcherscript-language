@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tree_sitter::Node;
 
 use crate::cst::ancestors::{find_ancestor_of_kind, has_ancestor_of_kind};
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::{AccessLevel, SymbolKind};
@@ -51,11 +52,11 @@ fn type_completions_inner(
         // Gate 2: cursor on/within an ident whose start follows a type-annotation colon
         || nodes
             .last()
-            .filter(|&n| is_kind_or_error_wrapped_kind(*n, &["ident"]))
+            .filter(|&n| is_kind_or_error_wrapped_kind(*n, &[kinds::IDENT]))
             .and_then(|n| significant_node_before_byte(root, source, n.start_byte()))
             .is_some_and(is_type_annotation_boundary)
         // Gate 3: cursor already inside a type_annot subtree (generic type args, clean parses)
-        || nodes.iter().any(|n| has_ancestor_of_kind(*n, &["type_annot"]));
+        || nodes.iter().any(|n| has_ancestor_of_kind(*n, &[kinds::TYPE_ANNOT]));
 
     if !in_type_context {
         return None;
@@ -74,7 +75,7 @@ pub fn annotation_name_completions(
     let root = document.tree.root_node();
     let nodes = nodes_at_offset(root, byte_offset);
 
-    let node = nodes.iter().find(|n| n.kind() == "annotation_ident")?;
+    let node = nodes.iter().find(|n| n.kind() == kinds::ANNOTATION_IDENT)?;
     let prev = significant_node_before_byte(root, document.source.as_bytes(), node.start_byte());
     if prev.is_some_and(|p| !is_statement_boundary(p)) {
         return None;
@@ -127,7 +128,7 @@ const CLASS_ARG_ANNOTATIONS: &[&str] =
 fn has_annotation_arg_ancestor(node: Node, byte_offset: usize, source: &str) -> bool {
     // Empty parens (`@wrapMethod()`) fail the `'(' ident ')'` rule and recover as an
     // ERROR node holding the same annotation_ident/`(`/`)` children, so accept both.
-    find_ancestor_of_kind(node, &["annotation", "ERROR"]).is_some_and(|container| {
+    find_ancestor_of_kind(node, &[kinds::ANNOTATION, kinds::ERROR]).is_some_and(|container| {
         takes_class_arg(container, source) && is_inside_annotation_parens(container, byte_offset)
     })
 }
@@ -135,7 +136,7 @@ fn has_annotation_arg_ancestor(node: Node, byte_offset: usize, source: &str) -> 
 fn takes_class_arg(annotation: Node, source: &str) -> bool {
     annotation
         .children(&mut annotation.walk())
-        .find(|c| c.kind() == "annotation_ident")
+        .find(|c| c.kind() == kinds::ANNOTATION_IDENT)
         .map(|n| &source[n.start_byte()..n.end_byte()])
         .is_some_and(|name| CLASS_ARG_ANNOTATIONS.contains(&name))
 }
@@ -187,7 +188,7 @@ pub fn override_completions(
     // A `function` keyword already typed means the insert must not repeat it.
     let prev = nodes_at_offset(root, byte_offset)
         .last()
-        .filter(|n| matches!(n.kind(), "ident" | "function"))
+        .filter(|n| matches!(n.kind(), kinds::IDENT | "function"))
         .and_then(|n| significant_node_before_byte(root, source, n.start_byte()))
         .or_else(|| significant_node_before_byte(root, source, byte_offset))?;
     let (anchor, needs_function_keyword) = if prev.kind() == "function" {
@@ -232,7 +233,7 @@ fn override_target<'a>(
 }
 
 fn is_replace_method_ident(node: Node, source: &str) -> bool {
-    node.kind() == "annotation_ident"
+    node.kind() == kinds::ANNOTATION_IDENT
         && &source[node.start_byte()..node.end_byte()] == "@replaceMethod"
 }
 
@@ -255,12 +256,12 @@ fn class_override_target<'a>(anchor: Node, source: &'a str) -> Option<(&'a str, 
         return None;
     }
     let annotation = anchor.parent()?;
-    if annotation.kind() != "annotation" {
+    if annotation.kind() != kinds::ANNOTATION {
         return None;
     }
     let name = annotation
         .children(&mut annotation.walk())
-        .find(|c| c.kind() == "annotation_ident")
+        .find(|c| c.kind() == kinds::ANNOTATION_IDENT)
         .map(|n| &source[n.start_byte()..n.end_byte()])?;
     let body = match name {
         "@wrapMethod" => OverrideBody::Wrap,
@@ -269,7 +270,7 @@ fn class_override_target<'a>(anchor: Node, source: &'a str) -> Option<(&'a str, 
     };
     let class = annotation
         .children(&mut annotation.walk())
-        .find(|c| c.kind() == "ident")
+        .find(|c| c.kind() == kinds::IDENT)
         .map(|n| &source[n.start_byte()..n.end_byte()])?;
     Some((class, body))
 }

@@ -2,6 +2,7 @@ use tree_sitter::Node;
 
 use crate::cst::ancestors::node_and_ancestors;
 use crate::cst::grammar::DEFAULT_OR_HINT_ASSIGN_KINDS;
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::{AccessLevel, SymbolKind};
@@ -47,7 +48,7 @@ fn at_default_or_hint_member_pos(root: Node, byte_offset: usize) -> bool {
             if DEFAULT_OR_HINT_ASSIGN_KINDS.contains(&ancestor.kind()) {
                 return cursor_before_eq(ancestor, byte_offset);
             }
-            if ancestor.kind() == "member_default_val_block" {
+            if ancestor.kind() == kinds::MEMBER_DEFAULT_VAL_BLOCK {
                 return true;
             }
         }
@@ -100,8 +101,19 @@ fn statement_completions_inner(
     position: SourcePosition,
 ) -> Option<StatementCompletions> {
     const STMT_WRITER_KINDS: &[&str] = &[
-        "ident", "var", "this", "super", "if", "else", "do", "while", "for", "switch", "return",
-        "case", "default",
+        kinds::IDENT,
+        "var",
+        "this",
+        "super",
+        "if",
+        "else",
+        "do",
+        "while",
+        "for",
+        "switch",
+        "return",
+        "case",
+        "default",
     ];
     let (nodes, base) = function_body_completions(
         uri,
@@ -114,11 +126,15 @@ fn statement_completions_inner(
 
     let in_switch = nodes
         .iter()
-        .any(|n| nearest_enclosing_block(*n).is_some_and(|b| b.kind() == "switch_block"));
+        .any(|n| nearest_enclosing_block(*n).is_some_and(|b| b.kind() == kinds::SWITCH_BLOCK));
 
-    let in_loop = nodes
-        .iter()
-        .any(|n| find_ancestor_of_kind(*n, &["for_stmt", "while_stmt", "do_while_stmt"]).is_some());
+    let in_loop = nodes.iter().any(|n| {
+        find_ancestor_of_kind(
+            *n,
+            &[kinds::FOR_STMT, kinds::WHILE_STMT, kinds::DO_WHILE_STMT],
+        )
+        .is_some()
+    });
 
     Some(StatementCompletions {
         active: true,
@@ -155,33 +171,33 @@ fn is_expression_boundary(node: Node) -> bool {
         "(" | ","
             | "="
             | "return"
-            | "assign_op_direct"
-            | "assign_op_sum"
-            | "assign_op_diff"
-            | "assign_op_mult"
-            | "assign_op_div"
-            | "assign_op_bitand"
-            | "assign_op_bitor"
-            | "binary_op_or"
-            | "binary_op_and"
-            | "binary_op_bitor"
-            | "binary_op_bitand"
-            | "binary_op_bitxor"
-            | "binary_op_eq"
-            | "binary_op_neq"
-            | "binary_op_gt"
-            | "binary_op_ge"
-            | "binary_op_lt"
-            | "binary_op_le"
-            | "binary_op_diff"
-            | "binary_op_sum"
-            | "binary_op_mod"
-            | "binary_op_div"
-            | "binary_op_mult"
-            | "unary_op_neg"
-            | "unary_op_not"
-            | "unary_op_bitnot"
-            | "unary_op_plus"
+            | kinds::ASSIGN_OP_DIRECT
+            | kinds::ASSIGN_OP_SUM
+            | kinds::ASSIGN_OP_DIFF
+            | kinds::ASSIGN_OP_MULT
+            | kinds::ASSIGN_OP_DIV
+            | kinds::ASSIGN_OP_BITAND
+            | kinds::ASSIGN_OP_BITOR
+            | kinds::BINARY_OP_OR
+            | kinds::BINARY_OP_AND
+            | kinds::BINARY_OP_BITOR
+            | kinds::BINARY_OP_BITAND
+            | kinds::BINARY_OP_BITXOR
+            | kinds::BINARY_OP_EQ
+            | kinds::BINARY_OP_NEQ
+            | kinds::BINARY_OP_GT
+            | kinds::BINARY_OP_GE
+            | kinds::BINARY_OP_LT
+            | kinds::BINARY_OP_LE
+            | kinds::BINARY_OP_DIFF
+            | kinds::BINARY_OP_SUM
+            | kinds::BINARY_OP_MOD
+            | kinds::BINARY_OP_DIV
+            | kinds::BINARY_OP_MULT
+            | kinds::UNARY_OP_NEG
+            | kinds::UNARY_OP_NOT
+            | kinds::UNARY_OP_BITNOT
+            | kinds::UNARY_OP_PLUS
     )
 }
 
@@ -197,7 +213,7 @@ fn expression_completions_inner(
         db,
         position,
         is_expression_boundary,
-        &["ident"],
+        &[kinds::IDENT],
     )?;
 
     Some(ExpressionCompletions {
@@ -252,7 +268,7 @@ fn function_body_completions<'a>(
 
     if !nodes
         .iter()
-        .any(|n| find_ancestor_of_kind(*n, &["func_block"]).is_some())
+        .any(|n| find_ancestor_of_kind(*n, &[kinds::FUNC_BLOCK]).is_some())
     {
         return None;
     }

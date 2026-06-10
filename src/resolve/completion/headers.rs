@@ -1,6 +1,7 @@
 use tree_sitter::Node;
 
 use crate::cst::ancestors::node_and_ancestors;
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 
@@ -76,7 +77,7 @@ pub(super) fn header_state_and_kind(
 
     let direct: Vec<Node> = nodes_at_offset(root, byte_offset)
         .into_iter()
-        .filter(|n| n.kind() != "script")
+        .filter(|n| n.kind() != kinds::SCRIPT)
         .collect();
 
     let header_node = direct
@@ -107,10 +108,10 @@ pub(super) fn header_state_and_kind(
 
 fn enclosing_header_node(start: Node) -> Option<Node> {
     node_and_ancestors(start).find_map(|current| match current.kind() {
-        "class_decl" | "state_decl" => Some(current),
-        "ERROR" => {
+        kinds::CLASS_DECL | kinds::STATE_DECL => Some(current),
+        kinds::ERROR => {
             if let Some(p) = current.parent()
-                && matches!(p.kind(), "class_decl" | "state_decl")
+                && matches!(p.kind(), kinds::CLASS_DECL | kinds::STATE_DECL)
             {
                 return Some(p);
             }
@@ -140,25 +141,27 @@ fn header_walk(node: Node, byte_offset: usize, source: &[u8], ctx: &mut HeaderCo
                 ctx.state = HeaderState::AfterStateKw;
                 ctx.kind = Some(HeaderDeclKind::State);
             }
-            (HeaderState::AfterClassKw, "ident") if past => {
+            (HeaderState::AfterClassKw, kinds::IDENT) if past => {
                 ctx.state = HeaderState::AfterClassName;
                 ctx.self_name = child.utf8_text(source).ok().map(str::to_string);
             }
-            (HeaderState::AfterStateKw, "ident") if past => {
+            (HeaderState::AfterStateKw, kinds::IDENT) if past => {
                 ctx.state = HeaderState::AfterStateName;
                 ctx.self_name = child.utf8_text(source).ok().map(str::to_string);
             }
             (HeaderState::AfterStateName, "in") => ctx.state = HeaderState::AfterInKw,
-            (HeaderState::AfterInKw, "ident") if past => {
+            (HeaderState::AfterInKw, kinds::IDENT) if past => {
                 ctx.state = HeaderState::AfterOwner;
                 ctx.owner_name = child.utf8_text(source).ok().map(str::to_string);
             }
             (HeaderState::AfterClassName | HeaderState::AfterOwner, "extends") => {
                 ctx.state = HeaderState::AfterExtendsKw;
             }
-            (HeaderState::AfterExtendsKw, "ident") if past => ctx.state = HeaderState::AfterBase,
-            (_, "class_def" | "{") => ctx.state = HeaderState::Body,
-            (_, "ERROR") => header_walk(child, byte_offset, source, ctx),
+            (HeaderState::AfterExtendsKw, kinds::IDENT) if past => {
+                ctx.state = HeaderState::AfterBase;
+            }
+            (_, kinds::CLASS_DEF | "{") => ctx.state = HeaderState::Body,
+            (_, kinds::ERROR) => header_walk(child, byte_offset, source, ctx),
             _ => {}
         }
     }

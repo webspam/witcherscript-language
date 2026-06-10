@@ -5,6 +5,7 @@ use std::time::Instant;
 use tracing::{debug, trace};
 use tree_sitter::Node;
 
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::resolve::{
     NameContext, SymbolDb, classify_ident_context, infer_type_memo, resolve_definition_at_ident,
@@ -22,7 +23,7 @@ pub(crate) fn run_unknown_symbol_parallel(
     document: &ParsedDocument,
     db: &SymbolDb<'_>,
 ) -> ParallelRuleShard {
-    let items = collect_nodes_with_error_subtree(document.tree.root_node(), |k| k == "ident");
+    let items = collect_nodes_with_error_subtree(document.tree.root_node(), |k| k == kinds::IDENT);
     let visits = items.len();
     let start = Instant::now();
     let shard = run_parallel_pass(
@@ -311,16 +312,20 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
 fn classify<'tree>(ident: Node<'tree>, source: &[u8]) -> Option<IdentRole<'tree>> {
     let parent = ident.parent()?;
 
-    if parent.kind() == "member_access_expr" {
-        let is_member = parent.child_by_field_name("member").map(|n| n.id()) == Some(ident.id());
+    if parent.kind() == kinds::MEMBER_ACCESS_EXPR {
+        let is_member =
+            parent.child_by_field_name(fields::MEMBER).map(|n| n.id()) == Some(ident.id());
         if is_member {
             if let Some(grandparent) = parent.parent()
-                && grandparent.kind() == "func_call_expr"
-                && grandparent.child_by_field_name("func").map(|n| n.id()) == Some(parent.id())
+                && grandparent.kind() == kinds::FUNC_CALL_EXPR
+                && grandparent
+                    .child_by_field_name(fields::FUNC)
+                    .map(|n| n.id())
+                    == Some(parent.id())
             {
                 return None;
             }
-            let receiver = parent.child_by_field_name("accessor")?;
+            let receiver = parent.child_by_field_name(fields::ACCESSOR)?;
             return Some(IdentRole::MemberOfAccess(receiver));
         }
     }
@@ -353,7 +358,9 @@ fn resolves_as_local<'tree>(ctx: &CstRuleCtx<'_, 'tree>, ident: Node<'tree>, nam
 }
 
 fn is_annotation_arg(ident: Node) -> bool {
-    ident.parent().is_some_and(|p| p.kind() == "annotation")
+    ident
+        .parent()
+        .is_some_and(|p| p.kind() == kinds::ANNOTATION)
 }
 
 fn is_inside_wrap_method<'tree>(ident: Node<'tree>, ctx: &CstRuleCtx<'_, 'tree>) -> bool {

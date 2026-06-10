@@ -5,6 +5,7 @@ use tree_sitter::Node;
 
 use super::{CstRule, CstRuleCtx, run_rules_on_document};
 use crate::cst::grammar::call_callee;
+use crate::cst::kinds;
 use crate::resolve::infer_type_memo;
 use crate::test_support::TestDb;
 use crate::types::Type;
@@ -35,13 +36,13 @@ impl CstRule for InferenceCountingRule {
         "inference_counting"
     }
     fn interested_in(&self, kind: &str) -> bool {
-        kind == "func_call_expr"
+        kind == kinds::FUNC_CALL_EXPR
     }
     fn visit<'tree>(&self, node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         let Some(func) = call_callee(node) else {
             return;
         };
-        if func.kind() != "member_access_expr" {
+        if func.kind() != kinds::MEMBER_ACCESS_EXPR {
             return;
         }
         let mut cursor = func.walk();
@@ -68,11 +69,11 @@ fn multi_rule_single_walk() {
     let t = TestDb::new("class A { function F() { var a : A; a.M(); } }\n");
 
     let r1 = CountingRule {
-        kind: "func_call_expr",
+        kind: kinds::FUNC_CALL_EXPR,
         hits: Cell::new(0),
     };
     let r2 = CountingRule {
-        kind: "member_access_expr",
+        kind: kinds::MEMBER_ACCESS_EXPR,
         hits: Cell::new(0),
     };
     let rules: Vec<&dyn CstRule> = vec![&r1, &r2];

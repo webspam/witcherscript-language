@@ -59,6 +59,51 @@ fn var_decl_initializer_ident_is_not_recorded_as_local(
     assert_eq!(&vars[..], expected);
 }
 
+// Stray annotations recover as ERROR-wrapped siblings and must never attach to later decls.
+#[rstest]
+#[case::stray_annotation_before_class("@addField(CPlayer)\n\nclass Foo {}\n", "Foo", &[])]
+#[case::stray_annotation_then_comment_then_class(
+    "@addField(CPlayer)\n// note\nclass Foo {}\n",
+    "Foo",
+    &[],
+)]
+#[case::errored_annotation_then_annotated_function(
+    "@addField(CPlayer)\n@addMethod(CPlayer)\nfunction Foo() {}\n",
+    "Foo",
+    &["addMethod"],
+)]
+#[case::well_formed_annotated_member("@addField(CPlayer)\nvar x : int;\n", "x", &["addField"])]
+fn annotations_attach_only_when_inside_the_declaration(
+    #[case] source: &str,
+    #[case] symbol_name: &str,
+    #[case] expected: &[&str],
+) {
+    let t = TestDb::new(source);
+    let symbol = t
+        .primary_doc()
+        .symbols
+        .all()
+        .iter()
+        .find(|s| s.name == symbol_name)
+        .unwrap_or_else(|| panic!("symbol '{symbol_name}' must be extracted"))
+        .clone();
+    let names: Vec<&str> = symbol.annotations.iter().map(|a| a.name.as_str()).collect();
+    assert_eq!(
+        &names[..],
+        expected,
+        "annotations attached to '{symbol_name}'"
+    );
+}
+
+#[test]
+fn incomplete_annotated_member_extracts_no_symbols() {
+    let t = TestDb::new("@addField(CPlayer)\nvar x\n");
+    assert!(
+        t.primary_doc().symbols.all().is_empty(),
+        "error-recovered partial declaration must not produce symbols"
+    );
+}
+
 #[test]
 fn autobind_decl_is_extracted_as_a_field() {
     let t = TestDb::new("class C {\n  private autobind theInput : CInputManager = single;\n}\n");

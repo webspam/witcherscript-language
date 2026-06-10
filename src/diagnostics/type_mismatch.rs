@@ -5,6 +5,7 @@ use tree_sitter::Node;
 
 use crate::cst::grammar::{arg_slots, call_callee, callee_ident};
 use crate::cst::nav::first_named_child;
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::resolve::{
     Assignability, SymbolDb, assignability, infer_type, resolve_definition_at_byte,
@@ -24,12 +25,12 @@ impl CstRule for TypeMismatchRule {
     fn interested_in(&self, kind: &str) -> bool {
         matches!(
             kind,
-            "local_var_decl_stmt"
-                | "assign_op_expr"
-                | "func_call_expr"
-                | "return_stmt"
-                | "member_default_val"
-                | "member_default_val_block_assign"
+            kinds::LOCAL_VAR_DECL_STMT
+                | kinds::ASSIGN_OP_EXPR
+                | kinds::FUNC_CALL_EXPR
+                | kinds::RETURN_STMT
+                | kinds::MEMBER_DEFAULT_VAL
+                | kinds::MEMBER_DEFAULT_VAL_BLOCK_ASSIGN
         )
     }
 
@@ -38,11 +39,13 @@ impl CstRule for TypeMismatchRule {
             return;
         }
         match node.kind() {
-            "local_var_decl_stmt" => check_var_decl(node, ctx),
-            "assign_op_expr" => check_assignment(node, ctx),
-            "func_call_expr" => check_call_args(node, ctx),
-            "return_stmt" => check_return(node, ctx),
-            "member_default_val" | "member_default_val_block_assign" => check_default(node, ctx),
+            kinds::LOCAL_VAR_DECL_STMT => check_var_decl(node, ctx),
+            kinds::ASSIGN_OP_EXPR => check_assignment(node, ctx),
+            kinds::FUNC_CALL_EXPR => check_call_args(node, ctx),
+            kinds::RETURN_STMT => check_return(node, ctx),
+            kinds::MEMBER_DEFAULT_VAL | kinds::MEMBER_DEFAULT_VAL_BLOCK_ASSIGN => {
+                check_default(node, ctx);
+            }
             _ => {}
         }
     }
@@ -73,10 +76,10 @@ pub fn collect_type_mismatch_diagnostics(
 }
 
 fn check_var_decl<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
-    let Some(value) = node.child_by_field_name("init_value") else {
+    let Some(value) = node.child_by_field_name(fields::INIT_VALUE) else {
         return;
     };
-    let Some(var_type) = node.child_by_field_name("var_type") else {
+    let Some(var_type) = node.child_by_field_name(fields::VAR_TYPE) else {
         return;
     };
     let target = Type::from_annotation(&node_text(var_type, &ctx.document.source));
@@ -93,18 +96,18 @@ fn check_var_decl<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
 }
 
 fn check_assignment<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
-    let Some(op) = node.child_by_field_name("op") else {
+    let Some(op) = node.child_by_field_name(fields::OP) else {
         return;
     };
     let (Some(left), Some(right)) = (
-        node.child_by_field_name("left"),
-        node.child_by_field_name("right"),
+        node.child_by_field_name(fields::LEFT),
+        node.child_by_field_name(fields::RIGHT),
     ) else {
         return;
     };
     let target = infer_type(ctx.uri, ctx.document, ctx.db, left, left.start_byte());
     // Compound-op result type is only modelled for primitive operands.
-    if op.kind() != "assign_op_direct" && !matches!(target, Type::Primitive(_)) {
+    if op.kind() != kinds::ASSIGN_OP_DIRECT && !matches!(target, Type::Primitive(_)) {
         return;
     }
     let value_type = infer_type(ctx.uri, ctx.document, ctx.db, right, right.start_byte());
@@ -179,8 +182,8 @@ fn check_return<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
 
 fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     let (Some(member), Some(value)) = (
-        node.child_by_field_name("member"),
-        node.child_by_field_name("value"),
+        node.child_by_field_name(fields::MEMBER),
+        node.child_by_field_name(fields::VALUE),
     ) else {
         return;
     };
@@ -195,7 +198,7 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         return;
     };
     // The compiler accepts a constant string literal as a `name`/`CName` default
-    if value.kind() == "literal_string" && matches!(target, Type::Primitive(Primitive::Name)) {
+    if value.kind() == kinds::LITERAL_STRING && matches!(target, Type::Primitive(Primitive::Name)) {
         emit(
             value,
             "string_as_name_default",

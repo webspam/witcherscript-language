@@ -2,11 +2,12 @@ use expect_test::expect;
 use rstest::rstest;
 use tree_sitter::Node;
 
+use crate::cst::kinds;
 use crate::document::{ParsedDocument, parse_document};
 use crate::formatter::{FormatOptions, IfLayout, analyze_if, if_chain_at, rewrite_if_layout};
 
 fn first_if(node: Node) -> Option<Node> {
-    if node.kind() == "if_stmt" {
+    if node.kind() == kinds::IF_STMT {
         return Some(node);
     }
     let mut cursor = node.walk();

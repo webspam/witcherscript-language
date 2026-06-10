@@ -1,5 +1,7 @@
 use tree_sitter::Node;
 
+use crate::cst::{fields, kinds};
+
 use super::super::action::LayoutCtx;
 use super::super::{Formatter, SwitchToggle, child_nodes};
 
@@ -26,7 +28,7 @@ pub(in crate::formatter) fn collect_switch_arms<'t>(children: &[Node<'t>]) -> Ve
     let mut current: Option<SwitchArm<'t>> = None;
     for child in children {
         match child.kind() {
-            "switch_case_label" | "switch_default_label" => {
+            kinds::SWITCH_CASE_LABEL | kinds::SWITCH_DEFAULT_LABEL => {
                 if current.as_ref().is_some_and(|a| !a.stmts.is_empty()) {
                     // `is_some_and` above guarantees `current` is `Some` here.
                     arms.push(current.take().unwrap());
@@ -39,7 +41,7 @@ pub(in crate::formatter) fn collect_switch_arms<'t>(children: &[Node<'t>]) -> Ve
                     .labels
                     .push(*child);
             }
-            "comment" => {}
+            kinds::COMMENT => {}
             _ if child.is_named() => {
                 current
                     .get_or_insert_with(|| SwitchArm {
@@ -85,7 +87,7 @@ pub(super) fn format_switch_stmt(f: &mut Formatter<'_>, node: Node) {
 
 impl Formatter<'_> {
     pub(in crate::formatter) fn format_switch_stmt_impl(&mut self, node: Node) {
-        let cond = node.child_by_field_name("cond");
+        let cond = node.child_by_field_name(fields::COND);
         if self.emit_split_keyword_cond("switch (", cond) {
             self.emit(" {\n");
         } else {
@@ -98,7 +100,7 @@ impl Formatter<'_> {
         }
         self.level += 1;
         let mut close: Option<Node> = None;
-        if let Some(block) = self.child_of_kind(node, "switch_block") {
+        if let Some(block) = self.child_of_kind(node, kinds::SWITCH_BLOCK) {
             let children = child_nodes(block);
             close = children.iter().rfind(|n| n.kind() == "}").copied();
             let arms = collect_switch_arms(&children);
@@ -280,7 +282,7 @@ fn arm_structurally_inline(arm: &SwitchArm, comments: &[Node]) -> bool {
     let non_break = arm
         .stmts
         .iter()
-        .filter(|s| s.kind() != "break_stmt")
+        .filter(|s| s.kind() != kinds::BREAK_STMT)
         .count();
     if non_break > 1 {
         return false;
@@ -306,7 +308,7 @@ fn collapsible_arm(arm: &SwitchArm, comments: &[Node]) -> bool {
     let non_break = arm
         .stmts
         .iter()
-        .filter(|s| s.kind() != "break_stmt")
+        .filter(|s| s.kind() != kinds::BREAK_STMT)
         .count();
     if non_break > 1 {
         return false;
@@ -318,7 +320,7 @@ impl LayoutCtx<'_> {
     pub(in crate::formatter) fn switch_toggle(&self, switch_node: Node) -> SwitchToggle {
         let Some(block) = child_nodes(switch_node)
             .into_iter()
-            .find(|n| n.kind() == "switch_block")
+            .find(|n| n.kind() == kinds::SWITCH_BLOCK)
         else {
             return SwitchToggle {
                 can_collapse: false,

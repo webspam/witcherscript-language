@@ -3,6 +3,8 @@ mod switch;
 
 use tree_sitter::Node;
 
+use crate::cst::{fields, kinds};
+
 pub(in crate::formatter) use if_stmt::{block_single_stmt, body_expandable, chain_bodies};
 pub(in crate::formatter) use switch::{SwitchArm, collect_switch_arms};
 
@@ -32,10 +34,11 @@ impl Formatter<'_> {
             .iter()
             .enumerate()
             .filter_map(|(i, child)| {
-                if child.is_named() && child.kind() != "nop" && child.kind() != "comment" {
+                if child.is_named() && child.kind() != kinds::NOP && child.kind() != kinds::COMMENT
+                {
                     let trailing_semi = children
                         .get(i + 1)
-                        .is_some_and(|n| n.kind() == ";" || n.kind() == "nop");
+                        .is_some_and(|n| n.kind() == ";" || n.kind() == kinds::NOP);
                     Some((*child, trailing_semi))
                 } else {
                     None
@@ -91,7 +94,12 @@ impl Formatter<'_> {
         // can't safely reconstruct them, so emit verbatim.
         let is_compound = matches!(
             node.kind(),
-            "if_stmt" | "while_stmt" | "do_while_stmt" | "for_stmt" | "switch_stmt" | "func_block"
+            kinds::IF_STMT
+                | kinds::WHILE_STMT
+                | kinds::DO_WHILE_STMT
+                | kinds::FOR_STMT
+                | kinds::SWITCH_STMT
+                | kinds::FUNC_BLOCK
         );
         if node.is_error() || (!is_compound && node.has_error()) {
             self.flush_comments_before(node.start_byte());
@@ -121,14 +129,16 @@ impl Formatter<'_> {
             return;
         }
         match node.kind() {
-            "if_stmt" => self.format_if_stmt(node),
-            "while_stmt" | "do_while_stmt" | "for_stmt" => self.format_loop_stmt(node),
-            "switch_stmt" => self.format_switch_stmt(node),
-            "func_block" => {
+            kinds::IF_STMT => self.format_if_stmt(node),
+            kinds::WHILE_STMT | kinds::DO_WHILE_STMT | kinds::FOR_STMT => {
+                self.format_loop_stmt(node);
+            }
+            kinds::SWITCH_STMT => self.format_switch_stmt(node),
+            kinds::FUNC_BLOCK => {
                 self.emit_indent();
                 self.format_func_block(node);
             }
-            "expr_stmt" => self.format_expr_stmt(node),
+            kinds::EXPR_STMT => self.format_expr_stmt(node),
             _ => {
                 self.emit_indent();
                 self.format_children(node);
@@ -174,11 +184,11 @@ impl Formatter<'_> {
     }
 
     pub(super) fn try_emit_broken_chain(&mut self, node: Node, parent_kind: &str) -> bool {
-        if node.kind() != "binary_op_expr" {
+        if node.kind() != kinds::BINARY_OP_EXPR {
             return false;
         }
         // A chain nested in an enclosing chain is already rendered as one flat fragment.
-        if parent_kind == "binary_op_expr" {
+        if parent_kind == kinds::BINARY_OP_EXPR {
             return false;
         }
         let parts = split_binary_condition(node, self.source);
@@ -224,7 +234,7 @@ impl Formatter<'_> {
             }
             return;
         };
-        if body.kind() == "func_block" {
+        if body.kind() == kinds::FUNC_BLOCK {
             self.emit(" ");
             self.format_func_block_inner(body, !mid_line);
             if mid_line {
@@ -258,8 +268,8 @@ impl Formatter<'_> {
 
     pub(super) fn format_loop_stmt(&mut self, node: Node) {
         match node.kind() {
-            "while_stmt" => {
-                let cond = node.child_by_field_name("cond");
+            kinds::WHILE_STMT => {
+                let cond = node.child_by_field_name(fields::COND);
                 let split = self.emit_split_keyword_cond("while (", cond);
                 if !split {
                     self.emit_indent();
@@ -274,16 +284,16 @@ impl Formatter<'_> {
                 } else {
                     BodyLayout::Auto
                 };
-                self.emit_stmt_body(node.child_by_field_name("body"), body_layout);
+                self.emit_stmt_body(node.child_by_field_name(fields::BODY), body_layout);
             }
-            "do_while_stmt" => {
+            kinds::DO_WHILE_STMT => {
                 self.emit_indent();
                 self.emit("do");
-                let cond = node.child_by_field_name("cond");
+                let cond = node.child_by_field_name(fields::COND);
                 let cond_len = cond.map_or(0, |c| self.render_node(c).len());
                 let trailing = " while (".len() + cond_len + ")".len();
                 self.emit_stmt_body_trailing(
-                    node.child_by_field_name("body"),
+                    node.child_by_field_name(fields::BODY),
                     BodyLayout::Auto,
                     Some(trailing),
                 );
@@ -298,22 +308,22 @@ impl Formatter<'_> {
                 }
                 self.nl();
             }
-            "for_stmt" => {
+            kinds::FOR_STMT => {
                 self.emit_indent();
                 self.emit("for (");
-                if let Some(init) = node.child_by_field_name("init") {
+                if let Some(init) = node.child_by_field_name(fields::INIT) {
                     self.format_node(init);
                 }
                 self.emit("; ");
-                if let Some(cond) = node.child_by_field_name("cond") {
+                if let Some(cond) = node.child_by_field_name(fields::COND) {
                     self.format_node(cond);
                 }
                 self.emit("; ");
-                if let Some(iter) = node.child_by_field_name("iter") {
+                if let Some(iter) = node.child_by_field_name(fields::ITER) {
                     self.format_node(iter);
                 }
                 self.emit(")");
-                self.emit_stmt_body(node.child_by_field_name("body"), BodyLayout::Auto);
+                self.emit_stmt_body(node.child_by_field_name(fields::BODY), BodyLayout::Auto);
             }
             _ => {
                 self.emit_indent();

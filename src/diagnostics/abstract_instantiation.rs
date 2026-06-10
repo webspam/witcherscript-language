@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use tracing::{debug, trace};
 use tree_sitter::Node;
 
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use crate::symbols::SymbolKind;
@@ -17,7 +18,7 @@ impl CstRule for AbstractInstantiationRule {
     }
 
     fn interested_in(&self, kind: &str) -> bool {
-        kind == "new_expr"
+        kind == kinds::NEW_EXPR
     }
 
     fn visit<'tree>(&self, node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
@@ -58,8 +59,8 @@ pub fn collect_abstract_instantiation_diagnostics(
 }
 
 fn check_new_expr<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {
-    let class_ident = node.child_by_field_name("class")?;
-    if class_ident.kind() != "ident" {
+    let class_ident = node.child_by_field_name(fields::CLASS)?;
+    if class_ident.kind() != kinds::IDENT {
         return None;
     }
     let name = class_ident.utf8_text(ctx.document.source.as_bytes()).ok()?;

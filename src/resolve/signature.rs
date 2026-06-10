@@ -1,6 +1,7 @@
 use tree_sitter::Node;
 
 use crate::cst::grammar::callee_ident;
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::{Symbol, SymbolKind};
@@ -122,7 +123,7 @@ fn locate_call<'tree>(
 /// Interprets `node` as a call site if the cursor sits between its `(` and `)`.
 fn call_site_of(node: Node, byte_offset: usize) -> Option<CallSite> {
     match node.kind() {
-        "func_call_expr" => {
+        kinds::FUNC_CALL_EXPR => {
             let mut cursor = node.walk();
             let children: Vec<Node> = node.children(&mut cursor).collect();
             let open = children.iter().find(|c| c.kind() == "(")?;
@@ -138,12 +139,12 @@ fn call_site_of(node: Node, byte_offset: usize) -> Option<CallSite> {
                 return None;
             }
             Some(CallSite {
-                callee: node.child_by_field_name("func")?,
+                callee: node.child_by_field_name(fields::FUNC)?,
                 open_paren_byte: open.start_byte(),
-                args: node.child_by_field_name("args"),
+                args: node.child_by_field_name(fields::ARGS),
             })
         }
-        "ERROR" => {
+        kinds::ERROR => {
             let mut cursor = node.walk();
             let children: Vec<Node> = node.children(&mut cursor).collect();
             let open_idx = children
@@ -157,7 +158,7 @@ fn call_site_of(node: Node, byte_offset: usize) -> Option<CallSite> {
                 .copied()?;
             let args = children
                 .get(open_idx + 1)
-                .filter(|c| c.kind() == "func_call_args")
+                .filter(|c| c.kind() == kinds::FUNC_CALL_ARGS)
                 .copied();
             Some(CallSite {
                 callee,

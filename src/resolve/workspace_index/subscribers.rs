@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::symbols::{Symbol, SymbolId, SymbolKind};
 
@@ -151,7 +152,7 @@ fn collect_all_idents(
     source: &[u8],
     map: &mut HashMap<String, Vec<std::ops::Range<usize>>>,
 ) {
-    if node.kind() == "ident" {
+    if node.kind() == kinds::IDENT {
         if let Ok(name) = node.utf8_text(source) {
             map.entry(name.to_string())
                 .or_default()
