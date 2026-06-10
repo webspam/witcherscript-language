@@ -78,14 +78,14 @@ fn arm_start_byte(arm: &SwitchArm) -> Option<usize> {
     arm.labels
         .first()
         .or_else(|| arm.stmts.first())
-        .map(|n| n.start_byte())
+        .map(tree_sitter::Node::start_byte)
 }
 
 fn arm_end_byte(arm: &SwitchArm) -> Option<usize> {
     arm.stmts
         .last()
         .or_else(|| arm.labels.last())
-        .map(|n| n.end_byte())
+        .map(tree_sitter::Node::end_byte)
 }
 
 fn blank_line_between_arms(a: &SwitchArm, b: &SwitchArm) -> bool {

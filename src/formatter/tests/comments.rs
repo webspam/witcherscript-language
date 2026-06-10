@@ -271,6 +271,19 @@ fn line_comment_before_brace_never_swallows_brace(#[case] input: &str) {
 }
 
 #[test]
+fn comment_between_stmts_no_blank_inserted() {
+    let src = "function f() {\n    a();\n    // mid\n    b();\n}\n";
+    expect![[r"
+        function f() {
+            a();
+            // mid
+            b();
+        }
+    "]]
+    .assert_eq(&fmt(src));
+}
+
+#[test]
 fn formats_all_constructs_idempotently() {
     let input = include_str!("../../../tests/fixtures/formatter/all_grammar_constructs.ws");
     let once = fmt(input);

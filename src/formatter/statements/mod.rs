@@ -64,8 +64,12 @@ impl Formatter<'_> {
         self.level += 1;
         let mut prev_end_row: Option<usize> = None;
         for (stmt, trailing_semi) in &stmts {
+            let gap_target_row = self.comments[self.comment_cursor..]
+                .iter()
+                .find(|c| c.start_byte() < stmt.start_byte())
+                .map_or_else(|| stmt.start_position().row, |c| c.start_position().row);
             if let Some(prev) = prev_end_row
-                && stmt.start_position().row.saturating_sub(prev) >= 2
+                && gap_target_row.saturating_sub(prev) >= 2
             {
                 self.nl();
             }
