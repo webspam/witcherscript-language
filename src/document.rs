@@ -4,9 +4,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tree_sitter::{InputEdit, Parser, Point, Tree};
 
-use crate::diagnostics::{ParseDiagnostic, collect_diagnostics};
+use crate::cst::walk::{Fused, walk};
+use crate::diagnostics::{ParseDiagnostic, SyntaxDiagnostics};
 use crate::line_index::{LineIndex, SourceRange};
-use crate::symbols::{DocumentSymbols, extract_symbols};
+use crate::symbols::{DocumentSymbols, SymbolExtractor};
 
 static PARSE_VERSION: AtomicU64 = AtomicU64::new(0);
 
@@ -75,8 +76,11 @@ pub fn parse_document_with_prior(
         .ok_or(ParseError::NoTree)?;
     let root = tree.root_node();
     let line_index = LineIndex::new(&source);
-    let diagnostics = collect_diagnostics(root, &source);
-    let symbols = extract_symbols(root, &source, &line_index);
+    let mut syntax = SyntaxDiagnostics::new(&source);
+    let mut extractor = SymbolExtractor::new(&source, &line_index);
+    walk(root, &mut Fused::new(&mut syntax, &mut extractor));
+    let diagnostics = syntax.finish();
+    let symbols = extractor.finish();
 
     Ok(ParsedDocument {
         source,

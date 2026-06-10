@@ -34,11 +34,70 @@ pub(crate) fn walk<'tree, V: CstVisitor<'tree>>(root: Node<'tree>, visitor: &mut
     }
 }
 
+/// One traversal, two visitors: each sees exactly its solo event stream
+/// (events below its skip are masked); the walk prunes only when both skip.
+pub(crate) struct Fused<'v, A, B> {
+    a: &'v mut A,
+    b: &'v mut B,
+    a_skip: Option<usize>,
+    b_skip: Option<usize>,
+    depth: usize,
+}
+
+impl<'v, A, B> Fused<'v, A, B> {
+    pub(crate) fn new(a: &'v mut A, b: &'v mut B) -> Self {
+        Self {
+            a,
+            b,
+            a_skip: None,
+            b_skip: None,
+            depth: 0,
+        }
+    }
+}
+
+impl<'tree, A: CstVisitor<'tree>, B: CstVisitor<'tree>> CstVisitor<'tree> for Fused<'_, A, B> {
+    fn enter(&mut self, node: Node<'tree>) -> Visit {
+        if self.a_skip.is_none() && self.a.enter(node) == Visit::SkipChildren {
+            self.a_skip = Some(self.depth);
+        }
+        if self.b_skip.is_none() && self.b.enter(node) == Visit::SkipChildren {
+            self.b_skip = Some(self.depth);
+        }
+        self.depth += 1;
+        if self.a_skip.is_some() && self.b_skip.is_some() {
+            Visit::SkipChildren
+        } else {
+            Visit::Children
+        }
+    }
+
+    fn leave(&mut self, node: Node<'tree>) {
+        self.depth -= 1;
+        match self.a_skip {
+            Some(depth) if depth == self.depth => {
+                self.a_skip = None;
+                self.a.leave(node);
+            }
+            Some(_) => {}
+            None => self.a.leave(node),
+        }
+        match self.b_skip {
+            Some(depth) if depth == self.depth => {
+                self.b_skip = None;
+                self.b.leave(node);
+            }
+            Some(_) => {}
+            None => self.b.leave(node),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use tree_sitter::Node;
 
-    use super::{CstVisitor, Visit, walk};
+    use super::{CstVisitor, Fused, Visit, walk};
     use crate::cst::kinds;
     use crate::document::parse_document;
 
@@ -159,6 +218,34 @@ function Second() {
             recorder.leaves.iter().any(|(_, k)| k == kinds::FUNC_BLOCK),
             "a skipped node still gets its leave"
         );
+    }
+
+    #[test]
+    fn fused_visitors_each_see_their_solo_event_stream() {
+        let doc = parse_document(FIXTURE).expect("parse");
+        let root = doc.tree.root_node();
+
+        let configs = [
+            (None, Some(kinds::FUNC_BLOCK)),
+            (Some(kinds::FUNC_DECL), None),
+            (Some(kinds::FUNC_BLOCK), Some(kinds::FUNC_BLOCK)),
+        ];
+        for (skip_a, skip_b) in configs {
+            let mut solo_a = Recorder::new(skip_a);
+            walk(root, &mut solo_a);
+            let mut solo_b = Recorder::new(skip_b);
+            walk(root, &mut solo_b);
+
+            let mut fused_a = Recorder::new(skip_a);
+            let mut fused_b = Recorder::new(skip_b);
+            walk(root, &mut Fused::new(&mut fused_a, &mut fused_b));
+
+            let label = format!("skip_a={skip_a:?} skip_b={skip_b:?}");
+            assert_eq!(fused_a.enters, solo_a.enters, "{label}: a enters diverge");
+            assert_eq!(fused_a.leaves, solo_a.leaves, "{label}: a leaves diverge");
+            assert_eq!(fused_b.enters, solo_b.enters, "{label}: b enters diverge");
+            assert_eq!(fused_b.leaves, solo_b.leaves, "{label}: b leaves diverge");
+        }
     }
 
     #[test]
