@@ -16,7 +16,7 @@ pub enum SymbolKind {
     Class,        // class_decl
     Struct,       // struct_decl
     Enum,         // enum_decl
-    EnumMember,  // enum_decl_variant (child of Enum)
+    EnumMember,   // enum_member_decl
     Function,     // func_decl at top level (no container)
     Method,       // func_decl inside a class/struct/state (has container)
     Field,        // member_var_decl inside a class/struct/state
@@ -118,7 +118,7 @@ The vec is the only storage; `SymbolId(n)` directly indexes `symbols[n]`. IDs ar
 | `class_decl` | `SymbolKind::Class` |
 | `struct_decl` | `SymbolKind::Struct` |
 | `enum_decl` | `SymbolKind::Enum` |
-| `enum_decl_variant` | `SymbolKind::EnumMember` |
+| `enum_member_decl` | `SymbolKind::EnumMember` |
 | `state_decl` | `SymbolKind::State` |
 | `func_decl` | `Function` or `Method` (depending on container) |
 | `event_decl` | `SymbolKind::Event` |

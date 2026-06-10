@@ -82,7 +82,7 @@ fn is_declaration(ident: Node, parent: Node) -> bool {
         | kinds::FUNC_DECL
         | kinds::EVENT_DECL
         | kinds::AUTOBIND_DECL
-        | kinds::ENUM_DECL_VARIANT => {
+        | kinds::ENUM_MEMBER_DECL => {
             parent.child_by_field_name(fields::NAME).map(|n| n.id()) == Some(ident.id())
         }
         kinds::FUNC_PARAM_GROUP | kinds::LOCAL_VAR_DECL_STMT | kinds::MEMBER_VAR_DECL => {
