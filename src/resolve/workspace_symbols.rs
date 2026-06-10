@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::{Definition, WorkspaceIndex};
 use crate::symbols::Symbol;
 
@@ -15,10 +17,15 @@ enum MatchRank {
 /// passes workspace before base before builtins. Results are the document-symbol
 /// set (everything except locals and parameters) whose name matches `query`,
 /// ranked best-first and capped at `limit`.
+///
+/// `suppressed` holds base-script URIs hidden by a legacy override; their symbols
+/// are skipped so the override is not duplicated by the vanilla file it replaces.
+#[allow(clippy::implicit_hasher)] // Not used externally, but crosses crate into LSP binary
 pub fn workspace_symbols(
     indexes: &[&WorkspaceIndex],
     query: &str,
     limit: usize,
+    suppressed: Option<&HashSet<String>>,
 ) -> Vec<Definition> {
     let query = query.trim();
     if query.is_empty() {
@@ -28,6 +35,9 @@ pub fn workspace_symbols(
     let mut scored: Vec<(MatchRank, usize, &str, &Symbol)> = Vec::new();
     for (tier, index) in indexes.iter().enumerate() {
         for (uri, symbols) in index.documents() {
+            if suppressed.is_some_and(|s| s.contains(uri)) {
+                continue;
+            }
             for symbol in symbols {
                 if !symbol.kind.is_outline() || symbol.name.is_empty() {
                     continue;

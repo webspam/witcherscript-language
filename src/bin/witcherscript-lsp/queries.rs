@@ -486,7 +486,12 @@ impl Backend {
             snap.base_scripts_index.as_ref(),
             self.builtins_index.as_ref(),
         ];
-        let matches = workspace_symbols(&indexes, &params.query, MAX_WORKSPACE_SYMBOL_RESULTS);
+        let matches = workspace_symbols(
+            &indexes,
+            &params.query,
+            MAX_WORKSPACE_SYMBOL_RESULTS,
+            Some(snap.suppressed_base_uris.as_ref()),
+        );
         let symbols: Vec<_> = matches.iter().filter_map(workspace_symbol).collect();
         trace!(
             op = "workspace_symbol",
