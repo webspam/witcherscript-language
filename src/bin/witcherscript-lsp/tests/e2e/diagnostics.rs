@@ -171,6 +171,62 @@ async fn closing_a_file_in_open_files_scope_clears_its_client_side_diagnostics()
     }
 }
 
+// Pre-fix, pulls parked behind a blocked initial index; enough of them filled the request cap and deadlocked the server.
+#[tokio::test]
+async fn pull_diagnostics_answers_empty_while_initial_index_is_blocked() {
+    let uri: Url = "file:///early.ws".parse().unwrap();
+    let mut client = LspClient::spawn_with_held_config().await;
+    client.open(&uri, "class Foo {\n").await;
+
+    let report = client
+        .request::<DocumentDiagnosticRequest>(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await;
+    match report {
+        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) => {
+            assert!(
+                full.full_document_diagnostic_report.items.is_empty(),
+                "pre-index pull must answer empty, got {:?}",
+                full.full_document_diagnostic_report.items
+            );
+        }
+        other => panic!("pre-index pull must answer a Full report, got {other:?}"),
+    }
+
+    client.wait_until_indexed().await;
+    let diags = client.pull_diagnostics(&uri).await;
+    assert!(
+        !diags.is_empty(),
+        "broken file must report diagnostics once indexing completes"
+    );
+}
+
+#[tokio::test]
+async fn workspace_diagnostics_answer_empty_while_initial_index_is_blocked() {
+    let mut client = LspClient::spawn_with_held_config().await;
+    let report = client
+        .request::<WorkspaceDiagnosticRequest>(WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids: Vec::new(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        })
+        .await;
+    let WorkspaceDiagnosticReportResult::Report(report) = report else {
+        panic!("pre-index workspace pull must answer a complete report");
+    };
+    assert!(
+        report.items.is_empty(),
+        "pre-index workspace pull must answer empty, got {:?}",
+        report.items
+    );
+}
+
 #[tokio::test]
 async fn workspace_diagnostic_advertises_workspace_pull_support() {
     let client = LspClient::spawn().await;

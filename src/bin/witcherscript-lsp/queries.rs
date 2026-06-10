@@ -12,8 +12,8 @@ use lsp_types::{
     Position, RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport,
     SemanticToken, SemanticTokens, SemanticTokensParams, SemanticTokensResult, SignatureHelp,
     SignatureHelpParams, TextEdit, UnchangedDocumentDiagnosticReport, Url,
-    WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult, WorkspaceSymbolParams,
-    WorkspaceSymbolResponse,
+    WorkspaceDiagnosticParams, WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult,
+    WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 
 use crate::config::DiagnosticsScope;
@@ -103,6 +103,22 @@ fn reference_lens(symbol: &Symbol, uri: &Url) -> CodeLens {
     }
 }
 
+pub(crate) fn empty_full_document_report() -> DocumentDiagnosticReportResult {
+    DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(
+        RelatedFullDocumentDiagnosticReport {
+            related_documents: None,
+            full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                result_id: None,
+                items: Vec::new(),
+            },
+        },
+    ))
+}
+
+pub(crate) fn empty_workspace_report() -> WorkspaceDiagnosticReportResult {
+    WorkspaceDiagnosticReportResult::Report(WorkspaceDiagnosticReport { items: Vec::new() })
+}
+
 // LSP's "can't compute yet" signal; retrigger_request asks the client to re-pull once ready.
 fn diagnostics_server_cancelled(message: &str) -> ResponseError {
     ResponseError::new_with_data(
@@ -123,17 +139,10 @@ impl Backend {
         let uri = params.text_document.uri.clone();
         let started_at = Instant::now();
         trace!(op = "document_diagnostic", uri = %uri, "start");
-        let empty_full = || {
-            Ok(DocumentDiagnosticReportResult::Report(
-                DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
-                    related_documents: None,
-                    full_document_diagnostic_report: FullDocumentDiagnosticReport {
-                        result_id: None,
-                        items: Vec::new(),
-                    },
-                }),
-            ))
-        };
+        // Pre-index: answer empty instead of parking; parked pulls can deadlock the main loop, and a post-index refresh re-pulls.
+        if !self.initial_index_done.load(Ordering::Acquire) {
+            return Ok(empty_full_document_report());
+        }
         let scope = self.config.load().diagnostics_scope;
         if matches!(scope, DiagnosticsScope::None) {
             trace!(
@@ -143,7 +152,7 @@ impl Backend {
                 reason = "scope_none",
                 "complete",
             );
-            return empty_full();
+            return Ok(empty_full_document_report());
         }
         let version = self.state_version.load(Ordering::Acquire);
         let whole_workspace = matches!(scope, DiagnosticsScope::Workspace);
@@ -156,7 +165,7 @@ impl Backend {
                     &uri,
                     whole_workspace,
                 ) else {
-                    break 'body empty_full();
+                    break 'body Ok(empty_full_document_report());
                 };
                 let target = self.pending_target_for(&uri).unwrap_or(0);
                 if target > document.parse_version {
@@ -208,6 +217,10 @@ impl Backend {
     ) -> Result<WorkspaceDiagnosticReportResult> {
         let started_at = Instant::now();
         trace!(op = "workspace_diagnostic", "start");
+        // Pre-index: answer empty instead of parking; parked pulls can deadlock the main loop, and a post-index refresh re-pulls.
+        if !self.initial_index_done.load(Ordering::Acquire) {
+            return Ok(empty_workspace_report());
+        }
         let version = self.state_version.load(Ordering::Acquire);
         let previous = params
             .previous_result_ids
@@ -608,7 +621,7 @@ impl Backend {
                 format!("malformed reference code-lens data: {err}"),
             )
         })?;
-        self.await_initial_index().await;
+        // No index wait: parked resolves can fill the request cap and deadlock; the post-index CodeLensRefresh corrects any undercount.
         self.spawn_compute(move |b| b._code_lens_resolve_blocking(lens, &uri, position))
             .await
     }

@@ -742,7 +742,6 @@ impl LanguageServer for Backend {
     ) -> BoxFuture<'static, Result<DocumentDiagnosticReportResult>> {
         let backend = self.clone();
         Box::pin(async move {
-            backend.await_initial_index().await;
             backend
                 .spawn_compute(move |b| b._document_diagnostic(params))
                 .await
@@ -755,7 +754,6 @@ impl LanguageServer for Backend {
     ) -> BoxFuture<'static, Result<WorkspaceDiagnosticReportResult>> {
         let backend = self.clone();
         Box::pin(async move {
-            backend.await_initial_index().await;
             backend
                 .spawn_compute(move |b| b._workspace_diagnostic(params))
                 .await

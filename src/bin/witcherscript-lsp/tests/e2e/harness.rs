@@ -8,13 +8,14 @@ use async_lsp::server::LifecycleLayer;
 use async_lsp::tracing::TracingLayer;
 use async_lsp::{ClientSocket, ErrorCode, MainLoop};
 use lsp_types::notification::{DidSaveTextDocument, Initialized};
-use lsp_types::request::{DocumentDiagnosticRequest, Initialize, Request};
+use lsp_types::request::{DocumentDiagnosticRequest, Initialize, Request, WorkspaceSymbolRequest};
 use lsp_types::{
     ClientCapabilities, CodeLensWorkspaceClientCapabilities, Diagnostic,
     DiagnosticClientCapabilities, DidSaveTextDocumentParams, DocumentDiagnosticParams,
     DocumentDiagnosticReport, DocumentDiagnosticReportResult, InitializeParams, InitializeResult,
     InitializedParams, PartialResultParams, ServerCapabilities, TextDocumentClientCapabilities,
     TextDocumentIdentifier, Url, WorkDoneProgressParams, WorkspaceClientCapabilities,
+    WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 use serde_json::Value;
 use tokio::io::{DuplexStream, ReadHalf, WriteHalf, split};
@@ -59,26 +60,50 @@ pub(crate) struct LspClient {
     _server: JoinHandle<()>,
 }
 
+enum ConfigReplies {
+    Answer,
+    Hold,
+}
+
+enum CodeLens {
+    Refresh,
+    NoRefresh,
+}
+
 impl LspClient {
     pub(crate) async fn spawn() -> Self {
-        Self::spawn_with(None, false).await
+        Self::spawn_with(None).await
+    }
+
+    // Holding the workspace/configuration reply keeps the server deterministically pre-index until wait_until_indexed().
+    pub(crate) async fn spawn_with_held_config() -> Self {
+        Self::spawn_inner(None, CodeLens::NoRefresh, ConfigReplies::Hold).await
     }
 
     pub(crate) async fn spawn_open_files_scope() -> Self {
-        Self::spawn_with(
-            Some(serde_json::json!({
-                "diagnostics": { "scope": "openFiles" }
-            })),
-            false,
-        )
+        Self::spawn_with(Some(serde_json::json!({
+            "diagnostics": { "scope": "openFiles" }
+        })))
         .await
     }
 
+    // No readiness wait: the post-index codeLens/refresh is the caller's signal, and wait_until_indexed would consume it.
     pub(crate) async fn spawn_with_code_lens_refresh() -> Self {
-        Self::spawn_with(None, true).await
+        Self::spawn_inner(None, CodeLens::Refresh, ConfigReplies::Answer).await
     }
 
-    async fn spawn_with(init_options: Option<Value>, code_lens_refresh: bool) -> Self {
+    async fn spawn_with(init_options: Option<Value>) -> Self {
+        let mut client =
+            Self::spawn_inner(init_options, CodeLens::NoRefresh, ConfigReplies::Answer).await;
+        client.wait_until_indexed().await;
+        client
+    }
+
+    async fn spawn_inner(
+        init_options: Option<Value>,
+        code_lens_refresh: CodeLens,
+        config_replies: ConfigReplies,
+    ) -> Self {
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (server_read, server_write) = split(server_io);
 
@@ -110,6 +135,9 @@ impl LspClient {
 
         let (read, write) = split(client_io);
         let mut rpc = JsonRpcClient::new(read, write);
+        if matches!(config_replies, ConfigReplies::Hold) {
+            rpc.hold_config_replies();
+        }
 
         let init_result: <Initialize as Request>::Result = rpc
             .request::<Initialize>(InitializeParams {
@@ -118,12 +146,14 @@ impl LspClient {
                         diagnostic: Some(DiagnosticClientCapabilities::default()),
                         ..TextDocumentClientCapabilities::default()
                     }),
-                    workspace: code_lens_refresh.then(|| WorkspaceClientCapabilities {
-                        code_lens: Some(CodeLensWorkspaceClientCapabilities {
-                            refresh_support: Some(true),
-                        }),
-                        ..WorkspaceClientCapabilities::default()
-                    }),
+                    workspace: matches!(code_lens_refresh, CodeLens::Refresh).then_some(
+                        WorkspaceClientCapabilities {
+                            code_lens: Some(CodeLensWorkspaceClientCapabilities {
+                                refresh_support: Some(true),
+                            }),
+                            ..WorkspaceClientCapabilities::default()
+                        },
+                    ),
                     ..ClientCapabilities::default()
                 },
                 initialization_options: init_options,
@@ -141,6 +171,15 @@ impl LspClient {
 
     pub(crate) fn server_capabilities(&self) -> &ServerCapabilities {
         &self.init_result.capabilities
+    }
+
+    // workspace/symbol parks until the initial index is ready, so tests never race the pre-index empty diagnostic answers.
+    pub(crate) async fn wait_until_indexed(&mut self) {
+        self.rpc.release_config_replies().await;
+        let _: Option<WorkspaceSymbolResponse> = self
+            .rpc
+            .request::<WorkspaceSymbolRequest>(WorkspaceSymbolParams::default())
+            .await;
     }
 
     pub(crate) async fn open(&mut self, uri: &Url, text: &str) {

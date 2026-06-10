@@ -23,6 +23,7 @@ mod view_refresh;
 mod watcher;
 
 use std::io::IsTerminal;
+use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
@@ -63,6 +64,9 @@ impl Request for BuiltinSourceRequest {
     const METHOD: &'static str = "witcherscript/builtinSource";
 }
 
+// The logical-CPU-count default is below open-tab request counts; too low and parked requests wedge the main loop.
+const MAX_CONCURRENT_REQUESTS: NonZeroUsize = NonZeroUsize::new(256).unwrap();
+
 #[tokio::main]
 async fn main() {
     let listen_port = parse_listen_port();
@@ -92,7 +96,7 @@ async fn main() {
             .layer(TracingLayer::default())
             .layer(LifecycleLayer::default())
             .layer(CatchUnwindLayer::default())
-            .layer(ConcurrencyLayer::default())
+            .layer(ConcurrencyLayer::new(MAX_CONCURRENT_REQUESTS))
             .service(router)
     });
 
