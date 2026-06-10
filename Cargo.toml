@@ -1,6 +1,6 @@
 [package]
 name = "witcherscript-language"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 description = "LSP & language services for The Witcher 3 script files (WitcherScript / .ws)"
 publish = false
