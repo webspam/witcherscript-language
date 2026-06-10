@@ -69,6 +69,9 @@ fn hash_symbol_fields<H: std::hash::Hasher>(s: &Symbol, h: &mut H) {
     (s.access as u8).hash(h);
     s.is_optional.hash(h);
     s.is_out.hash(h);
+    // Cross-file diagnostics read these flags, so dependents must re-run when they toggle.
+    s.is_state_machine.hash(h);
+    s.is_abstract.hash(h);
 }
 
 // DefaultHasher is non-deterministic across builds; used here only within a single process run.
