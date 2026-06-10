@@ -43,6 +43,7 @@ use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use abstract_instantiation::AbstractInstantiationRule;
+use state_owner::StateOwnerRule;
 use super_field_access::SuperFieldAccessRule;
 use type_mismatch::TypeMismatchRule;
 use unknown_method::UnknownMethodRule;
@@ -59,12 +60,14 @@ pub fn collect_cst_diagnostics_for_document(
     let abstract_rule = AbstractInstantiationRule;
     let super_field_rule = SuperFieldAccessRule;
     let type_mismatch_rule = TypeMismatchRule;
+    let state_owner_rule = StateOwnerRule;
     let rules: Vec<&dyn CstRule> = vec![
         &method_rule,
         &wrapped_rule,
         &abstract_rule,
         &super_field_rule,
         &type_mismatch_rule,
+        &state_owner_rule,
     ];
     let mut diagnostics = run_rules_on_document(uri, document, db, &rules);
 

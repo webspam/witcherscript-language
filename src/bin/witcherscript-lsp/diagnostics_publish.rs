@@ -21,7 +21,7 @@ use tracing::{debug, trace};
 use witcherscript_language::diagnostics::{
     WorkspaceDiagnostic, collect_base_script_conflict_diagnostics,
     collect_duplicate_local_diagnostics, collect_duplicate_symbol_diagnostics,
-    collect_shadowing_diagnostics, collect_state_owner_diagnostics,
+    collect_shadowing_diagnostics,
 };
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
@@ -35,7 +35,6 @@ pub(crate) struct DiagnosticsBundle {
     shadow: HashMap<String, Vec<WorkspaceDiagnostic>>,
     dup_local: HashMap<String, Vec<WorkspaceDiagnostic>>,
     base_conflict: HashMap<String, Vec<WorkspaceDiagnostic>>,
-    state_owner: HashMap<String, Vec<WorkspaceDiagnostic>>,
 }
 
 // The bundle is a pure function of these inputs; a key match means a cached bundle is still valid.
@@ -86,23 +85,15 @@ fn collect_workspace_diagnostics(
     if !should_continue() {
         return None;
     }
-    let mut state_owner = tracing::trace_span!("state_owner")
-        .in_scope(|| collect_state_owner_diagnostics(workspace, base));
-    if !should_continue() {
-        return None;
-    }
     // Loose files compile in isolation; duplicates among them are still real.
     dup.extend(collect_duplicate_symbol_diagnostics(loose));
     shadow.extend(collect_shadowing_diagnostics(loose, env));
     dup_local.extend(collect_duplicate_local_diagnostics(loose));
-    // Loose owners resolve against loose + base, never the project workspace.
-    state_owner.extend(collect_state_owner_diagnostics(loose, base));
     Some(DiagnosticsBundle {
         dup,
         shadow,
         dup_local,
         base_conflict,
-        state_owner,
     })
 }
 
@@ -129,9 +120,6 @@ fn assemble_diagnostics_for_key(
     }
     if let Some(dup_locals) = bundle.dup_local.get(diag_key) {
         diagnostics.extend(dup_locals.iter().map(lsp_workspace_diagnostic));
-    }
-    if let Some(state_owners) = bundle.state_owner.get(diag_key) {
-        diagnostics.extend(state_owners.iter().map(lsp_workspace_diagnostic));
     }
     if let Some(cst_diags) = cst_by_uri.get(diag_key) {
         diagnostics.extend(cst_diags.iter().map(lsp_workspace_diagnostic));
