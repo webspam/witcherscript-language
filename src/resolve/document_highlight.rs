@@ -7,6 +7,7 @@ use crate::line_index::{SourcePosition, SourceRange};
 
 use super::SymbolDb;
 use super::ast::{find_ancestor_of_kind, first_named_child, identifier_at};
+use super::name_context::is_named_binding;
 use super::references::find_references;
 use super::resolve_definition;
 
@@ -62,16 +63,7 @@ fn is_declaration_name(ident: Node) -> bool {
     let Some(parent) = ident.parent() else {
         return false;
     };
-    if !matches!(
-        parent.kind(),
-        kinds::LOCAL_VAR_DECL_STMT | kinds::MEMBER_VAR_DECL | kinds::FUNC_PARAM_GROUP
-    ) {
-        return false;
-    }
-    let mut cursor = parent.walk();
-    parent
-        .children_by_field_name(fields::NAMES, &mut cursor)
-        .any(|n| n.id() == ident.id())
+    is_named_binding(ident, parent)
 }
 
 fn is_assignment_target(ident: Node) -> bool {
