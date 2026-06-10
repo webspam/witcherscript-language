@@ -139,6 +139,10 @@ impl Backend {
         let uri = params.text_document.uri.clone();
         let started_at = Instant::now();
         trace!(op = "document_diagnostic", uri = %uri, "start");
+        // Pre-index: answer empty instead of parking; parked pulls can deadlock the main loop, and a post-index refresh re-pulls.
+        if !self.initial_index_done.load(Ordering::Acquire) {
+            return Ok(empty_full_document_report());
+        }
         let scope = self.config.load().diagnostics_scope;
         if matches!(scope, DiagnosticsScope::None) {
             trace!(
@@ -213,6 +217,10 @@ impl Backend {
     ) -> Result<WorkspaceDiagnosticReportResult> {
         let started_at = Instant::now();
         trace!(op = "workspace_diagnostic", "start");
+        // Pre-index: answer empty instead of parking; parked pulls can deadlock the main loop, and a post-index refresh re-pulls.
+        if !self.initial_index_done.load(Ordering::Acquire) {
+            return Ok(empty_workspace_report());
+        }
         let version = self.state_version.load(Ordering::Acquire);
         let previous = params
             .previous_result_ids
