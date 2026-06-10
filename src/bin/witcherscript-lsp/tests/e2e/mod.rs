@@ -3,6 +3,7 @@ mod code_lens;
 mod completion;
 mod definition;
 mod diagnostics;
+mod document_highlight;
 mod fixture;
 mod harness;
 mod hover;

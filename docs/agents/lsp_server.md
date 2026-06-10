@@ -102,6 +102,7 @@ When you add a map keyed by a document URI, or compare two URIs to decide whethe
 | Signature help | Parameter hints at call sites; trigger chars `(` and `,`, retrigger `,` |
 | Go-to-definition | Resolves symbol at cursor |
 | Find references | Workspace-wide, with include_declaration option |
+| Document highlight | Single-file occurrences of the cursor symbol, classified Read/Write |
 | Rename | Prepare + execute; blocked for base script symbols |
 | Hover | Markdown with location link |
 | Document symbol | Nested outline (excludes Variable/Parameter kinds) |

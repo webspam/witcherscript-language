@@ -5,14 +5,15 @@ use async_lsp::{ErrorCode, ResponseError};
 use lsp_types::{
     CodeActionParams, CodeActionResponse, CodeActionTriggerKind, CodeLens, CodeLensParams, Command,
     DiagnosticServerCancellationData, DocumentDiagnosticParams, DocumentDiagnosticReport,
-    DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentSymbolParams,
-    DocumentSymbolResponse, FullDocumentDiagnosticReport, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverContents, HoverParams, InlayHint, InlayHintParams,
-    Location, MarkupContent, MarkupKind, Position, RelatedFullDocumentDiagnosticReport,
-    RelatedUnchangedDocumentDiagnosticReport, SemanticToken, SemanticTokens, SemanticTokensParams,
-    SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextEdit,
-    UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams,
-    WorkspaceDiagnosticReportResult, WorkspaceSymbolParams, WorkspaceSymbolResponse,
+    DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentHighlight,
+    DocumentHighlightParams, DocumentSymbolParams, DocumentSymbolResponse,
+    FullDocumentDiagnosticReport, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    HoverContents, HoverParams, InlayHint, InlayHintParams, Location, MarkupContent, MarkupKind,
+    Position, RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport,
+    SemanticToken, SemanticTokens, SemanticTokensParams, SemanticTokensResult, SignatureHelp,
+    SignatureHelpParams, TextEdit, UnchangedDocumentDiagnosticReport, Url,
+    WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult, WorkspaceSymbolParams,
+    WorkspaceSymbolResponse,
 };
 
 use crate::config::DiagnosticsScope;
@@ -21,17 +22,18 @@ use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::formatter::{FormatOptions, format_document};
 use witcherscript_language::resolve::{
-    OverriddenSymbol, inlay_hints, overridden_top_level, resolve_all_definitions,
-    resolve_definition, resolve_type_definition, signature_help, workspace_symbols,
+    OverriddenSymbol, document_highlights, inlay_hints, overridden_top_level,
+    resolve_all_definitions, resolve_definition, resolve_type_definition, signature_help,
+    workspace_symbols,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens_cancellable;
 use witcherscript_language::symbols::{Symbol, SymbolKind};
 
 use crate::backend::{Backend, diagnostics_document_for};
 use crate::convert::{
-    base_script_conflict_code_actions, document_symbols, hover_markdown, inlay_hint, lsp_range,
-    refactor_code_actions, signature_help_response, source_position, source_range,
-    workspace_symbol,
+    base_script_conflict_code_actions, document_highlight, document_symbols, hover_markdown,
+    inlay_hint, lsp_range, refactor_code_actions, signature_help_response, source_position,
+    source_range, workspace_symbol,
 };
 use crate::diagnostics_publish::publish_url;
 
@@ -404,6 +406,44 @@ impl Backend {
         };
         trace!(
             op = "hover",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
+        result
+    }
+
+    pub(crate) fn _document_highlight(
+        &self,
+        params: DocumentHighlightParams,
+    ) -> Result<Option<Vec<DocumentHighlight>>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+        let started_at = Instant::now();
+        trace!(op = "document_highlight", uri = %uri, "start");
+        let result = 'body: {
+            let snap = self.snapshot();
+            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+                break 'body Ok(None);
+            };
+            let document = document_arc.as_ref();
+            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
+            let db = handles.db();
+            let highlights = document_highlights(
+                &canonical_uri(&uri),
+                document,
+                &db,
+                source_position(position),
+            )
+            .map(|hits| {
+                hits.into_iter()
+                    .map(|(range, kind)| document_highlight(range, kind))
+                    .collect()
+            });
+            Ok(highlights)
+        };
+        trace!(
+            op = "document_highlight",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
             "complete",

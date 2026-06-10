@@ -79,6 +79,7 @@ client extension to connect to `127.0.0.1:9257` instead of spawning the binary.
 | Diagnostics | Parse errors and the [validation rules](docs/diagnostics/validation.md), published after every parse |
 | Go-to-definition | Locals, parameters, fields (`this.x`), and workspace-wide top-level symbols; inheritance traversed up to depth 32 |
 | Find references | Locals, parameters, fields, methods, and top-level symbols |
+| Document highlight | Highlights every occurrence of the symbol under the cursor within the current file; writes (assignment targets and declarations) are distinguished from reads |
 | Rename | Workspace-wide rename with `prepare_rename`; symbols declared in base scripts are rejected |
 | Hover | Signature or type annotation in a fenced `witcherscript` code block |
 | Completion | Triggered by `.`, `:`, `@`; covers members, expressions, statements, types, annotations, and keywords |

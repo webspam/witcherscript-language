@@ -7,6 +7,7 @@ mod ast;
 mod completion;
 mod completion_catalog;
 mod definition;
+mod document_highlight;
 mod inference;
 mod inlay_hints;
 mod name_context;
@@ -42,6 +43,7 @@ pub use definition::{
     classify_definition_at_ident, resolve_all_definitions, resolve_definition,
     resolve_definition_at_byte, resolve_definition_at_ident,
 };
+pub use document_highlight::{HighlightKind, document_highlights};
 pub(crate) use inference::infer_type;
 pub(crate) use inference::infer_type_memo;
 pub use inlay_hints::{InlayHintInfo, inlay_hints};

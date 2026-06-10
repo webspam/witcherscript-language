@@ -1,6 +1,7 @@
 mod completions;
 mod diagnostics;
 mod file_ops;
+mod highlights;
 mod inlay_hints;
 mod positions;
 mod refactor;
@@ -17,6 +18,7 @@ pub(crate) use diagnostics::{
 pub(crate) use file_ops::{
     created_files_to_watched, deleted_files_to_watched, renamed_files_to_watched, workspace_roots,
 };
+pub(crate) use highlights::document_highlight;
 pub(crate) use inlay_hints::inlay_hint;
 pub(crate) use positions::{lsp_range, source_position, source_range};
 pub(crate) use refactor::refactor_code_actions;

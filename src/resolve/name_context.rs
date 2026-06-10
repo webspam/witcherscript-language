@@ -74,6 +74,9 @@ pub fn classify_ident_context(ident: Node, source: &[u8]) -> Option<NameContext>
 }
 
 fn is_declaration(ident: Node, parent: Node) -> bool {
+    if is_named_binding(ident, parent) {
+        return true;
+    }
     match parent.kind() {
         kinds::CLASS_DECL
         | kinds::STRUCT_DECL
@@ -85,15 +88,21 @@ fn is_declaration(ident: Node, parent: Node) -> bool {
         | kinds::ENUM_MEMBER_DECL => {
             parent.child_by_field_name(fields::NAME).map(|n| n.id()) == Some(ident.id())
         }
-        kinds::FUNC_PARAM_GROUP | kinds::LOCAL_VAR_DECL_STMT | kinds::MEMBER_VAR_DECL => {
-            let mut cursor = parent.walk();
-
-            parent
-                .children_by_field_name(fields::NAMES, &mut cursor)
-                .any(|n| n.id() == ident.id())
-        }
         _ => false,
     }
+}
+
+pub(crate) fn is_named_binding(ident: Node, parent: Node) -> bool {
+    if !matches!(
+        parent.kind(),
+        kinds::LOCAL_VAR_DECL_STMT | kinds::MEMBER_VAR_DECL | kinds::FUNC_PARAM_GROUP
+    ) {
+        return false;
+    }
+    let mut cursor = parent.walk();
+    parent
+        .children_by_field_name(fields::NAMES, &mut cursor)
+        .any(|n| n.id() == ident.id())
 }
 
 fn type_reference_context(ident: Node, parent: Node, source: &[u8]) -> Option<NameContext> {
