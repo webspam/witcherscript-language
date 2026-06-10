@@ -59,8 +59,7 @@ fn var_decl_initializer_ident_is_not_recorded_as_local(
     assert_eq!(&vars[..], expected);
 }
 
-// Stray annotations recover as ERROR-wrapped siblings; pinned here so the
-// extractor's pending-annotation handling cannot silently change shape.
+// Stray annotations recover as ERROR-wrapped siblings and must never attach to later decls.
 #[rstest]
 #[case::stray_annotation_before_class("@addField(CPlayer)\n\nclass Foo {}\n", "Foo", &[])]
 #[case::stray_annotation_then_comment_then_class(
