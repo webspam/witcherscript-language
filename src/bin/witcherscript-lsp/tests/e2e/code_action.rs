@@ -100,6 +100,58 @@ async fn offers_collapse_rewrite_on_a_block_switch() {
 }
 
 #[tokio::test]
+async fn offers_extract_variable_for_selection() {
+    let uri: Url = "file:///main.ws".parse().unwrap();
+    let mut client = LspClient::spawn().await;
+    let source = "function Use(x : int) {}\nfunction F() {\n    Use(1 + 2);\n}\n";
+    client.open(&uri, source).await;
+
+    // Selection covering `1 + 2` (line 2, characters 8..13).
+    let params = CodeActionParams {
+        text_document: TextDocumentIdentifier { uri },
+        range: Range::new(Position::new(2, 8), Position::new(2, 13)),
+        context: CodeActionContext::default(),
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    };
+
+    let response = client
+        .request::<CodeActionRequest>(params)
+        .await
+        .expect("expected a code action response");
+    assert_eq!(response.len(), 1, "expression selection offers extract");
+    let CodeActionOrCommand::CodeAction(action) = &response[0] else {
+        panic!("expected a CodeAction, got {:?}", response[0]);
+    };
+    assert_eq!(action.title, "Extract to variable");
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_EXTRACT));
+    let edit = action
+        .edit
+        .as_ref()
+        .expect("extract carries a WorkspaceEdit");
+    let edits = edit
+        .changes
+        .as_ref()
+        .and_then(|c| c.values().next())
+        .expect("edit targets one document");
+    assert_eq!(edits.len(), 2, "one insert plus one replace");
+    assert_eq!(edits[0].new_text, "\n    var x : int = 1 + 2;");
+    assert_eq!(edits[1].new_text, "x");
+    let command = action
+        .command
+        .as_ref()
+        .expect("extract must trigger rename");
+    assert_eq!(command.command, "witcherscript.extractVariable");
+    let args = command.arguments.as_ref().unwrap();
+    assert_eq!(args[0], json!("file:///main.ws"));
+    assert_eq!(
+        args[1],
+        json!({ "line": 3, "character": 8 }),
+        "cursor lands on the new variable name at the usage site",
+    );
+}
+
+#[tokio::test]
 async fn automatic_trigger_suppresses_refactors() {
     let uri: Url = "file:///main.ws".parse().unwrap();
     let mut client = LspClient::spawn().await;

@@ -280,9 +280,13 @@ impl Backend {
         let (Some(start), Some(end)) = (to_byte(range.start), to_byte(range.end)) else {
             return Vec::new();
         };
+        let snap = self.snapshot();
+        let handles = self.db_handles_for_with_snapshot(uri, &snap);
+        let db = handles.db();
+        let canonical = canonical_uri(uri);
         let cfg = self.config.load();
         let options = self.format_options(!cfg.editor_insert_spaces, cfg.editor_tab_size);
-        refactor_code_actions(uri, document, start..end, options)
+        refactor_code_actions(uri, &canonical, document, &db, start..end, options)
     }
 
     fn format_options(&self, use_tabs: bool, tab_size: u32) -> FormatOptions {
