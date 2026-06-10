@@ -12,7 +12,7 @@ use lsp_types::{
     RelatedUnchangedDocumentDiagnosticReport, SemanticToken, SemanticTokens, SemanticTokensParams,
     SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextEdit,
     UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams,
-    WorkspaceDiagnosticReportResult,
+    WorkspaceDiagnosticReportResult, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 
 use crate::config::DiagnosticsScope;
@@ -22,7 +22,7 @@ use witcherscript_language::files::canonical_uri;
 use witcherscript_language::formatter::{FormatOptions, format_document};
 use witcherscript_language::resolve::{
     OverriddenSymbol, inlay_hints, overridden_top_level, resolve_all_definitions,
-    resolve_definition, resolve_type_definition, signature_help,
+    resolve_definition, resolve_type_definition, signature_help, workspace_symbols,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens_cancellable;
 use witcherscript_language::symbols::{Symbol, SymbolKind};
@@ -31,6 +31,7 @@ use crate::backend::{Backend, diagnostics_document_for};
 use crate::convert::{
     base_script_conflict_code_actions, document_symbols, hover_markdown, inlay_hint, lsp_range,
     refactor_code_actions, signature_help_response, source_position, source_range,
+    workspace_symbol,
 };
 use crate::diagnostics_publish::publish_url;
 
@@ -38,6 +39,8 @@ type Result<T> = std::result::Result<T, ResponseError>;
 
 const GO_TO_BASE_COMMAND: &str = "witcherscript.goToBaseDefinition";
 const GO_TO_BASE_TITLE: &str = "game definition";
+
+const MAX_WORKSPACE_SYMBOL_RESULTS: usize = 256;
 const SHOW_REFERENCES_COMMAND: &str = "witcherscript.showReferences";
 
 // Identifies the declaration a reference-count lens belongs to so phase 2 can re-resolve it.
@@ -469,6 +472,30 @@ impl Backend {
             "complete",
         );
         result
+    }
+
+    pub(crate) fn _workspace_symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<WorkspaceSymbolResponse>> {
+        let started_at = Instant::now();
+        trace!(op = "workspace_symbol", query = %params.query, "start");
+        let snap = self.snapshot();
+        let indexes = [
+            snap.workspace_index.as_ref(),
+            snap.base_scripts_index.as_ref(),
+            self.builtins_index.as_ref(),
+        ];
+        let matches = workspace_symbols(&indexes, &params.query, MAX_WORKSPACE_SYMBOL_RESULTS);
+        let symbols: Vec<_> = matches.iter().filter_map(workspace_symbol).collect();
+        trace!(
+            op = "workspace_symbol",
+            query = %params.query,
+            count = symbols.len(),
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
+        Ok(Some(WorkspaceSymbolResponse::Nested(symbols)))
     }
 
     pub(crate) fn _code_lens(&self, params: CodeLensParams) -> Result<Option<Vec<CodeLens>>> {

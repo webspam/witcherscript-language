@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use lsp_types::{DocumentSymbol, Url};
+use lsp_types::{DocumentSymbol, Location, OneOf, Url, WorkspaceSymbol};
 use witcherscript_language::resolve::{Definition, SymbolDb, hover_text};
 use witcherscript_language::symbols::{DocumentSymbols, SymbolId, SymbolKind};
 
@@ -29,6 +29,22 @@ pub(crate) fn document_symbols(
             children: Some(document_symbols(symbols, Some(symbol.id))),
         })
         .collect()
+}
+
+pub(crate) fn workspace_symbol(definition: &Definition) -> Option<WorkspaceSymbol> {
+    let uri = Url::parse(&definition.uri).ok()?;
+    let symbol = &definition.symbol;
+    Some(WorkspaceSymbol {
+        name: symbol.name.clone(),
+        kind: lsp_symbol_kind(symbol.kind),
+        tags: None,
+        container_name: symbol.container_name.clone(),
+        location: OneOf::Left(Location {
+            uri,
+            range: lsp_range(symbol.selection_range),
+        }),
+        data: None,
+    })
 }
 
 fn lsp_symbol_kind(kind: SymbolKind) -> lsp_types::SymbolKind {
