@@ -94,8 +94,114 @@ pub(crate) fn infer_type(
             },
             None => Type::Unknown,
         },
+        kinds::BINARY_OP_EXPR => infer_binary_op_type(uri, document, db, node, context_byte),
+        kinds::UNARY_OP_EXPR => infer_unary_op_type(uri, document, db, node, context_byte),
         _ => Type::Unknown,
     }
+}
+
+fn infer_binary_op_type(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    node: Node,
+    context_byte: usize,
+) -> Type {
+    let Some(op) = node.child_by_field_name(fields::OP) else {
+        return Type::Unknown;
+    };
+    let operand = |field| match node.child_by_field_name(field) {
+        Some(child) => infer_type(uri, document, db, child, context_byte),
+        None => Type::Unknown,
+    };
+    match op.kind() {
+        kinds::BINARY_OP_AND
+        | kinds::BINARY_OP_OR
+        | kinds::BINARY_OP_EQ
+        | kinds::BINARY_OP_NEQ
+        | kinds::BINARY_OP_GT
+        | kinds::BINARY_OP_GE
+        | kinds::BINARY_OP_LT
+        | kinds::BINARY_OP_LE => Type::Primitive(Primitive::Bool),
+        kinds::BINARY_OP_BITOR | kinds::BINARY_OP_BITAND | kinds::BINARY_OP_BITXOR => {
+            Type::Primitive(Primitive::Int)
+        }
+        kinds::BINARY_OP_SUM => {
+            let (left, right) = (operand(fields::LEFT), operand(fields::RIGHT));
+            if is_concat_operand(&left) || is_concat_operand(&right) {
+                Type::Primitive(Primitive::String)
+            } else {
+                numeric_join(&left, &right)
+            }
+        }
+        kinds::BINARY_OP_DIFF
+        | kinds::BINARY_OP_MULT
+        | kinds::BINARY_OP_DIV
+        | kinds::BINARY_OP_MOD => numeric_join(&operand(fields::LEFT), &operand(fields::RIGHT)),
+        _ => Type::Unknown,
+    }
+}
+
+fn infer_unary_op_type(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    node: Node,
+    context_byte: usize,
+) -> Type {
+    let Some(op) = node.child_by_field_name(fields::OP) else {
+        return Type::Unknown;
+    };
+    match op.kind() {
+        kinds::UNARY_OP_NOT => Type::Primitive(Primitive::Bool),
+        kinds::UNARY_OP_BITNOT => Type::Primitive(Primitive::Int),
+        kinds::UNARY_OP_NEG | kinds::UNARY_OP_PLUS => match node.child_by_field_name(fields::RIGHT)
+        {
+            Some(operand) => infer_type(uri, document, db, operand, context_byte),
+            None => Type::Unknown,
+        },
+        _ => Type::Unknown,
+    }
+}
+
+// `+` on a string or name operand concatenates; name + name also yields string.
+fn is_concat_operand(ty: &Type) -> bool {
+    matches!(ty, Type::Primitive(Primitive::String | Primitive::Name))
+}
+
+fn numeric_join(left: &Type, right: &Type) -> Type {
+    let (Type::Primitive(l), Type::Primitive(r)) = (left, right) else {
+        return Type::Unknown;
+    };
+    if !is_numeric(*l) || !is_numeric(*r) {
+        return Type::Unknown;
+    }
+    if l == r {
+        return Type::Primitive(*l);
+    }
+    if *l == Primitive::Float || *r == Primitive::Float {
+        return Type::Primitive(Primitive::Float);
+    }
+    if matches!(l, Primitive::Int | Primitive::Byte)
+        && matches!(r, Primitive::Int | Primitive::Byte)
+    {
+        return Type::Primitive(Primitive::Int);
+    }
+    Type::Unknown
+}
+
+fn is_numeric(p: Primitive) -> bool {
+    matches!(
+        p,
+        Primitive::Byte
+            | Primitive::Int
+            | Primitive::Int16
+            | Primitive::Int8
+            | Primitive::Uint16
+            | Primitive::Uint32
+            | Primitive::Uint64
+            | Primitive::Float
+    )
 }
 
 fn named_or_unknown(annotation: Option<String>) -> Type {

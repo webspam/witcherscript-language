@@ -20,6 +20,7 @@ mod completion_type;
 mod definition;
 mod document_highlight;
 mod index;
+mod inference;
 mod inheritance;
 mod inlay_hints;
 mod overrides;

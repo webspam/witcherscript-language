@@ -1,0 +1,164 @@
+use rstest::rstest;
+
+use super::super::inference::infer_type;
+use crate::test_support::TestDb;
+use crate::types::{Primitive, Type};
+
+fn inferred(fixture: &str, needle: &str) -> Type {
+    let t = TestDb::new(fixture);
+    let uri = t.primary_uri();
+    let doc = t.doc_for(uri);
+    let start = doc
+        .source
+        .find(needle)
+        .unwrap_or_else(|| panic!("needle {needle:?} not found in fixture"));
+    let node = doc
+        .tree
+        .root_node()
+        .descendant_for_byte_range(start, start + needle.len())
+        .unwrap_or_else(|| panic!("no node covering needle {needle:?}"));
+    infer_type(uri, doc, &t.db(), node, start)
+}
+
+const INT_OPERANDS: &str = "function F() {\n var a : int;\n var b : int;\n var r : bool;\n";
+const BOOL_OPERANDS: &str = "function F() {\n var a : bool;\n var b : bool;\n var r : bool;\n";
+
+#[rstest]
+#[case::eq("==", INT_OPERANDS)]
+#[case::neq("!=", INT_OPERANDS)]
+#[case::lt("<", INT_OPERANDS)]
+#[case::le("<=", INT_OPERANDS)]
+#[case::gt(">", INT_OPERANDS)]
+#[case::ge(">=", INT_OPERANDS)]
+#[case::and("&&", BOOL_OPERANDS)]
+#[case::or("||", BOOL_OPERANDS)]
+fn comparison_and_logical_ops_yield_bool(#[case] op: &str, #[case] prelude: &str) {
+    let needle = format!("a {op} b");
+    let fixture = format!("{prelude} r = {needle};\n}}\n");
+    assert_eq!(
+        inferred(&fixture, &needle),
+        Type::Primitive(Primitive::Bool),
+        "operator {op} should yield bool"
+    );
+}
+
+#[rstest]
+#[case::bitor("|")]
+#[case::bitand("&")]
+#[case::bitxor("^")]
+fn bitwise_ops_yield_int(#[case] op: &str) {
+    let needle = format!("a {op} b");
+    let fixture = format!(
+        "function F() {{\n var a : int;\n var b : int;\n var r : int;\n r = {needle};\n}}\n"
+    );
+    assert_eq!(
+        inferred(&fixture, &needle),
+        Type::Primitive(Primitive::Int),
+        "operator {op} should yield int"
+    );
+}
+
+#[rstest]
+#[case::string_plus_int("s + i")]
+#[case::int_plus_string("i + s")]
+fn string_concat_yields_string(#[case] needle: &str) {
+    let fixture = format!(
+        "function F() {{\n var s : string;\n var i : int;\n var r : string;\n r = {needle};\n}}\n"
+    );
+    assert_eq!(
+        inferred(&fixture, needle),
+        Type::Primitive(Primitive::String),
+        "concat {needle} should yield string"
+    );
+}
+
+#[test]
+fn name_plus_name_yields_string() {
+    let fixture =
+        "function F() {\n var n1 : name;\n var n2 : name;\n var r : string;\n r = n1 + n2;\n}\n";
+    assert_eq!(
+        inferred(fixture, "n1 + n2"),
+        Type::Primitive(Primitive::String),
+        "name + name should yield string"
+    );
+}
+
+#[rstest]
+#[case::int_plus_int("i + j", Type::Primitive(Primitive::Int))]
+#[case::float_plus_int("f + i", Type::Primitive(Primitive::Float))]
+#[case::int_minus_float("i - f", Type::Primitive(Primitive::Float))]
+#[case::int_plus_byte("i + y", Type::Primitive(Primitive::Int))]
+#[case::float_times_float("f * g", Type::Primitive(Primitive::Float))]
+#[case::int_mod_int("i % j", Type::Primitive(Primitive::Int))]
+#[case::string_times_int("s * i", Type::Unknown)]
+fn arithmetic_join_rules(#[case] needle: &str, #[case] expected: Type) {
+    let fixture = format!(
+        concat!(
+            "function F() {{\n",
+            " var i : int;\n var j : int;\n var y : byte;\n",
+            " var f : float;\n var g : float;\n var s : string;\n",
+            " var r : float;\n r = {needle};\n}}\n",
+        ),
+        needle = needle
+    );
+    assert_eq!(
+        inferred(&fixture, needle),
+        expected,
+        "arithmetic {needle} join mismatch"
+    );
+}
+
+#[test]
+fn unary_not_yields_bool() {
+    let fixture = "function F() {\n var a : bool;\n var r : bool;\n r = !a;\n}\n";
+    assert_eq!(
+        inferred(fixture, "!a"),
+        Type::Primitive(Primitive::Bool),
+        "!a should yield bool"
+    );
+}
+
+#[test]
+fn double_negation_yields_bool() {
+    let fixture = "function F() {\n var a : bool;\n var r : bool;\n r = !(!a);\n}\n";
+    assert_eq!(
+        inferred(fixture, "!(!a)"),
+        Type::Primitive(Primitive::Bool),
+        "!(!a) should yield bool"
+    );
+}
+
+#[rstest]
+#[case::neg_int("-i", Type::Primitive(Primitive::Int))]
+#[case::neg_float("-f", Type::Primitive(Primitive::Float))]
+#[case::plus_int("+i", Type::Primitive(Primitive::Int))]
+fn unary_sign_preserves_operand_type(#[case] needle: &str, #[case] expected: Type) {
+    let fixture = format!(
+        "function F() {{\n var i : int;\n var f : float;\n var r : float;\n r = {needle};\n}}\n"
+    );
+    assert_eq!(
+        inferred(&fixture, needle),
+        expected,
+        "unary {needle} should preserve operand type"
+    );
+}
+
+#[test]
+fn unary_bitnot_yields_int() {
+    let fixture = "function F() {\n var i : int;\n var r : int;\n r = ~i;\n}\n";
+    assert_eq!(
+        inferred(fixture, "~i"),
+        Type::Primitive(Primitive::Int),
+        "~i should yield int"
+    );
+}
+
+#[test]
+fn ternary_stays_unknown() {
+    let fixture = "function F() {\n var c : bool;\n var a : int;\n var b : int;\n var r : int;\n r = c ? a : b;\n}\n";
+    assert_eq!(
+        inferred(fixture, "c ? a : b"),
+        Type::Unknown,
+        "ternary is not valid WitcherScript; inference must stay unknown"
+    );
+}
