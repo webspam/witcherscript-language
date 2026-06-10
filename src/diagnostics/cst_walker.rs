@@ -219,29 +219,44 @@ pub(crate) struct ParallelRuleShard {
     pub observer: ObservationSet,
 }
 
-pub(crate) fn collect_nodes_with_error_subtree(
-    root: Node<'_>,
+pub(crate) fn collect_nodes_with_error_subtree<'tree>(
+    root: Node<'tree>,
     predicate: impl Fn(&str) -> bool,
-) -> Vec<(Node<'_>, bool)> {
-    let mut out = Vec::new();
-    collect_nodes_walk(root, false, &predicate, &mut out);
-    out
+) -> Vec<(Node<'tree>, bool)> {
+    let mut collector = NodeCollector {
+        predicate,
+        out: Vec::new(),
+        depth: 0,
+        error_depth: None,
+    };
+    walk(root, &mut collector);
+    collector.out
 }
 
-fn collect_nodes_walk<'tree>(
-    node: Node<'tree>,
-    in_error_subtree: bool,
-    predicate: &impl Fn(&str) -> bool,
-    out: &mut Vec<(Node<'tree>, bool)>,
-) {
-    let kind = node.kind();
-    let in_error_subtree = in_error_subtree || is_error_subtree_root(node);
-    if predicate(kind) {
-        out.push((node, in_error_subtree));
+struct NodeCollector<'tree, P> {
+    predicate: P,
+    out: Vec<(Node<'tree>, bool)>,
+    depth: usize,
+    error_depth: Option<usize>,
+}
+
+impl<'tree, P: Fn(&str) -> bool> CstVisitor<'tree> for NodeCollector<'tree, P> {
+    fn enter(&mut self, node: Node<'tree>) -> Visit {
+        if self.error_depth.is_none() && is_error_subtree_root(node) {
+            self.error_depth = Some(self.depth);
+        }
+        if (self.predicate)(node.kind()) {
+            self.out.push((node, self.error_depth.is_some()));
+        }
+        self.depth += 1;
+        Visit::Children
     }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        collect_nodes_walk(child, in_error_subtree, predicate, out);
+
+    fn leave(&mut self, _node: Node<'tree>) {
+        self.depth -= 1;
+        if self.error_depth == Some(self.depth) {
+            self.error_depth = None;
+        }
     }
 }
 
