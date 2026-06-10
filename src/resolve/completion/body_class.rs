@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 
@@ -88,7 +89,7 @@ fn class_body_kw_inner(
                 if ch.start_byte() >= limit {
                     break;
                 }
-                if ch.kind() == "specifier" {
+                if ch.kind() == kinds::SPECIFIER {
                     match ch.utf8_text(document.source.as_bytes()).unwrap_or("") {
                         "private" | "protected" | "public" => ctx.has_access = true,
                         "import" => ctx.has_import = true,
@@ -124,8 +125,8 @@ fn class_body_kw_inner(
 fn enclosing_class_body_node(mut node: Node) -> Option<Node> {
     loop {
         match node.kind() {
-            "func_block" | "member_default_val_block" | "script" => return None,
-            "class_def" | "struct_def" => return Some(node),
+            kinds::FUNC_BLOCK | kinds::MEMBER_DEFAULT_VAL_BLOCK | kinds::SCRIPT => return None,
+            kinds::CLASS_DEF | kinds::STRUCT_DEF => return Some(node),
             _ => node = node.parent()?,
         }
     }
@@ -149,15 +150,15 @@ fn class_body_child_at_cursor(class_body: Node, byte_offset: usize) -> Option<No
 fn enclosing_body_kind(mut node: Node) -> Option<ClassBodyKind> {
     loop {
         match node.kind() {
-            "func_block" | "member_default_val_block" | "script" => return None,
-            "class_def" => {
+            kinds::FUNC_BLOCK | kinds::MEMBER_DEFAULT_VAL_BLOCK | kinds::SCRIPT => return None,
+            kinds::CLASS_DEF => {
                 return node.parent().and_then(|p| match p.kind() {
-                    "class_decl" => Some(ClassBodyKind::Class),
-                    "state_decl" => Some(ClassBodyKind::State),
+                    kinds::CLASS_DECL => Some(ClassBodyKind::Class),
+                    kinds::STATE_DECL => Some(ClassBodyKind::State),
                     _ => None,
                 });
             }
-            "struct_def" => return Some(ClassBodyKind::Struct),
+            kinds::STRUCT_DEF => return Some(ClassBodyKind::Struct),
             _ => {}
         }
         match node.parent() {

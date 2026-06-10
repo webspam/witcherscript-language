@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::resolve::{SymbolDb, classify_definition_at_ident};
 use crate::symbols::{SymbolId, SymbolKind};
@@ -117,13 +118,13 @@ fn classify(
     cache: &mut ClassifyCache,
 ) -> Option<(u32, u32)> {
     match node.kind() {
-        "ident" => classify_ident(node, uri, document, db, cache),
-        "annotation_ident" => Some((TT_DECORATOR, 0)),
-        "comment" => Some((TT_COMMENT, 0)),
-        "literal_name" => Some((TT_ENUM_MEMBER, 0)),
-        "literal_string" => Some((TT_STRING, 0)),
-        "literal_int" | "literal_float" | "literal_hex" => Some((TT_NUMBER, 0)),
-        "specifier" | "func_flavour" | "autobind_single" => Some((TT_MODIFIER, 0)),
+        kinds::IDENT => classify_ident(node, uri, document, db, cache),
+        kinds::ANNOTATION_IDENT => Some((TT_DECORATOR, 0)),
+        kinds::COMMENT => Some((TT_COMMENT, 0)),
+        kinds::LITERAL_NAME => Some((TT_ENUM_MEMBER, 0)),
+        kinds::LITERAL_STRING => Some((TT_STRING, 0)),
+        kinds::LITERAL_INT | kinds::LITERAL_FLOAT | kinds::LITERAL_HEX => Some((TT_NUMBER, 0)),
+        kinds::SPECIFIER | kinds::FUNC_FLAVOUR | kinds::AUTOBIND_SINGLE => Some((TT_MODIFIER, 0)),
         _ => {
             if node.is_named() {
                 None
@@ -143,13 +144,13 @@ fn classify_ident(
 ) -> Option<(u32, u32)> {
     let parent = node.parent()?;
     match parent.kind() {
-        "class_decl" | "struct_decl" | "state_decl" => Some((TT_CLASS, 0)),
-        "enum_decl" => Some((TT_ENUM, 0)),
-        "enum_decl_variant" => Some((TT_ENUM_MEMBER, 0)),
-        "func_decl" | "event_decl" => Some((TT_FUNCTION, 0)),
-        "func_param_group" => Some((TT_PARAMETER, 0)),
-        "member_var_decl" | "autobind_decl" => Some((TT_PROPERTY, 0)),
-        "local_var_decl_stmt" => Some((TT_VARIABLE, 0)),
+        kinds::CLASS_DECL | kinds::STRUCT_DECL | kinds::STATE_DECL => Some((TT_CLASS, 0)),
+        kinds::ENUM_DECL => Some((TT_ENUM, 0)),
+        kinds::ENUM_DECL_VARIANT => Some((TT_ENUM_MEMBER, 0)),
+        kinds::FUNC_DECL | kinds::EVENT_DECL => Some((TT_FUNCTION, 0)),
+        kinds::FUNC_PARAM_GROUP => Some((TT_PARAMETER, 0)),
+        kinds::MEMBER_VAR_DECL | kinds::AUTOBIND_DECL => Some((TT_PROPERTY, 0)),
+        kinds::LOCAL_VAR_DECL_STMT => Some((TT_VARIABLE, 0)),
         _ => {
             if let Some(t) = classify_locally(node, document) {
                 return Some((t, 0));
@@ -177,7 +178,7 @@ fn classify_ident(
 }
 
 fn is_member_access_rhs(node: Node, parent: Node) -> bool {
-    if parent.kind() != "member_access_expr" {
+    if parent.kind() != kinds::MEMBER_ACCESS_EXPR {
         return false;
     }
     let mut cursor = parent.walk();

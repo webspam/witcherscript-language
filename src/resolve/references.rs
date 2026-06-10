@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::line_index::SourceRange;
 use crate::symbols::{AccessLevel, SymbolKind};
@@ -280,7 +281,7 @@ fn collect_ident_occurrences(
     {
         return;
     }
-    if node.kind() == "ident" && node.utf8_text(source).ok() == Some(name) {
+    if node.kind() == kinds::IDENT && node.utf8_text(source).ok() == Some(name) {
         results.push(node.start_byte()..node.end_byte());
         return;
     }

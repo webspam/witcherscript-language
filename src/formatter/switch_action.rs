@@ -1,6 +1,7 @@
 use tree_sitter::Node;
 
 use crate::cst::ancestors::find_ancestor_of_kind;
+use crate::cst::kinds;
 use crate::cst::offsets::nodes_at_offset;
 
 use super::action::{Substitution, indent_unit_for, layout_ctx, line_indent, splice_subs};
@@ -23,7 +24,7 @@ pub struct SwitchToggle {
 pub fn switch_stmt_at(root: Node, byte: usize) -> Option<Node> {
     nodes_at_offset(root, byte)
         .into_iter()
-        .find_map(|n| find_ancestor_of_kind(n, &["switch_stmt"]))
+        .find_map(|n| find_ancestor_of_kind(n, &[kinds::SWITCH_STMT]))
 }
 
 pub fn analyze_switch(switch_node: Node, options: FormatOptions) -> SwitchToggle {
@@ -59,7 +60,7 @@ fn arm_substitutions(
 ) -> Vec<Substitution> {
     let Some(block) = child_nodes(switch_node)
         .into_iter()
-        .find(|n| n.kind() == "switch_block")
+        .find(|n| n.kind() == kinds::SWITCH_BLOCK)
     else {
         return Vec::new();
     };

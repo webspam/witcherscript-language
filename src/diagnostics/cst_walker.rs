@@ -7,6 +7,7 @@ use parking_lot::Mutex;
 use rayon::prelude::*;
 use tree_sitter::Node;
 
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::resolve::{Definition, ObservationSet, SymbolDb, annotation_target_class};
 use crate::symbols::SymbolKind;
@@ -157,7 +158,7 @@ pub(crate) fn run_rules_on_document(
 }
 
 fn is_error_subtree_root(node: Node) -> bool {
-    node.is_error() || node.is_missing() || node.kind() == "incomplete_member_access_expr"
+    node.is_error() || node.is_missing() || node.kind() == kinds::INCOMPLETE_MEMBER_ACCESS_EXPR
 }
 
 #[allow(clippy::too_many_arguments)]

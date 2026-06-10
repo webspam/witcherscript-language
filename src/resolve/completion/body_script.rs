@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 
@@ -84,7 +85,7 @@ fn collect_script_ctx(node: Node, source: &[u8], limit: usize, ctx: &mut ScriptB
             break;
         }
         match ch.kind() {
-            "specifier" => match ch.utf8_text(source).unwrap_or("") {
+            kinds::SPECIFIER => match ch.utf8_text(source).unwrap_or("") {
                 "import" => ctx.has_import = true,
                 "statemachine" => ctx.has_statemachine = true,
                 "abstract" => ctx.has_abstract = true,
@@ -92,15 +93,15 @@ fn collect_script_ctx(node: Node, source: &[u8], limit: usize, ctx: &mut ScriptB
                 "latent" => ctx.has_latent = true,
                 _ => {}
             },
-            "func_flavour" => ctx.has_flavour = true,
+            kinds::FUNC_FLAVOUR => ctx.has_flavour = true,
             "cleanup" | "entry" | "exec" | "quest" | "reward" | "storyscene" | "timer" => {
                 ctx.has_flavour = true;
             }
             // @addField/@addMethod inject a class member - member specifiers follow.
-            "annotation" => {
+            kinds::ANNOTATION => {
                 let name = ch
                     .children(&mut ch.walk())
-                    .find(|c| c.kind() == "annotation_ident")
+                    .find(|c| c.kind() == kinds::ANNOTATION_IDENT)
                     .and_then(|n| n.utf8_text(source).ok());
                 match name {
                     Some("@addField") => ctx.member_annotation = Some(MemberAnnotation::Field),
@@ -112,7 +113,7 @@ fn collect_script_ctx(node: Node, source: &[u8], limit: usize, ctx: &mut ScriptB
                 ctx.saw_decl_keyword = true;
                 return;
             }
-            "ERROR" => collect_script_ctx(ch, source, limit, ctx),
+            kinds::ERROR => collect_script_ctx(ch, source, limit, ctx),
             _ => {}
         }
     }
@@ -121,12 +122,12 @@ fn collect_script_ctx(node: Node, source: &[u8], limit: usize, ctx: &mut ScriptB
 fn enclosing_script_scope(mut node: Node) -> Option<Node> {
     loop {
         match node.kind() {
-            "func_block"
-            | "class_def"
-            | "struct_def"
-            | "member_default_val_block"
-            | "switch_block" => return None,
-            "script" => return Some(node),
+            kinds::FUNC_BLOCK
+            | kinds::CLASS_DEF
+            | kinds::STRUCT_DEF
+            | kinds::MEMBER_DEFAULT_VAL_BLOCK
+            | kinds::SWITCH_BLOCK => return None,
+            kinds::SCRIPT => return Some(node),
             _ => {}
         }
         node = node.parent()?;

@@ -1,6 +1,7 @@
 use tree_sitter::Node;
 
 use crate::cst::ancestors::find_ancestor_of_kind;
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::{AccessLevel, SymbolKind};
@@ -123,7 +124,7 @@ fn at_new_class_slot<'a>(root: Node<'a>, source: &[u8], byte_offset: usize) -> O
     if prev.kind() != "new" {
         return None;
     }
-    Some(find_ancestor_of_kind(prev, &["new_expr"]).unwrap_or(prev))
+    Some(find_ancestor_of_kind(prev, &[kinds::NEW_EXPR]).unwrap_or(prev))
 }
 
 // `new C in ;` detaches `in` into an ERROR sibling of new_expr; also accept that.
@@ -134,18 +135,18 @@ fn at_new_lifetime_slot(root: Node, source: &[u8], byte_offset: usize) -> bool {
     if prev.kind() != "in" {
         return false;
     }
-    if find_ancestor_of_kind(prev, &["new_expr"]).is_some() {
+    if find_ancestor_of_kind(prev, &[kinds::NEW_EXPR]).is_some() {
         return true;
     }
     significant_node_before_byte(root, source, prev.start_byte())
-        .and_then(|n| find_ancestor_of_kind(n, &["new_expr"]))
+        .and_then(|n| find_ancestor_of_kind(n, &[kinds::NEW_EXPR]))
         .is_some()
 }
 
 fn effective_prev_node<'a>(root: Node<'a>, source: &[u8], byte_offset: usize) -> Option<Node<'a>> {
     nodes_at_offset(root, byte_offset)
         .last()
-        .filter(|n| n.kind() == "ident")
+        .filter(|n| n.kind() == kinds::IDENT)
         .and_then(|n| significant_node_before_byte(root, source, n.start_byte()))
         .or_else(|| significant_node_before_byte(root, source, byte_offset))
 }
@@ -160,15 +161,17 @@ fn expected_type_for_new(
     let mut cur = new_expr;
     while let Some(parent) = cur.parent() {
         match parent.kind() {
-            "local_var_decl_stmt" | "member_var_decl" => {
+            kinds::LOCAL_VAR_DECL_STMT | kinds::MEMBER_VAR_DECL => {
                 let text = type_annot_text(parent, &document.source)?;
                 return Type::from_annotation(&text).to_db_string();
             }
-            "assign_op_expr" => {
+            kinds::ASSIGN_OP_EXPR => {
                 let lhs = parent.child_by_field_name("left")?;
                 return infer_type(uri, document, db, lhs, byte_offset).to_db_string();
             }
-            "func_call_expr" | "func_call_args" | "func_block" | "script" => return None,
+            kinds::FUNC_CALL_EXPR | kinds::FUNC_CALL_ARGS | kinds::FUNC_BLOCK | kinds::SCRIPT => {
+                return None;
+            }
             _ => cur = parent,
         }
     }

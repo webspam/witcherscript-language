@@ -2,13 +2,14 @@ use expect_test::expect;
 use rstest::rstest;
 use tree_sitter::Node;
 
+use crate::cst::kinds;
 use crate::document::{ParsedDocument, parse_document};
 use crate::formatter::{
     FormatOptions, SwitchLayout, analyze_switch, rewrite_switch_layout, switch_stmt_at,
 };
 
 fn first_switch(node: Node) -> Option<Node> {
-    if node.kind() == "switch_stmt" {
+    if node.kind() == kinds::SWITCH_STMT {
         return Some(node);
     }
     let mut cursor = node.walk();

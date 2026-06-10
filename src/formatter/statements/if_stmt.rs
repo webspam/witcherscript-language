@@ -1,5 +1,7 @@
 use tree_sitter::Node;
 
+use crate::cst::kinds;
+
 use super::super::action::LayoutCtx;
 use super::super::{Formatter, IfToggle};
 use super::BodyLayout;
@@ -45,7 +47,7 @@ impl Formatter<'_> {
 
     fn emit_else_clause(&mut self, node: Node, layout: BodyLayout) {
         // An `else if` is another if-chain link, not a body slot; recurse to carry the layout.
-        if node.kind() == "if_stmt" {
+        if node.kind() == kinds::IF_STMT {
             self.emit(" ");
             self.suppress_next_indent = true;
             self.format_if_stmt_emit(node, layout);
@@ -64,11 +66,11 @@ impl Formatter<'_> {
             return false;
         };
         match eb.kind() {
-            "if_stmt" => {
+            kinds::IF_STMT => {
                 self.if_link_overflows(eb, ELSE_IF_OPEN)
                     || self.else_chain_needs_block(eb.child_by_field_name("else"))
             }
-            "func_block" => false,
+            kinds::FUNC_BLOCK => false,
             _ => {
                 let indent = self.level * self.indent_unit.len();
                 indent + ELSE_OPEN + self.text(eb).len() > self.line_limit
@@ -84,7 +86,7 @@ impl Formatter<'_> {
             return false;
         };
         // Block bodies never overflow
-        if body.kind() == "func_block" {
+        if body.kind() == kinds::FUNC_BLOCK {
             return false;
         }
         let indent = self.level * self.indent_unit.len();
@@ -97,7 +99,7 @@ impl Formatter<'_> {
 impl LayoutCtx<'_> {
     pub(in crate::formatter) fn if_toggle(&self, if_node: Node) -> IfToggle {
         let bodies = chain_bodies(if_node);
-        let any_block = bodies.iter().any(|b| b.kind() == "func_block");
+        let any_block = bodies.iter().any(|b| b.kind() == kinds::FUNC_BLOCK);
         let can_expand = bodies.iter().any(|b| body_expandable(*b));
         let all_collapsible = bodies.iter().all(|b| body_collapsible(*b));
         // A comment anywhere in the chain can't survive being pulled onto one line.
@@ -116,7 +118,7 @@ impl LayoutCtx<'_> {
         let mut cur = Some(if_node);
         let mut first = true;
         while let Some(n) = cur {
-            if n.kind() != "if_stmt" {
+            if n.kind() != kinds::IF_STMT {
                 return indent + ELSE_OPEN + inline_body_byte_len(n) <= self.line_limit;
             }
             let cond = n.child_by_field_name("cond");
@@ -140,8 +142,8 @@ impl LayoutCtx<'_> {
 
 fn body_collapsible(body: Node) -> bool {
     match body.kind() {
-        "func_block" => block_single_stmt(body).is_some_and(body_single_line),
-        "nop" => false,
+        kinds::FUNC_BLOCK => block_single_stmt(body).is_some_and(body_single_line),
+        kinds::NOP => false,
         _ => body_single_line(body),
     }
 }
@@ -159,7 +161,7 @@ pub(in crate::formatter) fn chain_bodies(if_node: Node) -> Vec<Node> {
     let mut bodies = Vec::new();
     let mut cur = Some(if_node);
     while let Some(n) = cur {
-        if n.kind() == "if_stmt" {
+        if n.kind() == kinds::IF_STMT {
             if let Some(b) = n.child_by_field_name("body") {
                 bodies.push(b);
             }
@@ -173,19 +175,19 @@ pub(in crate::formatter) fn chain_bodies(if_node: Node) -> Vec<Node> {
 }
 
 pub(in crate::formatter) fn body_expandable(body: Node) -> bool {
-    !matches!(body.kind(), "func_block" | "nop")
+    !matches!(body.kind(), kinds::FUNC_BLOCK | kinds::NOP)
 }
 
 // Unwrapping one of these into a bare branch can't change `else` binding.
 fn is_simple_stmt(node: Node) -> bool {
     matches!(
         node.kind(),
-        "local_var_decl_stmt"
-            | "break_stmt"
-            | "continue_stmt"
-            | "return_stmt"
-            | "delete_stmt"
-            | "expr_stmt"
+        kinds::LOCAL_VAR_DECL_STMT
+            | kinds::BREAK_STMT
+            | kinds::CONTINUE_STMT
+            | kinds::RETURN_STMT
+            | kinds::DELETE_STMT
+            | kinds::EXPR_STMT
     )
 }
 
@@ -195,13 +197,13 @@ fn body_single_line(node: Node) -> bool {
 
 /// The lone simple statement in a `func_block`, else `None` (zero, many, or compound).
 pub(in crate::formatter) fn block_single_stmt(block: Node) -> Option<Node> {
-    if block.kind() != "func_block" {
+    if block.kind() != kinds::FUNC_BLOCK {
         return None;
     }
     let mut cursor = block.walk();
     let mut stmts = block
         .children(&mut cursor)
-        .filter(|c| c.is_named() && c.kind() != "nop" && c.kind() != "comment");
+        .filter(|c| c.is_named() && c.kind() != kinds::NOP && c.kind() != kinds::COMMENT);
     let first = stmts.next()?;
     if stmts.next().is_some() {
         return None;

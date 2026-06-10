@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use crate::cst::kinds;
 use crate::cst::nav::nth_child_kind;
 use crate::symbols::SymbolKind;
 
@@ -55,14 +56,14 @@ pub fn classify_ident_context(ident: Node, source: &[u8]) -> Option<NameContext>
         return None;
     }
 
-    if parent.kind() == "member_access_expr" {
+    if parent.kind() == kinds::MEMBER_ACCESS_EXPR {
         let is_member = parent.child_by_field_name("member").map(|n| n.id()) == Some(ident.id());
         if is_member {
             return None;
         }
     }
 
-    if parent.kind() == "func_call_expr"
+    if parent.kind() == kinds::FUNC_CALL_EXPR
         && parent.child_by_field_name("func").map(|n| n.id()) == Some(ident.id())
     {
         return Some(NameContext::Callable);
@@ -73,11 +74,17 @@ pub fn classify_ident_context(ident: Node, source: &[u8]) -> Option<NameContext>
 
 fn is_declaration(ident: Node, parent: Node) -> bool {
     match parent.kind() {
-        "class_decl" | "struct_decl" | "enum_decl" | "state_decl" | "func_decl" | "event_decl"
-        | "autobind_decl" | "enum_decl_variant" => {
+        kinds::CLASS_DECL
+        | kinds::STRUCT_DECL
+        | kinds::ENUM_DECL
+        | kinds::STATE_DECL
+        | kinds::FUNC_DECL
+        | kinds::EVENT_DECL
+        | kinds::AUTOBIND_DECL
+        | kinds::ENUM_DECL_VARIANT => {
             parent.child_by_field_name("name").map(|n| n.id()) == Some(ident.id())
         }
-        "func_param_group" | "local_var_decl_stmt" | "member_var_decl" => {
+        kinds::FUNC_PARAM_GROUP | kinds::LOCAL_VAR_DECL_STMT | kinds::MEMBER_VAR_DECL => {
             let mut cursor = parent.walk();
 
             parent
@@ -90,9 +97,9 @@ fn is_declaration(ident: Node, parent: Node) -> bool {
 
 fn type_reference_context(ident: Node, parent: Node, source: &[u8]) -> Option<NameContext> {
     match parent.kind() {
-        "state_decl" => {
+        kinds::STATE_DECL => {
             if parent.child_by_field_name("base").map(|n| n.id()) == Some(ident.id()) {
-                let owner_ident = nth_child_kind(parent, "ident", 1)?;
+                let owner_ident = nth_child_kind(parent, kinds::IDENT, 1)?;
                 let owner_class = owner_ident.utf8_text(source).ok()?.to_string();
                 return Some(NameContext::StateExtends { owner_class });
             }
@@ -101,21 +108,24 @@ fn type_reference_context(ident: Node, parent: Node, source: &[u8]) -> Option<Na
             }
             None
         }
-        "class_decl" => {
+        kinds::CLASS_DECL => {
             let is_base = parent.child_by_field_name("base").map(|n| n.id()) == Some(ident.id());
             let is_parent =
                 parent.child_by_field_name("parent").map(|n| n.id()) == Some(ident.id());
             (is_base || is_parent).then_some(NameContext::Type)
         }
-        "type_annot" => (parent.child_by_field_name("type_name").map(|n| n.id())
+        kinds::TYPE_ANNOT => (parent.child_by_field_name("type_name").map(|n| n.id())
             == Some(ident.id()))
         .then_some(NameContext::Type),
-        "new_expr" => (parent.child_by_field_name("class").map(|n| n.id()) == Some(ident.id()))
-            .then_some(NameContext::Type),
-        "annotation" => (parent.child_by_field_name("arg").map(|n| n.id()) == Some(ident.id()))
-            .then_some(NameContext::Type),
-        "cast_expr" => (parent.child_by_field_name("type").map(|n| n.id()) == Some(ident.id()))
-            .then_some(NameContext::Type),
+        kinds::NEW_EXPR => (parent.child_by_field_name("class").map(|n| n.id())
+            == Some(ident.id()))
+        .then_some(NameContext::Type),
+        kinds::ANNOTATION => (parent.child_by_field_name("arg").map(|n| n.id())
+            == Some(ident.id()))
+        .then_some(NameContext::Type),
+        kinds::CAST_EXPR => (parent.child_by_field_name("type").map(|n| n.id())
+            == Some(ident.id()))
+        .then_some(NameContext::Type),
         _ => None,
     }
 }

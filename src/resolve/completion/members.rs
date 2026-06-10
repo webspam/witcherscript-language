@@ -1,3 +1,4 @@
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::AccessLevel;
@@ -30,18 +31,24 @@ fn completion_members_inner(
     let access_node = nodes_at_offset(root, byte_offset)
         .into_iter()
         .find_map(|n| {
-            find_ancestor_of_kind(n, &["member_access_expr", "incomplete_member_access_expr"])
+            find_ancestor_of_kind(
+                n,
+                &[
+                    kinds::MEMBER_ACCESS_EXPR,
+                    kinds::INCOMPLETE_MEMBER_ACCESS_EXPR,
+                ],
+            )
         })?;
 
     let expr = first_named_child(access_node)?;
     let context_byte = expr.start_byte();
 
     let type_name = match expr.kind() {
-        "super_expr" | "super" => {
+        kinds::SUPER_EXPR | "super" => {
             let current_type = enclosing_type_context(document, db, context_byte)?;
             current_type.base_class?
         }
-        "parent_expr" | "parent" => {
+        kinds::PARENT_EXPR | "parent" => {
             let current_type = enclosing_type_context(document, db, context_byte)?;
             current_type.owner_class?
         }

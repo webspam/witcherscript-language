@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::{Symbol, SymbolKind};
@@ -102,7 +103,7 @@ fn is_wrapped_method_macro(ident: Node, name: &str) -> bool {
     // `this.wrappedMethod()` is an ordinary member call, not a macro.
     ident
         .parent()
-        .is_none_or(|p| p.kind() != "member_access_expr")
+        .is_none_or(|p| p.kind() != kinds::MEMBER_ACCESS_EXPR)
 }
 
 fn wrap_method_target_class(symbol: &Symbol) -> Option<&str> {
@@ -122,7 +123,10 @@ fn resolve_for_ident_no_site_fallback(
 ) -> Option<Definition> {
     let name = ident.utf8_text(document.source.as_bytes()).ok()?;
 
-    if let Some(member_access) = ident.parent().filter(|p| p.kind() == "member_access_expr") {
+    if let Some(member_access) = ident
+        .parent()
+        .filter(|p| p.kind() == kinds::MEMBER_ACCESS_EXPR)
+    {
         let is_receiver = first_named_child(member_access).is_some_and(|r| r.id() == ident.id());
         if !is_receiver {
             return resolve_member_access(uri, document, db, ident, name);
@@ -242,13 +246,18 @@ pub(super) fn resolve_self_keyword(
     let root = document.tree.root_node();
     let node = nodes_at_offset(root, byte_offset)
         .into_iter()
-        .find_map(|n| find_ancestor_of_kind(n, &["this_expr", "super_expr", "parent_expr"]))?;
+        .find_map(|n| {
+            find_ancestor_of_kind(
+                n,
+                &[kinds::THIS_EXPR, kinds::SUPER_EXPR, kinds::PARENT_EXPR],
+            )
+        })?;
 
     let current_type = enclosing_type_context(document, db, byte_offset)?;
     let in_state = current_type.owner_class.is_some();
     let owner = current_type.owner_class.clone();
     match node.kind() {
-        "this_expr" => {
+        kinds::THIS_EXPR => {
             if in_state
                 && let Some(owner_class) = owner.as_deref()
                 && let Some(def) = db.find_state_in_owner_chain(owner_class, &current_type.name)
@@ -258,7 +267,7 @@ pub(super) fn resolve_self_keyword(
             resolve_document_top_level(uri, document, &current_type.name)
                 .or_else(|| db.find_top_level(&current_type.name))
         }
-        "super_expr" => {
+        kinds::SUPER_EXPR => {
             let base_name = current_type.base_class.as_deref()?;
             if in_state
                 && let Some(owner_class) = owner.as_deref()
@@ -269,7 +278,7 @@ pub(super) fn resolve_self_keyword(
             resolve_document_top_level(uri, document, base_name)
                 .or_else(|| db.find_top_level(base_name))
         }
-        "parent_expr" => {
+        kinds::PARENT_EXPR => {
             let owner_name = current_type.owner_class.as_deref()?;
             resolve_document_top_level(uri, document, owner_name)
                 .or_else(|| db.find_top_level(owner_name))

@@ -1,5 +1,7 @@
 use tree_sitter::Node;
 
+use crate::cst::kinds;
+
 pub(crate) fn nodes_at_offset(root: Node<'_>, byte_offset: usize) -> Vec<Node<'_>> {
     let second = byte_offset.checked_sub(1);
     [Some(byte_offset), second]
@@ -14,7 +16,7 @@ pub(crate) fn offset_in_comment(root: Node, byte_offset: usize) -> bool {
         return false;
     };
     root.descendant_for_byte_range(probe, probe)
-        .is_some_and(|node| node.kind() == "comment")
+        .is_some_and(|node| node.kind() == kinds::COMMENT)
 }
 
 pub(crate) fn significant_node_before_byte<'a>(
@@ -28,7 +30,7 @@ pub(crate) fn significant_node_before_byte<'a>(
             .iter()
             .rposition(|&b| !b.is_ascii_whitespace())?;
         let node = root.descendant_for_byte_range(p, p + 1)?;
-        if node.kind() != "comment" {
+        if node.kind() != kinds::COMMENT {
             return Some(node);
         }
         end = node.start_byte();
@@ -46,7 +48,7 @@ pub(crate) fn is_statement_boundary(node: Node) -> bool {
         return false;
     };
     // `)` closing an if condition without a curly-brace body is a statement boundary.
-    let is_single_line_if = node.kind() == ")" && parent.kind() == "if_stmt";
+    let is_single_line_if = node.kind() == ")" && parent.kind() == kinds::IF_STMT;
     if is_single_line_if {
         return true;
     }
@@ -54,7 +56,11 @@ pub(crate) fn is_statement_boundary(node: Node) -> bool {
         return true;
     }
     // `:` closing a switch case/default label is also a statement boundary.
-    node.kind() == ":" && matches!(parent.kind(), "switch_case_label" | "switch_default_label")
+    node.kind() == ":"
+        && matches!(
+            parent.kind(),
+            kinds::SWITCH_CASE_LABEL | kinds::SWITCH_DEFAULT_LABEL
+        )
 }
 
 pub(crate) fn is_type_annotation_boundary(node: Node) -> bool {
@@ -65,7 +71,7 @@ pub(crate) fn is_type_annotation_boundary(node: Node) -> bool {
         && !node.parent().is_some_and(|p| {
             matches!(
                 p.kind(),
-                "switch_case_label" | "switch_default_label" | "ternary_cond_expr"
+                kinds::SWITCH_CASE_LABEL | kinds::SWITCH_DEFAULT_LABEL | kinds::TERNARY_COND_EXPR
             )
         })
 }
@@ -83,12 +89,12 @@ pub(crate) fn identifier_at(root: Node, byte_offset: usize) -> Option<Node> {
     nodes_at_offset(root, byte_offset)
         .into_iter()
         .find_map(|node| {
-            if node.kind() == "ident" {
+            if node.kind() == kinds::IDENT {
                 return Some(node);
             }
             let mut current = node;
             while let Some(parent) = current.parent() {
-                if parent.kind() == "ident" {
+                if parent.kind() == kinds::IDENT {
                     return Some(parent);
                 }
                 current = parent;

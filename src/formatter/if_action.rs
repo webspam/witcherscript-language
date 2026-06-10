@@ -1,6 +1,7 @@
 use tree_sitter::Node;
 
 use crate::cst::ancestors::find_ancestor_of_kind;
+use crate::cst::kinds;
 use crate::cst::offsets::nodes_at_offset;
 
 use super::FormatOptions;
@@ -23,14 +24,14 @@ pub struct IfToggle {
 pub fn if_chain_at(root: Node, byte: usize) -> Option<Node> {
     nodes_at_offset(root, byte)
         .into_iter()
-        .find_map(|n| find_ancestor_of_kind(n, &["if_stmt"]))
+        .find_map(|n| find_ancestor_of_kind(n, &[kinds::IF_STMT]))
         .map(if_chain_head)
 }
 
 // An `else if` is parsed as the outer if's `else` child.
 fn if_chain_head(mut node: Node) -> Node {
     while let Some(parent) = node.parent() {
-        let is_else_link = parent.kind() == "if_stmt"
+        let is_else_link = parent.kind() == kinds::IF_STMT
             && parent.child_by_field_name("else").map(|e| e.id()) == Some(node.id());
         if !is_else_link {
             break;

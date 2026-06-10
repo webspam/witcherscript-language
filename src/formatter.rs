@@ -1,5 +1,7 @@
 use tree_sitter::Node;
 
+use crate::cst::kinds;
+
 mod action;
 mod core;
 mod declarations;
@@ -105,12 +107,12 @@ pub(super) struct BoolPart {
 }
 
 fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<BoolPart>) {
-    if node.kind() == "binary_op_expr"
+    if node.kind() == kinds::BINARY_OP_EXPR
         && let Some(op_node) = node.child_by_field_name("op")
     {
         let op_str: Option<&'static str> = match op_node.kind() {
-            "binary_op_or" => Some("||"),
-            "binary_op_and" => Some("&&"),
+            kinds::BINARY_OP_OR => Some("||"),
+            kinds::BINARY_OP_AND => Some("&&"),
             _ => None,
         };
         if let Some(op) = op_str
@@ -147,7 +149,7 @@ pub(super) fn chain_fully_broken(parts: &[BoolPart]) -> bool {
 }
 
 pub(super) fn try_split_call_args(node: Node, source: &str) -> Option<(String, Vec<String>)> {
-    if node.kind() != "func_call_expr" {
+    if node.kind() != kinds::FUNC_CALL_EXPR {
         return None;
     }
     let func = node.child_by_field_name("func")?;
@@ -170,51 +172,51 @@ pub(super) fn try_split_call_args(node: Node, source: &str) -> Option<(String, V
 pub(super) use crate::cst::nav::{child_nodes, named_child_nodes};
 
 pub(super) fn is_alignable_field(node: Node) -> bool {
-    if node.kind() != "member_var_decl" || node.is_error() {
+    if node.kind() != kinds::MEMBER_VAR_DECL || node.is_error() {
         return false;
     }
     let mut c = node.walk();
     let has_comment_or_annotation = node
         .children(&mut c)
-        .any(|n| matches!(n.kind(), "comment" | "annotation"));
+        .any(|n| matches!(n.kind(), kinds::COMMENT | kinds::ANNOTATION));
     !has_comment_or_annotation
 }
 
 pub(super) fn is_bodiless_callable(node: Node) -> bool {
-    if !matches!(node.kind(), "func_decl" | "event_decl") {
+    if !matches!(node.kind(), kinds::FUNC_DECL | kinds::EVENT_DECL) {
         return false;
     }
     let mut c = node.walk();
-    let has_block = node.children(&mut c).any(|n| n.kind() == "func_block");
+    let has_block = node.children(&mut c).any(|n| n.kind() == kinds::FUNC_BLOCK);
     !has_block
 }
 
 pub(super) fn is_expr_node(kind: &str) -> bool {
     matches!(
         kind,
-        "array_init_expr"
-            | "assign_op_expr"
-            | "ternary_cond_expr"
-            | "binary_op_expr"
-            | "new_expr"
-            | "unary_op_expr"
-            | "cast_expr"
-            | "member_access_expr"
-            | "incomplete_member_access_expr"
-            | "func_call_expr"
-            | "array_expr"
-            | "nested_expr"
-            | "this_expr"
-            | "super_expr"
-            | "parent_expr"
-            | "virtual_parent_expr"
-            | "literal_null"
-            | "literal_float"
-            | "literal_int"
-            | "literal_hex"
-            | "literal_bool"
-            | "literal_string"
-            | "literal_name"
+        kinds::ARRAY_INIT_EXPR
+            | kinds::ASSIGN_OP_EXPR
+            | kinds::TERNARY_COND_EXPR
+            | kinds::BINARY_OP_EXPR
+            | kinds::NEW_EXPR
+            | kinds::UNARY_OP_EXPR
+            | kinds::CAST_EXPR
+            | kinds::MEMBER_ACCESS_EXPR
+            | kinds::INCOMPLETE_MEMBER_ACCESS_EXPR
+            | kinds::FUNC_CALL_EXPR
+            | kinds::ARRAY_EXPR
+            | kinds::NESTED_EXPR
+            | kinds::THIS_EXPR
+            | kinds::SUPER_EXPR
+            | kinds::PARENT_EXPR
+            | kinds::VIRTUAL_PARENT_EXPR
+            | kinds::LITERAL_NULL
+            | kinds::LITERAL_FLOAT
+            | kinds::LITERAL_INT
+            | kinds::LITERAL_HEX
+            | kinds::LITERAL_BOOL
+            | kinds::LITERAL_STRING
+            | kinds::LITERAL_NAME
     )
 }
 
@@ -222,7 +224,7 @@ fn collect_comments(root: Node) -> Vec<Node> {
     let mut comments = Vec::new();
     let mut cursor = root.walk();
     loop {
-        if cursor.node().kind() == "comment" {
+        if cursor.node().kind() == kinds::COMMENT {
             comments.push(cursor.node());
         }
         if cursor.goto_first_child() {

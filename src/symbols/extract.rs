@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use crate::cst::kinds;
 use crate::cst::nav::{first_child_kind, nth_child_kind};
 use crate::line_index::LineIndex;
 use crate::types::Type;
@@ -55,7 +56,7 @@ impl SymbolExtractor<'_> {
             .children(&mut cursor)
             .filter(tree_sitter::Node::is_named)
         {
-            if child.kind() == "annotation" {
+            if child.kind() == kinds::ANNOTATION {
                 if let Some(annotation) = self.annotation(child) {
                     annotations.push(annotation);
                 }
@@ -69,20 +70,24 @@ impl SymbolExtractor<'_> {
 
     fn visit(&mut self, node: Node, container: Option<SymbolId>, annotations: Vec<Annotation>) {
         match node.kind() {
-            "class_decl" => self.visit_type_decl(node, container, annotations, SymbolKind::Class),
-            "struct_decl" => self.visit_type_decl(node, container, annotations, SymbolKind::Struct),
-            "enum_decl" => self.visit_enum_decl(node, container, annotations),
-            "state_decl" => self.visit_state_decl(node, container, annotations),
-            "func_decl" => {
+            kinds::CLASS_DECL => {
+                self.visit_type_decl(node, container, annotations, SymbolKind::Class)
+            }
+            kinds::STRUCT_DECL => {
+                self.visit_type_decl(node, container, annotations, SymbolKind::Struct)
+            }
+            kinds::ENUM_DECL => self.visit_enum_decl(node, container, annotations),
+            kinds::STATE_DECL => self.visit_state_decl(node, container, annotations),
+            kinds::FUNC_DECL => {
                 self.visit_callable_decl(node, container, annotations, SymbolKind::Function);
             }
-            "event_decl" => {
+            kinds::EVENT_DECL => {
                 self.visit_callable_decl(node, container, annotations, SymbolKind::Event);
             }
-            "member_var_decl" | "autobind_decl" => {
+            kinds::MEMBER_VAR_DECL | kinds::AUTOBIND_DECL => {
                 self.visit_var_decl(node, container, annotations, SymbolKind::Field);
             }
-            "local_var_decl_stmt" => {
+            kinds::LOCAL_VAR_DECL_STMT => {
                 self.visit_var_decl(node, container, annotations, SymbolKind::Variable);
             }
             _ => self.visit_children(node, container, annotations),
@@ -97,7 +102,7 @@ impl SymbolExtractor<'_> {
         kind: SymbolKind,
     ) {
         annotations.extend(self.direct_annotations(node));
-        let Some(name_node) = first_child_kind(node, "ident") else {
+        let Some(name_node) = first_child_kind(node, kinds::IDENT) else {
             self.visit_children(node, container, annotations);
             return;
         };
@@ -107,7 +112,7 @@ impl SymbolExtractor<'_> {
             let mut sm = false;
             let mut ab = false;
             for child in node.children(&mut c) {
-                if child.kind() != "specifier" {
+                if child.kind() != kinds::SPECIFIER {
                     continue;
                 }
                 match &self.source[child.start_byte()..child.end_byte()] {
@@ -142,7 +147,7 @@ impl SymbolExtractor<'_> {
         mut annotations: Vec<Annotation>,
     ) {
         annotations.extend(self.direct_annotations(node));
-        let Some(name_node) = first_child_kind(node, "ident") else {
+        let Some(name_node) = first_child_kind(node, kinds::IDENT) else {
             self.visit_children(node, container, annotations);
             return;
         };
@@ -166,8 +171,8 @@ impl SymbolExtractor<'_> {
             .children(&mut cursor)
             .filter(tree_sitter::Node::is_named)
         {
-            if child.kind() == "enum_decl_variant" {
-                if let Some(name_node) = first_child_kind(child, "ident") {
+            if child.kind() == kinds::ENUM_DECL_VARIANT {
+                if let Some(name_node) = first_child_kind(child, kinds::IDENT) {
                     self.push_symbol(
                         child,
                         name_node,
@@ -191,11 +196,11 @@ impl SymbolExtractor<'_> {
         mut annotations: Vec<Annotation>,
     ) {
         annotations.extend(self.direct_annotations(node));
-        let Some(name_node) = first_child_kind(node, "ident") else {
+        let Some(name_node) = first_child_kind(node, kinds::IDENT) else {
             self.visit_children(node, container, annotations);
             return;
         };
-        let owner_class = nth_child_kind(node, "ident", 1).map(|n| node_text(n, self.source));
+        let owner_class = nth_child_kind(node, kinds::IDENT, 1).map(|n| node_text(n, self.source));
         let base_class = node
             .child_by_field_name("base")
             .map(|n| node_text(n, self.source));
@@ -223,7 +228,7 @@ impl SymbolExtractor<'_> {
         default_kind: SymbolKind,
     ) {
         annotations.extend(self.direct_annotations(node));
-        let Some(name_node) = first_child_kind(node, "ident") else {
+        let Some(name_node) = first_child_kind(node, kinds::IDENT) else {
             self.visit_children(node, container, annotations);
             return;
         };
@@ -232,9 +237,10 @@ impl SymbolExtractor<'_> {
         } else {
             default_kind
         };
-        let type_annotation =
-            direct_child_text(node, "type_annot", self.source).map(|t| Type::from_annotation(&t));
-        let flavour = first_child_kind(node, "func_flavour").map(|n| node_text(n, self.source));
+        let type_annotation = direct_child_text(node, kinds::TYPE_ANNOT, self.source)
+            .map(|t| Type::from_annotation(&t));
+        let flavour =
+            first_child_kind(node, kinds::FUNC_FLAVOUR).map(|n| node_text(n, self.source));
         let access = self.node_access_level(node);
         let id = self.push_symbol(
             node,
@@ -255,11 +261,11 @@ impl SymbolExtractor<'_> {
     }
 
     fn visit_params(&mut self, node: Node, function_id: SymbolId) {
-        if let Some(params) = first_child_kind(node, "func_params") {
+        if let Some(params) = first_child_kind(node, kinds::FUNC_PARAMS) {
             let mut cursor = params.walk();
             for group in params
                 .children(&mut cursor)
-                .filter(|child| child.kind() == "func_param_group")
+                .filter(|child| child.kind() == kinds::FUNC_PARAM_GROUP)
             {
                 self.visit_var_decl(group, Some(function_id), Vec::new(), SymbolKind::Parameter);
             }
@@ -267,7 +273,7 @@ impl SymbolExtractor<'_> {
     }
 
     fn visit_body_locals(&mut self, node: Node, function_id: SymbolId) {
-        if let Some(block) = first_child_kind(node, "func_block") {
+        if let Some(block) = first_child_kind(node, kinds::FUNC_BLOCK) {
             self.visit_children(block, Some(function_id), Vec::new());
         }
     }
@@ -280,8 +286,8 @@ impl SymbolExtractor<'_> {
         kind: SymbolKind,
     ) {
         annotations.extend(self.direct_annotations(node));
-        let type_annotation =
-            direct_child_text(node, "type_annot", self.source).map(|t| Type::from_annotation(&t));
+        let type_annotation = direct_child_text(node, kinds::TYPE_ANNOT, self.source)
+            .map(|t| Type::from_annotation(&t));
         let declaration_text = if kind == SymbolKind::Field {
             Some(node_text(node, self.source))
         } else {
@@ -292,7 +298,7 @@ impl SymbolExtractor<'_> {
             let mut c = node.walk();
 
             node.children(&mut c).any(|child| {
-                child.kind() == "specifier"
+                child.kind() == kinds::SPECIFIER
                     && &self.source[child.start_byte()..child.end_byte()] == "optional"
             })
         };
@@ -300,19 +306,19 @@ impl SymbolExtractor<'_> {
             let mut c = node.walk();
 
             node.children(&mut c).any(|child| {
-                child.kind() == "specifier"
+                child.kind() == kinds::SPECIFIER
                     && &self.source[child.start_byte()..child.end_byte()] == "out"
             })
         };
         let mut cursor = node.walk();
-        let names_field = if node.kind() == "autobind_decl" {
+        let names_field = if node.kind() == kinds::AUTOBIND_DECL {
             "name"
         } else {
             "names"
         };
 
         for child in node.children_by_field_name(names_field, &mut cursor) {
-            if child.kind() == "ident" {
+            if child.kind() == kinds::IDENT {
                 self.push_symbol(
                     node,
                     child,
@@ -333,12 +339,12 @@ impl SymbolExtractor<'_> {
     }
 
     fn annotation(&self, node: Node) -> Option<Annotation> {
-        let name = first_child_kind(node, "annotation_ident").map(|name| {
+        let name = first_child_kind(node, kinds::ANNOTATION_IDENT).map(|name| {
             node_text(name, self.source)
                 .trim_start_matches('@')
                 .to_string()
         })?;
-        let argument = first_child_kind(node, "ident").map(|arg| node_text(arg, self.source));
+        let argument = first_child_kind(node, kinds::IDENT).map(|arg| node_text(arg, self.source));
 
         Some(Annotation { name, argument })
     }
@@ -346,7 +352,7 @@ impl SymbolExtractor<'_> {
     fn direct_annotations(&self, node: Node) -> Vec<Annotation> {
         let mut cursor = node.walk();
         node.children(&mut cursor)
-            .filter(|child| child.kind() == "annotation")
+            .filter(|child| child.kind() == kinds::ANNOTATION)
             .filter_map(|child| self.annotation(child))
             .collect()
     }
@@ -397,7 +403,7 @@ impl SymbolExtractor<'_> {
     fn node_access_level(&self, node: Node) -> AccessLevel {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "specifier" {
+            if child.kind() == kinds::SPECIFIER {
                 match &self.source[child.start_byte()..child.end_byte()] {
                     "private" => return AccessLevel::Private,
                     "protected" => return AccessLevel::Protected,

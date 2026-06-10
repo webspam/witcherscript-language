@@ -1,15 +1,16 @@
 use tree_sitter::Node;
 
 use super::{NameContext, classify_ident_context};
+use crate::cst::kinds;
 use crate::document::parse_document;
 use crate::symbols::SymbolKind;
 
 fn find_ident_at_offset(root: Node<'_>, byte_offset: usize) -> Option<Node<'_>> {
     let node = root.descendant_for_byte_range(byte_offset, byte_offset)?;
-    if node.kind() == "ident" {
+    if node.kind() == kinds::IDENT {
         return Some(node);
     }
-    node.parent().filter(|p| p.kind() == "ident")
+    node.parent().filter(|p| p.kind() == kinds::IDENT)
 }
 
 fn classify_at(fixture: &str) -> Option<NameContext> {

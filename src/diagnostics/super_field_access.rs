@@ -4,6 +4,7 @@ use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::grammar::{call_callee, member_access_member};
+use crate::cst::kinds;
 use crate::cst::nav::first_named_child;
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
@@ -18,7 +19,7 @@ impl CstRule for SuperFieldAccessRule {
     }
 
     fn interested_in(&self, kind: &str) -> bool {
-        kind == "member_access_expr"
+        kind == kinds::MEMBER_ACCESS_EXPR
     }
 
     fn visit<'tree>(&self, node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
@@ -60,11 +61,11 @@ pub fn collect_super_field_access_diagnostics(
 
 fn check_super_member<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {
     let receiver = first_named_child(node)?;
-    if receiver.kind() != "super_expr" {
+    if receiver.kind() != kinds::SUPER_EXPR {
         return None;
     }
     let member_ident = member_access_member(node)?;
-    if member_ident.kind() != "ident" {
+    if member_ident.kind() != kinds::IDENT {
         return None;
     }
 
@@ -92,7 +93,7 @@ fn is_callee_of_func_call(node: Node) -> bool {
     let Some(parent) = node.parent() else {
         return false;
     };
-    if parent.kind() != "func_call_expr" {
+    if parent.kind() != kinds::FUNC_CALL_EXPR {
         return false;
     }
     call_callee(parent).map(|c| c.id()) == Some(node.id())

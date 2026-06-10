@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use crate::cst::kinds;
 use crate::cst::nav::first_named_child;
 
 // func_call_expr and member_access_expr tag their key children with grammar
@@ -28,7 +29,7 @@ pub(crate) fn arg_slots(call: Node) -> Option<Vec<Node>> {
     for child in args.children(&mut cursor) {
         match child.kind() {
             "," => slots.push(pending.take()),
-            "comment" => {}
+            kinds::COMMENT => {}
             _ if child.is_named() => pending = Some(child),
             _ => {}
         }
@@ -39,18 +40,18 @@ pub(crate) fn arg_slots(call: Node) -> Option<Vec<Node>> {
 
 pub(crate) fn callee_ident(callee: Node) -> Option<Node> {
     match callee.kind() {
-        "ident" => Some(callee),
-        "member_access_expr" | "incomplete_member_access_expr" => {
-            member_access_member(callee).filter(|m| m.kind() == "ident")
+        kinds::IDENT => Some(callee),
+        kinds::MEMBER_ACCESS_EXPR | kinds::INCOMPLETE_MEMBER_ACCESS_EXPR => {
+            member_access_member(callee).filter(|m| m.kind() == kinds::IDENT)
         }
         _ => None,
     }
 }
 
 pub(crate) const DEFAULT_OR_HINT_ASSIGN_KINDS: &[&str] = &[
-    "member_default_val",
-    "member_default_val_block_assign",
-    "member_hint",
+    kinds::MEMBER_DEFAULT_VAL,
+    kinds::MEMBER_DEFAULT_VAL_BLOCK_ASSIGN,
+    kinds::MEMBER_HINT,
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,8 +63,10 @@ pub(crate) enum DefaultOrHintKind {
 pub(crate) fn ident_default_or_hint_kind(ident: Node) -> Option<DefaultOrHintKind> {
     let parent = ident.parent()?;
     let kind = match parent.kind() {
-        "member_default_val" | "member_default_val_block_assign" => DefaultOrHintKind::Default,
-        "member_hint" => DefaultOrHintKind::Hint,
+        kinds::MEMBER_DEFAULT_VAL | kinds::MEMBER_DEFAULT_VAL_BLOCK_ASSIGN => {
+            DefaultOrHintKind::Default
+        }
+        kinds::MEMBER_HINT => DefaultOrHintKind::Hint,
         _ => return None,
     };
     (parent.child_by_field_name("member").map(|n| n.id()) == Some(ident.id())).then_some(kind)
