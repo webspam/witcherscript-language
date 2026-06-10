@@ -291,3 +291,52 @@ fn allows_extraction_despite_other_writes(#[case] src: &str, #[case] needle: &st
         "selection {needle:?} should still be extractable"
     );
 }
+
+#[rstest]
+#[case::plain_out_arg(
+    "function Fill(out target : int) {}\nfunction Use(x : int) {}\nfunction F() {\n    var a : int;\n    Use(a + 1);\n    Fill(a);\n}\n",
+    "a + 1"
+)]
+#[case::out_arg_wrapped_in_parens(
+    "function Fill(out target : int) {}\nfunction Use(x : int) {}\nfunction F() {\n    var a : int;\n    Use(a + 1);\n    Fill((a));\n}\n",
+    "a + 1"
+)]
+#[case::out_arg_on_method_call(
+    concat!(
+        "//- /main.ws\n",
+        "function Use(x : int) {}\n",
+        "function F() {\n",
+        "    var h : CHelper;\n",
+        "    var a : int;\n",
+        "    Use(a + 1);\n",
+        "    h.Fill(a);\n",
+        "}\n",
+        "//- /lib.ws\n",
+        "class CHelper {\n",
+        "    function Fill(out target : int) {}\n",
+        "}\n",
+    ),
+    "a + 1"
+)]
+fn refuses_when_selection_local_is_written_via_out_arg(#[case] src: &str, #[case] needle: &str) {
+    assert!(
+        refused(src, needle),
+        "hoisting {needle:?} past an out-arg mutation must not be offered"
+    );
+}
+
+#[rstest]
+#[case::normal_parameter(
+    "function Fill(target : int) {}\nfunction Use(x : int) {}\nfunction F() {\n    var a : int;\n    Use(a + 1);\n    Fill(a);\n}\n",
+    "a + 1"
+)]
+#[case::out_arg_targets_unrelated_local(
+    "function Fill(out target : int) {}\nfunction Use(x : int) {}\nfunction F() {\n    var a : int;\n    var b : int;\n    Use(a + 1);\n    Fill(b);\n}\n",
+    "a + 1"
+)]
+fn allows_extraction_despite_out_capable_calls(#[case] src: &str, #[case] needle: &str) {
+    assert!(
+        run(src, needle, FormatOptions::default()).1.is_some(),
+        "selection {needle:?} should still be extractable"
+    );
+}

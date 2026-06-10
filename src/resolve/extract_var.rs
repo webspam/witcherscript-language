@@ -220,16 +220,52 @@ fn hoisting_skips_a_write(
     if locals.is_empty() {
         return false;
     }
-    let mut assigns = Vec::new();
-    collect_nodes_of_kind(block, kinds::ASSIGN_OP_EXPR, &mut assigns);
-    assigns.iter().any(|assign| {
-        assign
+    let mut writes = Vec::new();
+    collect_nodes_of_kinds(
+        block,
+        &[kinds::ASSIGN_OP_EXPR, kinds::FUNC_CALL_EXPR],
+        &mut writes,
+    );
+    let is_tracked_write = |target: Node| {
+        target.start_byte() >= insert_at
+            && resolved_local_id(uri, document, db, target, callable)
+                .is_some_and(|id| locals.contains(&id))
+    };
+    writes.iter().any(|node| match node.kind() {
+        kinds::ASSIGN_OP_EXPR => node
             .child_by_field_name(fields::LEFT)
             .and_then(write_target)
-            .filter(|target| target.start_byte() >= insert_at)
-            .and_then(|target| resolved_local_id(uri, document, db, target, callable))
-            .is_some_and(|id| locals.contains(&id))
+            .is_some_and(is_tracked_write),
+        _ => out_args(uri, document, db, *node)
+            .into_iter()
+            .filter_map(write_target)
+            .any(is_tracked_write),
     })
+}
+
+fn out_args<'tree>(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    call: Node<'tree>,
+) -> Vec<Node<'tree>> {
+    let Some(slots) = arg_slots(call) else {
+        return Vec::new();
+    };
+    let Some(ident) = call_callee(call).and_then(callee_ident) else {
+        return Vec::new();
+    };
+    let Some(definition) = resolve_definition_at_byte(uri, document, db, ident.start_byte())
+        .filter(|def| def.symbol.kind.is_callable())
+    else {
+        return Vec::new();
+    };
+    db.full_parameters_of(&definition.uri, definition.symbol.id)
+        .iter()
+        .zip(slots)
+        .filter(|(parameter, _)| parameter.is_out)
+        .map(|(_, arg)| arg)
+        .collect()
 }
 
 fn selection_local_ids(
@@ -240,7 +276,7 @@ fn selection_local_ids(
     callable: SymbolId,
 ) -> HashSet<SymbolId> {
     let mut idents = Vec::new();
-    collect_nodes_of_kind(node, kinds::IDENT, &mut idents);
+    collect_nodes_of_kinds(node, &[kinds::IDENT], &mut idents);
     idents
         .iter()
         .filter_map(|ident| resolved_local_id(uri, document, db, *ident, callable))
@@ -262,20 +298,20 @@ fn resolved_local_id(
     .then_some(symbol.id)
 }
 
-fn collect_nodes_of_kind<'tree>(root: Node<'tree>, kind: &str, out: &mut Vec<Node<'tree>>) {
+fn collect_nodes_of_kinds<'tree>(root: Node<'tree>, kinds: &[&str], out: &mut Vec<Node<'tree>>) {
     struct Collector<'a, 'tree> {
-        kind: &'a str,
+        kinds: &'a [&'a str],
         out: &'a mut Vec<Node<'tree>>,
     }
     impl<'tree> CstVisitor<'tree> for Collector<'_, 'tree> {
         fn enter(&mut self, node: Node<'tree>) -> Visit {
-            if node.kind() == self.kind {
+            if self.kinds.contains(&node.kind()) {
                 self.out.push(node);
             }
             Visit::Children
         }
     }
-    walk(root, &mut Collector { kind, out });
+    walk(root, &mut Collector { kinds, out });
 }
 
 fn lowercase_first(s: &str) -> String {
