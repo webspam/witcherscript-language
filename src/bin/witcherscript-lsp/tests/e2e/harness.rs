@@ -67,7 +67,7 @@ enum ConfigReplies {
 
 impl LspClient {
     pub(crate) async fn spawn() -> Self {
-        Self::spawn_with(None, false).await
+        Self::spawn_with(None).await
     }
 
     // Holding the workspace/configuration reply keeps the server deterministically pre-index until wait_until_indexed().
@@ -76,12 +76,9 @@ impl LspClient {
     }
 
     pub(crate) async fn spawn_open_files_scope() -> Self {
-        Self::spawn_with(
-            Some(serde_json::json!({
-                "diagnostics": { "scope": "openFiles" }
-            })),
-            false,
-        )
+        Self::spawn_with(Some(serde_json::json!({
+            "diagnostics": { "scope": "openFiles" }
+        })))
         .await
     }
 
@@ -90,9 +87,8 @@ impl LspClient {
         Self::spawn_inner(None, true, ConfigReplies::Answer).await
     }
 
-    async fn spawn_with(init_options: Option<Value>, code_lens_refresh: bool) -> Self {
-        let mut client =
-            Self::spawn_inner(init_options, code_lens_refresh, ConfigReplies::Answer).await;
+    async fn spawn_with(init_options: Option<Value>) -> Self {
+        let mut client = Self::spawn_inner(init_options, false, ConfigReplies::Answer).await;
         client.wait_until_indexed().await;
         client
     }
