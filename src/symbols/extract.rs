@@ -1,6 +1,7 @@
 use tree_sitter::Node;
 
 use crate::cst::nav::{first_child_kind, nth_child_kind};
+use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::cst::{fields, kinds};
 use crate::line_index::LineIndex;
 use crate::types::Type;
@@ -9,21 +10,38 @@ use super::types::{AccessLevel, Annotation, DocumentSymbols, Symbol, SymbolId, S
 use super::util::{base_type, direct_child_text, node_text};
 
 pub fn extract_symbols(root: Node, source: &str, line_index: &LineIndex) -> DocumentSymbols {
-    let mut extractor = SymbolExtractor {
-        source,
-        line_index,
-        symbols: DocumentSymbols::default(),
-    };
-
-    extractor.visit_children(root, None, Vec::new());
-    extractor.symbols.build_indexes();
-    extractor.symbols
+    let mut extractor = SymbolExtractor::new(source, line_index);
+    walk(root, &mut extractor);
+    extractor.finish()
 }
 
-struct SymbolExtractor<'a> {
+pub(crate) struct SymbolExtractor<'a> {
     source: &'a str,
     line_index: &'a LineIndex,
     symbols: DocumentSymbols,
+    depth: usize,
+    frames: Vec<Frame>,
+}
+
+// One frame per named node the walk descends into; popped on that node's leave.
+struct Frame {
+    depth: usize,
+    mode: Mode,
+}
+
+enum Mode {
+    // Stray sibling annotations pend here and die with the frame.
+    Body {
+        container: Option<SymbolId>,
+        pending: Vec<Annotation>,
+    },
+    // Inside an enum, only members are extracted; nested decls are not symbols.
+    EnumMembers(SymbolId),
+    // Params were pushed at the decl's enter; only the first func_block opens a body.
+    Callable {
+        id: SymbolId,
+        body_seen: bool,
+    },
 }
 
 #[derive(Default)]
@@ -42,69 +60,163 @@ struct SymbolSpec {
     is_abstract: bool,
 }
 
-impl SymbolExtractor<'_> {
-    fn visit_children(
-        &mut self,
-        node: Node,
-        container: Option<SymbolId>,
-        pending_annotations: Vec<Annotation>,
-    ) {
-        let mut annotations = pending_annotations;
-        let mut cursor = node.walk();
+impl<'tree> CstVisitor<'tree> for SymbolExtractor<'_> {
+    fn enter(&mut self, node: Node<'tree>) -> Visit {
+        let visit = self.enter_node(node);
+        self.depth += 1;
+        visit
+    }
 
-        for child in node
-            .children(&mut cursor)
-            .filter(tree_sitter::Node::is_named)
+    fn leave(&mut self, _node: Node<'tree>) {
+        self.depth -= 1;
+        if self
+            .frames
+            .last()
+            .is_some_and(|frame| frame.depth == self.depth)
         {
-            if child.kind() == kinds::ANNOTATION {
-                if let Some(annotation) = self.annotation(child) {
-                    annotations.push(annotation);
-                }
-                continue;
-            }
+            self.frames.pop();
+        }
+    }
+}
 
-            let consumed_annotations = std::mem::take(&mut annotations);
-            self.visit(child, container, consumed_annotations);
+impl<'a> SymbolExtractor<'a> {
+    pub(crate) fn new(source: &'a str, line_index: &'a LineIndex) -> Self {
+        Self {
+            source,
+            line_index,
+            symbols: DocumentSymbols::default(),
+            depth: 0,
+            frames: Vec::new(),
         }
     }
 
-    fn visit(&mut self, node: Node, container: Option<SymbolId>, annotations: Vec<Annotation>) {
+    pub(crate) fn finish(mut self) -> DocumentSymbols {
+        self.symbols.build_indexes();
+        self.symbols
+    }
+
+    fn enter_node(&mut self, node: Node) -> Visit {
+        if self.frames.is_empty() {
+            // The walk root is a pure container, never a declaration itself.
+            self.push_frame(Mode::Body {
+                container: None,
+                pending: Vec::new(),
+            });
+            return Visit::Children;
+        }
+        if !node.is_named() {
+            return Visit::SkipChildren;
+        }
+        let innermost = self.frames.len() - 1;
+        match self.frames[innermost].mode {
+            Mode::Body { container, .. } => self.enter_in_body(node, container),
+            Mode::EnumMembers(enum_id) => self.enter_in_enum(node, enum_id),
+            Mode::Callable { id, body_seen } => self.enter_in_callable(node, id, body_seen),
+        }
+    }
+
+    fn push_frame(&mut self, mode: Mode) {
+        self.frames.push(Frame {
+            depth: self.depth,
+            mode,
+        });
+    }
+
+    fn take_pending(&mut self) -> Vec<Annotation> {
+        match self.frames.last_mut().map(|frame| &mut frame.mode) {
+            Some(Mode::Body { pending, .. }) => std::mem::take(pending),
+            _ => unreachable!("pending annotations only exist in Body frames"),
+        }
+    }
+
+    fn pend_annotation(&mut self, annotation: Annotation) {
+        match self.frames.last_mut().map(|frame| &mut frame.mode) {
+            Some(Mode::Body { pending, .. }) => pending.push(annotation),
+            _ => unreachable!("pending annotations only exist in Body frames"),
+        }
+    }
+
+    fn enter_in_body(&mut self, node: Node, container: Option<SymbolId>) -> Visit {
         match node.kind() {
-            kinds::CLASS_DECL => {
-                self.visit_type_decl(node, container, annotations, SymbolKind::Class)
+            kinds::ANNOTATION => {
+                if let Some(annotation) = self.annotation(node) {
+                    self.pend_annotation(annotation);
+                }
+                Visit::SkipChildren
             }
-            kinds::STRUCT_DECL => {
-                self.visit_type_decl(node, container, annotations, SymbolKind::Struct)
-            }
-            kinds::ENUM_DECL => self.visit_enum_decl(node, container, annotations),
-            kinds::STATE_DECL => self.visit_state_decl(node, container, annotations),
-            kinds::FUNC_DECL => {
-                self.visit_callable_decl(node, container, annotations, SymbolKind::Function);
-            }
-            kinds::EVENT_DECL => {
-                self.visit_callable_decl(node, container, annotations, SymbolKind::Event);
-            }
+            kinds::CLASS_DECL => self.enter_type_decl(node, container, SymbolKind::Class),
+            kinds::STRUCT_DECL => self.enter_type_decl(node, container, SymbolKind::Struct),
+            kinds::ENUM_DECL => self.enter_enum_decl(node, container),
+            kinds::STATE_DECL => self.enter_state_decl(node, container),
+            kinds::FUNC_DECL => self.enter_callable_decl(node, container, SymbolKind::Function),
+            kinds::EVENT_DECL => self.enter_callable_decl(node, container, SymbolKind::Event),
             kinds::MEMBER_VAR_DECL | kinds::AUTOBIND_DECL => {
+                let annotations = self.take_pending();
                 self.visit_var_decl(node, container, annotations, SymbolKind::Field);
+                Visit::SkipChildren
             }
             kinds::LOCAL_VAR_DECL_STMT => {
+                let annotations = self.take_pending();
                 self.visit_var_decl(node, container, annotations, SymbolKind::Variable);
+                Visit::SkipChildren
             }
-            _ => self.visit_children(node, container, annotations),
+            _ => {
+                // Pending annotations forward into the next named sibling's level and die there.
+                let pending = self.take_pending();
+                self.push_frame(Mode::Body { container, pending });
+                Visit::Children
+            }
         }
     }
 
-    fn visit_type_decl(
+    fn enter_in_enum(&mut self, node: Node, enum_id: SymbolId) -> Visit {
+        if node.kind() == kinds::ENUM_DECL_VARIANT {
+            if let Some(name_node) = first_child_kind(node, kinds::IDENT) {
+                self.push_symbol(
+                    node,
+                    name_node,
+                    SymbolKind::EnumMember,
+                    SymbolSpec {
+                        container: Some(enum_id),
+                        ..Default::default()
+                    },
+                );
+            }
+            return Visit::SkipChildren;
+        }
+        self.push_frame(Mode::EnumMembers(enum_id));
+        Visit::Children
+    }
+
+    fn enter_in_callable(&mut self, node: Node, id: SymbolId, body_seen: bool) -> Visit {
+        if node.kind() == kinds::FUNC_BLOCK && !body_seen {
+            match self.frames.last_mut().map(|frame| &mut frame.mode) {
+                Some(Mode::Callable { body_seen, .. }) => *body_seen = true,
+                _ => unreachable!("enter_in_callable runs under a Callable frame"),
+            }
+            self.push_frame(Mode::Body {
+                container: Some(id),
+                pending: Vec::new(),
+            });
+            return Visit::Children;
+        }
+        Visit::SkipChildren
+    }
+
+    fn enter_type_decl(
         &mut self,
         node: Node,
         container: Option<SymbolId>,
-        mut annotations: Vec<Annotation>,
         kind: SymbolKind,
-    ) {
+    ) -> Visit {
+        let mut annotations = self.take_pending();
         annotations.extend(self.direct_annotations(node));
         let Some(name_node) = first_child_kind(node, kinds::IDENT) else {
-            self.visit_children(node, container, annotations);
-            return;
+            self.push_frame(Mode::Body {
+                container,
+                pending: annotations,
+            });
+            return Visit::Children;
         };
         let base_class = base_type(node, self.source);
         let (is_state_machine, is_abstract) = {
@@ -137,19 +249,22 @@ impl SymbolExtractor<'_> {
             },
         );
 
-        self.visit_children(node, Some(id), Vec::new());
+        self.push_frame(Mode::Body {
+            container: Some(id),
+            pending: Vec::new(),
+        });
+        Visit::Children
     }
 
-    fn visit_enum_decl(
-        &mut self,
-        node: Node,
-        container: Option<SymbolId>,
-        mut annotations: Vec<Annotation>,
-    ) {
+    fn enter_enum_decl(&mut self, node: Node, container: Option<SymbolId>) -> Visit {
+        let mut annotations = self.take_pending();
         annotations.extend(self.direct_annotations(node));
         let Some(name_node) = first_child_kind(node, kinds::IDENT) else {
-            self.visit_children(node, container, annotations);
-            return;
+            self.push_frame(Mode::Body {
+                container,
+                pending: annotations,
+            });
+            return Visit::Children;
         };
         let enum_id = self.push_symbol(
             node,
@@ -162,43 +277,19 @@ impl SymbolExtractor<'_> {
             },
         );
 
-        self.visit_enum_members(node, enum_id);
+        self.push_frame(Mode::EnumMembers(enum_id));
+        Visit::Children
     }
 
-    fn visit_enum_members(&mut self, node: Node, enum_id: SymbolId) {
-        let mut cursor = node.walk();
-        for child in node
-            .children(&mut cursor)
-            .filter(tree_sitter::Node::is_named)
-        {
-            if child.kind() == kinds::ENUM_DECL_VARIANT {
-                if let Some(name_node) = first_child_kind(child, kinds::IDENT) {
-                    self.push_symbol(
-                        child,
-                        name_node,
-                        SymbolKind::EnumMember,
-                        SymbolSpec {
-                            container: Some(enum_id),
-                            ..Default::default()
-                        },
-                    );
-                }
-            } else {
-                self.visit_enum_members(child, enum_id);
-            }
-        }
-    }
-
-    fn visit_state_decl(
-        &mut self,
-        node: Node,
-        container: Option<SymbolId>,
-        mut annotations: Vec<Annotation>,
-    ) {
+    fn enter_state_decl(&mut self, node: Node, container: Option<SymbolId>) -> Visit {
+        let mut annotations = self.take_pending();
         annotations.extend(self.direct_annotations(node));
         let Some(name_node) = first_child_kind(node, kinds::IDENT) else {
-            self.visit_children(node, container, annotations);
-            return;
+            self.push_frame(Mode::Body {
+                container,
+                pending: annotations,
+            });
+            return Visit::Children;
         };
         let owner_class = nth_child_kind(node, kinds::IDENT, 1).map(|n| node_text(n, self.source));
         let base_class = node
@@ -217,20 +308,27 @@ impl SymbolExtractor<'_> {
             },
         );
 
-        self.visit_children(node, Some(id), Vec::new());
+        self.push_frame(Mode::Body {
+            container: Some(id),
+            pending: Vec::new(),
+        });
+        Visit::Children
     }
 
-    fn visit_callable_decl(
+    fn enter_callable_decl(
         &mut self,
         node: Node,
         container: Option<SymbolId>,
-        mut annotations: Vec<Annotation>,
         default_kind: SymbolKind,
-    ) {
+    ) -> Visit {
+        let mut annotations = self.take_pending();
         annotations.extend(self.direct_annotations(node));
         let Some(name_node) = first_child_kind(node, kinds::IDENT) else {
-            self.visit_children(node, container, annotations);
-            return;
+            self.push_frame(Mode::Body {
+                container,
+                pending: annotations,
+            });
+            return Visit::Children;
         };
         let kind = if default_kind == SymbolKind::Function && container.is_some() {
             SymbolKind::Method
@@ -256,8 +354,13 @@ impl SymbolExtractor<'_> {
             },
         );
 
+        // Parameters are pushed before block locals so SymbolId order stays func -> params -> locals.
         self.visit_params(node, id);
-        self.visit_body_locals(node, id);
+        self.push_frame(Mode::Callable {
+            id,
+            body_seen: false,
+        });
+        Visit::Children
     }
 
     fn visit_params(&mut self, node: Node, function_id: SymbolId) {
@@ -269,12 +372,6 @@ impl SymbolExtractor<'_> {
             {
                 self.visit_var_decl(group, Some(function_id), Vec::new(), SymbolKind::Parameter);
             }
-        }
-    }
-
-    fn visit_body_locals(&mut self, node: Node, function_id: SymbolId) {
-        if let Some(block) = first_child_kind(node, kinds::FUNC_BLOCK) {
-            self.visit_children(block, Some(function_id), Vec::new());
         }
     }
 
