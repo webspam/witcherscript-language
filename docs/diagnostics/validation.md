@@ -30,6 +30,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 22 | `native_default_coercion` | info | A native engine type (`CBehTreeVal*`) `default` uses a non-exact primitive (accepted, but coerced) |
 | 23 | `struct_property_access_modifier` | error | An accessibility modifier (`private`/`protected`/`public`) is applied to a struct property |
 | 24 | `state_owner_not_statemachine` | warning | `state X in Owner` where `Owner` is a class missing the `statemachine` keyword |
+| 25 | `state_owner_not_class` | error | `state X in Owner` where `Owner` resolves to something that is not a class (e.g. a struct or enum) |
 
 ## Details
 
@@ -188,4 +189,10 @@ A `private`, `protected`, or `public` specifier applied to a property declared i
 
 A `state X in Owner` declaration where `Owner` resolves to a `class` (in the workspace or a base script) that lacks the `statemachine` keyword. Only a state machine can host states, so the mod compiler rejects this.
 
-The keyword is not inherited: each owner class must carry `statemachine` itself, so a state targeting a subclass of a state machine is still flagged. An owner that does not resolve to any known class is left to the `unknown_type` rule, and a non-class owner is reported elsewhere; neither is flagged here.
+The keyword is not inherited: each owner class must carry `statemachine` itself, so a state targeting a subclass of a state machine is still flagged.
+
+### 25. State owner is not a class
+
+A `state X in Owner` declaration where `Owner` resolves to something that is not a class - a struct, enum, function, or another state. States can only be declared in a state machine class, so this is an error rather than a warning.
+
+Rules 24 and 25 share one scan path: every `state` declaration's owner is resolved once and routed to whichever applies. An owner that does not resolve to any known symbol is left to the `unknown_type` rule.
