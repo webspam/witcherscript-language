@@ -143,8 +143,9 @@ async fn references_lens_emits_unresolved_data_lens() {
     }
 }
 
+// Pre-index resolves must answer immediately: parked resolves hold request-cap slots and can deadlock the main loop.
 #[tokio::test]
-async fn reference_lens_count_waits_for_initial_index() {
+async fn reference_lens_resolves_before_initial_index() {
     let backend = make_backend();
     enable_references_lens(&backend);
     let uri = Url::parse("file:///refs_gate.ws").expect("uri parses");
@@ -162,25 +163,14 @@ async fn reference_lens_count_waits_for_initial_index() {
         .find(|l| l.range.start.line == 0)
         .expect("lens for Foo on line 0");
 
-    let resolver = backend.clone();
-    let handle = tokio::spawn(async move { resolver._code_lens_resolve(foo_lens).await });
-
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert!(
-        !handle.is_finished(),
-        "resolve must block until the initial index completes, not count against an empty index"
-    );
-
-    backend
-        .initial_index_done
-        .store(true, std::sync::atomic::Ordering::Release);
-    backend.index_ready_notify.notify_waiters();
-
-    let resolved = handle.await.expect("join").expect("resolve ok");
+    let resolved = backend
+        ._code_lens_resolve(foo_lens)
+        .await
+        .expect("pre-index resolve must answer, not park");
     let command = resolved.command.expect("resolved lens carries a command");
     assert_eq!(
         command.title, "1 reference",
-        "Foo has exactly one caller once the index is populated"
+        "open documents are indexed on did_open, so Foo's caller is counted pre-index"
     );
 }
 
