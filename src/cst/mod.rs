@@ -4,6 +4,7 @@ pub(crate) mod grammar;
 pub(crate) mod kinds;
 pub(crate) mod nav;
 pub(crate) mod offsets;
+pub(crate) mod walk;
 
 #[cfg(test)]
 mod sourcegen;

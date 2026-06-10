@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 use crate::cst::kinds;
+use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::document::ParsedDocument;
 use crate::resolve::{SymbolDb, classify_definition_at_ident};
 use crate::symbols::{SymbolId, SymbolKind};
@@ -64,48 +65,58 @@ pub fn collect_semantic_tokens_cancellable(
     db: &SymbolDb,
     should_continue: &dyn Fn() -> bool,
 ) -> Option<Vec<u32>> {
-    let mut tokens: Vec<RawToken> = Vec::new();
-    let mut cache: ClassifyCache = HashMap::new();
+    let mut collector = TokenCollector {
+        uri,
+        document,
+        db,
+        cache: HashMap::new(),
+        tokens: Vec::new(),
+    };
     let root = document.tree.root_node();
     let mut cursor = root.walk();
     for child in root.children(&mut cursor) {
         if !should_continue() {
             return None;
         }
-        collect(child, uri, document, db, &mut cache, &mut tokens);
+        walk(child, &mut collector);
     }
-    Some(encode(&tokens))
+    Some(encode(&collector.tokens))
 }
 
 type ClassifyCache = HashMap<(String, Option<SymbolId>), Option<(u32, u32)>>;
 
-fn collect(
-    node: Node,
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    cache: &mut ClassifyCache,
-    out: &mut Vec<RawToken>,
-) {
-    if let Some((token_type, token_modifiers)) = classify(node, uri, document, db, cache) {
-        let range = document.line_index.byte_range_to_range(
-            &document.source,
-            node.start_byte(),
-            node.end_byte(),
-        );
-        if range.start.line == range.end.line && range.end.character > range.start.character {
-            out.push(RawToken {
-                line: range.start.line,
-                start_char: range.start.character,
-                length: range.end.character - range.start.character,
-                token_type,
-                token_modifiers,
-            });
-        }
-    } else if node.is_named() {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            collect(child, uri, document, db, cache, out);
+struct TokenCollector<'a, 'db> {
+    uri: &'a str,
+    document: &'a ParsedDocument,
+    db: &'a SymbolDb<'db>,
+    cache: ClassifyCache,
+    tokens: Vec<RawToken>,
+}
+
+impl<'tree> CstVisitor<'tree> for TokenCollector<'_, '_> {
+    fn enter(&mut self, node: Node<'tree>) -> Visit {
+        if let Some((token_type, token_modifiers)) =
+            classify(node, self.uri, self.document, self.db, &mut self.cache)
+        {
+            let range = self.document.line_index.byte_range_to_range(
+                &self.document.source,
+                node.start_byte(),
+                node.end_byte(),
+            );
+            if range.start.line == range.end.line && range.end.character > range.start.character {
+                self.tokens.push(RawToken {
+                    line: range.start.line,
+                    start_char: range.start.character,
+                    length: range.end.character - range.start.character,
+                    token_type,
+                    token_modifiers,
+                });
+            }
+            Visit::SkipChildren
+        } else if node.is_named() {
+            Visit::Children
+        } else {
+            Visit::SkipChildren
         }
     }
 }
