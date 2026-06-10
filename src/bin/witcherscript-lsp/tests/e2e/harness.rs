@@ -65,6 +65,11 @@ enum ConfigReplies {
     Hold,
 }
 
+enum CodeLens {
+    Refresh,
+    NoRefresh,
+}
+
 impl LspClient {
     pub(crate) async fn spawn() -> Self {
         Self::spawn_with(None).await
@@ -72,7 +77,7 @@ impl LspClient {
 
     // Holding the workspace/configuration reply keeps the server deterministically pre-index until wait_until_indexed().
     pub(crate) async fn spawn_with_held_config() -> Self {
-        Self::spawn_inner(None, false, ConfigReplies::Hold).await
+        Self::spawn_inner(None, CodeLens::NoRefresh, ConfigReplies::Hold).await
     }
 
     pub(crate) async fn spawn_open_files_scope() -> Self {
@@ -84,18 +89,19 @@ impl LspClient {
 
     // No readiness wait: the post-index codeLens/refresh is the caller's signal, and wait_until_indexed would consume it.
     pub(crate) async fn spawn_with_code_lens_refresh() -> Self {
-        Self::spawn_inner(None, true, ConfigReplies::Answer).await
+        Self::spawn_inner(None, CodeLens::Refresh, ConfigReplies::Answer).await
     }
 
     async fn spawn_with(init_options: Option<Value>) -> Self {
-        let mut client = Self::spawn_inner(init_options, false, ConfigReplies::Answer).await;
+        let mut client =
+            Self::spawn_inner(init_options, CodeLens::NoRefresh, ConfigReplies::Answer).await;
         client.wait_until_indexed().await;
         client
     }
 
     async fn spawn_inner(
         init_options: Option<Value>,
-        code_lens_refresh: bool,
+        code_lens_refresh: CodeLens,
         config_replies: ConfigReplies,
     ) -> Self {
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
@@ -140,12 +146,14 @@ impl LspClient {
                         diagnostic: Some(DiagnosticClientCapabilities::default()),
                         ..TextDocumentClientCapabilities::default()
                     }),
-                    workspace: code_lens_refresh.then(|| WorkspaceClientCapabilities {
-                        code_lens: Some(CodeLensWorkspaceClientCapabilities {
-                            refresh_support: Some(true),
-                        }),
-                        ..WorkspaceClientCapabilities::default()
-                    }),
+                    workspace: matches!(code_lens_refresh, CodeLens::Refresh).then_some(
+                        WorkspaceClientCapabilities {
+                            code_lens: Some(CodeLensWorkspaceClientCapabilities {
+                                refresh_support: Some(true),
+                            }),
+                            ..WorkspaceClientCapabilities::default()
+                        },
+                    ),
                     ..ClientCapabilities::default()
                 },
                 initialization_options: init_options,
