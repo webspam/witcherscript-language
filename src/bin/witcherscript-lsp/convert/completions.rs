@@ -82,7 +82,7 @@ pub(crate) fn signature_help_response(info: SignatureHelpInfo) -> SignatureHelp 
         .parameters
         .into_iter()
         .map(|(start, end)| ParameterInformation {
-            label: ParameterLabel::LabelOffsets([start, end]),
+            label: ParameterLabel::LabelOffsets([wire_u32(start), wire_u32(end)]),
             documentation: None,
         })
         .collect();
@@ -94,8 +94,13 @@ pub(crate) fn signature_help_response(info: SignatureHelpInfo) -> SignatureHelp 
             active_parameter: None,
         }],
         active_signature: Some(0),
-        active_parameter: info.active_parameter,
+        active_parameter: info.active_parameter.map(wire_u32),
     }
+}
+
+/// Saturates: LSP wire offsets are u32; values past that clamp to `u32::MAX`.
+fn wire_u32(n: usize) -> u32 {
+    n.try_into().unwrap_or(u32::MAX)
 }
 
 fn method_signature(name: &str, params: &[Symbol]) -> String {

@@ -223,8 +223,9 @@ impl Backend {
         }
         if let Some(Value::Number(n)) = iter.next()
             && let Some(limit) = n.as_u64()
+            && let Ok(limit) = u32::try_from(limit)
         {
-            next_cfg.formatter_line_limit = limit as u32;
+            next_cfg.formatter_line_limit = limit;
             log_setting_change(
                 "formatter.lineLimit",
                 &prev_cfg.formatter_line_limit,
@@ -300,8 +301,9 @@ impl Backend {
         if let Some(Value::Number(n)) = iter.next()
             && let Some(size) = n.as_u64()
             && size > 0
+            && let Ok(size) = u32::try_from(size)
         {
-            next_cfg.editor_tab_size = size as u32;
+            next_cfg.editor_tab_size = size;
         }
         next_cfg.editor_insert_spaces = match iter.next() {
             Some(Value::Bool(b)) => b,

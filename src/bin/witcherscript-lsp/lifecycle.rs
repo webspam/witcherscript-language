@@ -130,8 +130,9 @@ impl Backend {
                 if let Some(limit) = formatter
                     .get("lineLimit")
                     .and_then(serde_json::Value::as_u64)
+                    && let Ok(limit) = u32::try_from(limit)
                 {
-                    cfg.formatter_line_limit = limit as u32;
+                    cfg.formatter_line_limit = limit;
                 }
                 if let Some(compact) = formatter
                     .get("compactColon")

@@ -31,8 +31,8 @@ impl Fixture {
 
         let mut current_uri: String = default_uri();
         let mut current_text = String::new();
-        let mut stripped_line_idx: u32 = 0;
-        let mut last_content_line_idx: Option<u32> = None;
+        let mut stripped_line_idx: usize = 0;
+        let mut last_content_line_idx: Option<usize> = None;
         let mut prev_content_line: Option<String> = None;
         let mut started = false;
 
@@ -81,15 +81,15 @@ impl Fixture {
 
                 let prev_line = prev_content_line.as_deref().unwrap_or("");
                 let mut prev_chars = prev_line.chars();
-                let mut col_u16: u32 = 0;
-                let mut start_col_u16: u32 = 0;
-                let mut end_col_u16: u32 = 0;
+                let mut col_u16: usize = 0;
+                let mut start_col_u16: usize = 0;
+                let mut end_col_u16: usize = 0;
                 for i in 0..caret_end_char {
                     let c = prev_chars.next().unwrap_or(' ');
                     if i == start_char {
                         start_col_u16 = col_u16;
                     }
-                    col_u16 += c.len_utf16() as u32;
+                    col_u16 += c.len_utf16();
                     if i + 1 == caret_end_char {
                         end_col_u16 = col_u16;
                     }
@@ -98,14 +98,8 @@ impl Fixture {
                 let label = raw_line[caret_end_byte..].trim();
                 if let Some(prev_idx) = last_content_line_idx {
                     let range = SourceRange {
-                        start: SourcePosition {
-                            line: prev_idx,
-                            character: start_col_u16,
-                        },
-                        end: SourcePosition {
-                            line: prev_idx,
-                            character: end_col_u16,
-                        },
+                        start: SourcePosition::new(prev_idx, start_col_u16),
+                        end: SourcePosition::new(prev_idx, end_col_u16),
                     };
                     let prev = spans.insert(label.to_string(), (current_uri.clone(), range));
                     assert!(prev.is_none(), "fixture: duplicate span label {label:?}");
@@ -114,7 +108,7 @@ impl Fixture {
             }
 
             let mut out_line = String::new();
-            let mut col: u32 = 0;
+            let mut col: usize = 0;
             let mut chars = raw_line.chars().peekable();
             while let Some(c) = chars.next() {
                 if c == '$' && chars.peek() == Some(&'0') {
@@ -125,15 +119,12 @@ impl Fixture {
                     );
                     cursor = Some((
                         current_uri.clone(),
-                        SourcePosition {
-                            line: stripped_line_idx,
-                            character: col,
-                        },
+                        SourcePosition::new(stripped_line_idx, col),
                     ));
                     continue;
                 }
                 out_line.push(c);
-                col += c.len_utf16() as u32;
+                col += c.len_utf16();
             }
             current_text.push_str(&out_line);
             current_text.push('\n');

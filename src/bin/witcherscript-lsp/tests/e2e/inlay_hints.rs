@@ -69,7 +69,8 @@ async fn range_excludes_calls_outside_viewport() {
     let far_line = text
         .lines()
         .position(|l| l.contains("Far(2)"))
-        .expect("fixture contains the Far call") as u32;
+        .expect("fixture contains the Far call");
+    let far_line = u32::try_from(far_line).expect("fixture line fits u32");
     let range = Range {
         start: Position {
             line: 0,

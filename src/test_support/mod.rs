@@ -108,14 +108,8 @@ pub fn assert_names_contain(actual: &[&str], expected: &[&str]) {
 }
 
 pub fn script_env(name: &str, type_name: &str) -> ScriptEnvironment {
-    let start = SourcePosition {
-        line: 1,
-        character: 0,
-    };
-    let end = SourcePosition {
-        line: 1,
-        character: name.len() as u32,
-    };
+    let start = SourcePosition::new(1, 0);
+    let end = SourcePosition::new(1, name.len());
     let range = SourceRange { start, end };
     ScriptEnvironment::new(vec![ScriptGlobal {
         name: name.to_string(),
