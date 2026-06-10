@@ -48,6 +48,8 @@ Use `thiserror` to define typed error enums for library-style modules where call
 
 Errors fail loud. No silent `catch`-equivalent: an `Err` that is intentionally dropped is explicit, named, and justified in a comment.
 
+Exception: `let _ = write!(s, ...)` where `s` is a `String` or `Vec<u8>`. `fmt::Write` on a buffer cannot fail, so there is no error to handle. Does not extend to `io::Write` (files, sockets), which can.
+
 ## Type safety
 
 - Newtypes (`C-NEWTYPE`) for distinct domains: a `SymbolId` is not a `u32`, a `FilePath` is not a `String`. The wrapper costs nothing at runtime and prevents whole categories of mix-ups.

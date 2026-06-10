@@ -58,9 +58,12 @@ static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock
 
 /// `class` stubs for the native engine types, emitted from `NATIVE_TYPE_ACCEPTS` so the names live in one place.
 static NATIVE_TYPES_SOURCE: LazyLock<String> = LazyLock::new(|| {
-    native_type_names()
-        .map(|name| format!("class {name} {{}}\n"))
-        .collect()
+    native_type_names().fold(String::new(), |mut acc, name| {
+        acc.push_str("class ");
+        acc.push_str(name);
+        acc.push_str(" {}\n");
+        acc
+    })
 });
 
 /// `array` (only valid as `array<T>`) and the orphan-member bucket (a synthetic enum) are not bare-writable type names, so their types must stay out of type completion.
