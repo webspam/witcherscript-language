@@ -306,6 +306,8 @@ impl Backend {
         self.index_base_scripts().await;
         self.initial_index_done.store(true, Ordering::Release);
         self.index_ready_notify.notify_waiters();
+        // Refreshes emitted during indexing race the flag; one more so clients re-pull their pre-index empty reports.
+        self.mark_state_changed();
         trace!(
             op = "initialized",
             elapsed_us = started_at.elapsed().as_micros(),

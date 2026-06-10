@@ -575,57 +575,69 @@ fn workspace_diagnostic_params() -> WorkspaceDiagnosticParams {
     }
 }
 
-// Asserts the pull parks (not busy-loops on ServerCancelled): Pending until index-ready notify.
-async fn ready_after_notify<F>(backend: &Backend, mut fut: std::pin::Pin<Box<F>>) -> F::Output
-where
-    F: std::future::Future,
-{
-    use std::future::Future;
-    use std::task::Poll;
-
-    let pending = std::future::poll_fn(|cx| Poll::Ready(Future::poll(fut.as_mut(), cx))).await;
-    assert!(
-        matches!(pending, Poll::Pending),
-        "pull must park while base scripts are still indexing",
-    );
-    backend.initial_index_done.store(true, Ordering::Release);
-    backend.index_ready_notify.notify_waiters();
-    fut.await
-}
-
+// Pre-index pulls must answer immediately: parked pulls hold request-cap slots and can deadlock the main loop.
 #[tokio::test]
-async fn document_diagnostic_parks_until_initial_index() {
+async fn document_diagnostic_answers_empty_until_initial_index() {
     use async_lsp::LanguageServer;
 
     let mut backend = workspace_scope_backend_indexing_pending();
     let uri: Url = "file:///diag_gate.ws".parse().unwrap();
     backend._did_open(open_params(&uri, "class CGate {}\n"));
 
-    let fut = Box::pin(backend.document_diagnostic(document_diagnostic_params(&uri)));
-    let report = ready_after_notify(&backend, fut)
+    let pre_index = backend
+        .document_diagnostic(document_diagnostic_params(&uri))
+        .await
+        .expect("pre-index document pull must answer, not park");
+    let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) = pre_index
+    else {
+        panic!("pre-index document pull must answer a Full report");
+    };
+    assert!(
+        full.full_document_diagnostic_report.items.is_empty(),
+        "pre-index document pull must answer empty, got {:?}",
+        full.full_document_diagnostic_report.items
+    );
+
+    backend.initial_index_done.store(true, Ordering::Release);
+    let report = backend
+        .document_diagnostic(document_diagnostic_params(&uri))
         .await
         .expect("post-index document pull must produce a report");
     assert!(
         matches!(report, DocumentDiagnosticReportResult::Report(_)),
-        "once the index is ready the parked pull returns a report",
+        "once the index is ready the pull returns a report",
     );
 }
 
 #[tokio::test]
-async fn workspace_diagnostic_parks_until_initial_index() {
+async fn workspace_diagnostic_answers_empty_until_initial_index() {
     use async_lsp::LanguageServer;
 
     let mut backend = workspace_scope_backend_indexing_pending();
     let uri: Url = "file:///ws_diag_gate.ws".parse().unwrap();
     backend._did_open(open_params(&uri, "class CGate {}\n"));
 
-    let fut = Box::pin(backend.workspace_diagnostic(workspace_diagnostic_params()));
-    let report = ready_after_notify(&backend, fut)
+    let pre_index = backend
+        .workspace_diagnostic(workspace_diagnostic_params())
+        .await
+        .expect("pre-index workspace pull must answer, not park");
+    let WorkspaceDiagnosticReportResult::Report(report) = pre_index else {
+        panic!("pre-index workspace pull must answer a complete report");
+    };
+    assert!(
+        report.items.is_empty(),
+        "pre-index workspace pull must answer empty, got {:?}",
+        report.items
+    );
+
+    backend.initial_index_done.store(true, Ordering::Release);
+    let report = backend
+        .workspace_diagnostic(workspace_diagnostic_params())
         .await
         .expect("post-index workspace pull must produce a report");
     assert!(
         matches!(report, WorkspaceDiagnosticReportResult::Report(_)),
-        "once the index is ready the parked pull returns a report",
+        "once the index is ready the pull returns a report",
     );
 }
 

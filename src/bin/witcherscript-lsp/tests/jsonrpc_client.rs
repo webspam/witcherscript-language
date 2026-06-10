@@ -19,6 +19,8 @@ pub(crate) struct JsonRpcClient<R, W> {
     write: W,
     read: BufReader<R>,
     next_id: i64,
+    hold_config: bool,
+    held_config_requests: Vec<Value>,
 }
 
 #[allow(dead_code)]
@@ -28,6 +30,20 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
             write,
             read: BufReader::new(read),
             next_id: 1,
+            hold_config: false,
+            held_config_requests: Vec::new(),
+        }
+    }
+
+    pub(crate) fn hold_config_replies(&mut self) {
+        self.hold_config = true;
+    }
+
+    pub(crate) async fn release_config_replies(&mut self) {
+        self.hold_config = false;
+        for request in std::mem::take(&mut self.held_config_requests) {
+            let reply = Self::config_reply(&request);
+            self.send_raw(&reply).await;
         }
     }
 
@@ -168,17 +184,26 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
 
     fn handle_inbound(&mut self, v: Value) -> Option<Value> {
         let method = v.get("method").and_then(|m| m.as_str())?;
-        let id = v.get("id").cloned()?;
-        let result = match method {
-            "workspace/configuration" => {
-                let count = v
-                    .pointer("/params/items")
-                    .and_then(|i| i.as_array())
-                    .map_or(0, std::vec::Vec::len);
-                Value::Array(vec![Value::Null; count])
+        v.get("id")?;
+        if method == "workspace/configuration" {
+            if self.hold_config {
+                self.held_config_requests.push(v);
+                return None;
             }
-            _ => Value::Null,
-        };
-        Some(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
+            return Some(Self::config_reply(&v));
+        }
+        Some(json!({ "jsonrpc": "2.0", "id": v.get("id"), "result": Value::Null }))
+    }
+
+    fn config_reply(request: &Value) -> Value {
+        let count = request
+            .pointer("/params/items")
+            .and_then(|i| i.as_array())
+            .map_or(0, std::vec::Vec::len);
+        json!({
+            "jsonrpc": "2.0",
+            "id": request.get("id"),
+            "result": Value::Array(vec![Value::Null; count]),
+        })
     }
 }

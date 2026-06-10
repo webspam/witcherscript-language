@@ -40,6 +40,7 @@ use crate::edit_queue::PendingEdit;
 use crate::file_scope::{FileScope, classify_file_scope};
 use crate::file_scope_status::FileScopeStatusParams;
 use crate::legacy_status::LegacyScriptStatusParams;
+use crate::queries::{empty_full_document_report, empty_workspace_report};
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
@@ -736,13 +737,16 @@ impl LanguageServer for Backend {
         Box::pin(async move { backend._code_action(params) })
     }
 
+    // Pre-index pulls answer empty rather than park: enough parked pulls deadlock the main loop; the post-index refresh re-pulls.
     fn document_diagnostic(
         &mut self,
         params: DocumentDiagnosticParams,
     ) -> BoxFuture<'static, Result<DocumentDiagnosticReportResult>> {
         let backend = self.clone();
         Box::pin(async move {
-            backend.await_initial_index().await;
+            if !backend.initial_index_done.load(Ordering::Acquire) {
+                return Ok(empty_full_document_report());
+            }
             backend
                 .spawn_compute(move |b| b._document_diagnostic(params))
                 .await
@@ -755,7 +759,9 @@ impl LanguageServer for Backend {
     ) -> BoxFuture<'static, Result<WorkspaceDiagnosticReportResult>> {
         let backend = self.clone();
         Box::pin(async move {
-            backend.await_initial_index().await;
+            if !backend.initial_index_done.load(Ordering::Acquire) {
+                return Ok(empty_workspace_report());
+            }
             backend
                 .spawn_compute(move |b| b._workspace_diagnostic(params))
                 .await
