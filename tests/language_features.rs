@@ -206,10 +206,7 @@ fn builtin_array_methods_resolve_through_fixture() {
         "file:///user/array_usage.ws",
         &doc,
         &db,
-        SourcePosition {
-            line: line as u32,
-            character: (col + 1) as u32,
-        },
+        SourcePosition::new(line, col + 1),
     )
     .expect("PushBack should resolve");
 

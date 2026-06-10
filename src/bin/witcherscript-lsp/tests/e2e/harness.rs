@@ -40,7 +40,7 @@ const RETRY_BACKOFF: std::time::Duration = std::time::Duration::from_millis(5);
 fn error_code(err: &Value) -> Option<ErrorCode> {
     err.get("code")
         .and_then(serde_json::Value::as_i64)
-        .map(|c| ErrorCode(c as i32))
+        .map(|c| ErrorCode(i32::try_from(c).expect("JSON-RPC error codes are i32")))
 }
 
 // A ServerCancelled the client should re-trigger: retriggerRequest defaults to true when absent.

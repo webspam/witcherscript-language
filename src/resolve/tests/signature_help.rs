@@ -26,9 +26,9 @@ fn reports_label_and_parameter_offsets() {
     assert_eq!(info.active_parameter, Some(0));
 
     let (s0, e0) = info.parameters[0];
-    assert_eq!(&info.label[s0 as usize..e0 as usize], "name : string");
+    assert_eq!(&info.label[s0..e0], "name : string");
     let (s1, e1) = info.parameters[1];
-    assert_eq!(&info.label[s1 as usize..e1 as usize], "range : float");
+    assert_eq!(&info.label[s1..e1], "range : float");
 }
 
 #[test]
@@ -225,7 +225,7 @@ fn compact_colon_setting_drops_spaces_around_colon() {
 
     assert_eq!(info.label, "Find(name: string): int");
     let (s0, e0) = info.parameters[0];
-    assert_eq!(&info.label[s0 as usize..e0 as usize], "name: string");
+    assert_eq!(&info.label[s0..e0], "name: string");
 }
 
 #[test]

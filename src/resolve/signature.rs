@@ -16,8 +16,8 @@ use super::symbol_db::SymbolDb;
 pub struct SignatureHelpInfo {
     pub label: String,
     /// `[start, end)` UTF-16 offsets of each parameter substring within `label`.
-    pub parameters: Vec<(u32, u32)>,
-    pub active_parameter: Option<u32>,
+    pub parameters: Vec<(usize, usize)>,
+    pub active_parameter: Option<usize>,
 }
 
 /// A call site around the cursor: a closed `func_call_expr`, or an unclosed call recovered as an `ERROR` node.
@@ -61,9 +61,9 @@ pub fn signature_help(
         if i > 0 {
             label.push_str(", ");
         }
-        let start = label.encode_utf16().count() as u32;
+        let start = label.encode_utf16().count();
         push_parameter(&mut label, param, colon);
-        let end = label.encode_utf16().count() as u32;
+        let end = label.encode_utf16().count();
         parameters.push((start, end));
     }
     label.push(')');
@@ -83,7 +83,7 @@ pub fn signature_help(
                 .filter(|c| c.kind() == "," && c.start_byte() < byte_offset)
                 .count()
         });
-        Some((comma_count as u32).min(params.len() as u32 - 1))
+        Some(comma_count.min(params.len() - 1))
     };
 
     Some(SignatureHelpInfo {

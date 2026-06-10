@@ -72,15 +72,15 @@ impl Fixture {
 
                 let prev_line = prev_content_line.as_deref().unwrap_or("");
                 let mut prev_chars = prev_line.chars();
-                let mut col_u16: u32 = 0;
-                let mut start_col_u16: u32 = 0;
-                let mut end_col_u16: u32 = 0;
+                let mut col_u16: usize = 0;
+                let mut start_col_u16: usize = 0;
+                let mut end_col_u16: usize = 0;
                 for i in 0..caret_end_char {
                     let c = prev_chars.next().unwrap_or(' ');
                     if i == start_char {
                         start_col_u16 = col_u16;
                     }
-                    col_u16 += c.len_utf16() as u32;
+                    col_u16 += c.len_utf16();
                     if i + 1 == caret_end_char {
                         end_col_u16 = col_u16;
                     }
@@ -91,11 +91,11 @@ impl Fixture {
                     let range = Range {
                         start: Position {
                             line: prev_idx,
-                            character: start_col_u16,
+                            character: col_u32(start_col_u16),
                         },
                         end: Position {
                             line: prev_idx,
-                            character: end_col_u16,
+                            character: col_u32(end_col_u16),
                         },
                     };
                     let prev = spans.insert(label.to_string(), (current_uri.clone(), range));
@@ -105,7 +105,7 @@ impl Fixture {
             }
 
             let mut out_line = String::new();
-            let mut col: u32 = 0;
+            let mut col: usize = 0;
             let mut chars = raw_line.chars().peekable();
             while let Some(c) = chars.next() {
                 if c == '$' && chars.peek() == Some(&'0') {
@@ -118,13 +118,13 @@ impl Fixture {
                         current_uri.clone(),
                         Position {
                             line: stripped_line_idx,
-                            character: col,
+                            character: col_u32(col),
                         },
                     ));
                     continue;
                 }
                 out_line.push(c);
-                col += c.len_utf16() as u32;
+                col += c.len_utf16();
             }
             current_text.push_str(&out_line);
             current_text.push('\n');
@@ -161,6 +161,10 @@ impl Fixture {
 
 fn default_uri() -> Url {
     Url::parse("file:///main.ws").unwrap()
+}
+
+fn col_u32(col: usize) -> u32 {
+    col.try_into().expect("fixture column fits u32")
 }
 
 #[cfg(test)]

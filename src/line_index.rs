@@ -6,6 +6,16 @@ pub struct SourcePosition {
     pub character: u32,
 }
 
+impl SourcePosition {
+    /// Saturates: LSP positions are u32; inputs past that clamp to `u32::MAX`.
+    pub fn new(line: usize, character: usize) -> Self {
+        Self {
+            line: line.try_into().unwrap_or(u32::MAX),
+            character: character.try_into().unwrap_or(u32::MAX),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourceRange {
     pub start: SourcePosition,
@@ -35,10 +45,7 @@ impl LineIndex {
     }
 
     pub fn point_to_position(&self, point: Point) -> SourcePosition {
-        SourcePosition {
-            line: point.row as u32,
-            character: point.column as u32,
-        }
+        SourcePosition::new(point.row, point.column)
     }
 
     pub fn byte_to_position(&self, source: &str, byte: usize) -> SourcePosition {
@@ -47,16 +54,9 @@ impl LineIndex {
             .partition_point(|line_start| *line_start <= byte)
             .saturating_sub(1);
         let line_start = self.line_starts[line_index];
-        let character = source[line_start..byte]
-            .encode_utf16()
-            .count()
-            .try_into()
-            .unwrap_or(u32::MAX);
+        let character = source[line_start..byte].encode_utf16().count();
 
-        SourcePosition {
-            line: line_index.try_into().unwrap_or(u32::MAX),
-            character,
-        }
+        SourcePosition::new(line_index, character)
     }
 
     pub fn position_to_byte(&self, source: &str, position: SourcePosition) -> Option<usize> {
@@ -67,19 +67,20 @@ impl LineIndex {
             .copied()
             .unwrap_or(source.len());
         let line = source.get(line_start..line_end)?;
+        let target_units = position.character as usize;
         let mut utf16_units = 0;
 
         for (offset, character) in line.char_indices() {
-            if utf16_units == position.character {
+            if utf16_units == target_units {
                 return Some(line_start + offset);
             }
-            utf16_units += character.len_utf16() as u32;
-            if utf16_units > position.character {
+            utf16_units += character.len_utf16();
+            if utf16_units > target_units {
                 return None;
             }
         }
 
-        if utf16_units == position.character {
+        if utf16_units == target_units {
             Some(line_end)
         } else {
             None

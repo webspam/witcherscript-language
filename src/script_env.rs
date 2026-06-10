@@ -94,14 +94,8 @@ pub fn parse_script_environment(ini_path: &Path) -> Option<ScriptEnvironment> {
         let byte_start = line_start + key_col;
         let byte_end = byte_start + name.len();
 
-        let start = SourcePosition {
-            line: line_idx as u32,
-            character: key_col as u32,
-        };
-        let end = SourcePosition {
-            line: line_idx as u32,
-            character: (key_col + name.len()) as u32,
-        };
+        let start = SourcePosition::new(line_idx, key_col);
+        let end = SourcePosition::new(line_idx, key_col + name.len());
         let range = SourceRange { start, end };
 
         globals.push(ScriptGlobal {

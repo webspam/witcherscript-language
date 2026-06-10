@@ -84,7 +84,6 @@ harness = false
 pedantic = { level = "warn", priority = -1 }
 # Off until time permits to address
 assigning_clones = "allow"
-cast_possible_truncation = "allow"
 cast_precision_loss = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"

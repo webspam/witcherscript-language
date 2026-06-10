@@ -24,18 +24,18 @@ pub(crate) struct RuleTelemetry {
     pub enum_member_lookups: usize,
     pub type_inferences: usize,
     pub definition_resolutions: usize,
-    pub branch_type_ref_us: u64,
-    pub branch_member_access_us: u64,
-    pub branch_member_default_us: u64,
-    pub branch_func_bare_call_us: u64,
-    pub branch_bare_us: u64,
+    pub branch_type_ref_us: u128,
+    pub branch_member_access_us: u128,
+    pub branch_member_default_us: u128,
+    pub branch_func_bare_call_us: u128,
+    pub branch_bare_us: u128,
     pub branch_type_ref_visits: u64,
     pub branch_member_access_visits: u64,
     pub branch_member_default_visits: u64,
     pub branch_func_bare_call_visits: u64,
     pub branch_bare_visits: u64,
-    pub member_access_infer_us: u64,
-    pub member_access_member_us: u64,
+    pub member_access_infer_us: u128,
+    pub member_access_member_us: u128,
 }
 
 impl Add for RuleTelemetry {
@@ -138,7 +138,7 @@ pub(crate) fn run_rules_on_document(
         tracing::trace!(
             rule = rule.name(),
             visits = visits,
-            elapsed_us = elapsed.as_micros() as u64,
+            elapsed_us = elapsed.as_micros(),
             "cst rule timing"
         );
     }
