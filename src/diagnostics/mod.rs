@@ -12,6 +12,7 @@ mod cst_walker;
 mod duplicate_local;
 mod duplicate_symbols;
 mod shadowing;
+mod state_owner;
 mod super_field_access;
 mod type_mismatch;
 mod unknown_method;
@@ -30,6 +31,7 @@ pub(crate) use cst_walker::{
 pub use duplicate_local::collect_duplicate_local_diagnostics;
 pub use duplicate_symbols::collect_duplicate_symbol_diagnostics;
 pub use shadowing::collect_shadowing_diagnostics;
+pub use state_owner::collect_state_owner_diagnostics;
 pub use super_field_access::collect_super_field_access_diagnostics;
 pub use type_mismatch::collect_type_mismatch_diagnostics;
 pub use unknown_method::collect_unknown_method_diagnostics;

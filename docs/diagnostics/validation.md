@@ -29,6 +29,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 21 | `native_instantiation` | error | `new T` on a native engine type (`CBehTreeVal*`), which cannot be instantiated |
 | 22 | `native_default_coercion` | info | A native engine type (`CBehTreeVal*`) `default` uses a non-exact primitive (accepted, but coerced) |
 | 23 | `struct_property_access_modifier` | error | An accessibility modifier (`private`/`protected`/`public`) is applied to a struct property |
+| 24 | `state_owner_not_statemachine` | warning | `state X in Owner` where `Owner` is a class missing the `statemachine` keyword |
 
 ## Details
 
@@ -182,3 +183,9 @@ A `CBehTreeVal*` `default` whose value is a primitive other than the type's exac
 ### 23. Accessibility modifier on a struct property
 
 A `private`, `protected`, or `public` specifier applied to a property declared inside a `struct`, e.g. `struct S { private var x : int; }`. The diagnostic underlines the offending keyword. Unlike most rules in this list it is purely syntactic, so the `witcherscript-check` CLI reports it as well.
+
+### 24. State owner is not a state machine
+
+A `state X in Owner` declaration where `Owner` resolves to a `class` (in the workspace or a base script) that lacks the `statemachine` keyword. Only a state machine can host states, so the mod compiler rejects this.
+
+The keyword is not inherited: each owner class must carry `statemachine` itself, so a state targeting a subclass of a state machine is still flagged. An owner that does not resolve to any known class is left to the `unknown_type` rule, and a non-class owner is reported elsewhere; neither is flagged here.
