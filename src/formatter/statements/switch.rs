@@ -74,6 +74,20 @@ fn arm_end_row(arm: &SwitchArm) -> Option<usize> {
         .map(|n| n.end_position().row)
 }
 
+fn arm_start_byte(arm: &SwitchArm) -> Option<usize> {
+    arm.labels
+        .first()
+        .or_else(|| arm.stmts.first())
+        .map(tree_sitter::Node::start_byte)
+}
+
+fn arm_end_byte(arm: &SwitchArm) -> Option<usize> {
+    arm.stmts
+        .last()
+        .or_else(|| arm.labels.last())
+        .map(tree_sitter::Node::end_byte)
+}
+
 fn blank_line_between_arms(a: &SwitchArm, b: &SwitchArm) -> bool {
     match (arm_end_row(a), arm_start_row(b)) {
         (Some(end), Some(start)) => start.saturating_sub(end) >= 2,
@@ -232,17 +246,7 @@ impl Formatter<'_> {
     }
 
     fn comment_between_arms(&self, a: &SwitchArm, b: &SwitchArm) -> bool {
-        let a_end = a
-            .stmts
-            .last()
-            .or_else(|| a.labels.last())
-            .map(tree_sitter::Node::end_byte);
-        let b_start = b
-            .labels
-            .first()
-            .or_else(|| b.stmts.first())
-            .map(tree_sitter::Node::start_byte);
-        match (a_end, b_start) {
+        match (arm_end_byte(a), arm_start_byte(b)) {
             (Some(e), Some(s)) => self
                 .comments
                 .iter()
@@ -253,12 +257,12 @@ impl Formatter<'_> {
 }
 
 fn arm_has_interior_comment(arm: &SwitchArm, comments: &[Node]) -> bool {
-    let (Some(start_row), Some(end_row)) = (arm_start_row(arm), arm_end_row(arm)) else {
+    let (Some(start), Some(end)) = (arm_start_byte(arm), arm_end_byte(arm)) else {
         return false;
     };
     comments
         .iter()
-        .any(|c| (start_row..=end_row).contains(&c.start_position().row))
+        .any(|c| c.start_byte() >= start && c.start_byte() < end)
 }
 
 fn arm_structurally_inline(arm: &SwitchArm, comments: &[Node]) -> bool {

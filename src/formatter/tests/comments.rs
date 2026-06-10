@@ -271,6 +271,39 @@ fn line_comment_before_brace_never_swallows_brace(#[case] input: &str) {
 }
 
 #[test]
+fn comment_between_stmts_no_blank_inserted() {
+    let src = "function f() {\n    a();\n    // mid\n    b();\n}\n";
+    expect![[r"
+        function f() {
+            a();
+            // mid
+            b();
+        }
+    "]]
+    .assert_eq(&fmt(src));
+}
+
+#[test]
+fn comment_between_if_body_and_else_stays_outside_condition() {
+    let src = "function f() {\n    if (a) {\n        x();\n    }\n  // note\n    else if (b) {\n        y();\n    } // note2\n    else {\n        z();\n    }\n}\n";
+    expect![[r"
+        function f() {
+            if (a) {
+                x();
+            }
+            // note
+            else if (b) {
+                y();
+            } // note2
+            else {
+                z();
+            }
+        }
+    "]]
+    .assert_eq(&fmt(src));
+}
+
+#[test]
 fn formats_all_constructs_idempotently() {
     let input = include_str!("../../../tests/fixtures/formatter/all_grammar_constructs.ws");
     let once = fmt(input);
