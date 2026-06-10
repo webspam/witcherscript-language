@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use crate::cst::ancestors::find_ancestor_of_kind;
 use crate::cst::nav::first_named_child;
 use crate::cst::{fields, kinds};
 
@@ -58,6 +59,28 @@ pub(crate) const DEFAULT_OR_HINT_ASSIGN_KINDS: &[&str] = &[
 pub(crate) enum DefaultOrHintKind {
     Default,
     Hint,
+}
+
+pub(crate) fn is_assignment_target(ident: Node) -> bool {
+    let Some(assign) = find_ancestor_of_kind(ident, &[kinds::ASSIGN_OP_EXPR]) else {
+        return false;
+    };
+    let Some(left) = assign.child_by_field_name(fields::LEFT) else {
+        return false;
+    };
+    write_target(left).map(|n| n.id()) == Some(ident.id())
+}
+
+/// The terminal ident actually written by assigning to `expr`. For `a.b = x`
+/// only `b` is written; for `a[i] = x` only `a`. `None` for non-assignable forms.
+pub(crate) fn write_target(expr: Node) -> Option<Node> {
+    match expr.kind() {
+        kinds::IDENT => Some(expr),
+        kinds::MEMBER_ACCESS_EXPR => write_target(member_access_member(expr)?),
+        kinds::NESTED_EXPR => write_target(first_named_child(expr)?),
+        kinds::ARRAY_EXPR => write_target(expr.child_by_field_name(fields::ACCESSOR)?),
+        _ => None,
+    }
 }
 
 pub(crate) fn ident_default_or_hint_kind(ident: Node) -> Option<DefaultOrHintKind> {
