@@ -234,10 +234,10 @@ pub(crate) struct ParallelRuleShard {
     pub observer: ObservationSet,
 }
 
-pub(crate) fn collect_nodes_with_error_subtree<'tree>(
-    root: Node<'tree>,
+pub(crate) fn collect_nodes_with_error_subtree(
+    root: Node<'_>,
     predicate: impl Fn(&str) -> bool,
-) -> Vec<(Node<'tree>, bool)> {
+) -> Vec<(Node<'_>, bool)> {
     let mut collector = NodeCollector {
         predicate,
         out: Vec::new(),

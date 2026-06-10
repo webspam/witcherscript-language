@@ -44,7 +44,7 @@ impl CstRule for TypeMismatchRule {
             kinds::FUNC_CALL_EXPR => check_call_args(node, ctx),
             kinds::RETURN_STMT => check_return(node, ctx),
             kinds::MEMBER_DEFAULT_VAL | kinds::MEMBER_DEFAULT_VAL_BLOCK_ASSIGN => {
-                check_default(node, ctx)
+                check_default(node, ctx);
             }
             _ => {}
         }

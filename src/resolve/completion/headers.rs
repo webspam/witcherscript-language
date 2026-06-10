@@ -158,7 +158,7 @@ fn header_walk(node: Node, byte_offset: usize, source: &[u8], ctx: &mut HeaderCo
                 ctx.state = HeaderState::AfterExtendsKw;
             }
             (HeaderState::AfterExtendsKw, kinds::IDENT) if past => {
-                ctx.state = HeaderState::AfterBase
+                ctx.state = HeaderState::AfterBase;
             }
             (_, kinds::CLASS_DEF | "{") => ctx.state = HeaderState::Body,
             (_, kinds::ERROR) => header_walk(child, byte_offset, source, ctx),

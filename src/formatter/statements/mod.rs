@@ -131,7 +131,7 @@ impl Formatter<'_> {
         match node.kind() {
             kinds::IF_STMT => self.format_if_stmt(node),
             kinds::WHILE_STMT | kinds::DO_WHILE_STMT | kinds::FOR_STMT => {
-                self.format_loop_stmt(node)
+                self.format_loop_stmt(node);
             }
             kinds::SWITCH_STMT => self.format_switch_stmt(node),
             kinds::FUNC_BLOCK => {

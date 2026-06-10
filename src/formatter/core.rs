@@ -180,7 +180,7 @@ impl<'a> Formatter<'a> {
             kinds::SCRIPT => self.format_script(node),
             kinds::FUNC_DECL | kinds::EVENT_DECL => self.format_func_decl(node),
             kinds::CLASS_DECL | kinds::STRUCT_DECL | kinds::STATE_DECL => {
-                self.format_class_decl(node)
+                self.format_class_decl(node);
             }
             kinds::ENUM_DECL => self.format_enum_decl(node),
             kinds::MEMBER_VAR_DECL => self.format_member_var_decl(node, None, None),
@@ -188,7 +188,7 @@ impl<'a> Formatter<'a> {
             kinds::FUNC_BLOCK => self.format_func_block(node),
             kinds::IF_STMT => self.format_if_stmt(node),
             kinds::WHILE_STMT | kinds::DO_WHILE_STMT | kinds::FOR_STMT => {
-                self.format_loop_stmt(node)
+                self.format_loop_stmt(node);
             }
             kinds::SWITCH_STMT => self.format_switch_stmt(node),
             kinds::EXPR_STMT => self.format_expr_stmt(node),
