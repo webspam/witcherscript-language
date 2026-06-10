@@ -58,12 +58,7 @@ pub fn collect_state_owner_diagnostics(
     result
 }
 
-/// Validates the owner of a `state X in Owner`:
-/// - owner is a class without `statemachine` -> warning. The keyword is not
-///   inherited, so only the literal owner's flag is checked.
-/// - owner resolves to something that is not a class -> error.
-///
-/// An owner that does not resolve is left to the `unknown_type` rule.
+// The statemachine keyword is not inherited: only the literal owner's flag is checked.
 fn check_state_owner<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {
     let owner_ident = node.child_by_field_name(fields::PARENT)?;
     let owner_name = owner_ident.utf8_text(ctx.document.source.as_bytes()).ok()?;
