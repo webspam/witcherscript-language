@@ -246,17 +246,7 @@ impl Formatter<'_> {
     }
 
     fn comment_between_arms(&self, a: &SwitchArm, b: &SwitchArm) -> bool {
-        let a_end = a
-            .stmts
-            .last()
-            .or_else(|| a.labels.last())
-            .map(tree_sitter::Node::end_byte);
-        let b_start = b
-            .labels
-            .first()
-            .or_else(|| b.stmts.first())
-            .map(tree_sitter::Node::start_byte);
-        match (a_end, b_start) {
+        match (arm_end_byte(a), arm_start_byte(b)) {
             (Some(e), Some(s)) => self
                 .comments
                 .iter()
