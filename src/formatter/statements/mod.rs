@@ -3,7 +3,7 @@ mod switch;
 
 use tree_sitter::Node;
 
-use crate::cst::kinds;
+use crate::cst::{fields, kinds};
 
 pub(in crate::formatter) use if_stmt::{block_single_stmt, body_expandable, chain_bodies};
 pub(in crate::formatter) use switch::{SwitchArm, collect_switch_arms};
@@ -269,7 +269,7 @@ impl Formatter<'_> {
     pub(super) fn format_loop_stmt(&mut self, node: Node) {
         match node.kind() {
             kinds::WHILE_STMT => {
-                let cond = node.child_by_field_name("cond");
+                let cond = node.child_by_field_name(fields::COND);
                 let split = self.emit_split_keyword_cond("while (", cond);
                 if !split {
                     self.emit_indent();
@@ -284,16 +284,16 @@ impl Formatter<'_> {
                 } else {
                     BodyLayout::Auto
                 };
-                self.emit_stmt_body(node.child_by_field_name("body"), body_layout);
+                self.emit_stmt_body(node.child_by_field_name(fields::BODY), body_layout);
             }
             kinds::DO_WHILE_STMT => {
                 self.emit_indent();
                 self.emit("do");
-                let cond = node.child_by_field_name("cond");
+                let cond = node.child_by_field_name(fields::COND);
                 let cond_len = cond.map_or(0, |c| self.render_node(c).len());
                 let trailing = " while (".len() + cond_len + ")".len();
                 self.emit_stmt_body_trailing(
-                    node.child_by_field_name("body"),
+                    node.child_by_field_name(fields::BODY),
                     BodyLayout::Auto,
                     Some(trailing),
                 );
@@ -311,19 +311,19 @@ impl Formatter<'_> {
             kinds::FOR_STMT => {
                 self.emit_indent();
                 self.emit("for (");
-                if let Some(init) = node.child_by_field_name("init") {
+                if let Some(init) = node.child_by_field_name(fields::INIT) {
                     self.format_node(init);
                 }
                 self.emit("; ");
-                if let Some(cond) = node.child_by_field_name("cond") {
+                if let Some(cond) = node.child_by_field_name(fields::COND) {
                     self.format_node(cond);
                 }
                 self.emit("; ");
-                if let Some(iter) = node.child_by_field_name("iter") {
+                if let Some(iter) = node.child_by_field_name(fields::ITER) {
                     self.format_node(iter);
                 }
                 self.emit(")");
-                self.emit_stmt_body(node.child_by_field_name("body"), BodyLayout::Auto);
+                self.emit_stmt_body(node.child_by_field_name(fields::BODY), BodyLayout::Auto);
             }
             _ => {
                 self.emit_indent();

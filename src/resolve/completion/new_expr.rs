@@ -1,7 +1,7 @@
 use tree_sitter::Node;
 
 use crate::cst::ancestors::find_ancestor_of_kind;
-use crate::cst::kinds;
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::{AccessLevel, SymbolKind};
@@ -166,7 +166,7 @@ fn expected_type_for_new(
                 return Type::from_annotation(&text).to_db_string();
             }
             kinds::ASSIGN_OP_EXPR => {
-                let lhs = parent.child_by_field_name("left")?;
+                let lhs = parent.child_by_field_name(fields::LEFT)?;
                 return infer_type(uri, document, db, lhs, byte_offset).to_db_string();
             }
             kinds::FUNC_CALL_EXPR | kinds::FUNC_CALL_ARGS | kinds::FUNC_BLOCK | kinds::SCRIPT => {
@@ -179,6 +179,6 @@ fn expected_type_for_new(
 }
 
 fn type_annot_text(parent: Node, source: &str) -> Option<String> {
-    let annot = parent.child_by_field_name("var_type")?;
+    let annot = parent.child_by_field_name(fields::VAR_TYPE)?;
     Some(source[annot.start_byte()..annot.end_byte()].to_string())
 }

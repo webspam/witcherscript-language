@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use crate::cst::kinds;
+use crate::cst::{fields, kinds};
 
 mod action;
 mod core;
@@ -108,7 +108,7 @@ pub(super) struct BoolPart {
 
 fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<BoolPart>) {
     if node.kind() == kinds::BINARY_OP_EXPR
-        && let Some(op_node) = node.child_by_field_name("op")
+        && let Some(op_node) = node.child_by_field_name(fields::OP)
     {
         let op_str: Option<&'static str> = match op_node.kind() {
             kinds::BINARY_OP_OR => Some("||"),
@@ -117,8 +117,8 @@ fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<BoolPart>) {
         };
         if let Some(op) = op_str
             && let (Some(left), Some(right)) = (
-                node.child_by_field_name("left"),
-                node.child_by_field_name("right"),
+                node.child_by_field_name(fields::LEFT),
+                node.child_by_field_name(fields::RIGHT),
             )
         {
             collect_bool_parts(left, source, parts);
@@ -152,8 +152,8 @@ pub(super) fn try_split_call_args(node: Node, source: &str) -> Option<(String, V
     if node.kind() != kinds::FUNC_CALL_EXPR {
         return None;
     }
-    let func = node.child_by_field_name("func")?;
-    let args_node = node.child_by_field_name("args")?;
+    let func = node.child_by_field_name(fields::FUNC)?;
+    let args_node = node.child_by_field_name(fields::ARGS)?;
     let args: Vec<String> = {
         let mut cursor = args_node.walk();
         args_node

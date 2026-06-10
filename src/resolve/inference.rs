@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 use crate::cst::grammar::{call_callee, member_access_member};
-use crate::cst::kinds;
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::symbols::{AccessLevel, Symbol, SymbolKind};
 use crate::types::{Primitive, Type};
@@ -67,7 +67,7 @@ pub(crate) fn infer_type(
         kinds::LITERAL_NAME => Type::Primitive(Primitive::Name),
         kinds::LITERAL_NULL => Type::Null,
         kinds::NEW_EXPR => match node
-            .child_by_field_name("class")
+            .child_by_field_name(fields::CLASS)
             .filter(|c| c.kind() == kinds::IDENT)
             .and_then(|c| c.utf8_text(document.source.as_bytes()).ok())
         {
@@ -76,7 +76,7 @@ pub(crate) fn infer_type(
         },
         // A cast asserts the target type regardless of the inner value's type.
         kinds::CAST_EXPR => match node
-            .child_by_field_name("type")
+            .child_by_field_name(fields::TYPE)
             .filter(|c| c.kind() == kinds::IDENT)
             .and_then(|c| c.utf8_text(document.source.as_bytes()).ok())
         {
@@ -87,7 +87,7 @@ pub(crate) fn infer_type(
             Some(inner) => infer_type(uri, document, db, inner, context_byte),
             None => Type::Unknown,
         },
-        kinds::ARRAY_EXPR => match node.child_by_field_name("accessor") {
+        kinds::ARRAY_EXPR => match node.child_by_field_name(fields::ACCESSOR) {
             Some(accessor) => match infer_type(uri, document, db, accessor, context_byte) {
                 Type::Array(elem) => *elem,
                 _ => Type::Unknown,

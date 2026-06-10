@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use crate::cst::kinds;
+use crate::cst::{fields, kinds};
 
 use super::super::action::LayoutCtx;
 use super::super::{Formatter, SwitchToggle, child_nodes};
@@ -87,7 +87,7 @@ pub(super) fn format_switch_stmt(f: &mut Formatter<'_>, node: Node) {
 
 impl Formatter<'_> {
     pub(in crate::formatter) fn format_switch_stmt_impl(&mut self, node: Node) {
-        let cond = node.child_by_field_name("cond");
+        let cond = node.child_by_field_name(fields::COND);
         if self.emit_split_keyword_cond("switch (", cond) {
             self.emit(" {\n");
         } else {

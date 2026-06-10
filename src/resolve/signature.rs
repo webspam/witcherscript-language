@@ -1,7 +1,7 @@
 use tree_sitter::Node;
 
 use crate::cst::grammar::callee_ident;
-use crate::cst::kinds;
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::{Symbol, SymbolKind};
@@ -139,9 +139,9 @@ fn call_site_of(node: Node, byte_offset: usize) -> Option<CallSite> {
                 return None;
             }
             Some(CallSite {
-                callee: node.child_by_field_name("func")?,
+                callee: node.child_by_field_name(fields::FUNC)?,
                 open_paren_byte: open.start_byte(),
-                args: node.child_by_field_name("args"),
+                args: node.child_by_field_name(fields::ARGS),
             })
         }
         kinds::ERROR => {

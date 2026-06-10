@@ -4,8 +4,8 @@ use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::grammar::call_callee;
-use crate::cst::kinds;
 use crate::cst::nav::first_child_kind;
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use crate::symbols::SymbolKind;
@@ -73,7 +73,7 @@ fn check_func_decl<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) ->
     collect_wrapped_method_calls(body, ctx.document.source.as_bytes(), &mut calls);
 
     if calls.is_empty() {
-        let name_node = node.child_by_field_name("name")?;
+        let name_node = node.child_by_field_name(fields::NAME)?;
         push(
             ctx,
             name_node,

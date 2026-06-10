@@ -1,6 +1,6 @@
 use tree_sitter::Node;
 
-use crate::cst::kinds;
+use crate::cst::{fields, kinds};
 
 use super::super::action::LayoutCtx;
 use super::super::{Formatter, IfToggle};
@@ -22,9 +22,9 @@ impl Formatter<'_> {
     }
 
     fn format_if_stmt_emit(&mut self, node: Node, layout: BodyLayout) {
-        let cond = node.child_by_field_name("cond");
-        let body = node.child_by_field_name("body");
-        let else_body = node.child_by_field_name("else");
+        let cond = node.child_by_field_name(fields::COND);
+        let body = node.child_by_field_name(fields::BODY);
+        let else_body = node.child_by_field_name(fields::ELSE);
 
         if self.emit_split_keyword_cond("if (", cond) {
             self.emit_stmt_body(body, BodyLayout::ForceBlock);
@@ -58,7 +58,7 @@ impl Formatter<'_> {
 
     fn if_chain_needs_block(&self, node: Node) -> bool {
         self.if_link_overflows(node, IF_OPEN)
-            || self.else_chain_needs_block(node.child_by_field_name("else"))
+            || self.else_chain_needs_block(node.child_by_field_name(fields::ELSE))
     }
 
     fn else_chain_needs_block(&self, else_node: Option<Node>) -> bool {
@@ -68,7 +68,7 @@ impl Formatter<'_> {
         match eb.kind() {
             kinds::IF_STMT => {
                 self.if_link_overflows(eb, ELSE_IF_OPEN)
-                    || self.else_chain_needs_block(eb.child_by_field_name("else"))
+                    || self.else_chain_needs_block(eb.child_by_field_name(fields::ELSE))
             }
             kinds::FUNC_BLOCK => false,
             _ => {
@@ -80,8 +80,8 @@ impl Formatter<'_> {
 
     fn if_link_overflows(&self, node: Node, open: usize) -> bool {
         let (Some(cond), Some(body)) = (
-            node.child_by_field_name("cond"),
-            node.child_by_field_name("body"),
+            node.child_by_field_name(fields::COND),
+            node.child_by_field_name(fields::BODY),
         ) else {
             return false;
         };
@@ -121,20 +121,20 @@ impl LayoutCtx<'_> {
             if n.kind() != kinds::IF_STMT {
                 return indent + ELSE_OPEN + inline_body_byte_len(n) <= self.line_limit;
             }
-            let cond = n.child_by_field_name("cond");
+            let cond = n.child_by_field_name(fields::COND);
             if cond.is_some_and(|c| c.start_position().row != c.end_position().row) {
                 return false;
             }
             let cond_len = cond.map_or(0, span_len);
             let stmt_len = n
-                .child_by_field_name("body")
+                .child_by_field_name(fields::BODY)
                 .map_or(0, inline_body_byte_len);
             let prefix = if first { IF_OPEN } else { ELSE_IF_OPEN };
             if indent + prefix + cond_len + COND_CLOSE + stmt_len > self.line_limit {
                 return false;
             }
             first = false;
-            cur = n.child_by_field_name("else");
+            cur = n.child_by_field_name(fields::ELSE);
         }
         true
     }
@@ -162,10 +162,10 @@ pub(in crate::formatter) fn chain_bodies(if_node: Node) -> Vec<Node> {
     let mut cur = Some(if_node);
     while let Some(n) = cur {
         if n.kind() == kinds::IF_STMT {
-            if let Some(b) = n.child_by_field_name("body") {
+            if let Some(b) = n.child_by_field_name(fields::BODY) {
                 bodies.push(b);
             }
-            cur = n.child_by_field_name("else");
+            cur = n.child_by_field_name(fields::ELSE);
         } else {
             bodies.push(n);
             cur = None;

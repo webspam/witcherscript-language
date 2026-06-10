@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use tracing::{debug, trace};
 use tree_sitter::Node;
 
-use crate::cst::kinds;
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use crate::symbols::SymbolKind;
@@ -59,7 +59,7 @@ pub fn collect_abstract_instantiation_diagnostics(
 }
 
 fn check_new_expr<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {
-    let class_ident = node.child_by_field_name("class")?;
+    let class_ident = node.child_by_field_name(fields::CLASS)?;
     if class_ident.kind() != kinds::IDENT {
         return None;
     }

@@ -5,7 +5,7 @@ use std::time::Instant;
 use tracing::{debug, trace};
 use tree_sitter::Node;
 
-use crate::cst::kinds;
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::resolve::{
     NameContext, SymbolDb, classify_ident_context, infer_type_memo, resolve_definition_at_ident,
@@ -313,15 +313,19 @@ fn classify<'tree>(ident: Node<'tree>, source: &[u8]) -> Option<IdentRole<'tree>
     let parent = ident.parent()?;
 
     if parent.kind() == kinds::MEMBER_ACCESS_EXPR {
-        let is_member = parent.child_by_field_name("member").map(|n| n.id()) == Some(ident.id());
+        let is_member =
+            parent.child_by_field_name(fields::MEMBER).map(|n| n.id()) == Some(ident.id());
         if is_member {
             if let Some(grandparent) = parent.parent()
                 && grandparent.kind() == kinds::FUNC_CALL_EXPR
-                && grandparent.child_by_field_name("func").map(|n| n.id()) == Some(parent.id())
+                && grandparent
+                    .child_by_field_name(fields::FUNC)
+                    .map(|n| n.id())
+                    == Some(parent.id())
             {
                 return None;
             }
-            let receiver = parent.child_by_field_name("accessor")?;
+            let receiver = parent.child_by_field_name(fields::ACCESSOR)?;
             return Some(IdentRole::MemberOfAccess(receiver));
         }
     }

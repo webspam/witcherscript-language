@@ -1,7 +1,7 @@
 use tree_sitter::Node;
 
-use crate::cst::kinds;
 use crate::cst::nav::{first_child_kind, nth_child_kind};
+use crate::cst::{fields, kinds};
 use crate::line_index::LineIndex;
 use crate::types::Type;
 
@@ -202,7 +202,7 @@ impl SymbolExtractor<'_> {
         };
         let owner_class = nth_child_kind(node, kinds::IDENT, 1).map(|n| node_text(n, self.source));
         let base_class = node
-            .child_by_field_name("base")
+            .child_by_field_name(fields::BASE)
             .map(|n| node_text(n, self.source));
         let id = self.push_symbol(
             node,
@@ -312,9 +312,9 @@ impl SymbolExtractor<'_> {
         };
         let mut cursor = node.walk();
         let names_field = if node.kind() == kinds::AUTOBIND_DECL {
-            "name"
+            fields::NAME
         } else {
-            "names"
+            fields::NAMES
         };
 
         for child in node.children_by_field_name(names_field, &mut cursor) {
