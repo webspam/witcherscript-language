@@ -157,3 +157,6 @@ mod manifest_reindex;
 
 #[cfg(test)]
 mod manifest_routing;
+
+#[cfg(test)]
+mod workspace_symbol;

@@ -19,6 +19,7 @@ mod subscription_registry;
 mod symbol_db;
 mod type_definition;
 mod workspace_index;
+mod workspace_symbols;
 
 #[cfg(test)]
 mod tests;
@@ -52,6 +53,7 @@ pub use subscription_registry::SubscriptionRegistry;
 pub use symbol_db::{FilteredBaseCatalogs, SymbolDb};
 pub use type_definition::resolve_type_definition;
 pub use workspace_index::{DocContribution, ObservedKey, WorkspaceIndex};
+pub use workspace_symbols::workspace_symbols;
 
 #[derive(Debug, Default, Clone)]
 pub struct ObservationSet {

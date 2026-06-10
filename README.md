@@ -84,6 +84,7 @@ client extension to connect to `127.0.0.1:9257` instead of spawning the binary.
 | Completion | Triggered by `.`, `:`, `@`; covers members, expressions, statements, types, annotations, and keywords |
 | Signature help | Triggered by `(` and `,`; highlights the active parameter |
 | Document symbols | Nested outline of classes, structs, enums, functions, methods, states, events, and fields |
+| Workspace symbols | Project-wide symbol search (open with the editor's "Go to Symbol in Workspace"); fuzzy name match across your project, the base game scripts, and engine builtins, ranked best-first with project results first |
 | Semantic tokens | Full-document semantic highlighting; legend exposed in `initialize` |
 | Inlay hints | Parameter-name labels at call sites (`out` parameters shown as `out name:`); honours the requested range and skips a non-`out` argument that already spells the parameter name. On by default; toggle with `witcherscript.inlayHints` |
 | Document formatting | Pretty-prints whole documents using `witcherscript.formatter.*` settings |

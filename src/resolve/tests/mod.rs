@@ -27,6 +27,7 @@ mod references;
 mod script_globals;
 mod signature_help;
 mod state_classes;
+mod workspace_symbols;
 
 use crate::document::{ParsedDocument, parse_document};
 

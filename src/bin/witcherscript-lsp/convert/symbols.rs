@@ -1,8 +1,8 @@
 use std::fmt::Write;
 
-use lsp_types::{DocumentSymbol, Url};
+use lsp_types::{DocumentSymbol, Location, OneOf, Url, WorkspaceSymbol};
 use witcherscript_language::resolve::{Definition, SymbolDb, hover_text};
-use witcherscript_language::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
+use witcherscript_language::symbols::{DocumentSymbols, SymbolId, SymbolKind};
 
 use super::positions::lsp_range;
 
@@ -13,7 +13,7 @@ pub(crate) fn document_symbols(
 ) -> Vec<DocumentSymbol> {
     symbols
         .children_of(container)
-        .filter(|symbol| is_outline_symbol(symbol))
+        .filter(|symbol| symbol.kind.is_outline())
         // VS Code rejects DocumentSymbols with empty names; skip them silently.
         .filter(|symbol| !symbol.name.is_empty())
         .map(|symbol| DocumentSymbol {
@@ -31,8 +31,26 @@ pub(crate) fn document_symbols(
         .collect()
 }
 
-fn is_outline_symbol(symbol: &Symbol) -> bool {
-    !matches!(symbol.kind, SymbolKind::Variable | SymbolKind::Parameter)
+pub(crate) fn workspace_symbol(definition: &Definition) -> Option<WorkspaceSymbol> {
+    let uri = match Url::parse(&definition.uri) {
+        Ok(uri) => uri,
+        Err(err) => {
+            tracing::warn!(uri = %definition.uri, %err, "indexed symbol uri failed to parse; skipping");
+            return None;
+        }
+    };
+    let symbol = &definition.symbol;
+    Some(WorkspaceSymbol {
+        name: symbol.name.clone(),
+        kind: lsp_symbol_kind(symbol.kind),
+        tags: None,
+        container_name: symbol.container_name.clone(),
+        location: OneOf::Left(Location {
+            uri,
+            range: lsp_range(symbol.selection_range),
+        }),
+        data: None,
+    })
 }
 
 fn lsp_symbol_kind(kind: SymbolKind) -> lsp_types::SymbolKind {

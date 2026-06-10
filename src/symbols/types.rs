@@ -65,6 +65,10 @@ impl SymbolKind {
         )
     }
 
+    pub fn is_outline(self) -> bool {
+        !matches!(self, SymbolKind::Variable | SymbolKind::Parameter)
+    }
+
     /// There can be multiple instances of this type (and it has members)
     pub(crate) fn is_instantiable(self) -> bool {
         matches!(

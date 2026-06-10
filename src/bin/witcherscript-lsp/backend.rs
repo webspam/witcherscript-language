@@ -18,7 +18,7 @@ use lsp_types::{
     InlayHintParams, Location, PrepareRenameResponse, ReferenceParams, RenameParams,
     SemanticTokensParams, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
     TextDocumentPositionParams, TextEdit, Url, WorkspaceDiagnosticParams,
-    WorkspaceDiagnosticReportResult, WorkspaceEdit,
+    WorkspaceDiagnosticReportResult, WorkspaceEdit, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 use parking_lot::Mutex;
 use serde_json::{Value, json};
@@ -636,6 +636,19 @@ impl LanguageServer for Backend {
     ) -> BoxFuture<'static, Result<Option<DocumentSymbolResponse>>> {
         let backend = self.clone();
         Box::pin(async move { backend._document_symbol(params) })
+    }
+
+    fn symbol(
+        &mut self,
+        params: WorkspaceSymbolParams,
+    ) -> BoxFuture<'static, Result<Option<WorkspaceSymbolResponse>>> {
+        let backend = self.clone();
+        Box::pin(async move {
+            backend.await_initial_index().await;
+            backend
+                .spawn_compute(move |b| b._workspace_symbol(params))
+                .await
+        })
     }
 
     fn semantic_tokens_full(
