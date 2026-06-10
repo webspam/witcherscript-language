@@ -1,6 +1,7 @@
 mod code_action;
 mod completion;
 mod diagnostics;
+mod document_highlight;
 mod e2e;
 mod file_io;
 mod file_scope;

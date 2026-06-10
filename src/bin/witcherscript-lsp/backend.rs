@@ -13,12 +13,13 @@ use lsp_types::{
     CompletionResponse, DidChangeConfigurationParams, DidChangeTextDocumentParams,
     DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DocumentDiagnosticParams, DocumentDiagnosticReportResult, DocumentFormattingParams,
-    DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse,
-    Hover, HoverParams, InitializeParams, InitializeResult, InitializedParams, InlayHint,
-    InlayHintParams, Location, PrepareRenameResponse, ReferenceParams, RenameParams,
-    SemanticTokensParams, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
-    TextDocumentPositionParams, TextEdit, Url, WorkspaceDiagnosticParams,
-    WorkspaceDiagnosticReportResult, WorkspaceEdit, WorkspaceSymbolParams, WorkspaceSymbolResponse,
+    DocumentHighlight, DocumentHighlightParams, DocumentSymbolParams, DocumentSymbolResponse,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, InitializeParams,
+    InitializeResult, InitializedParams, InlayHint, InlayHintParams, Location,
+    PrepareRenameResponse, ReferenceParams, RenameParams, SemanticTokensParams,
+    SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextDocumentPositionParams, TextEdit,
+    Url, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult, WorkspaceEdit,
+    WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 use parking_lot::Mutex;
 use serde_json::{Value, json};
@@ -677,6 +678,18 @@ impl LanguageServer for Backend {
     ) -> BoxFuture<'static, Result<Option<Vec<Location>>>> {
         let backend = self.clone();
         Box::pin(async move { backend.spawn_compute(move |b| b._references(params)).await })
+    }
+
+    fn document_highlight(
+        &mut self,
+        params: DocumentHighlightParams,
+    ) -> BoxFuture<'static, Result<Option<Vec<DocumentHighlight>>>> {
+        let backend = self.clone();
+        Box::pin(async move {
+            backend
+                .spawn_compute(move |b| b._document_highlight(params))
+                .await
+        })
     }
 
     fn prepare_rename(
