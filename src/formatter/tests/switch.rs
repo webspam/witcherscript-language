@@ -155,6 +155,21 @@ fn comment_between_arms_is_preserved_within_run() {
 }
 
 #[test]
+fn trailing_eol_comment_does_not_force_arm_block() {
+    let src =
+        "function F() {\nswitch (x) {\ncase 1: return 'a'; // note\ncase 2: return 'b';\n}\n}\n";
+    expect![[r"
+        function F() {
+            switch (x) {
+                case 1:  return 'a'; // note
+                case 2:  return 'b';
+            }
+        }
+    "]]
+    .assert_eq(&fmt(src));
+}
+
+#[test]
 fn line_limit_demotes_run_to_block() {
     let src = "function F() {\nswitch (x) {\ncase 1: Foo(); break;\ncase 2: Bar(); break;\n}\n}\n";
     expect![[r"
@@ -212,6 +227,9 @@ fn labels_only_no_statements() {
 #[case::comment_inside("function F() {\nswitch (x) {\ncase 1: /* n */ Foo(); break;\n}\n}\n")]
 #[case::comment_between(
     "function F() {\nswitch (x) {\ncase 1: return 'a';\n// sep\ncase 2: return 'b';\n}\n}\n"
+)]
+#[case::trailing_eol_comment(
+    "function F() {\nswitch (x) {\ncase 1: return 'a'; // note\ncase 2: return 'b';\n}\n}\n"
 )]
 fn switch_formatting_is_idempotent(#[case] src: &str) {
     let once = fmt(src);
