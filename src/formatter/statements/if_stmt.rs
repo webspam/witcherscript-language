@@ -39,6 +39,7 @@ impl Formatter<'_> {
         }
 
         if let Some(eb) = else_body {
+            self.flush_comments_before(eb.start_byte());
             self.emit_indent();
             self.emit("else");
             self.emit_else_clause(eb, layout);
