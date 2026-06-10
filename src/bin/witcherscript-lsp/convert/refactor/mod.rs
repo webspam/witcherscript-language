@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Range;
 
 use lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, TextEdit, Url, WorkspaceEdit};
 use tree_sitter::Node;
@@ -30,13 +31,13 @@ enum Preference {
 pub(crate) fn refactor_code_actions(
     uri: &Url,
     document: &ParsedDocument,
-    cursor: usize,
+    selection: Range<usize>,
     options: FormatOptions,
 ) -> Vec<CodeActionOrCommand> {
     let ctx = RefactorContext {
         uri,
         document,
-        cursor,
+        selection,
         options,
     };
     REFACTORINGS.iter().flat_map(|r| r.actions(&ctx)).collect()
@@ -45,7 +46,7 @@ pub(crate) fn refactor_code_actions(
 struct RefactorContext<'a> {
     uri: &'a Url,
     document: &'a ParsedDocument,
-    cursor: usize,
+    selection: Range<usize>,
     options: FormatOptions,
 }
 
@@ -55,7 +56,7 @@ impl<'a> RefactorContext<'a> {
     }
 
     fn cursor(&self) -> usize {
-        self.cursor
+        self.selection.start
     }
 
     fn source(&self) -> &'a str {

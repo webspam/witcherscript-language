@@ -105,7 +105,7 @@ fn refactor_actions(src: &str, needle: &str) -> Vec<CodeActionOrCommand> {
     let cursor = src.find(needle).expect("needle present") + 1;
     let options = FormatOptions::default();
     let uri = Url::parse("file:///main.ws").unwrap();
-    refactor_code_actions(&uri, &doc, cursor, options)
+    refactor_code_actions(&uri, &doc, cursor..cursor, options)
 }
 
 fn titles(actions: &[CodeActionOrCommand]) -> Vec<String> {

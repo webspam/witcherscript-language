@@ -9,7 +9,7 @@ use lsp_types::{
     DocumentHighlightParams, DocumentSymbolParams, DocumentSymbolResponse,
     FullDocumentDiagnosticReport, GotoDefinitionParams, GotoDefinitionResponse, Hover,
     HoverContents, HoverParams, InlayHint, InlayHintParams, Location, MarkupContent, MarkupKind,
-    Position, RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport,
+    Position, Range, RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport,
     SemanticToken, SemanticTokens, SemanticTokensParams, SemanticTokensResult, SignatureHelp,
     SignatureHelpParams, TextEdit, UnchangedDocumentDiagnosticReport, Url,
     WorkspaceDiagnosticParams, WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult,
@@ -256,7 +256,7 @@ impl Backend {
         let mut actions = base_script_conflict_code_actions(&params.context.diagnostics, &roots);
         // An Automatic trigger is the editor requesting code actions on its own, not the user asking
         if params.context.trigger_kind != Some(CodeActionTriggerKind::AUTOMATIC) {
-            actions.extend(self.refactor_actions(&uri, params.range.start));
+            actions.extend(self.refactor_actions(&uri, params.range));
         }
         trace!(
             op = "code_action",
@@ -267,20 +267,22 @@ impl Backend {
         Ok((!actions.is_empty()).then_some(actions))
     }
 
-    fn refactor_actions(&self, uri: &Url, position: Position) -> CodeActionResponse {
+    fn refactor_actions(&self, uri: &Url, range: Range) -> CodeActionResponse {
         let Some(document_arc) = self.latest_parsed_document(uri) else {
             return Vec::new();
         };
         let document = document_arc.as_ref();
-        let Some(cursor) = document
-            .line_index
-            .position_to_byte(&document.source, source_position(position))
-        else {
+        let to_byte = |position| {
+            document
+                .line_index
+                .position_to_byte(&document.source, source_position(position))
+        };
+        let (Some(start), Some(end)) = (to_byte(range.start), to_byte(range.end)) else {
             return Vec::new();
         };
         let cfg = self.config.load();
         let options = self.format_options(!cfg.editor_insert_spaces, cfg.editor_tab_size);
-        refactor_code_actions(uri, document, cursor, options)
+        refactor_code_actions(uri, document, start..end, options)
     }
 
     fn format_options(&self, use_tabs: bool, tab_size: u32) -> FormatOptions {
