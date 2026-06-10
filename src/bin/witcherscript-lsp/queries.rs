@@ -621,7 +621,7 @@ impl Backend {
                 format!("malformed reference code-lens data: {err}"),
             )
         })?;
-        // No index wait: resolves fan out per visible lens and parked ones can fill the request cap (deadlock); the post-index CodeLensRefresh corrects any undercount.
+        // No index wait: parked resolves can fill the request cap and deadlock; the post-index CodeLensRefresh corrects any undercount.
         self.spawn_compute(move |b| b._code_lens_resolve_blocking(lens, &uri, position))
             .await
     }

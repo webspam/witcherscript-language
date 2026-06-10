@@ -64,7 +64,7 @@ impl Request for BuiltinSourceRequest {
     const METHOD: &'static str = "witcherscript/builtinSource";
 }
 
-// At the default cap (logical CPU count), requests parked behind initial indexing stall the main loop and deadlock the server.
+// The logical-CPU-count default is below open-tab request counts; too low and parked requests wedge the main loop.
 const MAX_CONCURRENT_REQUESTS: NonZeroUsize = NonZeroUsize::new(256).unwrap();
 
 #[tokio::main]
