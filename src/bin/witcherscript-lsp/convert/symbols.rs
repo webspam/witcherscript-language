@@ -32,7 +32,13 @@ pub(crate) fn document_symbols(
 }
 
 pub(crate) fn workspace_symbol(definition: &Definition) -> Option<WorkspaceSymbol> {
-    let uri = Url::parse(&definition.uri).ok()?;
+    let uri = match Url::parse(&definition.uri) {
+        Ok(uri) => uri,
+        Err(err) => {
+            tracing::warn!(uri = %definition.uri, %err, "indexed symbol uri failed to parse; skipping");
+            return None;
+        }
+    };
     let symbol = &definition.symbol;
     Some(WorkspaceSymbol {
         name: symbol.name.clone(),
