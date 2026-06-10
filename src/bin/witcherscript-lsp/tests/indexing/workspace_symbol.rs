@@ -39,9 +39,18 @@ async fn returns_project_symbols_with_kind_location_and_container() {
         .into_iter()
         .find(|s| s.name == "CMyMod")
         .expect("project class should be found");
-    assert_eq!(class.kind, SymbolKind::CLASS);
+    assert_eq!(
+        class.kind,
+        SymbolKind::CLASS,
+        "class should map to CLASS kind"
+    );
     match class.location {
-        OneOf::Left(location) => assert_eq!(location.uri, script_url),
+        OneOf::Left(location) => {
+            assert_eq!(
+                location.uri, script_url,
+                "location should point at the project file"
+            );
+        }
         OneOf::Right(_) => panic!("expected a resolved Location"),
     }
 
@@ -49,8 +58,16 @@ async fn returns_project_symbols_with_kind_location_and_container() {
         .into_iter()
         .find(|s| s.name == "DoMod")
         .expect("project method should be found");
-    assert_eq!(method.kind, SymbolKind::METHOD);
-    assert_eq!(method.container_name.as_deref(), Some("CMyMod"));
+    assert_eq!(
+        method.kind,
+        SymbolKind::METHOD,
+        "method should map to METHOD kind"
+    );
+    assert_eq!(
+        method.container_name.as_deref(),
+        Some("CMyMod"),
+        "method should carry its container name"
+    );
 }
 
 #[tokio::test]

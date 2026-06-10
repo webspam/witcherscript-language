@@ -27,7 +27,11 @@ fn finds_member_with_container_name() {
     let t = TestDb::new("class Foo {\n  function DoThing() {}\n  var theField : int;\n}\n");
 
     let method = workspace_symbols(&[&t.workspace], "DoThing", LIMIT, None);
-    assert_eq!(def_names(&method), vec!["DoThing"]);
+    assert_eq!(
+        def_names(&method),
+        vec!["DoThing"],
+        "method should be found"
+    );
     assert_eq!(
         method[0].symbol.container_name.as_deref(),
         Some("Foo"),
@@ -36,7 +40,11 @@ fn finds_member_with_container_name() {
 
     let field = workspace_symbols(&[&t.workspace], "theField", LIMIT, None);
     assert_eq!(def_names(&field), vec!["theField"], "fields are included");
-    assert_eq!(field[0].symbol.container_name.as_deref(), Some("Foo"));
+    assert_eq!(
+        field[0].symbol.container_name.as_deref(),
+        Some("Foo"),
+        "field should carry its container name"
+    );
 }
 
 #[test]
@@ -44,10 +52,15 @@ fn finds_enum_member() {
     let t = TestDb::new("enum Direction { North, South }\n");
 
     let results = workspace_symbols(&[&t.workspace], "North", LIMIT, None);
-    assert_eq!(def_names(&results), vec!["North"]);
+    assert_eq!(
+        def_names(&results),
+        vec!["North"],
+        "enum member should be found"
+    );
     assert_eq!(
         results[0].symbol.container_name.as_deref(),
-        Some("Direction")
+        Some("Direction"),
+        "enum member should carry its owning enum as container"
     );
 }
 
@@ -70,7 +83,11 @@ fn matching_is_case_insensitive() {
     let t = TestDb::new("class PlayerWitcher {}\n");
 
     let results = workspace_symbols(&[&t.workspace], "playerwitcher", LIMIT, None);
-    assert_eq!(def_names(&results), vec!["PlayerWitcher"]);
+    assert_eq!(
+        def_names(&results),
+        vec!["PlayerWitcher"],
+        "lowercase query should match a PascalCase symbol"
+    );
 }
 
 #[test]
@@ -160,10 +177,17 @@ fn earlier_index_tier_outranks_later_on_equal_score() {
 
     let results = workspace_symbols(&[&workspace, &base], "Shared", LIMIT, None);
 
-    assert_eq!(def_names(&results), vec!["Shared", "Shared"]);
+    assert_eq!(
+        def_names(&results),
+        vec!["Shared", "Shared"],
+        "both same-named symbols should be returned"
+    );
     assert_eq!(
         results[0].uri, "file:///mod/a.ws",
         "workspace tier should rank before base tier on an equal-score match"
     );
-    assert_eq!(results[1].uri, "file:///base/b.ws");
+    assert_eq!(
+        results[1].uri, "file:///base/b.ws",
+        "base-tier match should follow the workspace-tier match"
+    );
 }
