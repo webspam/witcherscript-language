@@ -1,10 +1,14 @@
+use std::collections::HashSet;
 use std::ops::Range;
 
 use tree_sitter::Node;
 
 use crate::cst::ancestors::node_and_ancestors;
-use crate::cst::grammar::{arg_slots, call_callee, callee_ident, member_access_member};
-use crate::cst::kinds;
+use crate::cst::grammar::{
+    arg_slots, call_callee, callee_ident, member_access_member, write_target,
+};
+use crate::cst::walk::{CstVisitor, Visit, walk};
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::formatter::FormatOptions;
 use crate::symbols::{SymbolId, SymbolKind};
@@ -67,6 +71,9 @@ pub fn extract_variable(
     let name = unique_name(&name_base(uri, document, db, node), document, callable.id);
     let statement = declaration_statement(&name, &ty, &source[selection.clone()], options);
     let (insert_at, new_text) = insertion(source, block, &selection, &statement, options)?;
+    if hoisting_skips_a_write(uri, document, db, node, block, insert_at, callable.id) {
+        return None;
+    }
     Some(VariableExtraction {
         insert_at,
         new_text,
@@ -197,6 +204,78 @@ fn parameter_slot_name(
     db.full_parameters_of(&definition.uri, definition.symbol.id)
         .get(index)
         .map(|parameter| parameter.name.clone())
+}
+
+// Scans from the hoist point rather than the selection: in a loop, a textually later write still precedes re-evaluation.
+fn hoisting_skips_a_write(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    selection_node: Node,
+    block: Node,
+    insert_at: usize,
+    callable: SymbolId,
+) -> bool {
+    let locals = selection_local_ids(uri, document, db, selection_node, callable);
+    if locals.is_empty() {
+        return false;
+    }
+    let mut assigns = Vec::new();
+    collect_nodes_of_kind(block, kinds::ASSIGN_OP_EXPR, &mut assigns);
+    assigns.iter().any(|assign| {
+        assign
+            .child_by_field_name(fields::LEFT)
+            .and_then(write_target)
+            .filter(|target| target.start_byte() >= insert_at)
+            .and_then(|target| resolved_local_id(uri, document, db, target, callable))
+            .is_some_and(|id| locals.contains(&id))
+    })
+}
+
+fn selection_local_ids(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    node: Node,
+    callable: SymbolId,
+) -> HashSet<SymbolId> {
+    let mut idents = Vec::new();
+    collect_nodes_of_kind(node, kinds::IDENT, &mut idents);
+    idents
+        .iter()
+        .filter_map(|ident| resolved_local_id(uri, document, db, *ident, callable))
+        .collect()
+}
+
+fn resolved_local_id(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    ident: Node,
+    callable: SymbolId,
+) -> Option<SymbolId> {
+    let definition = resolve_definition_at_byte(uri, document, db, ident.start_byte())?;
+    let symbol = definition.symbol;
+    (matches!(symbol.kind, SymbolKind::Variable | SymbolKind::Parameter)
+        && definition.uri == uri
+        && symbol.container == Some(callable))
+    .then_some(symbol.id)
+}
+
+fn collect_nodes_of_kind<'tree>(root: Node<'tree>, kind: &str, out: &mut Vec<Node<'tree>>) {
+    struct Collector<'a, 'tree> {
+        kind: &'a str,
+        out: &'a mut Vec<Node<'tree>>,
+    }
+    impl<'tree> CstVisitor<'tree> for Collector<'_, 'tree> {
+        fn enter(&mut self, node: Node<'tree>) -> Visit {
+            if node.kind() == self.kind {
+                self.out.push(node);
+            }
+            Visit::Children
+        }
+    }
+    walk(root, &mut Collector { kind, out });
 }
 
 fn lowercase_first(s: &str) -> String {

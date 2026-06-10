@@ -243,3 +243,51 @@ fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
         "selection {needle:?} must not be extractable"
     );
 }
+
+#[rstest]
+#[case::local_reassigned_after_selection(
+    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    Use(a + 1);\n    a = 2;\n}\n",
+    "a + 1"
+)]
+#[case::local_compound_assigned(
+    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    Use(a + 1);\n    a += 2;\n}\n",
+    "a + 1"
+)]
+#[case::parameter_reassigned(
+    "function Use(x : int) {}\nfunction F(p : int) {\n    Use(p + 1);\n    p = 2;\n}\n",
+    "p + 1"
+)]
+#[case::write_between_insertion_point_and_selection(
+    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    Use(a + 1);\n}\n",
+    "a + 1"
+)]
+#[case::array_element_of_local_assigned(
+    "function Use(x : int) {}\nfunction F() {\n    var arr : array<int>;\n    var i : int;\n    Use(arr[0] + 1);\n    arr[i] = 5;\n}\n",
+    "arr[0] + 1"
+)]
+fn refuses_when_selection_local_is_written(#[case] src: &str, #[case] needle: &str) {
+    assert!(
+        refused(src, needle),
+        "hoisting {needle:?} past a write must not be offered"
+    );
+}
+
+#[rstest]
+#[case::writes_hit_unrelated_locals_only(
+    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    var b : int;\n    Use(a + 1);\n    b = 2;\n}\n",
+    "a + 1"
+)]
+#[case::selection_locals_are_only_read(
+    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    Use(a + 1);\n    Use(a + 2);\n}\n",
+    "a + 1"
+)]
+#[case::member_field_shadowing_local_name_is_assigned(
+    "function Use(x : int) {}\nclass C {\n    var f : int;\n    function M() {\n        var f : int;\n        Use(f + 1);\n        this.f = 2;\n    }\n}\n",
+    "f + 1"
+)]
+fn allows_extraction_despite_other_writes(#[case] src: &str, #[case] needle: &str) {
+    assert!(
+        run(src, needle, FormatOptions::default()).1.is_some(),
+        "selection {needle:?} should still be extractable"
+    );
+}
