@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use lsp_types::{DocumentSymbol, Url};
 use witcherscript_language::resolve::{Definition, SymbolDb, hover_text};
-use witcherscript_language::symbols::{DocumentSymbols, Symbol, SymbolId, SymbolKind};
+use witcherscript_language::symbols::{DocumentSymbols, SymbolId, SymbolKind};
 
 use super::positions::lsp_range;
 
@@ -13,7 +13,7 @@ pub(crate) fn document_symbols(
 ) -> Vec<DocumentSymbol> {
     symbols
         .children_of(container)
-        .filter(|symbol| is_outline_symbol(symbol))
+        .filter(|symbol| symbol.kind.is_outline())
         // VS Code rejects DocumentSymbols with empty names; skip them silently.
         .filter(|symbol| !symbol.name.is_empty())
         .map(|symbol| DocumentSymbol {
@@ -29,10 +29,6 @@ pub(crate) fn document_symbols(
             children: Some(document_symbols(symbols, Some(symbol.id))),
         })
         .collect()
-}
-
-fn is_outline_symbol(symbol: &Symbol) -> bool {
-    !matches!(symbol.kind, SymbolKind::Variable | SymbolKind::Parameter)
 }
 
 fn lsp_symbol_kind(kind: SymbolKind) -> lsp_types::SymbolKind {
