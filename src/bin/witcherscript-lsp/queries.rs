@@ -683,6 +683,38 @@ impl Backend {
         Ok(lens)
     }
 
+    fn computed_semantic_tokens(&self, uri: &Url) -> Result<Option<Vec<u32>>> {
+        let snap = self.snapshot();
+        let Some(document_arc) = snap.documents.get(uri).cloned() else {
+            return Ok(None);
+        };
+        let document = document_arc.as_ref();
+        let target = self.pending_target_for(uri).unwrap_or(0);
+        if target > document.parse_version {
+            return Err(ResponseError::new(
+                ErrorCode::CONTENT_MODIFIED,
+                "document edited while computing semantic tokens",
+            ));
+        }
+        let handles = self.db_handles_for_with_snapshot(uri, &snap);
+        let db = handles.db();
+        let version = self.state_version.load(Ordering::Acquire);
+        let state_version = self.state_version.clone();
+        let should_continue = || state_version.load(Ordering::Acquire) == version;
+        let Some(data) = collect_semantic_tokens_cancellable(
+            &canonical_uri(uri),
+            document,
+            &db,
+            &should_continue,
+        ) else {
+            return Err(ResponseError::new(
+                ErrorCode::CONTENT_MODIFIED,
+                "document changed while computing semantic tokens",
+            ));
+        };
+        Ok(Some(data))
+    }
+
     pub(crate) fn _semantic_tokens_full(
         &self,
         params: SemanticTokensParams,
@@ -690,39 +722,13 @@ impl Backend {
         let uri = params.text_document.uri;
         let started_at = Instant::now();
         trace!(op = "semantic_tokens_full", uri = %uri, "start");
-        let result = 'body: {
-            let snap = self.snapshot();
-            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
-                break 'body Ok(None);
-            };
-            let document = document_arc.as_ref();
-            let target = self.pending_target_for(&uri).unwrap_or(0);
-            if target > document.parse_version {
-                break 'body Err(ResponseError::new(
-                    ErrorCode::CONTENT_MODIFIED,
-                    "document edited while computing semantic tokens",
-                ));
-            }
-            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
-            let db = handles.db();
-            let version = self.state_version.load(Ordering::Acquire);
-            let state_version = self.state_version.clone();
-            let should_continue = || state_version.load(Ordering::Acquire) == version;
-            let Some(data) = collect_semantic_tokens_cancellable(
-                &canonical_uri(&uri),
-                document,
-                &db,
-                &should_continue,
-            ) else {
-                break 'body Err(ResponseError::new(
-                    ErrorCode::CONTENT_MODIFIED,
-                    "document changed while computing semantic tokens",
-                ));
-            };
-            Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
+        let result = match self.computed_semantic_tokens(&uri) {
+            Ok(Some(data)) => Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
                 result_id: None,
                 data: semantic_token_structs(&data),
-            })))
+            }))),
+            Ok(None) => Ok(None),
+            Err(err) => Err(err),
         };
         trace!(
             op = "semantic_tokens_full",
