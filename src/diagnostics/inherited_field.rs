@@ -69,10 +69,8 @@ fn check_inherited_field<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tre
     let parent = ctx.db.superclass_of(&container.name)?;
 
     let mut cursor = node.walk();
-    let name_idents: Vec<Node<'tree>> = node
-        .children_by_field_name(fields::NAMES, &mut cursor)
-        .collect();
-    for ident in name_idents {
+    for ident in node.children_by_field_name(fields::NAMES, &mut cursor) {
+        // safe: ident nodes are sliced from a UTF-8 String on char-aligned boundaries
         let name = ident.utf8_text(ctx.document.source.as_bytes()).ok()?;
         let Some(ancestor) = ctx.db.find_member(&parent, name, AccessLevel::Private) else {
             continue;
