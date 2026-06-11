@@ -44,6 +44,7 @@ pub use unknown_method::collect_unknown_method_diagnostics;
 pub use unknown_symbol::collect_unknown_symbol_diagnostics;
 pub use wrapped_method::collect_wrapped_method_diagnostics;
 
+use crate::cst::ancestors::find_ancestor_of_kind;
 use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
@@ -329,15 +330,8 @@ fn is_bare_return(return_stmt: Node) -> bool {
 }
 
 fn is_inside_event(node: Node) -> bool {
-    let mut current = node.parent();
-    while let Some(ancestor) = current {
-        match ancestor.kind() {
-            kinds::EVENT_DECL => return true,
-            kinds::FUNC_DECL => return false,
-            _ => current = ancestor.parent(),
-        }
-    }
-    false
+    find_ancestor_of_kind(node, &[kinds::EVENT_DECL, kinds::FUNC_DECL])
+        .is_some_and(|ancestor| ancestor.kind() == kinds::EVENT_DECL)
 }
 
 fn event_bare_return_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
