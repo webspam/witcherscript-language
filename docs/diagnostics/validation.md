@@ -32,6 +32,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 24 | `state_owner_not_statemachine` | warning | `state X in Owner` where `Owner` is a class missing the `statemachine` keyword |
 | 25 | `state_owner_not_class` | error | `state X in Owner` where `Owner` resolves to something that is not a class (e.g. a struct or enum) |
 | 26 | `string_linefeed` | error | A string literal contains a linefeed |
+| 27 | `int_overflow` | error | An integer literal overflows a 32-bit int |
 
 ## Details
 
@@ -201,3 +202,7 @@ Rules 24 and 25 share one scan path: every `state` declaration's owner is resolv
 ### 26. String literal containing a linefeed
 
 A double-quoted string literal that spans more than one line. The grammar tokenises it, but the compiler rejects any string containing a linefeed. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
+
+### 27. Integer literal overflow
+
+A decimal or hex integer literal whose value does not fit a 32-bit int (the compiler's "static integer overflow"). An adjacent sign is part of the literal, so `-2147483648` is in range; a spaced `- 2147483648` is a unary minus applied to an out-of-range literal and is flagged. Purely syntactic, so the `witcherscript-check` CLI reports it as well.

@@ -43,6 +43,46 @@ fn reports_access_modifier_on_struct_property(#[case] source: &str, #[case] keyw
     );
 }
 
+#[rstest]
+#[case::max_int("2147483647")]
+#[case::min_int("-2147483648")]
+#[case::plus_sign("+2147483647")]
+#[case::max_hex("0x7FFFFFFF")]
+fn accepts_int_literals_in_range(#[case] literal: &str) {
+    let source = format!("function F() {{\n  var x : int;\n  x = {literal};\n}}\n");
+    let t = TestDb::new(&source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), &source);
+
+    assert!(
+        !diagnostics.iter().any(|d| d.kind == "int_overflow"),
+        "{literal} should be in range, got: {diagnostics:#?}"
+    );
+}
+
+#[rstest]
+#[case::max_int_plus_one("2147483648", "2147483648")]
+#[case::min_int_minus_one("-2147483649", "-2147483649")]
+#[case::hex_over_max("0x80000000", "0x80000000")]
+#[case::observed_overflow("0xFFFFFFFF8000000", "0xFFFFFFFF8000000")]
+#[case::spaced_minus_is_an_operator("- 2147483648", "2147483648")]
+fn reports_int_literal_overflow(#[case] literal: &str, #[case] underlined: &str) {
+    let source = format!("function F() {{\n  var x : int;\n  x = {literal};\n}}\n");
+    let t = TestDb::new(&source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), &source);
+
+    let found = diagnostics.iter().find(|d| d.kind == "int_overflow");
+    assert!(
+        found.is_some(),
+        "expected int_overflow for {literal}, got: {diagnostics:#?}"
+    );
+    let d = found.unwrap();
+    assert_eq!(
+        &source[d.byte_range.clone()],
+        underlined,
+        "diagnostic should underline the literal in {literal}"
+    );
+}
+
 #[test]
 fn reports_string_containing_linefeed() {
     let source = "function F() {\n  var s : string;\n  s = \"a\nb\";\n}\n";

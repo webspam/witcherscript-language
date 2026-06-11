@@ -192,6 +192,12 @@ impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
             self.diagnostics
                 .push(string_linefeed_diagnostic(node, self.source));
         }
+        if matches!(node.kind(), kinds::LITERAL_INT | kinds::LITERAL_HEX)
+            && int_literal_overflows(node.kind(), &self.source[node.byte_range()])
+        {
+            self.diagnostics
+                .push(int_overflow_diagnostic(node, self.source));
+        }
         if node.kind() == kinds::FUNC_BLOCK {
             collect_late_local_vars_in_block(node, self.source, &mut self.diagnostics);
         }
@@ -230,6 +236,34 @@ fn string_linefeed_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
     ParseDiagnostic {
         kind: "string_linefeed".to_string(),
         message: "String literals cannot contain a linefeed".to_string(),
+        start: node.start_position(),
+        end: node.end_position(),
+        byte_range: node.start_byte()..node.end_byte(),
+        snippet: line_snippet(source, node.start_position().row),
+    }
+}
+
+fn int_literal_overflows(kind: &str, text: &str) -> bool {
+    // Unparseable digit strings are too long for u64 and therefore overflow too.
+    if kind == kinds::LITERAL_HEX {
+        return u64::from_str_radix(&text[2..], 16)
+            .ok()
+            .is_none_or(|v| v > i32::MAX as u64);
+    }
+    let (negative, digits) = match text.as_bytes().first() {
+        Some(b'-') => (true, &text[1..]),
+        Some(b'+') => (false, &text[1..]),
+        _ => (false, text),
+    };
+    // The sign is part of the token, so -2147483648 is in range.
+    let max = i32::MAX as u64 + u64::from(negative);
+    digits.parse::<u64>().ok().is_none_or(|v| v > max)
+}
+
+fn int_overflow_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
+    ParseDiagnostic {
+        kind: "int_overflow".to_string(),
+        message: "Integer literal overflows a 32-bit int".to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),
