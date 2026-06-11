@@ -248,6 +248,7 @@ impl Backend {
                                     .collect(),
                             },
                             full: Some(SemanticTokensFullOptions::Bool(true)),
+                            range: Some(true),
                             ..SemanticTokensOptions::default()
                         },
                     ),

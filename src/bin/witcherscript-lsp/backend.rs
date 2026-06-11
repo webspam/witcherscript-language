@@ -17,9 +17,9 @@ use lsp_types::{
     GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, InitializeParams,
     InitializeResult, InitializedParams, InlayHint, InlayHintParams, Location,
     PrepareRenameResponse, ReferenceParams, RenameParams, SemanticTokensParams,
-    SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextDocumentPositionParams, TextEdit,
-    Url, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult, WorkspaceEdit,
-    WorkspaceSymbolParams, WorkspaceSymbolResponse,
+    SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult, SignatureHelp,
+    SignatureHelpParams, TextDocumentPositionParams, TextEdit, Url, WorkspaceDiagnosticParams,
+    WorkspaceDiagnosticReportResult, WorkspaceEdit, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 use parking_lot::Mutex;
 use serde_json::{Value, json};
@@ -660,6 +660,18 @@ impl LanguageServer for Backend {
         Box::pin(async move {
             backend
                 .spawn_compute(move |b| b._semantic_tokens_full(params))
+                .await
+        })
+    }
+
+    fn semantic_tokens_range(
+        &mut self,
+        params: SemanticTokensRangeParams,
+    ) -> BoxFuture<'static, Result<Option<SemanticTokensRangeResult>>> {
+        let backend = self.clone();
+        Box::pin(async move {
+            backend
+                .spawn_compute(move |b| b._semantic_tokens_range(params))
                 .await
         })
     }

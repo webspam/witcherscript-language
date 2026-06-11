@@ -10,10 +10,10 @@ use lsp_types::{
     FullDocumentDiagnosticReport, GotoDefinitionParams, GotoDefinitionResponse, Hover,
     HoverContents, HoverParams, InlayHint, InlayHintParams, Location, MarkupContent, MarkupKind,
     Position, Range, RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport,
-    SemanticToken, SemanticTokens, SemanticTokensParams, SemanticTokensResult, SignatureHelp,
-    SignatureHelpParams, TextEdit, UnchangedDocumentDiagnosticReport, Url,
-    WorkspaceDiagnosticParams, WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult,
-    WorkspaceSymbolParams, WorkspaceSymbolResponse,
+    SemanticToken, SemanticTokens, SemanticTokensParams, SemanticTokensRangeParams,
+    SemanticTokensRangeResult, SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextEdit,
+    UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams, WorkspaceDiagnosticReport,
+    WorkspaceDiagnosticReportResult, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 
 use crate::config::DiagnosticsScope;
@@ -26,7 +26,9 @@ use witcherscript_language::resolve::{
     resolve_all_definitions, resolve_definition, resolve_type_definition, signature_help,
     workspace_symbols,
 };
-use witcherscript_language::semantic_tokens::collect_semantic_tokens_cancellable;
+use witcherscript_language::semantic_tokens::{
+    collect_semantic_tokens_cancellable, collect_semantic_tokens_in_range_cancellable,
+};
 use witcherscript_language::symbols::{Symbol, SymbolKind};
 
 use crate::backend::{Backend, diagnostics_document_for};
@@ -129,6 +131,18 @@ fn diagnostics_server_cancelled(message: &str) -> ResponseError {
         })
         .expect("DiagnosticServerCancellationData serializes"),
     )
+}
+
+fn semantic_token_structs(data: &[u32]) -> Vec<SemanticToken> {
+    data.chunks_exact(5)
+        .map(|c| SemanticToken {
+            delta_line: c[0],
+            delta_start: c[1],
+            length: c[2],
+            token_type: c[3],
+            token_modifiers_bitset: c[4],
+        })
+        .collect()
 }
 
 impl Backend {
@@ -705,23 +719,68 @@ impl Backend {
                     "document changed while computing semantic tokens",
                 ));
             };
-            let tokens: Vec<SemanticToken> = data
-                .chunks_exact(5)
-                .map(|c| SemanticToken {
-                    delta_line: c[0],
-                    delta_start: c[1],
-                    length: c[2],
-                    token_type: c[3],
-                    token_modifiers_bitset: c[4],
-                })
-                .collect();
             Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
                 result_id: None,
-                data: tokens,
+                data: semantic_token_structs(&data),
             })))
         };
         trace!(
             op = "semantic_tokens_full",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
+        result
+    }
+
+    pub(crate) fn _semantic_tokens_range(
+        &self,
+        params: SemanticTokensRangeParams,
+    ) -> Result<Option<SemanticTokensRangeResult>> {
+        let uri = params.text_document.uri;
+        let started_at = Instant::now();
+        trace!(op = "semantic_tokens_range", uri = %uri, "start");
+        let result = 'body: {
+            let snap = self.snapshot();
+            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+                break 'body Ok(None);
+            };
+            let document = document_arc.as_ref();
+            let target = self.pending_target_for(&uri).unwrap_or(0);
+            if target > document.parse_version {
+                break 'body Err(ResponseError::new(
+                    ErrorCode::CONTENT_MODIFIED,
+                    "document edited while computing semantic tokens",
+                ));
+            }
+            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
+            let db = handles.db();
+            let version = self.state_version.load(Ordering::Acquire);
+            let state_version = self.state_version.clone();
+            let should_continue = || state_version.load(Ordering::Acquire) == version;
+            let range = source_range(
+                source_position(params.range.start),
+                source_position(params.range.end),
+            );
+            let Some(data) = collect_semantic_tokens_in_range_cancellable(
+                &canonical_uri(&uri),
+                document,
+                &db,
+                range,
+                &should_continue,
+            ) else {
+                break 'body Err(ResponseError::new(
+                    ErrorCode::CONTENT_MODIFIED,
+                    "document changed while computing semantic tokens",
+                ));
+            };
+            Ok(Some(SemanticTokensRangeResult::Tokens(SemanticTokens {
+                result_id: None,
+                data: semantic_token_structs(&data),
+            })))
+        };
+        trace!(
+            op = "semantic_tokens_range",
             uri = %uri,
             elapsed_us = started_at.elapsed().as_micros(),
             "complete",
