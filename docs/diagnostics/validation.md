@@ -39,6 +39,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 31 | `annotation_targets_backing_class` | error | A modding annotation targets a state's backing class name instead of the short state name |
 | 32 | `duplicate_inherited_field` | error | A field redeclares a field inherited from an ancestor |
 | 33 | `override_weaker_access` | error | A method override has weaker access than the ancestor's method |
+| 34 | `override_param_count` | error | A method override declares a different parameter count than the ancestor's method |
 
 ## Details
 
@@ -236,3 +237,7 @@ A class or state field whose name is already a field anywhere up the inheritance
 ### 33. Override with weaker access
 
 A class or state method whose name matches a class-body method up the inheritance chain, declared with weaker access than the ancestor's (`private` < `protected` < `public`; no modifier means `public`). Mirrors the compiler error "Function 'X' cannot have a weaker access modifier than in ancestor class 'Y'". Annotated (`@wrapMethod` etc.) functions and events are exempt.
+
+### 34. Override parameter count mismatch
+
+A class or state method whose name matches a class-body method up the inheritance chain but declares a different number of parameters. Mirrors the compiler error "Function 'X' takes N parameter(s) which is inconsistent with base function (M)". Optional parameters count; parameter types are not compared. Shares rule 33's scan and exemptions.

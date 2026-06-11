@@ -32,7 +32,7 @@
   `"duplicate_inherited_field"`.
 - `src/diagnostics/override_consistency.rs` - CST-walking rule (`OverrideConsistencyRule`);
   flags a method override that is inconsistent with the ancestor's class-body declaration.
-  Emits `"override_weaker_access"`.
+  Emits `"override_weaker_access"` and `"override_param_count"`.
 - `src/diagnostics/wrapped_method.rs` - CST-walking rule (`WrappedMethodRule`) that
   implements `CstRule` and is registered in `collect_cst_diagnostics_for_document`.
   Checks every `@wrapMethod`-annotated function for a bare `wrappedMethod(...)` call:
