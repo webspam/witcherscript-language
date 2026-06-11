@@ -307,6 +307,33 @@ fn semantic_tokens_full_bails_when_pending_edit_outranks_snapshot() {
 }
 
 #[test]
+fn rename_resolves_against_a_queued_unpublished_edit() {
+    let backend = make_backend();
+    backend.edit_writer_spawned.store(true, Ordering::Release);
+
+    let uri: Url = "file:///queued_extract.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "function F() {\n    x;\n}\n"));
+    backend._did_change(change_params(&uri, 2, (1, 0), (1, 0), "    var x : int;\n"));
+
+    assert!(
+        backend
+            .snapshot()
+            .documents
+            .get(&uri)
+            .is_some_and(|doc| !doc.source.contains("var x")),
+        "precondition: the inserted declaration must still be queued, not in the snapshot",
+    );
+
+    let def = backend
+        .resolve_at(&uri, Position::new(2, 4))
+        .expect("rename must resolve the just-inserted local against the queued edit");
+    assert_eq!(
+        def.symbol.name, "x",
+        "resolution must see the queued edit, not the stale published snapshot",
+    );
+}
+
+#[test]
 fn semantic_tokens_full_unrelated_uri_unaffected_by_pending_edit_elsewhere() {
     let backend = make_backend();
     backend.edit_writer_spawned.store(true, Ordering::Release);

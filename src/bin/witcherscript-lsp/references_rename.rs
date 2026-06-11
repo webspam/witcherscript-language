@@ -228,13 +228,18 @@ impl Backend {
             let db = handles.db();
 
             let loose_uris = self.loose_open_uris(&snap.documents);
-            let merged = merge_documents(
+            // A queued edit isn't in the snapshot yet; search the pending copy so rename sees just-applied text.
+            let latest = self.latest_parsed_document(&uri);
+            let mut merged = merge_documents(
                 &snap.base_scripts_documents,
                 &snap.workspace_documents,
                 &snap.documents,
                 &loose_uris,
                 loose_uris.contains(&uri),
             );
+            if let Some(doc) = latest.as_deref() {
+                merged.insert(canonical_uri(&uri), doc);
+            }
 
             let Some(definition_document) = merged.get(&definition.uri).copied() else {
                 break 'body Ok(None);

@@ -294,7 +294,8 @@ impl Backend {
 
     pub(crate) fn resolve_at(&self, uri: &Url, position: Position) -> Option<Definition> {
         let snap = self.snapshot();
-        let document = snap.documents.get(uri)?.clone();
+        // A queued edit isn't in the snapshot yet; resolve against it so rename sees just-applied text.
+        let document = self.latest_parsed_document(uri)?;
         let handles = self.db_handles_for_with_snapshot(uri, &snap);
         let db = handles.db();
         resolve_definition(
