@@ -31,6 +31,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 23 | `struct_property_access_modifier` | error | An accessibility modifier (`private`/`protected`/`public`) is applied to a struct property |
 | 24 | `state_owner_not_statemachine` | warning | `state X in Owner` where `Owner` is a class missing the `statemachine` keyword |
 | 25 | `state_owner_not_class` | error | `state X in Owner` where `Owner` resolves to something that is not a class (e.g. a struct or enum) |
+| 26 | `string_linefeed` | error | A string literal contains a linefeed |
 
 ## Details
 
@@ -196,3 +197,7 @@ The keyword is not inherited: each owner class must carry `statemachine` itself,
 A `state X in Owner` declaration where `Owner` resolves to something that is not a class - a struct, enum, function, or another state. States can only be declared in a state machine class, so this is an error rather than a warning.
 
 Rules 24 and 25 share one scan path: every `state` declaration's owner is resolved once and routed to whichever applies. An owner that does not resolve to any known symbol is left to the `unknown_type` rule.
+
+### 26. String literal containing a linefeed
+
+A double-quoted string literal that spans more than one line. The grammar tokenises it, but the compiler rejects any string containing a linefeed. Purely syntactic, so the `witcherscript-check` CLI reports it as well.

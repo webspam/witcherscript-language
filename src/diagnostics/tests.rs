@@ -10,6 +10,10 @@ use crate::test_support::TestDb;
 #[case::accepts_non_ternary_expression("function Ok() {\n  var x : int;\n  x = 1;\n}\n")]
 #[case::accepts_struct_property_without_access_modifier("struct S {\n  var x : int;\n}\n")]
 #[case::accepts_access_modifier_on_class_field("class C {\n  private var x : int;\n}\n")]
+#[case::accepts_single_line_string("function F() {\n  var s : string;\n  s = \"a b\";\n}\n")]
+#[case::accepts_string_with_escaped_quote(
+    "function F() {\n  var s : string;\n  s = \"a \\\" b\";\n}\n"
+)]
 fn does_not_fire(#[case] source: &str) {
     let t = TestDb::new(source);
     let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
@@ -37,6 +41,21 @@ fn reports_access_modifier_on_struct_property(#[case] source: &str, #[case] keyw
         keyword,
         "diagnostic should underline only the {keyword} keyword"
     );
+}
+
+#[test]
+fn reports_string_containing_linefeed() {
+    let source = "function F() {\n  var s : string;\n  s = \"a\nb\";\n}\n";
+    let t = TestDb::new(source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
+
+    let found = diagnostics.iter().find(|d| d.kind == "string_linefeed");
+    assert!(
+        found.is_some(),
+        "expected string_linefeed diagnostic, got: {diagnostics:#?}"
+    );
+    let d = found.unwrap();
+    assert_eq!(&source[d.byte_range.clone()], "\"a\nb\"");
 }
 
 #[test]

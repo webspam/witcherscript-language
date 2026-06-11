@@ -188,6 +188,10 @@ impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
             self.diagnostics
                 .push(ternary_expr_diagnostic(node, self.source));
         }
+        if node.kind() == kinds::LITERAL_STRING && self.source[node.byte_range()].contains('\n') {
+            self.diagnostics
+                .push(string_linefeed_diagnostic(node, self.source));
+        }
         if node.kind() == kinds::FUNC_BLOCK {
             collect_late_local_vars_in_block(node, self.source, &mut self.diagnostics);
         }
@@ -215,6 +219,17 @@ fn ternary_expr_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
         message: "Ternary expression is not supported: WitcherScript parses `cond ? a : b` \
                   but always evaluates it to 0 / false / void"
             .to_string(),
+        start: node.start_position(),
+        end: node.end_position(),
+        byte_range: node.start_byte()..node.end_byte(),
+        snippet: line_snippet(source, node.start_position().row),
+    }
+}
+
+fn string_linefeed_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
+    ParseDiagnostic {
+        kind: "string_linefeed".to_string(),
+        message: "String literals cannot contain a linefeed".to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),
