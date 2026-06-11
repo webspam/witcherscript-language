@@ -201,6 +201,21 @@ impl SymbolDb<'_> {
         })
     }
 
+    // Class-body declarations only, never annotation overlays: the methods a `@wrapMethod` can wrap.
+    pub fn class_body_members_of(&self, container_name: &str) -> Vec<Definition> {
+        dedup_by_name(
+            self.workspace
+                .class_body_members_of(container_name)
+                .into_iter()
+                .chain(self.shadowed_base().class_body_members_of(container_name))
+                .chain(
+                    self.builtins
+                        .map(|b| b.class_body_members_of(container_name))
+                        .unwrap_or_default(),
+                ),
+        )
+    }
+
     pub fn direct_members_of(
         &self,
         container_name: &str,

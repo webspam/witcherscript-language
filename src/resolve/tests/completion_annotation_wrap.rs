@@ -143,6 +143,31 @@ fn after_wrap_method_offers_methods_while_typing_method_name(#[case] fixture: &s
 }
 
 #[test]
+fn after_wrap_method_still_offers_already_wrapped_method() {
+    let result = run(concat!(
+        "//- /base.ws\n",
+        "class CPlayer {\n",
+        "  public function OnSpawned() {}\n",
+        "  public function OnDeath() {}\n",
+        "}\n",
+        "//- /mod.ws\n",
+        "@wrapMethod(CPlayer)\n",
+        "function OnSpawned() { wrappedMethod(); }\n",
+        "//- /test.ws\n",
+        "@wrapMethod(CPlayer)\n",
+        "function $0\n",
+    ))
+    .expect("methods should be offered");
+
+    let names = def_names(&result.methods);
+    assert!(
+        names.contains(&"OnSpawned"),
+        "already-wrapped method must still be offered"
+    );
+    assert!(names.contains(&"OnDeath"), "unwrapped method missing");
+}
+
+#[test]
 fn after_wrap_method_none_when_function_not_preceded_by_wrap_method() {
     assert!(
         run("function $0\n").is_none(),
