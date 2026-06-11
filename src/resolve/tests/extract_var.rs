@@ -3,7 +3,7 @@ use rstest::rstest;
 
 use super::super::{VariableExtraction, extract_variable};
 use crate::formatter::FormatOptions;
-use crate::test_support::TestDb;
+use crate::test_support::{TestDb, script_env};
 
 fn run(src: &str, needle: &str, options: FormatOptions) -> (String, Option<VariableExtraction>) {
     let t = TestDb::new(src);
@@ -65,6 +65,21 @@ fn refused(src: &str, needle: &str) -> bool {
     "function F() {\n    var newVar : int;\n    var r : int;\n    r = 1 + 2;\n}\n",
     "1 + 2",
     "newVar1"
+)]
+#[case::enclosing_class_field_collision(
+    "class C {\n    var count : int;\n    function M() {\n        var c : C;\n        var r : int;\n        r = c.count + 1;\n    }\n}\n",
+    "c.count",
+    "count1"
+)]
+#[case::inherited_field_collision(
+    "class B {\n    var count : int;\n}\nclass C extends B {\n    function M() {\n        var c : C;\n        var r : int;\n        r = c.count + 1;\n    }\n}\n",
+    "c.count",
+    "count1"
+)]
+#[case::method_name_is_not_a_field_collision(
+    "class C {\n    function GetPos() : int { return 1; }\n    function M() {\n        var r : int;\n        r = this.GetPos();\n    }\n}\n",
+    "this.GetPos()",
+    "getPos"
 )]
 fn names_new_variable(#[case] src: &str, #[case] needle: &str, #[case] expected: &str) {
     assert_eq!(
@@ -201,6 +216,28 @@ fn name_plus_name_extracts_as_string() {
         }
     "]]
     .assert_eq(&applied(src, "'a' + 'b'"));
+}
+
+#[test]
+fn derived_name_shadowing_script_global_gets_suffix() {
+    let src = "class CStats {\n    var theGame : int;\n}\nfunction F() {\n    var s : CStats;\n    var r : int;\n    r = s.theGame + 1;\n}\n";
+    let t = TestDb::new(src);
+    let env = script_env("theGame", "CCommonGame");
+    let uri = t.primary_uri();
+    let doc = t.doc_for(uri);
+    let start = doc.source.find("s.theGame").expect("needle present");
+    let result = extract_variable(
+        uri,
+        doc,
+        &t.db().with_script_env(&env),
+        start..start + "s.theGame".len(),
+        FormatOptions::default(),
+    )
+    .expect("expected an extraction");
+    assert_eq!(
+        result.name, "theGame1",
+        "generated name must not shadow the engine global"
+    );
 }
 
 #[test]

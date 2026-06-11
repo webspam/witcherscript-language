@@ -11,7 +11,7 @@ use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::formatter::FormatOptions;
-use crate::symbols::{SymbolId, SymbolKind};
+use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
 
 use super::definition::resolve_definition_at_byte;
@@ -71,7 +71,7 @@ pub fn extract_variable(
     if matches!(ty, Type::Unknown | Type::Null | Type::Void) {
         return None;
     }
-    let name = unique_name(&name_base(uri, document, db, node), document, callable.id);
+    let name = unique_name(&name_base(uri, document, db, node), document, db, callable);
     let statement = declaration_statement(&name, &ty, &source[selection.clone()], options);
     let (insert_at, new_text) = insertion(source, block, &selection, &statement, options)?;
     if hoisting_skips_a_write(uri, document, db, node, block, insert_at, callable.id) {
@@ -332,20 +332,32 @@ fn lowercase_first(s: &str) -> String {
     }
 }
 
-fn unique_name(base: &str, document: &ParsedDocument, callable: SymbolId) -> String {
+fn unique_name(base: &str, document: &ParsedDocument, db: &SymbolDb, callable: &Symbol) -> String {
     let taken: HashSet<&str> = document
         .symbols
-        .children_of(Some(callable))
+        .children_of(Some(callable.id))
         .filter(|s| matches!(s.kind, SymbolKind::Variable | SymbolKind::Parameter))
         .map(|s| s.name.as_str())
         .collect();
-    if !taken.contains(base) {
+    let class = callable
+        .container
+        .and_then(|id| document.symbols.by_id(id))
+        .filter(|c| c.kind.is_instantiable());
+    // Mirror the shadowing diagnostics: the generated local must not shadow a class field or engine global.
+    let shadows = |name: &str| {
+        db.find_script_global(name).is_some()
+            || class.is_some_and(|c| {
+                db.find_member(&c.name, name, AccessLevel::Private)
+                    .is_some_and(|d| d.symbol.kind == SymbolKind::Field)
+            })
+    };
+    if !taken.contains(base) && !shadows(base) {
         return base.to_string();
     }
     let mut suffix = 1usize;
     loop {
         let candidate = format!("{base}{suffix}");
-        if !taken.contains(candidate.as_str()) {
+        if !taken.contains(candidate.as_str()) && !shadows(&candidate) {
             return candidate;
         }
         suffix += 1;
