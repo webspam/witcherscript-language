@@ -14,8 +14,7 @@ use crate::test_support::TestDb;
 #[case::accepts_string_with_escaped_quote(
     "function F() {\n  var s : string;\n  s = \"a \\\" b\";\n}\n"
 )]
-#[case::accepts_event_returning_bool("class C {\n  event OnHit() : bool {\n  }\n}\n")]
-#[case::accepts_event_with_miscased_bool("class C {\n  event OnHit() : Bool {\n  }\n}\n")]
+#[case::accepts_event_returning_void("class C {\n  event OnHit() : void {\n  }\n}\n")]
 #[case::accepts_event_without_return_type("class C {\n  event OnHit() {\n  }\n}\n")]
 #[case::accepts_event_returning_value("class C {\n  event OnHit() {\n    return true;\n  }\n}\n")]
 #[case::accepts_bare_return_in_function("class C {\n  function F() {\n    return;\n  }\n}\n")]
@@ -93,23 +92,24 @@ fn reports_int_literal_overflow(#[case] literal: &str, #[case] underlined: &str)
     );
 }
 
-#[test]
-fn reports_event_with_non_bool_return_type() {
-    let source = "class C {\n  event OnHit() : int {\n  }\n}\n";
+#[rstest]
+#[case::int("class C {\n  event OnHit() : int {\n  }\n}\n", "int")]
+#[case::bool("class C {\n  event OnHit() : bool {\n  }\n}\n", "bool")]
+fn reports_event_with_non_void_return_type(#[case] source: &str, #[case] underlined: &str) {
     let t = TestDb::new(source);
     let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
 
     let found = diagnostics
         .iter()
-        .find(|d| d.kind == "event_return_not_bool");
+        .find(|d| d.kind == "event_return_not_void");
     assert!(
         found.is_some(),
-        "expected event_return_not_bool diagnostic, got: {diagnostics:#?}"
+        "expected event_return_not_void diagnostic, got: {diagnostics:#?}"
     );
     let d = found.unwrap();
     assert_eq!(
         &source[d.byte_range.clone()],
-        "int",
+        underlined,
         "diagnostic should underline the return type"
     );
 }

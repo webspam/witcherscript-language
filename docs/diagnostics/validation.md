@@ -33,7 +33,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 25 | `state_owner_not_class` | error | `state X in Owner` where `Owner` resolves to something that is not a class (e.g. a struct or enum) |
 | 26 | `string_linefeed` | error | A string literal contains a linefeed |
 | 27 | `int_overflow` | error | An integer literal overflows a 32-bit int |
-| 28 | `event_return_not_bool` | error | An event declares a return type other than `bool` |
+| 28 | `event_return_not_void` | error | An event declares a return type other than `void` |
 | 29 | `event_bare_return` | error | A bare `return;` inside an event body |
 | 30 | `non_constant_default` | error | A `default` value is a call or `new` expression |
 | 31 | `annotation_targets_backing_class` | error | A modding annotation targets a state's backing class name instead of the short state name |
@@ -214,9 +214,9 @@ A double-quoted string literal that spans more than one line. The grammar tokeni
 
 A decimal or hex integer literal whose value does not fit a 32-bit int (the compiler's "static integer overflow"). An adjacent sign is part of the literal, so `-2147483648` is in range; a spaced `- 2147483648` is a unary minus applied to an out-of-range literal and is flagged. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
 
-### 28. Event return type is not bool
+### 28. Event return type is not void
 
-An `event` declared with an explicit return type other than `bool`. Events must return `bool`; the conventional form omits the return type entirely, which is also accepted. The comparison is case-insensitive so that a miscased `Bool` is reported once, by `unknown_type`. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
+An `event` declared with an explicit return type other than `void`. The conventional form omits the return type entirely, which is also accepted; the only permitted explicit suffix is `void`. The return type is otherwise ignored by the compiler (a `return` inside an event must still yield `bool` - see rule 29). Purely syntactic, so the `witcherscript-check` CLI reports it as well.
 
 ### 29. Bare return in an event
 

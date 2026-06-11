@@ -292,13 +292,12 @@ fn collect_event_return_type(event: Node, source: &str, diagnostics: &mut Vec<Pa
         return;
     };
     let text = &source[return_type.byte_range()];
-    // Case-insensitive: a miscased `Bool` is unknown_type's report, not this rule's.
-    if !text.eq_ignore_ascii_case("bool") {
+    if text != "void" {
         diagnostics.push(syntax_diagnostic(
             return_type,
             source,
-            "event_return_not_bool",
-            "An event's return type must be bool",
+            "event_return_not_void",
+            "An event's return type, if specified, must be void",
         ));
     }
 }
