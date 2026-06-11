@@ -36,6 +36,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 28 | `event_return_not_bool` | error | An event declares a return type other than `bool` |
 | 29 | `event_bare_return` | error | A bare `return;` inside an event body |
 | 30 | `non_constant_default` | error | A `default` value is a call or `new` expression |
+| 31 | `annotation_targets_backing_class` | error | A modding annotation targets a state's backing class name instead of the short state name |
 
 ## Details
 
@@ -221,3 +222,7 @@ A `return;` with no value inside an event body, at any nesting depth. Events ret
 ### 30. Non-constant default value
 
 A `default x = ...;` or `defaults { x = ...; }` value that is a function/constructor call or a `new` expression (e.g. `default v = Vector(0, 0, 0);`). The compiler only accepts compile-time constants here. Literals, signed literals, and bare identifiers (possible enum members) are allowed; only call and `new` expressions are flagged, so a parenthesised call slips through. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
+
+### 31. Annotation targets a state's backing class
+
+A `@wrapMethod` / `@replaceMethod` / `@addMethod` / `@addField` whose argument is the engine-synthesised backing class name of a state (e.g. `@wrapMethod(CR4PlayerStateSwimming)`). The mod compiler only matches annotations against the short state name (`@wrapMethod(Swimming)`); the message suggests that spelling and links to the state declaration.

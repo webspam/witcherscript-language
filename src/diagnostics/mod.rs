@@ -7,6 +7,7 @@ use tree_sitter::{Node, Point};
 use crate::line_index::SourceRange;
 
 mod abstract_instantiation;
+mod annotation_state_target;
 mod base_script_conflict;
 mod cst_walker;
 mod duplicate_local;
@@ -20,6 +21,7 @@ mod unknown_symbol;
 mod wrapped_method;
 
 pub use abstract_instantiation::collect_abstract_instantiation_diagnostics;
+pub use annotation_state_target::collect_annotation_state_target_diagnostics;
 pub use base_script_conflict::{
     KIND as BASE_SCRIPT_CONFLICT_KIND, basename_of, collect_base_script_conflict_diagnostics,
     relative_from_scripts,
@@ -43,6 +45,7 @@ use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use abstract_instantiation::AbstractInstantiationRule;
+use annotation_state_target::AnnotationStateTargetRule;
 use state_owner::StateOwnerRule;
 use super_field_access::SuperFieldAccessRule;
 use type_mismatch::TypeMismatchRule;
@@ -61,6 +64,7 @@ pub fn collect_cst_diagnostics_for_document(
     let super_field_rule = SuperFieldAccessRule;
     let type_mismatch_rule = TypeMismatchRule;
     let state_owner_rule = StateOwnerRule;
+    let annotation_state_target_rule = AnnotationStateTargetRule;
     let rules: Vec<&dyn CstRule> = vec![
         &method_rule,
         &wrapped_rule,
@@ -68,6 +72,7 @@ pub fn collect_cst_diagnostics_for_document(
         &super_field_rule,
         &type_mismatch_rule,
         &state_owner_rule,
+        &annotation_state_target_rule,
     ];
     let mut diagnostics = run_rules_on_document(uri, document, db, &rules);
 

@@ -24,6 +24,9 @@
   `unknown_type`, `unknown_member`, `unknown_function`, `unknown_identifier`. Skips
   declaration sites, `BUILTIN_TYPES`, tree-sitter error/missing subtrees, and idents
   already owned by `unknown_method` (member-access calls).
+- `src/diagnostics/annotation_state_target.rs` - CST-walking rule (`AnnotationStateTargetRule`);
+  flags modding annotations whose argument is a state's synthetic backing class name instead of
+  the short state name. Emits `"annotation_targets_backing_class"`.
 - `src/diagnostics/wrapped_method.rs` - CST-walking rule (`WrappedMethodRule`) that
   implements `CstRule` and is registered in `collect_cst_diagnostics_for_document`.
   Checks every `@wrapMethod`-annotated function for a bare `wrappedMethod(...)` call:
