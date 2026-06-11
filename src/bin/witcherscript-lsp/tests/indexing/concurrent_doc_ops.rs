@@ -324,7 +324,7 @@ fn rename_resolves_against_a_queued_unpublished_edit() {
         "precondition: the inserted declaration must still be queued, not in the snapshot",
     );
 
-    let def = backend
+    let (def, _) = backend
         .resolve_at(&uri, Position::new(2, 4), &backend.snapshot())
         .expect("rename must resolve the just-inserted local against the queued edit");
     assert_eq!(

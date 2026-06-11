@@ -186,7 +186,7 @@ impl Backend {
         trace!(op = "prepare_rename", uri = %uri, "start");
         let result = 'body: {
             let snap = self.snapshot();
-            let Some(definition) = self.resolve_at(&uri, params.position, &snap) else {
+            let Some((definition, _)) = self.resolve_at(&uri, params.position, &snap) else {
                 break 'body Ok(None);
             };
 
@@ -214,7 +214,7 @@ impl Backend {
         trace!(op = "rename", uri = %uri, "start");
         let result = 'body: {
             let snap = self.snapshot();
-            let Some(definition) =
+            let Some((definition, latest)) =
                 self.resolve_at(&uri, params.text_document_position.position, &snap)
             else {
                 break 'body Ok(None);
@@ -229,8 +229,6 @@ impl Backend {
             let db = handles.db();
 
             let loose_uris = self.loose_open_uris(&snap.documents);
-            // A queued edit isn't in the snapshot yet; search the pending copy so rename sees just-applied text.
-            let latest = self.latest_parsed_document(&uri, &snap);
             let mut merged = merge_documents(
                 &snap.base_scripts_documents,
                 &snap.workspace_documents,
@@ -238,9 +236,8 @@ impl Backend {
                 &loose_uris,
                 loose_uris.contains(&uri),
             );
-            if let Some(doc) = latest.as_deref() {
-                merged.insert(canonical_uri(&uri), doc);
-            }
+            // A queued edit isn't in the snapshot yet; search resolve_at's copy so rename sees just-applied text.
+            merged.insert(canonical_uri(&uri), latest.as_ref());
 
             let Some(definition_document) = merged.get(&definition.uri).copied() else {
                 break 'body Ok(None);
