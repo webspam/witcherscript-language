@@ -17,6 +17,8 @@ use crate::test_support::TestDb;
 #[case::accepts_event_returning_bool("class C {\n  event OnHit() : bool {\n  }\n}\n")]
 #[case::accepts_event_with_miscased_bool("class C {\n  event OnHit() : Bool {\n  }\n}\n")]
 #[case::accepts_event_without_return_type("class C {\n  event OnHit() {\n  }\n}\n")]
+#[case::accepts_event_returning_value("class C {\n  event OnHit() {\n    return true;\n  }\n}\n")]
+#[case::accepts_bare_return_in_function("class C {\n  function F() {\n    return;\n  }\n}\n")]
 fn does_not_fire(#[case] source: &str) {
     let t = TestDb::new(source);
     let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
@@ -104,6 +106,22 @@ fn reports_event_with_non_bool_return_type() {
         &source[d.byte_range.clone()],
         "int",
         "diagnostic should underline the return type"
+    );
+}
+
+#[rstest]
+#[case::top_level("class C {\n  event OnHit() {\n    return;\n  }\n}\n")]
+#[case::nested_in_if(
+    "class C {\n  event OnHit() {\n    if (true) {\n      return;\n    }\n  }\n}\n"
+)]
+#[case::with_trailing_comment("class C {\n  event OnHit() {\n    return /*x*/;\n  }\n}\n")]
+fn reports_bare_return_in_event(#[case] source: &str) {
+    let t = TestDb::new(source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
+
+    assert!(
+        diagnostics.iter().any(|d| d.kind == "event_bare_return"),
+        "expected event_bare_return diagnostic, got: {diagnostics:#?}"
     );
 }
 

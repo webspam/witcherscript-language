@@ -201,6 +201,10 @@ impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
         if node.kind() == kinds::EVENT_DECL {
             collect_event_return_type(node, self.source, &mut self.diagnostics);
         }
+        if node.kind() == kinds::RETURN_STMT && is_bare_return(node) && is_inside_event(node) {
+            self.diagnostics
+                .push(event_bare_return_diagnostic(node, self.source));
+        }
         if node.kind() == kinds::FUNC_BLOCK {
             collect_late_local_vars_in_block(node, self.source, &mut self.diagnostics);
         }
@@ -289,6 +293,36 @@ fn event_return_not_bool_diagnostic(node: Node, source: &str) -> ParseDiagnostic
     ParseDiagnostic {
         kind: "event_return_not_bool".to_string(),
         message: "An event's return type must be bool".to_string(),
+        start: node.start_position(),
+        end: node.end_position(),
+        byte_range: node.start_byte()..node.end_byte(),
+        snippet: line_snippet(source, node.start_position().row),
+    }
+}
+
+fn is_bare_return(return_stmt: Node) -> bool {
+    let mut cursor = return_stmt.walk();
+    return_stmt
+        .named_children(&mut cursor)
+        .all(|child| child.kind() == kinds::COMMENT)
+}
+
+fn is_inside_event(node: Node) -> bool {
+    let mut current = node.parent();
+    while let Some(ancestor) = current {
+        match ancestor.kind() {
+            kinds::EVENT_DECL => return true,
+            kinds::FUNC_DECL => return false,
+            _ => current = ancestor.parent(),
+        }
+    }
+    false
+}
+
+fn event_bare_return_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
+    ParseDiagnostic {
+        kind: "event_bare_return".to_string(),
+        message: "Events return bool; a bare 'return;' cannot convert void to bool".to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),

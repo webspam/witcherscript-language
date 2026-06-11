@@ -34,6 +34,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 26 | `string_linefeed` | error | A string literal contains a linefeed |
 | 27 | `int_overflow` | error | An integer literal overflows a 32-bit int |
 | 28 | `event_return_not_bool` | error | An event declares a return type other than `bool` |
+| 29 | `event_bare_return` | error | A bare `return;` inside an event body |
 
 ## Details
 
@@ -211,3 +212,7 @@ A decimal or hex integer literal whose value does not fit a 32-bit int (the comp
 ### 28. Event return type is not bool
 
 An `event` declared with an explicit return type other than `bool`. Events must return `bool`; the conventional form omits the return type entirely, which is also accepted. The comparison is case-insensitive so that a miscased `Bool` is reported once, by `unknown_type`. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
+
+### 29. Bare return in an event
+
+A `return;` with no value inside an event body, at any nesting depth. Events return `bool`, so the compiler rejects this with "Unable to convert from 'void' to 'Bool'". A bare `return;` in a plain function is fine. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
