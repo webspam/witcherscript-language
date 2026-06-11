@@ -4,8 +4,9 @@ use lsp_types::{
 };
 use witcherscript_language::diagnostics::collect_duplicate_symbol_diagnostics;
 
-use super::legacy_helpers::{LocalTempDir, make_backend, write_script};
+use super::legacy_helpers::{LocalTempDir, write_script};
 use crate::file_scope::FileScope;
+use crate::tests::support::make_backend;
 
 fn open_params(uri: &Url, text: &str) -> DidOpenTextDocumentParams {
     DidOpenTextDocumentParams {

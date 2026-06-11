@@ -1,13 +1,9 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
-use arc_swap::ArcSwap;
-use async_lsp::ClientSocket;
-use async_lsp::router::Router;
-use lsp_types::{DidOpenTextDocumentParams, TextDocumentItem, Url};
+use lsp_types::Url;
 
 use crate::backend::Backend;
-use crate::config::{Config, DiagnosticsScope};
+use crate::tests::support::make_backend;
 
 pub(super) struct LocalTempDir {
     path: PathBuf,
@@ -30,16 +26,6 @@ impl Drop for LocalTempDir {
     fn drop(&mut self) {
         std::fs::remove_dir_all(&self.path).ok();
     }
-}
-
-pub(super) fn make_backend() -> Backend {
-    let (_main_loop, client) =
-        async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-    let config = Arc::new(ArcSwap::from_pointee(Config {
-        diagnostics_scope: DiagnosticsScope::None,
-        ..Config::default()
-    }));
-    Backend::new(client, config)
 }
 
 pub(super) fn write_script(dir: &Path, rel: &str, contents: &str) -> PathBuf {
@@ -83,15 +69,4 @@ pub(super) async fn indexed_legacy_override(name: &str) -> (LocalTempDir, Backen
     });
     backend.index_base_scripts().await;
     (temp, backend, override_url, new_url)
-}
-
-pub(super) fn open_params(uri: &Url, text: &str) -> DidOpenTextDocumentParams {
-    DidOpenTextDocumentParams {
-        text_document: TextDocumentItem {
-            uri: uri.clone(),
-            language_id: "witcherscript".to_string(),
-            version: 1,
-            text: text.to_string(),
-        },
-    }
 }

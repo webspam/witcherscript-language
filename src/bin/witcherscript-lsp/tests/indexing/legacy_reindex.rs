@@ -4,9 +4,8 @@ use lsp_types::{DidCloseTextDocumentParams, TextDocumentIdentifier, Url};
 
 use witcherscript_language::files::canonical_uri;
 
-use super::legacy_helpers::{
-    LocalTempDir, indexed_legacy_override, make_backend, make_game_dir, open_params, write_script,
-};
+use super::legacy_helpers::{LocalTempDir, indexed_legacy_override, make_game_dir, write_script};
+use crate::tests::support::{make_backend, open_params};
 
 #[tokio::test]
 async fn reindexing_keeps_an_open_legacy_file_indexed() {

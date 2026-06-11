@@ -7,7 +7,8 @@ use witcherscript_language::diagnostics::{
 
 use crate::config::{Config, DiagnosticsScope};
 
-use super::legacy_helpers::{LocalTempDir, make_backend, make_game_dir, write_script};
+use super::legacy_helpers::{LocalTempDir, make_game_dir, write_script};
+use crate::tests::support::make_backend;
 
 #[tokio::test]
 async fn matching_legacy_file_shadows_base_and_lands_in_workspace() {

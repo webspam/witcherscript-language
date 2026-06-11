@@ -47,7 +47,7 @@ fn build_index_segments_game_dir_only() {
 
 #[test]
 fn base_scripts_dir_derives_from_game_directory() {
-    let backend = legacy_helpers::make_backend();
+    let backend = crate::tests::support::make_backend();
     let game_dir = std::path::PathBuf::from(r"C:\witcher3");
     backend.update_config(|c| c.game_directory = Some(game_dir.clone()));
     assert_eq!(
@@ -59,7 +59,7 @@ fn base_scripts_dir_derives_from_game_directory() {
 
 #[test]
 fn base_scripts_dir_prefers_override_verbatim() {
-    let backend = legacy_helpers::make_backend();
+    let backend = crate::tests::support::make_backend();
     let override_dir = std::path::PathBuf::from(r"D:\exact\scripts");
     backend.update_config(|c| {
         c.game_directory = Some(std::path::PathBuf::from(r"C:\witcher3"));

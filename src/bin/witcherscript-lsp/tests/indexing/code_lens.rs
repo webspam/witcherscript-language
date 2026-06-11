@@ -7,9 +7,10 @@ use lsp_types::{
     TextDocumentIdentifier, Url,
 };
 
-use super::legacy_helpers::{indexed_legacy_override, make_backend, open_params};
+use super::legacy_helpers::indexed_legacy_override;
 use crate::backend::Backend;
 use crate::queries::ReferenceLensData;
+use crate::tests::support::{make_backend, open_params};
 
 fn code_lens_params(uri: &Url) -> CodeLensParams {
     CodeLensParams {
