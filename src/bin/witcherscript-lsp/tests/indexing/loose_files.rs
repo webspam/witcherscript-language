@@ -1,23 +1,9 @@
-use lsp_types::{
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, Position, TextDocumentIdentifier,
-    TextDocumentItem, Url,
-};
+use lsp_types::{DidCloseTextDocumentParams, Position, TextDocumentIdentifier, Url};
 use witcherscript_language::diagnostics::collect_duplicate_symbol_diagnostics;
 
 use super::legacy_helpers::{LocalTempDir, write_script};
 use crate::file_scope::FileScope;
-use crate::tests::support::make_backend;
-
-fn open_params(uri: &Url, text: &str) -> DidOpenTextDocumentParams {
-    DidOpenTextDocumentParams {
-        text_document: TextDocumentItem {
-            uri: uri.clone(),
-            language_id: "witcherscript".to_string(),
-            version: 1,
-            text: text.to_string(),
-        },
-    }
-}
+use crate::tests::support::{make_backend, open_params};
 
 fn close_params(uri: &Url) -> DidCloseTextDocumentParams {
     DidCloseTextDocumentParams {

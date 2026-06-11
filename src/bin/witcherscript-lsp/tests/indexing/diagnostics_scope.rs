@@ -2,9 +2,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use arc_swap::ArcSwap;
-use async_lsp::ClientSocket;
-use async_lsp::router::Router;
 use lsp_types::{
     DidCloseTextDocumentParams, PartialResultParams, PreviousResultId, TextDocumentIdentifier, Url,
     WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
@@ -13,17 +10,12 @@ use lsp_types::{
 
 use super::legacy_helpers::{LocalTempDir, write_script};
 use crate::backend::Backend;
-use crate::config::{Config, DiagnosticsScope};
+use crate::config::DiagnosticsScope;
 use crate::cst_cache::{CstCacheEntry, DbFingerprint};
+use crate::tests::support;
 
 fn make_backend_with(scope: DiagnosticsScope) -> Backend {
-    let (_main_loop, client) =
-        async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-    let config = Arc::new(ArcSwap::from_pointee(Config {
-        diagnostics_scope: scope,
-        ..Config::default()
-    }));
-    let backend = Backend::new(client, config);
+    let backend = support::make_backend_with(scope);
     backend.initial_index_done.store(true, Ordering::Release);
     backend
 }

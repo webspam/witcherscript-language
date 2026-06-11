@@ -2,58 +2,29 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use arc_swap::ArcSwap;
-use async_lsp::router::Router;
-use async_lsp::{ClientSocket, ErrorCode};
+use async_lsp::ErrorCode;
 use lsp_types::{
     CompletionContext, CompletionParams, CompletionResponse, CompletionTriggerKind,
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentDiagnosticParams,
-    DocumentDiagnosticReport, DocumentDiagnosticReportResult, DocumentFormattingParams,
-    FormattingOptions, PartialResultParams, Position, Range, SemanticTokensParams,
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, Url, VersionedTextDocumentIdentifier, WorkDoneProgressParams,
-    WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
+    DidChangeTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportResult, DocumentFormattingParams, FormattingOptions,
+    PartialResultParams, Position, Range, SemanticTokensParams, TextDocumentContentChangeEvent,
+    TextDocumentIdentifier, TextDocumentPositionParams, Url, VersionedTextDocumentIdentifier,
+    WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens;
 
 use crate::backend::Backend;
-use crate::config::{Config, DiagnosticsScope};
-
-fn make_backend() -> Backend {
-    let (_main_loop, client) =
-        async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-    let config = Arc::new(ArcSwap::from_pointee(Config {
-        diagnostics_scope: DiagnosticsScope::None,
-        ..Config::default()
-    }));
-    Backend::new(client, config)
-}
+use crate::config::DiagnosticsScope;
+use crate::tests::support::{make_backend, make_backend_with, open_params};
 
 fn workspace_scope_backend_indexing_pending() -> Backend {
-    let (_main_loop, client) =
-        async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-    let config = Arc::new(ArcSwap::from_pointee(Config {
-        diagnostics_scope: DiagnosticsScope::Workspace,
-        ..Config::default()
-    }));
-    Backend::new(client, config)
+    make_backend_with(DiagnosticsScope::Workspace)
 }
 
 fn make_workspace_backend() -> Backend {
     let backend = workspace_scope_backend_indexing_pending();
     backend.initial_index_done.store(true, Ordering::Release);
     backend
-}
-
-fn open_params(uri: &Url, text: &str) -> DidOpenTextDocumentParams {
-    DidOpenTextDocumentParams {
-        text_document: TextDocumentItem {
-            uri: uri.clone(),
-            language_id: "witcherscript".to_string(),
-            version: 1,
-            text: text.to_string(),
-        },
-    }
 }
 
 fn change_params(
@@ -429,13 +400,7 @@ fn document_diagnostic_skips_unopened_workspace_file_under_open_files_scope() {
     use witcherscript_language::document::parse_document;
     use witcherscript_language::files::canonical_uri;
 
-    let (_main_loop, client) =
-        async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-    let config = Arc::new(ArcSwap::from_pointee(Config {
-        diagnostics_scope: DiagnosticsScope::OpenFiles,
-        ..Config::default()
-    }));
-    let backend = Backend::new(client, config);
+    let backend = make_backend_with(DiagnosticsScope::OpenFiles);
     backend.initial_index_done.store(true, Ordering::Release);
 
     let uri: Url = "file:///unopened_open_scope.ws".parse().unwrap();

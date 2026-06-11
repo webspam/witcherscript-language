@@ -1,36 +1,8 @@
-use std::sync::Arc;
-
-use arc_swap::ArcSwap;
-use async_lsp::ClientSocket;
-use async_lsp::router::Router;
 use lsp_types::{
-    DidOpenTextDocumentParams, InlayHintParams, Position, Range, TextDocumentIdentifier,
-    TextDocumentItem, Url, WorkDoneProgressParams,
+    InlayHintParams, Position, Range, TextDocumentIdentifier, Url, WorkDoneProgressParams,
 };
 
-use crate::backend::Backend;
-use crate::config::{Config, DiagnosticsScope};
-
-fn make_backend() -> Backend {
-    let (_main_loop, client) =
-        async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
-    let config = Arc::new(ArcSwap::from_pointee(Config {
-        diagnostics_scope: DiagnosticsScope::None,
-        ..Config::default()
-    }));
-    Backend::new(client, config)
-}
-
-fn open_params(uri: &Url, text: &str) -> DidOpenTextDocumentParams {
-    DidOpenTextDocumentParams {
-        text_document: TextDocumentItem {
-            uri: uri.clone(),
-            language_id: "witcherscript".to_string(),
-            version: 1,
-            text: text.to_string(),
-        },
-    }
-}
+use crate::tests::support::{make_backend, open_params};
 
 fn inlay_hint_params(uri: &Url) -> InlayHintParams {
     InlayHintParams {
