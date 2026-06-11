@@ -37,6 +37,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 29 | `event_bare_return` | error | A bare `return;` inside an event body |
 | 30 | `non_constant_default` | error | A `default` value is a call or `new` expression |
 | 31 | `annotation_targets_backing_class` | error | A modding annotation targets a state's backing class name instead of the short state name |
+| 32 | `duplicate_inherited_field` | error | A field redeclares a field inherited from an ancestor |
 
 ## Details
 
@@ -226,3 +227,7 @@ A `default x = ...;` or `defaults { x = ...; }` value that is a function/constru
 ### 31. Annotation targets a state's backing class
 
 A `@wrapMethod` / `@replaceMethod` / `@addMethod` / `@addField` whose argument is the engine-synthesised backing class name of a state (e.g. `@wrapMethod(CR4PlayerStateSwimming)`). The mod compiler only matches annotations against the short state name (`@wrapMethod(Swimming)`); the message suggests that spelling and links to the state declaration.
+
+### 32. Duplicate inherited field
+
+A class or state field whose name is already a field anywhere up the inheritance chain (including base scripts and any access level - the compiler rejects the redeclaration even for private ancestor fields). Method names may be reused; only field-over-field redeclarations fire. `@addField` declarations are exempt.

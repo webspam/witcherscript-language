@@ -27,6 +27,9 @@
 - `src/diagnostics/annotation_state_target.rs` - CST-walking rule (`AnnotationStateTargetRule`);
   flags modding annotations whose argument is a state's synthetic backing class name instead of
   the short state name. Emits `"annotation_targets_backing_class"`.
+- `src/diagnostics/inherited_field.rs` - CST-walking rule (`InheritedFieldRule`); flags a class
+  or state field that redeclares a field inherited from an ancestor. Emits
+  `"duplicate_inherited_field"`.
 - `src/diagnostics/wrapped_method.rs` - CST-walking rule (`WrappedMethodRule`) that
   implements `CstRule` and is registered in `collect_cst_diagnostics_for_document`.
   Checks every `@wrapMethod`-annotated function for a bare `wrappedMethod(...)` call:
