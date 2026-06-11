@@ -197,29 +197,50 @@ impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
                 .push(tree_error_diagnostic(node, self.source));
         }
         if node.kind() == kinds::INCOMPLETE_MEMBER_ACCESS_EXPR {
-            self.diagnostics
-                .push(incomplete_member_access_diagnostic(node, self.source));
+            self.diagnostics.push(syntax_diagnostic(
+                node,
+                self.source,
+                "incomplete_member_access_expr",
+                "Incomplete member access: expected identifier after '.'",
+            ));
         }
         if node.kind() == kinds::TERNARY_COND_EXPR {
-            self.diagnostics
-                .push(ternary_expr_diagnostic(node, self.source));
+            self.diagnostics.push(syntax_diagnostic(
+                node,
+                self.source,
+                "ternary_cond_expr",
+                "Ternary expression is not supported: WitcherScript parses `cond ? a : b` \
+                 but always evaluates it to 0 / false / void",
+            ));
         }
         if node.kind() == kinds::LITERAL_STRING && self.source[node.byte_range()].contains('\n') {
-            self.diagnostics
-                .push(string_linefeed_diagnostic(node, self.source));
+            self.diagnostics.push(syntax_diagnostic(
+                node,
+                self.source,
+                "string_linefeed",
+                "String literals cannot contain a linefeed",
+            ));
         }
         if matches!(node.kind(), kinds::LITERAL_INT | kinds::LITERAL_HEX)
             && int_literal_overflows(node.kind(), &self.source[node.byte_range()])
         {
-            self.diagnostics
-                .push(int_overflow_diagnostic(node, self.source));
+            self.diagnostics.push(syntax_diagnostic(
+                node,
+                self.source,
+                "int_overflow",
+                "Integer literal overflows a 32-bit int",
+            ));
         }
         if node.kind() == kinds::EVENT_DECL {
             collect_event_return_type(node, self.source, &mut self.diagnostics);
         }
         if node.kind() == kinds::RETURN_STMT && is_bare_return(node) && is_inside_event(node) {
-            self.diagnostics
-                .push(event_bare_return_diagnostic(node, self.source));
+            self.diagnostics.push(syntax_diagnostic(
+                node,
+                self.source,
+                "event_bare_return",
+                "Events return bool; a bare 'return;' cannot convert void to bool",
+            ));
         }
         if matches!(
             node.kind(),
@@ -237,34 +258,10 @@ impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
     }
 }
 
-fn incomplete_member_access_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
+fn syntax_diagnostic(node: Node, source: &str, kind: &str, message: &str) -> ParseDiagnostic {
     ParseDiagnostic {
-        kind: "incomplete_member_access_expr".to_string(),
-        message: "Incomplete member access: expected identifier after '.'".to_string(),
-        start: node.start_position(),
-        end: node.end_position(),
-        byte_range: node.start_byte()..node.end_byte(),
-        snippet: line_snippet(source, node.start_position().row),
-    }
-}
-
-fn ternary_expr_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
-    ParseDiagnostic {
-        kind: "ternary_cond_expr".to_string(),
-        message: "Ternary expression is not supported: WitcherScript parses `cond ? a : b` \
-                  but always evaluates it to 0 / false / void"
-            .to_string(),
-        start: node.start_position(),
-        end: node.end_position(),
-        byte_range: node.start_byte()..node.end_byte(),
-        snippet: line_snippet(source, node.start_position().row),
-    }
-}
-
-fn string_linefeed_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
-    ParseDiagnostic {
-        kind: "string_linefeed".to_string(),
-        message: "String literals cannot contain a linefeed".to_string(),
+        kind: kind.to_string(),
+        message: message.to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),
@@ -289,17 +286,6 @@ fn int_literal_overflows(kind: &str, text: &str) -> bool {
     digits.parse::<u64>().ok().is_none_or(|v| v > max)
 }
 
-fn int_overflow_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
-    ParseDiagnostic {
-        kind: "int_overflow".to_string(),
-        message: "Integer literal overflows a 32-bit int".to_string(),
-        start: node.start_position(),
-        end: node.end_position(),
-        byte_range: node.start_byte()..node.end_byte(),
-        snippet: line_snippet(source, node.start_position().row),
-    }
-}
-
 fn collect_event_return_type(event: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>) {
     let Some(return_type) = event.child_by_field_name(fields::RETURN_TYPE) else {
         return;
@@ -307,18 +293,12 @@ fn collect_event_return_type(event: Node, source: &str, diagnostics: &mut Vec<Pa
     let text = &source[return_type.byte_range()];
     // Case-insensitive: a miscased `Bool` is unknown_type's report, not this rule's.
     if !text.eq_ignore_ascii_case("bool") {
-        diagnostics.push(event_return_not_bool_diagnostic(return_type, source));
-    }
-}
-
-fn event_return_not_bool_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
-    ParseDiagnostic {
-        kind: "event_return_not_bool".to_string(),
-        message: "An event's return type must be bool".to_string(),
-        start: node.start_position(),
-        end: node.end_position(),
-        byte_range: node.start_byte()..node.end_byte(),
-        snippet: line_snippet(source, node.start_position().row),
+        diagnostics.push(syntax_diagnostic(
+            return_type,
+            source,
+            "event_return_not_bool",
+            "An event's return type must be bool",
+        ));
     }
 }
 
@@ -334,17 +314,6 @@ fn is_inside_event(node: Node) -> bool {
         .is_some_and(|ancestor| ancestor.kind() == kinds::EVENT_DECL)
 }
 
-fn event_bare_return_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
-    ParseDiagnostic {
-        kind: "event_bare_return".to_string(),
-        message: "Events return bool; a bare 'return;' cannot convert void to bool".to_string(),
-        start: node.start_position(),
-        end: node.end_position(),
-        byte_range: node.start_byte()..node.end_byte(),
-        snippet: line_snippet(source, node.start_position().row),
-    }
-}
-
 fn collect_non_constant_default(
     default_val: Node,
     source: &str,
@@ -354,19 +323,12 @@ fn collect_non_constant_default(
         return;
     };
     if matches!(value.kind(), kinds::FUNC_CALL_EXPR | kinds::NEW_EXPR) {
-        diagnostics.push(non_constant_default_diagnostic(value, source));
-    }
-}
-
-fn non_constant_default_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
-    ParseDiagnostic {
-        kind: "non_constant_default".to_string(),
-        message: "'default' values must be compile-time constants; calls and 'new' are not"
-            .to_string(),
-        start: node.start_position(),
-        end: node.end_position(),
-        byte_range: node.start_byte()..node.end_byte(),
-        snippet: line_snippet(source, node.start_position().row),
+        diagnostics.push(syntax_diagnostic(
+            value,
+            source,
+            "non_constant_default",
+            "'default' values must be compile-time constants; calls and 'new' are not",
+        ));
     }
 }
 
@@ -385,7 +347,12 @@ fn collect_late_local_vars_in_block(
 
         if child.kind() == kinds::LOCAL_VAR_DECL_STMT {
             if saw_code_statement {
-                diagnostics.push(late_local_var_diagnostic(child, source));
+                diagnostics.push(syntax_diagnostic(
+                    child,
+                    source,
+                    "late_local_var_decl",
+                    "Local variable declarations must precede executable statements",
+                ));
             }
             continue;
         }
@@ -412,7 +379,12 @@ fn collect_struct_prop_access_modifiers(
             }
             let keyword = &source[specifier.start_byte()..specifier.end_byte()];
             if matches!(keyword, "private" | "protected" | "public") {
-                diagnostics.push(struct_prop_access_modifier_diagnostic(specifier, source));
+                diagnostics.push(syntax_diagnostic(
+                    specifier,
+                    source,
+                    "struct_property_access_modifier",
+                    "Accessibility modifiers cannot be applied to struct properties",
+                ));
             }
         }
     }
@@ -429,28 +401,6 @@ fn tree_error_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
     ParseDiagnostic {
         kind,
         message,
-        start: node.start_position(),
-        end: node.end_position(),
-        byte_range: node.start_byte()..node.end_byte(),
-        snippet: line_snippet(source, node.start_position().row),
-    }
-}
-
-fn late_local_var_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
-    ParseDiagnostic {
-        kind: "late_local_var_decl".to_string(),
-        message: "Local variable declarations must precede executable statements".to_string(),
-        start: node.start_position(),
-        end: node.end_position(),
-        byte_range: node.start_byte()..node.end_byte(),
-        snippet: line_snippet(source, node.start_position().row),
-    }
-}
-
-fn struct_prop_access_modifier_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
-    ParseDiagnostic {
-        kind: "struct_property_access_modifier".to_string(),
-        message: "Accessibility modifiers cannot be applied to struct properties".to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),
