@@ -33,6 +33,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 25 | `state_owner_not_class` | error | `state X in Owner` where `Owner` resolves to something that is not a class (e.g. a struct or enum) |
 | 26 | `string_linefeed` | error | A string literal contains a linefeed |
 | 27 | `int_overflow` | error | An integer literal overflows a 32-bit int |
+| 28 | `event_return_not_bool` | error | An event declares a return type other than `bool` |
 
 ## Details
 
@@ -206,3 +207,7 @@ A double-quoted string literal that spans more than one line. The grammar tokeni
 ### 27. Integer literal overflow
 
 A decimal or hex integer literal whose value does not fit a 32-bit int (the compiler's "static integer overflow"). An adjacent sign is part of the literal, so `-2147483648` is in range; a spaced `- 2147483648` is a unary minus applied to an out-of-range literal and is flagged. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
+
+### 28. Event return type is not bool
+
+An `event` declared with an explicit return type other than `bool`. Events must return `bool`; the conventional form omits the return type entirely, which is also accepted. The comparison is case-insensitive so that a miscased `Bool` is reported once, by `unknown_type`. Purely syntactic, so the `witcherscript-check` CLI reports it as well.

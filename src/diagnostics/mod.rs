@@ -38,8 +38,8 @@ pub use unknown_method::collect_unknown_method_diagnostics;
 pub use unknown_symbol::collect_unknown_symbol_diagnostics;
 pub use wrapped_method::collect_wrapped_method_diagnostics;
 
-use crate::cst::kinds;
 use crate::cst::walk::{CstVisitor, Visit, walk};
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use abstract_instantiation::AbstractInstantiationRule;
@@ -198,6 +198,9 @@ impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
             self.diagnostics
                 .push(int_overflow_diagnostic(node, self.source));
         }
+        if node.kind() == kinds::EVENT_DECL {
+            collect_event_return_type(node, self.source, &mut self.diagnostics);
+        }
         if node.kind() == kinds::FUNC_BLOCK {
             collect_late_local_vars_in_block(node, self.source, &mut self.diagnostics);
         }
@@ -264,6 +267,28 @@ fn int_overflow_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
     ParseDiagnostic {
         kind: "int_overflow".to_string(),
         message: "Integer literal overflows a 32-bit int".to_string(),
+        start: node.start_position(),
+        end: node.end_position(),
+        byte_range: node.start_byte()..node.end_byte(),
+        snippet: line_snippet(source, node.start_position().row),
+    }
+}
+
+fn collect_event_return_type(event: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>) {
+    let Some(return_type) = event.child_by_field_name(fields::RETURN_TYPE) else {
+        return;
+    };
+    let text = &source[return_type.byte_range()];
+    // Case-insensitive: a miscased `Bool` is unknown_type's report, not this rule's.
+    if !text.eq_ignore_ascii_case("bool") {
+        diagnostics.push(event_return_not_bool_diagnostic(return_type, source));
+    }
+}
+
+fn event_return_not_bool_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
+    ParseDiagnostic {
+        kind: "event_return_not_bool".to_string(),
+        message: "An event's return type must be bool".to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),
