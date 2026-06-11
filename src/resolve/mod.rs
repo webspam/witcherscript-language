@@ -8,6 +8,7 @@ mod completion;
 mod completion_catalog;
 mod definition;
 mod document_highlight;
+mod extract_var;
 mod inference;
 mod inlay_hints;
 mod name_context;
@@ -39,11 +40,13 @@ pub use completion::{
 pub use completion_catalog::{
     CompletionCatalog, global_catalog_changed, merge_ws_base, merge_ws_base_three,
 };
+pub(crate) use definition::callee_params;
 pub use definition::{
     classify_definition_at_ident, resolve_all_definitions, resolve_definition,
     resolve_definition_at_byte, resolve_definition_at_ident,
 };
 pub use document_highlight::{HighlightKind, document_highlights};
+pub use extract_var::{VariableExtraction, extract_variable};
 pub(crate) use inference::infer_type;
 pub(crate) use inference::infer_type_memo;
 pub use inlay_hints::{InlayHintInfo, inlay_hints};

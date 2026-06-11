@@ -43,7 +43,7 @@ pub fn rewrite_switch_layout(
     layout: SwitchLayout,
 ) -> String {
     let unit = indent_unit_for(&options);
-    let base = line_indent(source, switch_node);
+    let base = line_indent(source, switch_node.start_byte());
     let subs = arm_substitutions(switch_node, source, layout, base, &unit);
     splice_subs(
         source,

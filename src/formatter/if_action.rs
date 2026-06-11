@@ -55,7 +55,7 @@ pub fn rewrite_if_layout(
     layout: IfLayout,
 ) -> String {
     let unit = indent_unit_for(&options);
-    let base = line_indent(source, if_node);
+    let base = line_indent(source, if_node.start_byte());
     let subs = chain_bodies(if_node)
         .into_iter()
         .filter_map(|body| body_substitution(body, source, layout, base, &unit))

@@ -1,12 +1,15 @@
 use std::collections::HashMap;
+use std::ops::Range;
 
 use lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, TextEdit, Url, WorkspaceEdit};
 use tree_sitter::Node;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::formatter::FormatOptions;
+use witcherscript_language::resolve::SymbolDb;
 
 use super::lsp_range;
 
+mod extract_var;
 mod if_stmt;
 mod switch;
 
@@ -14,6 +17,7 @@ mod switch;
 const REFACTORINGS: &[&dyn Refactoring] = &[
     &switch::SwitchLayoutRefactoring,
     &if_stmt::IfLayoutRefactoring,
+    &extract_var::ExtractVariableRefactoring,
 ];
 
 // A cursor-driven "rewrite this construct" code action. Each impl locates its own target node
@@ -27,16 +31,20 @@ enum Preference {
     Alternative,
 }
 
-pub(crate) fn refactor_code_actions(
-    uri: &Url,
-    document: &ParsedDocument,
-    cursor: usize,
+pub(crate) fn refactor_code_actions<'a>(
+    uri: &'a Url,
+    canonical_uri: &'a str,
+    document: &'a ParsedDocument,
+    db: &'a SymbolDb<'a>,
+    selection: Range<usize>,
     options: FormatOptions,
 ) -> Vec<CodeActionOrCommand> {
     let ctx = RefactorContext {
         uri,
+        canonical_uri,
         document,
-        cursor,
+        db,
+        selection,
         options,
     };
     REFACTORINGS.iter().flat_map(|r| r.actions(&ctx)).collect()
@@ -44,8 +52,10 @@ pub(crate) fn refactor_code_actions(
 
 struct RefactorContext<'a> {
     uri: &'a Url,
+    canonical_uri: &'a str,
     document: &'a ParsedDocument,
-    cursor: usize,
+    db: &'a SymbolDb<'a>,
+    selection: Range<usize>,
     options: FormatOptions,
 }
 
@@ -55,7 +65,7 @@ impl<'a> RefactorContext<'a> {
     }
 
     fn cursor(&self) -> usize {
-        self.cursor
+        self.selection.start
     }
 
     fn source(&self) -> &'a str {

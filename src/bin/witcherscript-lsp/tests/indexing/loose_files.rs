@@ -171,7 +171,7 @@ async fn two_loose_files_share_one_compilation() {
         "function F()\n{\n\tvar x : CAlpha;\n}\n".to_string(),
     );
 
-    let def = backend.resolve_at(&beta_url, Position::new(2, 11));
+    let def = backend.resolve_at(&beta_url, Position::new(2, 11), &backend.snapshot());
     assert!(
         def.is_some(),
         "a loose file must resolve a type declared in another open loose file",
@@ -195,7 +195,7 @@ async fn loose_file_does_not_resolve_project_symbols() {
         "function F()\n{\n\tvar x : CFoo;\n}\n".to_string(),
     );
 
-    let def = backend.resolve_at(&loose_url, Position::new(2, 11));
+    let def = backend.resolve_at(&loose_url, Position::new(2, 11), &backend.snapshot());
     assert!(
         def.is_none(),
         "a loose file must not resolve a type from the isolated workspace project",

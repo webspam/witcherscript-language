@@ -1,8 +1,8 @@
 use lsp_types::{CodeActionKind, CodeActionOrCommand, Diagnostic, NumberOrString, Range, Url};
 use rstest::rstest;
 use serde_json::json;
-use witcherscript_language::document::parse_document;
 use witcherscript_language::formatter::FormatOptions;
+use witcherscript_language::test_support::TestDb;
 
 use crate::convert::{base_script_conflict_code_actions, refactor_code_actions};
 
@@ -101,11 +101,25 @@ fn no_quickfix_when_not_applicable(
 }
 
 fn refactor_actions(src: &str, needle: &str) -> Vec<CodeActionOrCommand> {
-    let doc = parse_document(src).expect("should parse");
     let cursor = src.find(needle).expect("needle present") + 1;
+    refactor_actions_for_range(src, cursor..cursor)
+}
+
+fn refactor_actions_for_selection(src: &str, needle: &str) -> Vec<CodeActionOrCommand> {
+    let start = src.find(needle).expect("needle present");
+    refactor_actions_for_range(src, start..start + needle.len())
+}
+
+fn refactor_actions_for_range(
+    src: &str,
+    range: std::ops::Range<usize>,
+) -> Vec<CodeActionOrCommand> {
+    let t = TestDb::new(src);
+    let uri_str = t.primary_uri();
+    let doc = t.doc_for(uri_str);
     let options = FormatOptions::default();
-    let uri = Url::parse("file:///main.ws").unwrap();
-    refactor_code_actions(&uri, &doc, cursor, options)
+    let uri = Url::parse(uri_str).unwrap();
+    refactor_code_actions(&uri, uri_str, doc, &t.db(), range, options)
 }
 
 fn titles(actions: &[CodeActionOrCommand]) -> Vec<String> {
@@ -271,4 +285,56 @@ fn collapse_action_carries_the_inlined_text() {
         "if",
     );
     assert!(new_text(&actions[0]).contains("if (a) Foo();"));
+}
+
+const EXTRACT_SRC: &str = "function Use(x : int) {}\nfunction F() {\n    Use(1 + 2);\n}\n";
+
+#[test]
+fn offers_extract_for_exact_expression_selection() {
+    let actions = refactor_actions_for_selection(EXTRACT_SRC, "1 + 2");
+    assert_eq!(titles(&actions), vec!["Extract to variable"]);
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_EXTRACT));
+    let edits = extract_workspace_edit(action);
+    assert_eq!(edits.len(), 2, "one insert plus one replace");
+    assert_eq!(edits[0].new_text, "\n    var x : int = 1 + 2;");
+    assert_eq!(edits[1].new_text, "x");
+}
+
+fn extract_workspace_edit(action: &lsp_types::CodeAction) -> Vec<lsp_types::TextEdit> {
+    action
+        .edit
+        .clone()
+        .and_then(|e| e.changes)
+        .and_then(|mut c| c.drain().next())
+        .expect("extract carries a WorkspaceEdit")
+        .1
+}
+
+#[test]
+fn extract_action_carries_rename_command() {
+    let actions = refactor_actions_for_selection(EXTRACT_SRC, "1 + 2");
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    let command = action
+        .command
+        .as_ref()
+        .expect("extract must trigger rename");
+    assert_eq!(command.command, "witcherscript.extractVariable");
+    let args = command.arguments.as_ref().unwrap();
+    assert_eq!(args[0], json!("file:///main.ws"));
+    // The original selection's left-most byte, now the new var name `x` in `Use(x)`.
+    assert_eq!(args[1], json!({ "line": 3, "character": 8 }));
+}
+
+#[test]
+fn no_extract_action_for_caret_only_request() {
+    let actions = refactor_actions(EXTRACT_SRC, "1 + 2");
+    assert!(
+        actions.is_empty(),
+        "caret without selection must not offer extract, got {actions:?}"
+    );
 }

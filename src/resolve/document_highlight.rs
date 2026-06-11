@@ -1,12 +1,11 @@
 use tree_sitter::Node;
 
-use crate::cst::grammar::{DefaultOrHintKind, ident_default_or_hint_kind, member_access_member};
-use crate::cst::{fields, kinds};
+use crate::cst::grammar::{DefaultOrHintKind, ident_default_or_hint_kind, is_assignment_target};
 use crate::document::ParsedDocument;
 use crate::line_index::{SourcePosition, SourceRange};
 
 use super::SymbolDb;
-use super::ast::{find_ancestor_of_kind, first_named_child, identifier_at};
+use super::ast::identifier_at;
 use super::name_context::is_named_binding;
 use super::references::find_references;
 use super::resolve_definition;
@@ -64,26 +63,4 @@ fn is_declaration_name(ident: Node) -> bool {
         return false;
     };
     is_named_binding(ident, parent)
-}
-
-fn is_assignment_target(ident: Node) -> bool {
-    let Some(assign) = find_ancestor_of_kind(ident, &[kinds::ASSIGN_OP_EXPR]) else {
-        return false;
-    };
-    let Some(left) = assign.child_by_field_name(fields::LEFT) else {
-        return false;
-    };
-    write_target(left).map(|n| n.id()) == Some(ident.id())
-}
-
-/// The terminal ident actually written by assigning to `expr`. For `a.b = x`
-/// only `b` is written; for `a[i] = x` only `a`. `None` for non-assignable forms.
-fn write_target(expr: Node) -> Option<Node> {
-    match expr.kind() {
-        kinds::IDENT => Some(expr),
-        kinds::MEMBER_ACCESS_EXPR => write_target(member_access_member(expr)?),
-        kinds::NESTED_EXPR => write_target(first_named_child(expr)?),
-        kinds::ARRAY_EXPR => write_target(expr.child_by_field_name(fields::ACCESSOR)?),
-        _ => None,
-    }
 }

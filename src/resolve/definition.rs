@@ -1,5 +1,6 @@
 use tree_sitter::Node;
 
+use crate::cst::grammar::{call_callee, callee_ident};
 use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
@@ -41,6 +42,20 @@ pub fn resolve_definition_at_byte(
 
     let ident = identifier_at(document.tree.root_node(), byte_offset)?;
     resolve_for_ident(uri, document, db, ident, byte_offset)
+}
+
+pub(crate) fn callee_params(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    call: Node,
+) -> Option<Vec<Symbol>> {
+    let ident = callee_ident(call_callee(call)?)?;
+    let def = resolve_definition_at_byte(uri, document, db, ident.start_byte())?;
+    if !def.symbol.kind.is_callable() {
+        return None;
+    }
+    Some(db.full_parameters_of(&def.uri, def.symbol.id))
 }
 
 pub fn resolve_definition_at_ident(

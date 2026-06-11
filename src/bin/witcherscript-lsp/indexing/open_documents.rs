@@ -5,12 +5,12 @@ use std::time::Instant;
 use lsp_types::{Position, Url};
 use tracing::{debug, error, trace, warn};
 use tree_sitter::{Parser, Tree};
-use witcherscript_language::document::{parse_document, parse_document_with_prior};
+use witcherscript_language::document::{ParsedDocument, parse_document, parse_document_with_prior};
 use witcherscript_language::files::{canonical_uri, read_text_file};
 use witcherscript_language::resolve::{Definition, ObservedKey, resolve_definition};
 
 use crate::backend::Backend;
-use crate::compilation::CompilationBuilder;
+use crate::compilation::{Compilation, CompilationBuilder};
 use crate::convert::source_position;
 use crate::file_scope::{FileScope, classify_file_scope};
 
@@ -292,16 +292,22 @@ impl Backend {
         cache.retain(|url, _| !uris.contains(url.as_str()));
     }
 
-    pub(crate) fn resolve_at(&self, uri: &Url, position: Position) -> Option<Definition> {
-        let snap = self.snapshot();
-        let document = snap.documents.get(uri)?.clone();
-        let handles = self.db_handles_for_with_snapshot(uri, &snap);
+    pub(crate) fn resolve_at(
+        &self,
+        uri: &Url,
+        position: Position,
+        snap: &Arc<Compilation>,
+    ) -> Option<(Definition, Arc<ParsedDocument>)> {
+        // A queued edit isn't in the snapshot yet; resolve against it so rename sees just-applied text.
+        let document = self.latest_parsed_document(uri, snap)?;
+        let handles = self.db_handles_for_with_snapshot(uri, snap);
         let db = handles.db();
-        resolve_definition(
+        let definition = resolve_definition(
             &canonical_uri(uri),
             &document,
             &db,
             source_position(position),
-        )
+        )?;
+        Some((definition, document))
     }
 }

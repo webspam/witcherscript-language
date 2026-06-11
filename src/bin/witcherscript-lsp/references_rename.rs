@@ -185,11 +185,11 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "prepare_rename", uri = %uri, "start");
         let result = 'body: {
-            let Some(definition) = self.resolve_at(&uri, params.position) else {
+            let snap = self.snapshot();
+            let Some((definition, _)) = self.resolve_at(&uri, params.position, &snap) else {
                 break 'body Ok(None);
             };
 
-            let snap = self.snapshot();
             if let Err(e) = ensure_rename_target_writable(&definition.uri, &snap) {
                 break 'body Err(e);
             }
@@ -213,12 +213,13 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "rename", uri = %uri, "start");
         let result = 'body: {
-            let Some(definition) = self.resolve_at(&uri, params.text_document_position.position)
+            let snap = self.snapshot();
+            let Some((definition, latest)) =
+                self.resolve_at(&uri, params.text_document_position.position, &snap)
             else {
                 break 'body Ok(None);
             };
 
-            let snap = self.snapshot();
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
 
             if let Err(e) = ensure_rename_target_writable(&definition.uri, &snap) {
@@ -228,13 +229,15 @@ impl Backend {
             let db = handles.db();
 
             let loose_uris = self.loose_open_uris(&snap.documents);
-            let merged = merge_documents(
+            let mut merged = merge_documents(
                 &snap.base_scripts_documents,
                 &snap.workspace_documents,
                 &snap.documents,
                 &loose_uris,
                 loose_uris.contains(&uri),
             );
+            // A queued edit isn't in the snapshot yet; search resolve_at's copy so rename sees just-applied text.
+            merged.insert(canonical_uri(&uri), latest.as_ref());
 
             let Some(definition_document) = merged.get(&definition.uri).copied() else {
                 break 'body Ok(None);

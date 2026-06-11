@@ -3,14 +3,14 @@ use std::collections::HashMap;
 use tracing::{debug, trace};
 use tree_sitter::Node;
 
-use crate::cst::grammar::{arg_slots, call_callee, callee_ident};
+use crate::cst::grammar::arg_slots;
 use crate::cst::nav::first_named_child;
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::resolve::{
-    Assignability, SymbolDb, assignability, infer_type, resolve_definition_at_byte,
+    Assignability, SymbolDb, assignability, callee_params, infer_type, resolve_definition_at_byte,
 };
-use crate::symbols::{Symbol, SymbolKind, node_text};
+use crate::symbols::{SymbolKind, node_text};
 use crate::types::{Primitive, Type, native_type_accepts};
 
 use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, run_rules_on_document};
@@ -126,7 +126,7 @@ fn check_call_args<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     let Some(slots) = arg_slots(node) else {
         return;
     };
-    let Some(params) = callee_params(node, ctx) else {
+    let Some(params) = callee_params(ctx.uri, ctx.document, ctx.db, node) else {
         return;
     };
     // Too many args is an arity error this rule doesn't own; bail before indexing past params.
@@ -260,15 +260,6 @@ fn check_native_type_default<'tree>(
         );
     }
     true
-}
-
-fn callee_params(call: Node, ctx: &mut CstRuleCtx) -> Option<Vec<Symbol>> {
-    let ident = callee_ident(call_callee(call)?)?;
-    let def = resolve_definition_at_byte(ctx.uri, ctx.document, ctx.db, ident.start_byte())?;
-    if !def.symbol.kind.is_callable() {
-        return None;
-    }
-    Some(ctx.db.full_parameters_of(&def.uri, def.symbol.id))
 }
 
 fn is_incompatible(value_type: &Type, target: &Type, db: &SymbolDb) -> bool {
