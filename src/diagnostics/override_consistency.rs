@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::{fields, kinds};
@@ -9,7 +8,8 @@ use crate::resolve::SymbolDb;
 use crate::symbols::SymbolKind;
 
 use super::{
-    CstRule, CstRuleCtx, RelatedLocation, Severity, WorkspaceDiagnostic, run_rules_on_document,
+    CstRule, CstRuleCtx, RelatedLocation, Severity, WorkspaceDiagnostic,
+    collect_single_rule_diagnostics,
 };
 
 pub const KIND_WEAKER_ACCESS: &str = "override_weaker_access";
@@ -38,24 +38,7 @@ pub fn collect_override_consistency_diagnostics(
     documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
-    let rule = OverrideConsistencyRule;
-    let rules: Vec<&dyn CstRule> = vec![&rule];
-    let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
-
-    for (uri, document) in documents {
-        let diagnostics = run_rules_on_document(uri, document, db, &rules);
-        if !diagnostics.is_empty() {
-            debug!(uri = %uri, count = diagnostics.len(), "emitted override-consistency diagnostics");
-            result.insert((*uri).to_string(), diagnostics);
-        }
-    }
-
-    trace!(
-        documents = documents.len(),
-        flagged_uris = result.len(),
-        "scanned method overrides"
-    );
-    result
+    collect_single_rule_diagnostics(&OverrideConsistencyRule, documents, db)
 }
 
 fn check_override<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {

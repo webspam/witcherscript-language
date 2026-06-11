@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::{fields, kinds};
@@ -8,7 +7,8 @@ use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 
 use super::{
-    CstRule, CstRuleCtx, RelatedLocation, Severity, WorkspaceDiagnostic, run_rules_on_document,
+    CstRule, CstRuleCtx, RelatedLocation, Severity, WorkspaceDiagnostic,
+    collect_single_rule_diagnostics,
 };
 
 pub const KIND: &str = "annotation_targets_backing_class";
@@ -40,24 +40,7 @@ pub fn collect_annotation_state_target_diagnostics(
     documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
-    let rule = AnnotationStateTargetRule;
-    let rules: Vec<&dyn CstRule> = vec![&rule];
-    let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
-
-    for (uri, document) in documents {
-        let diagnostics = run_rules_on_document(uri, document, db, &rules);
-        if !diagnostics.is_empty() {
-            debug!(uri = %uri, count = diagnostics.len(), "emitted annotation-state-target diagnostics");
-            result.insert((*uri).to_string(), diagnostics);
-        }
-    }
-
-    trace!(
-        documents = documents.len(),
-        flagged_uris = result.len(),
-        "scanned annotation targets"
-    );
-    result
+    collect_single_rule_diagnostics(&AnnotationStateTargetRule, documents, db)
 }
 
 fn check_annotation_target<'tree>(

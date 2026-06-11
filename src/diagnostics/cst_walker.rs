@@ -154,6 +154,31 @@ pub(crate) fn run_rules_on_document(
     rule_walk.diagnostics
 }
 
+pub(crate) fn collect_single_rule_diagnostics(
+    rule: &dyn CstRule,
+    documents: &[(&str, &ParsedDocument)],
+    db: &SymbolDb<'_>,
+) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
+    let rules: &[&dyn CstRule] = &[rule];
+    let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
+
+    for (uri, document) in documents {
+        let diagnostics = run_rules_on_document(uri, document, db, rules);
+        if !diagnostics.is_empty() {
+            tracing::debug!(uri = %uri, rule = rule.name(), count = diagnostics.len(), "emitted diagnostics");
+            result.insert((*uri).to_string(), diagnostics);
+        }
+    }
+
+    tracing::trace!(
+        rule = rule.name(),
+        documents = documents.len(),
+        flagged_uris = result.len(),
+        "scanned documents"
+    );
+    result
+}
+
 fn is_error_subtree_root(node: Node) -> bool {
     node.is_error() || node.is_missing() || node.kind() == kinds::INCOMPLETE_MEMBER_ACCESS_EXPR
 }

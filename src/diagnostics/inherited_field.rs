@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::{fields, kinds};
@@ -9,7 +8,8 @@ use crate::resolve::SymbolDb;
 use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::{
-    CstRule, CstRuleCtx, RelatedLocation, Severity, WorkspaceDiagnostic, run_rules_on_document,
+    CstRule, CstRuleCtx, RelatedLocation, Severity, WorkspaceDiagnostic,
+    collect_single_rule_diagnostics,
 };
 
 pub const KIND: &str = "duplicate_inherited_field";
@@ -37,24 +37,7 @@ pub fn collect_inherited_field_diagnostics(
     documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
-    let rule = InheritedFieldRule;
-    let rules: Vec<&dyn CstRule> = vec![&rule];
-    let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
-
-    for (uri, document) in documents {
-        let diagnostics = run_rules_on_document(uri, document, db, &rules);
-        if !diagnostics.is_empty() {
-            debug!(uri = %uri, count = diagnostics.len(), "emitted inherited-field diagnostics");
-            result.insert((*uri).to_string(), diagnostics);
-        }
-    }
-
-    trace!(
-        documents = documents.len(),
-        flagged_uris = result.len(),
-        "scanned member field declarations"
-    );
-    result
+    collect_single_rule_diagnostics(&InheritedFieldRule, documents, db)
 }
 
 // A field hidden behind a nearer same-named ancestor method is missed; one chain probe, accepted.
