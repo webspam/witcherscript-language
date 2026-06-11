@@ -10,6 +10,7 @@ mod signatures;
 mod statements;
 mod switch_action;
 
+pub(crate) use action::{indent_unit_for, line_indent};
 pub use if_action::{IfLayout, IfToggle, analyze_if, if_chain_at, rewrite_if_layout};
 pub use switch_action::{
     SwitchLayout, SwitchToggle, analyze_switch, rewrite_switch_layout, switch_stmt_at,

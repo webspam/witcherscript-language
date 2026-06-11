@@ -11,7 +11,7 @@ pub(super) fn node_indent_level(node: Node, options: &FormatOptions) -> usize {
     }
 }
 
-pub(super) fn indent_unit_for(options: &FormatOptions) -> String {
+pub(crate) fn indent_unit_for(options: &FormatOptions) -> String {
     if options.use_tabs {
         "\t".to_string()
     } else {
@@ -19,10 +19,9 @@ pub(super) fn indent_unit_for(options: &FormatOptions) -> String {
     }
 }
 
-pub(super) fn line_indent<'a>(source: &'a str, node: Node) -> &'a str {
-    let start = node.start_byte();
-    let line_start = source[..start].rfind('\n').map_or(0, |nl| nl + 1);
-    let prefix = &source[line_start..start];
+pub(crate) fn line_indent(source: &str, byte: usize) -> &str {
+    let line_start = source[..byte].rfind('\n').map_or(0, |nl| nl + 1);
+    let prefix = &source[line_start..byte];
     let ws_len = prefix
         .find(|c: char| c != ' ' && c != '\t')
         .unwrap_or(prefix.len());

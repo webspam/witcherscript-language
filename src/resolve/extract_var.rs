@@ -10,7 +10,7 @@ use crate::cst::grammar::{
 use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
-use crate::formatter::FormatOptions;
+use crate::formatter::{FormatOptions, indent_unit_for, line_indent};
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
 
@@ -158,20 +158,9 @@ fn insertion(
         return Some((decl.end_byte(), format!("\n{indent}{statement}")));
     }
     let open_brace = block.child(0).filter(|c| c.kind() == "{")?;
-    let unit = if options.use_tabs {
-        "\t".to_string()
-    } else {
-        " ".repeat(options.tab_size as usize)
-    };
+    let unit = indent_unit_for(&options);
     let indent = format!("{}{unit}", line_indent(source, block.start_byte()));
     Some((open_brace.end_byte(), format!("\n{indent}{statement}")))
-}
-
-fn line_indent(source: &str, byte: usize) -> &str {
-    let line_start = source[..byte].rfind('\n').map_or(0, |i| i + 1);
-    let line = &source[line_start..byte];
-    let indent_len = line.len() - line.trim_start_matches([' ', '\t']).len();
-    &line[..indent_len]
 }
 
 fn name_base(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> String {
