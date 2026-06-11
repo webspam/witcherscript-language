@@ -79,6 +79,14 @@ impl<'a> ShadowedBase<'a> {
             .filter(|d| self.def_visible(d))
     }
 
+    pub(super) fn class_body_members_of(&self, container: &str) -> Vec<Definition> {
+        self.index
+            .class_body_members_of(container)
+            .into_iter()
+            .filter(|d| self.def_visible(d))
+            .collect()
+    }
+
     pub(super) fn direct_members_of(
         &self,
         container: &str,

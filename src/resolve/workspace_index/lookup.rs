@@ -110,6 +110,14 @@ impl WorkspaceIndex {
             .cloned()
     }
 
+    pub(crate) fn class_body_members_of(&self, container_name: &str) -> Vec<Definition> {
+        self.member_by_type
+            .get(container_name)
+            .into_iter()
+            .flat_map(|m| m.values().filter_map(|v| v.last().cloned()))
+            .collect()
+    }
+
     pub fn direct_members_of(
         &self,
         container_name: &str,

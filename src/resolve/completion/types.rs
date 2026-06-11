@@ -6,7 +6,7 @@ use crate::cst::ancestors::{find_ancestor_of_kind, has_ancestor_of_kind};
 use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
-use crate::symbols::{AccessLevel, SymbolKind};
+use crate::symbols::SymbolKind;
 
 use super::super::Definition;
 use super::super::ast::{
@@ -243,7 +243,7 @@ fn direct_methods_of_class(class_name: &str, db: &SymbolDb) -> Option<Vec<Defini
         return None;
     }
     Some(
-        db.direct_members_of(class_name, AccessLevel::Private)
+        db.class_body_members_of(class_name)
             .into_iter()
             .filter(|def| matches!(def.symbol.kind, SymbolKind::Method | SymbolKind::Event))
             .collect(),
