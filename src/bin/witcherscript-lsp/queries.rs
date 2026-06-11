@@ -268,7 +268,8 @@ impl Backend {
     }
 
     fn refactor_actions(&self, uri: &Url, range: Range) -> CodeActionResponse {
-        let Some(document_arc) = self.latest_parsed_document(uri) else {
+        let snap = self.snapshot();
+        let Some(document_arc) = self.latest_parsed_document(uri, &snap) else {
             return Vec::new();
         };
         let document = document_arc.as_ref();
@@ -280,7 +281,6 @@ impl Backend {
         let (Some(start), Some(end)) = (to_byte(range.start), to_byte(range.end)) else {
             return Vec::new();
         };
-        let snap = self.snapshot();
         let handles = self.db_handles_for_with_snapshot(uri, &snap);
         let db = handles.db();
         let canonical = canonical_uri(uri);
@@ -793,7 +793,7 @@ impl Backend {
 
             // Include a queued edit: clients don't retry formatting on CONTENT_MODIFIED, so
             // bailing would silently apply nothing instead of formatting the just-typed text.
-            let Some(document_arc) = self.latest_parsed_document(&uri) else {
+            let Some(document_arc) = self.latest_parsed_document(&uri, &self.snapshot()) else {
                 break 'body Ok(None);
             };
             let document = document_arc.as_ref();

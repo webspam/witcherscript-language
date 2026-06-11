@@ -185,11 +185,11 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "prepare_rename", uri = %uri, "start");
         let result = 'body: {
-            let Some(definition) = self.resolve_at(&uri, params.position) else {
+            let snap = self.snapshot();
+            let Some(definition) = self.resolve_at(&uri, params.position, &snap) else {
                 break 'body Ok(None);
             };
 
-            let snap = self.snapshot();
             if let Err(e) = ensure_rename_target_writable(&definition.uri, &snap) {
                 break 'body Err(e);
             }
@@ -213,12 +213,13 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "rename", uri = %uri, "start");
         let result = 'body: {
-            let Some(definition) = self.resolve_at(&uri, params.text_document_position.position)
+            let snap = self.snapshot();
+            let Some(definition) =
+                self.resolve_at(&uri, params.text_document_position.position, &snap)
             else {
                 break 'body Ok(None);
             };
 
-            let snap = self.snapshot();
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
 
             if let Err(e) = ensure_rename_target_writable(&definition.uri, &snap) {
@@ -229,7 +230,7 @@ impl Backend {
 
             let loose_uris = self.loose_open_uris(&snap.documents);
             // A queued edit isn't in the snapshot yet; search the pending copy so rename sees just-applied text.
-            let latest = self.latest_parsed_document(&uri);
+            let latest = self.latest_parsed_document(&uri, &snap);
             let mut merged = merge_documents(
                 &snap.base_scripts_documents,
                 &snap.workspace_documents,

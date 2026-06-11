@@ -325,7 +325,7 @@ fn rename_resolves_against_a_queued_unpublished_edit() {
     );
 
     let def = backend
-        .resolve_at(&uri, Position::new(2, 4))
+        .resolve_at(&uri, Position::new(2, 4), &backend.snapshot())
         .expect("rename must resolve the just-inserted local against the queued edit");
     assert_eq!(
         def.symbol.name, "x",
