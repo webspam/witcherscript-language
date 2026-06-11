@@ -13,6 +13,7 @@ mod cst_walker;
 mod duplicate_local;
 mod duplicate_symbols;
 mod inherited_field;
+mod override_consistency;
 mod shadowing;
 mod state_owner;
 mod super_field_access;
@@ -34,6 +35,7 @@ pub(crate) use cst_walker::{
 pub use duplicate_local::collect_duplicate_local_diagnostics;
 pub use duplicate_symbols::collect_duplicate_symbol_diagnostics;
 pub use inherited_field::collect_inherited_field_diagnostics;
+pub use override_consistency::collect_override_consistency_diagnostics;
 pub use shadowing::collect_shadowing_diagnostics;
 pub use state_owner::collect_state_owner_diagnostics;
 pub use super_field_access::collect_super_field_access_diagnostics;
@@ -49,6 +51,7 @@ use crate::resolve::SymbolDb;
 use abstract_instantiation::AbstractInstantiationRule;
 use annotation_state_target::AnnotationStateTargetRule;
 use inherited_field::InheritedFieldRule;
+use override_consistency::OverrideConsistencyRule;
 use state_owner::StateOwnerRule;
 use super_field_access::SuperFieldAccessRule;
 use type_mismatch::TypeMismatchRule;
@@ -69,6 +72,7 @@ pub fn collect_cst_diagnostics_for_document(
     let state_owner_rule = StateOwnerRule;
     let annotation_state_target_rule = AnnotationStateTargetRule;
     let inherited_field_rule = InheritedFieldRule;
+    let override_consistency_rule = OverrideConsistencyRule;
     let rules: Vec<&dyn CstRule> = vec![
         &method_rule,
         &wrapped_rule,
@@ -78,6 +82,7 @@ pub fn collect_cst_diagnostics_for_document(
         &state_owner_rule,
         &annotation_state_target_rule,
         &inherited_field_rule,
+        &override_consistency_rule,
     ];
     let mut diagnostics = run_rules_on_document(uri, document, db, &rules);
 
