@@ -310,6 +310,14 @@ fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
     "function Use(x : int) {}\nfunction F() {\n    var arr : array<int>;\n    var i : int;\n    Use(arr[0] + 1);\n    arr[i] = 5;\n}\n",
     "arr[0] + 1"
 )]
+#[case::field_written_between_hoist_point_and_selection(
+    "function Use(x : int) {}\nclass C {\n    var count : int;\n    function M() {\n        count = 5;\n        Use(count + 1);\n    }\n}\n",
+    "count + 1"
+)]
+#[case::field_written_via_this(
+    "function Use(x : int) {}\nclass C {\n    var count : int;\n    function M() {\n        this.count = 5;\n        Use(count + 1);\n    }\n}\n",
+    "count + 1"
+)]
 fn refuses_when_selection_local_is_written(#[case] src: &str, #[case] needle: &str) {
     assert!(
         refused(src, needle),
@@ -329,6 +337,10 @@ fn refuses_when_selection_local_is_written(#[case] src: &str, #[case] needle: &s
 #[case::member_field_shadowing_local_name_is_assigned(
     "function Use(x : int) {}\nclass C {\n    var f : int;\n    function M() {\n        var f : int;\n        Use(f + 1);\n        this.f = 2;\n    }\n}\n",
     "f + 1"
+)]
+#[case::writes_hit_unrelated_field_only(
+    "function Use(x : int) {}\nclass C {\n    var count : int;\n    var other : int;\n    function M() {\n        other = 5;\n        Use(count + 1);\n    }\n}\n",
+    "count + 1"
 )]
 fn allows_extraction_despite_other_writes(#[case] src: &str, #[case] needle: &str) {
     assert!(

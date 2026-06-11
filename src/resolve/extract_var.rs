@@ -226,8 +226,8 @@ fn hoisting_skips_a_write(
     insert_at: usize,
     callable: SymbolId,
 ) -> bool {
-    let locals = selection_local_ids(uri, document, db, selection_node, callable);
-    if locals.is_empty() {
+    let tracked = selection_tracked_ids(uri, document, db, selection_node, callable);
+    if tracked.is_empty() {
         return false;
     }
     let mut writes = Vec::new();
@@ -238,8 +238,8 @@ fn hoisting_skips_a_write(
     );
     let is_tracked_write = |target: Node| {
         target.start_byte() >= insert_at
-            && resolved_local_id(uri, document, db, target, callable)
-                .is_some_and(|id| locals.contains(&id))
+            && resolved_write_tracked_id(uri, document, db, target, callable)
+                .is_some_and(|id| tracked.contains(&id))
     };
     writes.iter().any(|node| match node.kind() {
         kinds::ASSIGN_OP_EXPR => node
@@ -278,7 +278,7 @@ fn out_args<'tree>(
         .collect()
 }
 
-fn selection_local_ids(
+fn selection_tracked_ids(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
@@ -289,11 +289,12 @@ fn selection_local_ids(
     collect_nodes_of_kinds(node, &[kinds::IDENT], &mut idents);
     idents
         .iter()
-        .filter_map(|ident| resolved_local_id(uri, document, db, *ident, callable))
+        .filter_map(|ident| resolved_write_tracked_id(uri, document, db, *ident, callable))
         .collect()
 }
 
-fn resolved_local_id(
+// Same-file only: SymbolId is an index into one document's symbols, so cross-file ids cannot be compared.
+fn resolved_write_tracked_id(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
@@ -301,11 +302,16 @@ fn resolved_local_id(
     callable: SymbolId,
 ) -> Option<SymbolId> {
     let definition = resolve_definition_at_byte(uri, document, db, ident.start_byte())?;
+    if definition.uri != uri {
+        return None;
+    }
     let symbol = definition.symbol;
-    (matches!(symbol.kind, SymbolKind::Variable | SymbolKind::Parameter)
-        && definition.uri == uri
-        && symbol.container == Some(callable))
-    .then_some(symbol.id)
+    let tracked = match symbol.kind {
+        SymbolKind::Variable | SymbolKind::Parameter => symbol.container == Some(callable),
+        SymbolKind::Field => true,
+        _ => false,
+    };
+    tracked.then_some(symbol.id)
 }
 
 fn collect_nodes_of_kinds<'tree>(root: Node<'tree>, kinds: &[&str], out: &mut Vec<Node<'tree>>) {
