@@ -237,6 +237,14 @@ fn returns_none_for_empty_selection() {
     "class C {}\nfunction F() {\n    var c : C;\n    var ok : bool;\n    ok = c == NULL;\n}\n",
     "NULL"
 )]
+#[case::method_reference_callee(
+    "class C {\n    function GetPos() : int { return 1; }\n}\nfunction F() {\n    var c : C;\n    var r : int;\n    r = c.GetPos();\n}\n",
+    "c.GetPos"
+)]
+#[case::function_reference_callee(
+    "function F() {\n    var r : int;\n    r = Take(1);\n}\nfunction Take(amount : int) : int { return amount; }\n",
+    "Take"
+)]
 fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
     assert!(
         refused(src, needle),

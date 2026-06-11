@@ -59,6 +59,10 @@ pub fn extract_variable(
     let source = &document.source;
     let selection = trim_selection(source, selection)?;
     let node = exact_expression_at(document.tree.root_node(), &selection)?;
+    if is_call_callee(node) {
+        // A bare reference to the callee is a function reference, which WitcherScript has no values for.
+        return None;
+    }
     let block = enclosing_callable_block(node)?;
     let callable = document
         .symbols
@@ -104,6 +108,13 @@ fn exact_expression_at<'tree>(root: Node<'tree>, selection: &Range<usize>) -> Op
             _ => return best,
         }
     }
+}
+
+fn is_call_callee(node: Node) -> bool {
+    node.parent()
+        .filter(|parent| parent.kind() == kinds::FUNC_CALL_EXPR)
+        .and_then(call_callee)
+        .is_some_and(|callee| callee.id() == node.id())
 }
 
 fn enclosing_callable_block(node: Node) -> Option<Node> {
