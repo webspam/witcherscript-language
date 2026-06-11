@@ -1,12 +1,12 @@
 use tree_sitter::Node;
 
-use crate::cst::grammar::{arg_slots, call_callee, callee_ident};
+use crate::cst::grammar::arg_slots;
 use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::line_index::{SourcePosition, SourceRange};
 use crate::symbols::node_text;
 
-use super::definition::resolve_definition_at_byte;
+use super::definition::callee_params;
 use super::symbol_db::SymbolDb;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,21 +80,9 @@ impl Walk<'_, '_> {
         let Some(slots) = arg_slots(call) else {
             return;
         };
-        let Some(callee) = call_callee(call) else {
+        let Some(params) = callee_params(self.uri, self.document, self.db, call) else {
             return;
         };
-        let Some(ident) = callee_ident(callee) else {
-            return;
-        };
-        let Some(def) =
-            resolve_definition_at_byte(self.uri, self.document, self.db, ident.start_byte())
-        else {
-            return;
-        };
-        if !def.symbol.kind.is_callable() {
-            return;
-        }
-        let params = self.db.full_parameters_of(&def.uri, def.symbol.id);
         for (param, arg) in params.iter().zip(slots.iter()) {
             // Suppress a redundant name echo, except for `out` params whose write-through is the point.
             if !param.is_out

@@ -14,7 +14,7 @@ use crate::formatter::FormatOptions;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
 
-use super::definition::resolve_definition_at_byte;
+use super::definition::{callee_params, resolve_definition_at_byte};
 use super::inference::infer_type;
 use super::symbol_db::SymbolDb;
 
@@ -208,10 +208,7 @@ fn parameter_slot_name(
     let index = arg_slots(call)?
         .iter()
         .position(|slot| slot.id() == node.id())?;
-    let ident = callee_ident(call_callee(call)?)?;
-    let definition = resolve_definition_at_byte(uri, document, db, ident.start_byte())
-        .filter(|def| def.symbol.kind.is_callable())?;
-    db.full_parameters_of(&definition.uri, definition.symbol.id)
+    callee_params(uri, document, db, call)?
         .get(index)
         .map(|parameter| parameter.name.clone())
 }
@@ -262,15 +259,10 @@ fn out_args<'tree>(
     let Some(slots) = arg_slots(call) else {
         return Vec::new();
     };
-    let Some(ident) = call_callee(call).and_then(callee_ident) else {
+    let Some(params) = callee_params(uri, document, db, call) else {
         return Vec::new();
     };
-    let Some(definition) = resolve_definition_at_byte(uri, document, db, ident.start_byte())
-        .filter(|def| def.symbol.kind.is_callable())
-    else {
-        return Vec::new();
-    };
-    db.full_parameters_of(&definition.uri, definition.symbol.id)
+    params
         .iter()
         .zip(slots)
         .filter(|(parameter, _)| parameter.is_out)

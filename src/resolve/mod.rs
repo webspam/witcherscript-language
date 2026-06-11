@@ -40,6 +40,7 @@ pub use completion::{
 pub use completion_catalog::{
     CompletionCatalog, global_catalog_changed, merge_ws_base, merge_ws_base_three,
 };
+pub(crate) use definition::callee_params;
 pub use definition::{
     classify_definition_at_ident, resolve_all_definitions, resolve_definition,
     resolve_definition_at_byte, resolve_definition_at_ident,
