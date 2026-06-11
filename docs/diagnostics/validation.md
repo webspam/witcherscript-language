@@ -31,6 +31,15 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 23 | `struct_property_access_modifier` | error | An accessibility modifier (`private`/`protected`/`public`) is applied to a struct property |
 | 24 | `state_owner_not_statemachine` | warning | `state X in Owner` where `Owner` is a class missing the `statemachine` keyword |
 | 25 | `state_owner_not_class` | error | `state X in Owner` where `Owner` resolves to something that is not a class (e.g. a struct or enum) |
+| 26 | `string_linefeed` | error | A string literal contains a linefeed |
+| 27 | `int_overflow` | error | An integer literal overflows a 32-bit int |
+| 28 | `event_return_not_void` | error | An event declares a return type other than `void` |
+| 29 | `event_bare_return` | error | A bare `return;` inside an event body |
+| 30 | `non_constant_default` | error | A `default` value is a call or `new` expression |
+| 31 | `annotation_targets_backing_class` | error | A modding annotation targets a state's backing class name instead of the short state name |
+| 32 | `duplicate_inherited_field` | error | A field redeclares a field inherited from an ancestor |
+| 33 | `override_weaker_access` | error | A method override has weaker access than the ancestor's method |
+| 34 | `override_param_count` | error | A method override declares a different parameter count than the ancestor's method |
 
 ## Details
 
@@ -196,3 +205,39 @@ The keyword is not inherited: each owner class must carry `statemachine` itself,
 A `state X in Owner` declaration where `Owner` resolves to something that is not a class - a struct, enum, function, or another state. States can only be declared in a state machine class, so this is an error rather than a warning.
 
 Rules 24 and 25 share one scan path: every `state` declaration's owner is resolved once and routed to whichever applies. An owner that does not resolve to any known symbol is left to the `unknown_type` rule.
+
+### 26. String literal containing a linefeed
+
+A double-quoted string literal that spans more than one line. The grammar tokenises it, but the compiler rejects any string containing a linefeed. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
+
+### 27. Integer literal overflow
+
+A decimal or hex integer literal whose value does not fit a 32-bit int (the compiler's "static integer overflow"). An adjacent sign is part of the literal, so `-2147483648` is in range; a spaced `- 2147483648` is a unary minus applied to an out-of-range literal and is flagged. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
+
+### 28. Event return type is not void
+
+An `event` declared with an explicit return type other than `void`. The conventional form omits the return type entirely, which is also accepted; the only permitted explicit suffix is `void`. The return type is otherwise ignored by the compiler (a `return` inside an event must still yield `bool` - see rule 29). Purely syntactic, so the `witcherscript-check` CLI reports it as well.
+
+### 29. Bare return in an event
+
+A `return;` with no value inside an event body, at any nesting depth. Events return `bool`, so the compiler rejects this with "Unable to convert from 'void' to 'Bool'". A bare `return;` in a plain function is fine. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
+
+### 30. Non-constant default value
+
+A `default x = ...;` or `defaults { x = ...; }` value that is a function/constructor call or a `new` expression (e.g. `default v = Vector(0, 0, 0);`). The compiler only accepts compile-time constants here. Literals, signed literals, and bare identifiers (possible enum members) are allowed; only call and `new` expressions are flagged, so a parenthesised call slips through. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
+
+### 31. Annotation targets a state's backing class
+
+A `@wrapMethod` / `@replaceMethod` / `@addMethod` / `@addField` whose argument is the engine-synthesised backing class name of a state (e.g. `@wrapMethod(CR4PlayerStateSwimming)`). The mod compiler only matches annotations against the short state name (`@wrapMethod(Swimming)`); the message suggests that spelling and links to the state declaration.
+
+### 32. Duplicate inherited field
+
+A class or state field whose name is already a field anywhere up the inheritance chain (including base scripts and any access level - the compiler rejects the redeclaration even for private ancestor fields). Method names may be reused; only field-over-field redeclarations fire. `@addField` declarations are exempt.
+
+### 33. Override with weaker access
+
+A class or state method whose name matches a class-body method up the inheritance chain, declared with weaker access than the ancestor's (`private` < `protected` < `public`; no modifier means `public`). Mirrors the compiler error "Function 'X' cannot have a weaker access modifier than in ancestor class 'Y'". Annotated (`@wrapMethod` etc.) functions and events are exempt.
+
+### 34. Override parameter count mismatch
+
+A class or state method whose name matches a class-body method up the inheritance chain but declares a different number of parameters. Mirrors the compiler error "Function 'X' takes N parameter(s) which is inconsistent with base function (M)". Optional parameters count; parameter types are not compared. Shares rule 33's scan and exemptions.

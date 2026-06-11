@@ -10,6 +10,19 @@ use crate::test_support::TestDb;
 #[case::accepts_non_ternary_expression("function Ok() {\n  var x : int;\n  x = 1;\n}\n")]
 #[case::accepts_struct_property_without_access_modifier("struct S {\n  var x : int;\n}\n")]
 #[case::accepts_access_modifier_on_class_field("class C {\n  private var x : int;\n}\n")]
+#[case::accepts_single_line_string("function F() {\n  var s : string;\n  s = \"a b\";\n}\n")]
+#[case::accepts_string_with_escaped_quote(
+    "function F() {\n  var s : string;\n  s = \"a \\\" b\";\n}\n"
+)]
+#[case::accepts_event_returning_void("class C {\n  event OnHit() : void {\n  }\n}\n")]
+#[case::accepts_event_without_return_type("class C {\n  event OnHit() {\n  }\n}\n")]
+#[case::accepts_event_returning_value("class C {\n  event OnHit() {\n    return true;\n  }\n}\n")]
+#[case::accepts_bare_return_in_function("class C {\n  function F() {\n    return;\n  }\n}\n")]
+#[case::accepts_literal_default("class C {\n  var x : int;\n  default x = -1;\n}\n")]
+#[case::accepts_name_literal_default("class C {\n  var n : name;\n  default n = 'Some';\n}\n")]
+#[case::accepts_ident_default_in_block(
+    "class C {\n  var e : int;\n  defaults {\n    e = SOME_ENUM_MEMBER;\n  }\n}\n"
+)]
 fn does_not_fire(#[case] source: &str) {
     let t = TestDb::new(source);
     let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
@@ -37,6 +50,127 @@ fn reports_access_modifier_on_struct_property(#[case] source: &str, #[case] keyw
         keyword,
         "diagnostic should underline only the {keyword} keyword"
     );
+}
+
+#[rstest]
+#[case::max_int("2147483647")]
+#[case::min_int("-2147483648")]
+#[case::plus_sign("+2147483647")]
+#[case::max_hex("0x7FFFFFFF")]
+fn accepts_int_literals_in_range(#[case] literal: &str) {
+    let source = format!("function F() {{\n  var x : int;\n  x = {literal};\n}}\n");
+    let t = TestDb::new(&source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), &source);
+
+    assert!(
+        !diagnostics.iter().any(|d| d.kind == "int_overflow"),
+        "{literal} should be in range, got: {diagnostics:#?}"
+    );
+}
+
+#[rstest]
+#[case::max_int_plus_one("2147483648", "2147483648")]
+#[case::min_int_minus_one("-2147483649", "-2147483649")]
+#[case::hex_over_max("0x80000000", "0x80000000")]
+#[case::observed_overflow("0xFFFFFFFF8000000", "0xFFFFFFFF8000000")]
+#[case::spaced_minus_is_an_operator("- 2147483648", "2147483648")]
+fn reports_int_literal_overflow(#[case] literal: &str, #[case] underlined: &str) {
+    let source = format!("function F() {{\n  var x : int;\n  x = {literal};\n}}\n");
+    let t = TestDb::new(&source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), &source);
+
+    let found = diagnostics.iter().find(|d| d.kind == "int_overflow");
+    assert!(
+        found.is_some(),
+        "expected int_overflow for {literal}, got: {diagnostics:#?}"
+    );
+    let d = found.unwrap();
+    assert_eq!(
+        &source[d.byte_range.clone()],
+        underlined,
+        "diagnostic should underline the literal in {literal}"
+    );
+}
+
+#[rstest]
+#[case::int("class C {\n  event OnHit() : int {\n  }\n}\n", "int")]
+#[case::bool("class C {\n  event OnHit() : bool {\n  }\n}\n", "bool")]
+fn reports_event_with_non_void_return_type(#[case] source: &str, #[case] underlined: &str) {
+    let t = TestDb::new(source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
+
+    let found = diagnostics
+        .iter()
+        .find(|d| d.kind == "event_return_not_void");
+    assert!(
+        found.is_some(),
+        "expected event_return_not_void diagnostic, got: {diagnostics:#?}"
+    );
+    let d = found.unwrap();
+    assert_eq!(
+        &source[d.byte_range.clone()],
+        underlined,
+        "diagnostic should underline the return type"
+    );
+}
+
+#[rstest]
+#[case::top_level("class C {\n  event OnHit() {\n    return;\n  }\n}\n")]
+#[case::nested_in_if(
+    "class C {\n  event OnHit() {\n    if (true) {\n      return;\n    }\n  }\n}\n"
+)]
+#[case::with_trailing_comment("class C {\n  event OnHit() {\n    return /*x*/;\n  }\n}\n")]
+fn reports_bare_return_in_event(#[case] source: &str) {
+    let t = TestDb::new(source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
+
+    assert!(
+        diagnostics.iter().any(|d| d.kind == "event_bare_return"),
+        "expected event_bare_return diagnostic, got: {diagnostics:#?}"
+    );
+}
+
+#[rstest]
+#[case::call_in_default(
+    "class C {\n  var v : Vector;\n  default v = Vector(0, 0, 0);\n}\n",
+    "Vector(0, 0, 0)"
+)]
+#[case::new_in_defaults_block(
+    "class C {\n  var o : C;\n  defaults {\n    o = new C in this;\n  }\n}\n",
+    "new C in this"
+)]
+fn reports_non_constant_default(#[case] source: &str, #[case] underlined: &str) {
+    let t = TestDb::new(source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
+
+    let found = diagnostics
+        .iter()
+        .find(|d| d.kind == "non_constant_default");
+    assert!(
+        found.is_some(),
+        "expected non_constant_default diagnostic, got: {diagnostics:#?}"
+    );
+    let d = found.unwrap();
+    assert_eq!(
+        &source[d.byte_range.clone()],
+        underlined,
+        "diagnostic should underline the value expression"
+    );
+}
+
+#[test]
+fn reports_string_containing_linefeed() {
+    let source = "function F() {\n  var s : string;\n  s = \"a\nb\";\n}\n";
+    let t = TestDb::new(source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
+
+    let found = diagnostics.iter().find(|d| d.kind == "string_linefeed");
+    assert!(
+        found.is_some(),
+        "expected string_linefeed diagnostic, got: {diagnostics:#?}"
+    );
+    let d = found.unwrap();
+    assert_eq!(&source[d.byte_range.clone()], "\"a\nb\"");
 }
 
 #[test]

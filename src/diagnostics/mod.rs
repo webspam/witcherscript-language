@@ -7,10 +7,13 @@ use tree_sitter::{Node, Point};
 use crate::line_index::SourceRange;
 
 mod abstract_instantiation;
+mod annotation_state_target;
 mod base_script_conflict;
 mod cst_walker;
 mod duplicate_local;
 mod duplicate_symbols;
+mod inherited_field;
+mod override_consistency;
 mod shadowing;
 mod state_owner;
 mod super_field_access;
@@ -20,16 +23,20 @@ mod unknown_symbol;
 mod wrapped_method;
 
 pub use abstract_instantiation::collect_abstract_instantiation_diagnostics;
+pub use annotation_state_target::collect_annotation_state_target_diagnostics;
 pub use base_script_conflict::{
     KIND as BASE_SCRIPT_CONFLICT_KIND, basename_of, collect_base_script_conflict_diagnostics,
     relative_from_scripts,
 };
 pub(crate) use cst_walker::{
     CstRule, CstRuleCtx, ParallelRuleShard, access_is_inside_declaring_class,
-    collect_nodes_with_error_subtree, declaring_class_of, run_parallel_pass, run_rules_on_document,
+    collect_nodes_with_error_subtree, collect_single_rule_diagnostics, declaring_class_of,
+    run_parallel_pass, run_rules_on_document,
 };
 pub use duplicate_local::collect_duplicate_local_diagnostics;
 pub use duplicate_symbols::collect_duplicate_symbol_diagnostics;
+pub use inherited_field::collect_inherited_field_diagnostics;
+pub use override_consistency::collect_override_consistency_diagnostics;
 pub use shadowing::collect_shadowing_diagnostics;
 pub use state_owner::collect_state_owner_diagnostics;
 pub use super_field_access::collect_super_field_access_diagnostics;
@@ -38,11 +45,15 @@ pub use unknown_method::collect_unknown_method_diagnostics;
 pub use unknown_symbol::collect_unknown_symbol_diagnostics;
 pub use wrapped_method::collect_wrapped_method_diagnostics;
 
-use crate::cst::kinds;
+use crate::cst::ancestors::find_ancestor_of_kind;
 use crate::cst::walk::{CstVisitor, Visit, walk};
+use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use abstract_instantiation::AbstractInstantiationRule;
+use annotation_state_target::AnnotationStateTargetRule;
+use inherited_field::InheritedFieldRule;
+use override_consistency::OverrideConsistencyRule;
 use state_owner::StateOwnerRule;
 use super_field_access::SuperFieldAccessRule;
 use type_mismatch::TypeMismatchRule;
@@ -61,6 +72,9 @@ pub fn collect_cst_diagnostics_for_document(
     let super_field_rule = SuperFieldAccessRule;
     let type_mismatch_rule = TypeMismatchRule;
     let state_owner_rule = StateOwnerRule;
+    let annotation_state_target_rule = AnnotationStateTargetRule;
+    let inherited_field_rule = InheritedFieldRule;
+    let override_consistency_rule = OverrideConsistencyRule;
     let rules: Vec<&dyn CstRule> = vec![
         &method_rule,
         &wrapped_rule,
@@ -68,6 +82,9 @@ pub fn collect_cst_diagnostics_for_document(
         &super_field_rule,
         &type_mismatch_rule,
         &state_owner_rule,
+        &annotation_state_target_rule,
+        &inherited_field_rule,
+        &override_consistency_rule,
     ];
     let mut diagnostics = run_rules_on_document(uri, document, db, &rules);
 
@@ -181,12 +198,56 @@ impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
                 .push(tree_error_diagnostic(node, self.source));
         }
         if node.kind() == kinds::INCOMPLETE_MEMBER_ACCESS_EXPR {
-            self.diagnostics
-                .push(incomplete_member_access_diagnostic(node, self.source));
+            self.diagnostics.push(syntax_diagnostic(
+                node,
+                self.source,
+                "incomplete_member_access_expr",
+                "Incomplete member access: expected identifier after '.'",
+            ));
         }
         if node.kind() == kinds::TERNARY_COND_EXPR {
-            self.diagnostics
-                .push(ternary_expr_diagnostic(node, self.source));
+            self.diagnostics.push(syntax_diagnostic(
+                node,
+                self.source,
+                "ternary_cond_expr",
+                "Ternary expression is not supported: WitcherScript parses `cond ? a : b` \
+                 but always evaluates it to 0 / false / void",
+            ));
+        }
+        if node.kind() == kinds::LITERAL_STRING && self.source[node.byte_range()].contains('\n') {
+            self.diagnostics.push(syntax_diagnostic(
+                node,
+                self.source,
+                "string_linefeed",
+                "String literals cannot contain a linefeed",
+            ));
+        }
+        if matches!(node.kind(), kinds::LITERAL_INT | kinds::LITERAL_HEX)
+            && int_literal_overflows(node.kind(), &self.source[node.byte_range()])
+        {
+            self.diagnostics.push(syntax_diagnostic(
+                node,
+                self.source,
+                "int_overflow",
+                "Integer literal overflows a 32-bit int",
+            ));
+        }
+        if node.kind() == kinds::EVENT_DECL {
+            collect_event_return_type(node, self.source, &mut self.diagnostics);
+        }
+        if node.kind() == kinds::RETURN_STMT && is_bare_return(node) && is_inside_event(node) {
+            self.diagnostics.push(syntax_diagnostic(
+                node,
+                self.source,
+                "event_bare_return",
+                "Events return bool; a bare 'return;' cannot convert void to bool",
+            ));
+        }
+        if matches!(
+            node.kind(),
+            kinds::MEMBER_DEFAULT_VAL | kinds::MEMBER_DEFAULT_VAL_BLOCK_ASSIGN
+        ) {
+            collect_non_constant_default(node, self.source, &mut self.diagnostics);
         }
         if node.kind() == kinds::FUNC_BLOCK {
             collect_late_local_vars_in_block(node, self.source, &mut self.diagnostics);
@@ -198,10 +259,10 @@ impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
     }
 }
 
-fn incomplete_member_access_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
+fn syntax_diagnostic(node: Node, source: &str, kind: &str, message: &str) -> ParseDiagnostic {
     ParseDiagnostic {
-        kind: "incomplete_member_access_expr".to_string(),
-        message: "Incomplete member access: expected identifier after '.'".to_string(),
+        kind: kind.to_string(),
+        message: message.to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),
@@ -209,16 +270,65 @@ fn incomplete_member_access_diagnostic(node: Node, source: &str) -> ParseDiagnos
     }
 }
 
-fn ternary_expr_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
-    ParseDiagnostic {
-        kind: "ternary_cond_expr".to_string(),
-        message: "Ternary expression is not supported: WitcherScript parses `cond ? a : b` \
-                  but always evaluates it to 0 / false / void"
-            .to_string(),
-        start: node.start_position(),
-        end: node.end_position(),
-        byte_range: node.start_byte()..node.end_byte(),
-        snippet: line_snippet(source, node.start_position().row),
+fn int_literal_overflows(kind: &str, text: &str) -> bool {
+    // Unparseable digit strings are too long for u64 and therefore overflow too.
+    if kind == kinds::LITERAL_HEX {
+        return u64::from_str_radix(&text[2..], 16)
+            .ok()
+            .is_none_or(|v| v > i32::MAX as u64);
+    }
+    let (negative, digits) = match text.as_bytes().first() {
+        Some(b'-') => (true, &text[1..]),
+        Some(b'+') => (false, &text[1..]),
+        _ => (false, text),
+    };
+    // The sign is part of the token, so -2147483648 is in range.
+    let max = i32::MAX as u64 + u64::from(negative);
+    digits.parse::<u64>().ok().is_none_or(|v| v > max)
+}
+
+fn collect_event_return_type(event: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>) {
+    let Some(return_type) = event.child_by_field_name(fields::RETURN_TYPE) else {
+        return;
+    };
+    let text = &source[return_type.byte_range()];
+    if text != "void" {
+        diagnostics.push(syntax_diagnostic(
+            return_type,
+            source,
+            "event_return_not_void",
+            "An event's return type, if specified, must be void",
+        ));
+    }
+}
+
+fn is_bare_return(return_stmt: Node) -> bool {
+    let mut cursor = return_stmt.walk();
+    return_stmt
+        .named_children(&mut cursor)
+        .all(|child| child.kind() == kinds::COMMENT)
+}
+
+fn is_inside_event(node: Node) -> bool {
+    find_ancestor_of_kind(node, &[kinds::EVENT_DECL, kinds::FUNC_DECL])
+        .is_some_and(|ancestor| ancestor.kind() == kinds::EVENT_DECL)
+}
+
+fn collect_non_constant_default(
+    default_val: Node,
+    source: &str,
+    diagnostics: &mut Vec<ParseDiagnostic>,
+) {
+    let Some(value) = default_val.child_by_field_name(fields::VALUE) else {
+        return;
+    };
+    if matches!(value.kind(), kinds::FUNC_CALL_EXPR | kinds::NEW_EXPR) {
+        diagnostics.push(syntax_diagnostic(
+            value,
+            source,
+            "non_constant_default",
+            "'default' values must be compile-time constants; calls and 'new' are not",
+        ));
     }
 }
 
@@ -237,7 +347,12 @@ fn collect_late_local_vars_in_block(
 
         if child.kind() == kinds::LOCAL_VAR_DECL_STMT {
             if saw_code_statement {
-                diagnostics.push(late_local_var_diagnostic(child, source));
+                diagnostics.push(syntax_diagnostic(
+                    child,
+                    source,
+                    "late_local_var_decl",
+                    "Local variable declarations must precede executable statements",
+                ));
             }
             continue;
         }
@@ -264,7 +379,12 @@ fn collect_struct_prop_access_modifiers(
             }
             let keyword = &source[specifier.start_byte()..specifier.end_byte()];
             if matches!(keyword, "private" | "protected" | "public") {
-                diagnostics.push(struct_prop_access_modifier_diagnostic(specifier, source));
+                diagnostics.push(syntax_diagnostic(
+                    specifier,
+                    source,
+                    "struct_property_access_modifier",
+                    "Accessibility modifiers cannot be applied to struct properties",
+                ));
             }
         }
     }
@@ -281,28 +401,6 @@ fn tree_error_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
     ParseDiagnostic {
         kind,
         message,
-        start: node.start_position(),
-        end: node.end_position(),
-        byte_range: node.start_byte()..node.end_byte(),
-        snippet: line_snippet(source, node.start_position().row),
-    }
-}
-
-fn late_local_var_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
-    ParseDiagnostic {
-        kind: "late_local_var_decl".to_string(),
-        message: "Local variable declarations must precede executable statements".to_string(),
-        start: node.start_position(),
-        end: node.end_position(),
-        byte_range: node.start_byte()..node.end_byte(),
-        snippet: line_snippet(source, node.start_position().row),
-    }
-}
-
-fn struct_prop_access_modifier_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
-    ParseDiagnostic {
-        kind: "struct_property_access_modifier".to_string(),
-        message: "Accessibility modifiers cannot be applied to struct properties".to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),

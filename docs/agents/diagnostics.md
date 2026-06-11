@@ -24,6 +24,15 @@
   `unknown_type`, `unknown_member`, `unknown_function`, `unknown_identifier`. Skips
   declaration sites, `BUILTIN_TYPES`, tree-sitter error/missing subtrees, and idents
   already owned by `unknown_method` (member-access calls).
+- `src/diagnostics/annotation_state_target.rs` - CST-walking rule (`AnnotationStateTargetRule`);
+  flags modding annotations whose argument is a state's synthetic backing class name instead of
+  the short state name. Emits `"annotation_targets_backing_class"`.
+- `src/diagnostics/inherited_field.rs` - CST-walking rule (`InheritedFieldRule`); flags a class
+  or state field that redeclares a field inherited from an ancestor. Emits
+  `"duplicate_inherited_field"`.
+- `src/diagnostics/override_consistency.rs` - CST-walking rule (`OverrideConsistencyRule`);
+  flags a method override that is inconsistent with the ancestor's class-body declaration.
+  Emits `"override_weaker_access"` and `"override_param_count"`.
 - `src/diagnostics/wrapped_method.rs` - CST-walking rule (`WrappedMethodRule`) that
   implements `CstRule` and is registered in `collect_cst_diagnostics_for_document`.
   Checks every `@wrapMethod`-annotated function for a bare `wrappedMethod(...)` call:
