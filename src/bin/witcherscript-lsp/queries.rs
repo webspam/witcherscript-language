@@ -22,6 +22,7 @@ use tracing::{trace, warn};
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::formatter::{FormatOptions, format_document};
+use witcherscript_language::line_index::SourceRange;
 use witcherscript_language::resolve::{
     OverriddenSymbol, document_highlights, inlay_hints, overridden_top_level,
     resolve_all_definitions, resolve_definition, resolve_type_definition, signature_help,
@@ -675,7 +676,11 @@ impl Backend {
         Ok(lens)
     }
 
-    fn computed_semantic_tokens(&self, uri: &Url) -> Result<Option<Vec<u32>>> {
+    fn computed_semantic_tokens(
+        &self,
+        uri: &Url,
+        range: Option<SourceRange>,
+    ) -> Result<Option<Vec<u32>>> {
         let snap = self.snapshot();
         let Some(document_arc) = snap.documents.get(uri).cloned() else {
             return Ok(None);
@@ -693,12 +698,20 @@ impl Backend {
         let version = self.state_version.load(Ordering::Acquire);
         let state_version = self.state_version.clone();
         let should_continue = || state_version.load(Ordering::Acquire) == version;
-        let Some(data) = collect_semantic_tokens_cancellable(
-            &canonical_uri(uri),
-            document,
-            &db,
-            &should_continue,
-        ) else {
+        let canonical = canonical_uri(uri);
+        let data = match range {
+            Some(range) => collect_semantic_tokens_in_range_cancellable(
+                &canonical,
+                document,
+                &db,
+                range,
+                &should_continue,
+            ),
+            None => {
+                collect_semantic_tokens_cancellable(&canonical, document, &db, &should_continue)
+            }
+        };
+        let Some(data) = data else {
             return Err(ResponseError::new(
                 ErrorCode::CONTENT_MODIFIED,
                 "document changed while computing semantic tokens",
@@ -714,7 +727,7 @@ impl Backend {
         let uri = params.text_document.uri;
         let started_at = Instant::now();
         trace!(op = "semantic_tokens_full", uri = %uri, "start");
-        let result = match self.computed_semantic_tokens(&uri) {
+        let result = match self.computed_semantic_tokens(&uri, None) {
             Ok(Some(data)) => {
                 let result_id = self.next_semantic_tokens_result_id();
                 let tokens = semantic_token_structs(&data);
@@ -749,7 +762,7 @@ impl Backend {
         let uri = params.text_document.uri;
         let started_at = Instant::now();
         trace!(op = "semantic_tokens_full_delta", uri = %uri, "start");
-        let result = match self.computed_semantic_tokens(&uri) {
+        let result = match self.computed_semantic_tokens(&uri, None) {
             Ok(Some(data)) => {
                 let result_id = self.next_semantic_tokens_result_id();
                 let mut cache = self.semantic_tokens_cache.lock();
@@ -794,44 +807,17 @@ impl Backend {
         let uri = params.text_document.uri;
         let started_at = Instant::now();
         trace!(op = "semantic_tokens_range", uri = %uri, "start");
-        let result = 'body: {
-            let snap = self.snapshot();
-            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
-                break 'body Ok(None);
-            };
-            let document = document_arc.as_ref();
-            let target = self.pending_target_for(&uri).unwrap_or(0);
-            if target > document.parse_version {
-                break 'body Err(ResponseError::new(
-                    ErrorCode::CONTENT_MODIFIED,
-                    "document edited while computing semantic tokens",
-                ));
-            }
-            let handles = self.db_handles_for_with_snapshot(&uri, &snap);
-            let db = handles.db();
-            let version = self.state_version.load(Ordering::Acquire);
-            let state_version = self.state_version.clone();
-            let should_continue = || state_version.load(Ordering::Acquire) == version;
-            let range = source_range(
-                source_position(params.range.start),
-                source_position(params.range.end),
-            );
-            let Some(data) = collect_semantic_tokens_in_range_cancellable(
-                &canonical_uri(&uri),
-                document,
-                &db,
-                range,
-                &should_continue,
-            ) else {
-                break 'body Err(ResponseError::new(
-                    ErrorCode::CONTENT_MODIFIED,
-                    "document changed while computing semantic tokens",
-                ));
-            };
-            Ok(Some(SemanticTokensRangeResult::Tokens(SemanticTokens {
+        let range = source_range(
+            source_position(params.range.start),
+            source_position(params.range.end),
+        );
+        let result = match self.computed_semantic_tokens(&uri, Some(range)) {
+            Ok(Some(data)) => Ok(Some(SemanticTokensRangeResult::Tokens(SemanticTokens {
                 result_id: None,
                 data: semantic_token_structs(&data),
-            })))
+            }))),
+            Ok(None) => Ok(None),
+            Err(err) => Err(err),
         };
         trace!(
             op = "semantic_tokens_range",
