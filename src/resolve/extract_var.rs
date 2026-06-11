@@ -24,7 +24,6 @@ pub struct VariableExtraction {
     pub insert_at: usize,
     /// Declaration statement plus the newline/indent that joins it to its neighbours.
     pub new_text: String,
-    /// Byte range of the selected expression, to be replaced by `name`.
     pub replace_range: Range<usize>,
     pub name: String,
 }
@@ -120,7 +119,6 @@ fn declaration_statement(name: &str, ty: &Type, expr: &str, options: FormatOptio
     format!("var {name}{colon}{ty} = {expr};")
 }
 
-// A selection inside a leading decl's initializer inserts before that decl, else the new var is read before declared.
 fn insertion(
     source: &str,
     block: Node,
@@ -138,6 +136,7 @@ fn insertion(
             break;
         }
         if child.start_byte() <= selection.start && selection.end <= child.end_byte() {
+            // Inserting after this decl would read the new var before it is declared.
             let indent = line_indent(source, child.start_byte());
             return Some((child.start_byte(), format!("{statement}\n{indent}")));
         }
@@ -323,19 +322,19 @@ fn lowercase_first(s: &str) -> String {
 }
 
 fn unique_name(base: &str, document: &ParsedDocument, callable: SymbolId) -> String {
-    let taken: Vec<&str> = document
+    let taken: HashSet<&str> = document
         .symbols
         .children_of(Some(callable))
         .filter(|s| matches!(s.kind, SymbolKind::Variable | SymbolKind::Parameter))
         .map(|s| s.name.as_str())
         .collect();
-    if !taken.contains(&base) {
+    if !taken.contains(base) {
         return base.to_string();
     }
     let mut suffix = 1usize;
     loop {
         let candidate = format!("{base}{suffix}");
-        if !taken.contains(&candidate.as_str()) {
+        if !taken.contains(candidate.as_str()) {
             return candidate;
         }
         suffix += 1;
