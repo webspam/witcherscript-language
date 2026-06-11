@@ -19,6 +19,11 @@ use crate::test_support::TestDb;
 #[case::accepts_event_without_return_type("class C {\n  event OnHit() {\n  }\n}\n")]
 #[case::accepts_event_returning_value("class C {\n  event OnHit() {\n    return true;\n  }\n}\n")]
 #[case::accepts_bare_return_in_function("class C {\n  function F() {\n    return;\n  }\n}\n")]
+#[case::accepts_literal_default("class C {\n  var x : int;\n  default x = -1;\n}\n")]
+#[case::accepts_name_literal_default("class C {\n  var n : name;\n  default n = 'Some';\n}\n")]
+#[case::accepts_ident_default_in_block(
+    "class C {\n  var e : int;\n  defaults {\n    e = SOME_ENUM_MEMBER;\n  }\n}\n"
+)]
 fn does_not_fire(#[case] source: &str) {
     let t = TestDb::new(source);
     let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
@@ -122,6 +127,34 @@ fn reports_bare_return_in_event(#[case] source: &str) {
     assert!(
         diagnostics.iter().any(|d| d.kind == "event_bare_return"),
         "expected event_bare_return diagnostic, got: {diagnostics:#?}"
+    );
+}
+
+#[rstest]
+#[case::call_in_default(
+    "class C {\n  var v : Vector;\n  default v = Vector(0, 0, 0);\n}\n",
+    "Vector(0, 0, 0)"
+)]
+#[case::new_in_defaults_block(
+    "class C {\n  var o : C;\n  defaults {\n    o = new C in this;\n  }\n}\n",
+    "new C in this"
+)]
+fn reports_non_constant_default(#[case] source: &str, #[case] underlined: &str) {
+    let t = TestDb::new(source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
+
+    let found = diagnostics
+        .iter()
+        .find(|d| d.kind == "non_constant_default");
+    assert!(
+        found.is_some(),
+        "expected non_constant_default diagnostic, got: {diagnostics:#?}"
+    );
+    let d = found.unwrap();
+    assert_eq!(
+        &source[d.byte_range.clone()],
+        underlined,
+        "diagnostic should underline the value expression"
     );
 }
 

@@ -205,6 +205,12 @@ impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
             self.diagnostics
                 .push(event_bare_return_diagnostic(node, self.source));
         }
+        if matches!(
+            node.kind(),
+            kinds::MEMBER_DEFAULT_VAL | kinds::MEMBER_DEFAULT_VAL_BLOCK_ASSIGN
+        ) {
+            collect_non_constant_default(node, self.source, &mut self.diagnostics);
+        }
         if node.kind() == kinds::FUNC_BLOCK {
             collect_late_local_vars_in_block(node, self.source, &mut self.diagnostics);
         }
@@ -323,6 +329,31 @@ fn event_bare_return_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
     ParseDiagnostic {
         kind: "event_bare_return".to_string(),
         message: "Events return bool; a bare 'return;' cannot convert void to bool".to_string(),
+        start: node.start_position(),
+        end: node.end_position(),
+        byte_range: node.start_byte()..node.end_byte(),
+        snippet: line_snippet(source, node.start_position().row),
+    }
+}
+
+fn collect_non_constant_default(
+    default_val: Node,
+    source: &str,
+    diagnostics: &mut Vec<ParseDiagnostic>,
+) {
+    let Some(value) = default_val.child_by_field_name(fields::VALUE) else {
+        return;
+    };
+    if matches!(value.kind(), kinds::FUNC_CALL_EXPR | kinds::NEW_EXPR) {
+        diagnostics.push(non_constant_default_diagnostic(value, source));
+    }
+}
+
+fn non_constant_default_diagnostic(node: Node, source: &str) -> ParseDiagnostic {
+    ParseDiagnostic {
+        kind: "non_constant_default".to_string(),
+        message: "'default' values must be compile-time constants; calls and 'new' are not"
+            .to_string(),
         start: node.start_position(),
         end: node.end_position(),
         byte_range: node.start_byte()..node.end_byte(),
