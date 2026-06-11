@@ -216,6 +216,7 @@ impl Backend {
                         ":".to_string(),
                         "@".to_string(),
                     ]),
+                    resolve_provider: Some(true),
                     ..CompletionOptions::default()
                 }),
                 signature_help_provider: Some(SignatureHelpOptions {

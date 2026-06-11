@@ -105,6 +105,30 @@ impl SymbolDb<'_> {
             .or_else(|| self.base.find_state_backing_class(name))
     }
 
+    /// Exact selection-range match first, then by name; edits may have shifted the symbol.
+    pub fn definition_at_selection(
+        &self,
+        uri: &str,
+        selection: &std::ops::Range<usize>,
+        name: &str,
+    ) -> Option<Definition> {
+        let indexes = [Some(self.workspace), Some(self.base), self.builtins];
+        let symbol = indexes
+            .iter()
+            .flatten()
+            .find_map(|index| index.find_symbol_at_selection(uri, selection))
+            .or_else(|| {
+                indexes
+                    .iter()
+                    .flatten()
+                    .find_map(|index| index.find_symbol_by_name(uri, name))
+            })?;
+        Some(Definition {
+            uri: uri.to_string(),
+            symbol: symbol.clone(),
+        })
+    }
+
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
         self.record_enum_member(name);
         self.workspace

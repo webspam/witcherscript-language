@@ -52,7 +52,8 @@ fn completion_item_method_has_method_kind() {
 
     assert!(!members.is_empty(), "should have completion members");
     let (_, def) = &members[0];
-    let item = completion_item(def, &t.db());
+    let origin: lsp_types::Url = uri.parse().expect("test uri parses");
+    let item = completion_item(def, &t.db(), &origin);
     assert_eq!(item.label, "DoThing");
     assert_eq!(item.kind, Some(CompletionItemKind::METHOD));
     assert_eq!(item.insert_text.as_deref(), Some("DoThing()"));
@@ -84,7 +85,8 @@ fn completion_item_snippet_includes_param_placeholders() {
         .iter()
         .find(|(_, d)| d.symbol.name == "Find")
         .expect("Find should appear in completions");
-    let item = completion_item(find_def, &db);
+    let origin: lsp_types::Url = uri.parse().expect("test uri parses");
+    let item = completion_item(find_def, &db, &origin);
 
     assert_eq!(item.kind, Some(CompletionItemKind::METHOD));
     assert_eq!(item.insert_text_format, Some(InsertTextFormat::SNIPPET));
@@ -120,7 +122,8 @@ fn completion_item_snippet_excludes_optional_params() {
         .iter()
         .find(|(_, d)| d.symbol.name == "Find")
         .expect("Find should appear in completions");
-    let item = completion_item(find_def, &db);
+    let origin: lsp_types::Url = uri.parse().expect("test uri parses");
+    let item = completion_item(find_def, &db, &origin);
 
     assert_eq!(
         item.insert_text.as_deref(),
@@ -132,6 +135,155 @@ fn completion_item_snippet_excludes_optional_params() {
         Some("(findName: string, optional range: float): int"),
         "detail must render the full parameter list"
     );
+}
+
+#[test]
+fn completion_item_defers_documentation_to_resolve() {
+    use witcherscript_language::resolve::completion_members;
+
+    let t = TestDb::new(concat!(
+        "class CExample {\n",
+        "  public function DoThing() {}\n",
+        "}\n",
+        "function Test() {\n",
+        "  var e : CExample;\n",
+        "  e.$0\n",
+        "}\n",
+    ));
+    let (uri, pos) = t.cursor();
+    let members = completion_members(&uri, t.doc_for(&uri), &t.db(), pos);
+
+    assert!(!members.is_empty(), "should have completion members");
+    let (_, def) = &members[0];
+    let origin: lsp_types::Url = uri.parse().expect("test uri parses");
+    let item = completion_item(def, &t.db(), &origin);
+    assert!(
+        item.documentation.is_none(),
+        "documentation must defer to completionItem/resolve"
+    );
+    assert!(item.data.is_some(), "item must carry resolve data");
+}
+
+mod resolve {
+    use std::sync::Arc;
+
+    use arc_swap::ArcSwap;
+    use async_lsp::ClientSocket;
+    use async_lsp::router::Router;
+    use lsp_types::{
+        CompletionItem, DidOpenTextDocumentParams, Documentation, TextDocumentItem, Url,
+    };
+    use witcherscript_language::files::canonical_uri;
+
+    use crate::backend::Backend;
+    use crate::config::{Config, DiagnosticsScope};
+    use crate::convert::CompletionItemData;
+
+    const SOURCE: &str = "class CExample {\n  public function DoThing() {}\n}\n";
+
+    fn opened_backend(uri: &Url) -> Backend {
+        let (_main_loop, client) =
+            async_lsp::MainLoop::new_server(|_client: ClientSocket| Router::<()>::new(()));
+        let config = Arc::new(ArcSwap::from_pointee(Config {
+            diagnostics_scope: DiagnosticsScope::None,
+            ..Config::default()
+        }));
+        let backend = Backend::new(client, config);
+        backend._did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "witcherscript".to_string(),
+                version: 1,
+                text: SOURCE.to_string(),
+            },
+        });
+        backend
+    }
+
+    fn do_thing_data(uri: &Url, selection: std::ops::Range<usize>) -> CompletionItemData {
+        CompletionItemData {
+            origin: uri.clone(),
+            def_uri: canonical_uri(uri),
+            selection,
+            name: "DoThing".to_string(),
+        }
+    }
+
+    fn documentation_text(item: &CompletionItem) -> Option<&str> {
+        match item.documentation.as_ref()? {
+            Documentation::MarkupContent(markup) => Some(&markup.value),
+            Documentation::String(s) => Some(s),
+        }
+    }
+
+    #[test]
+    fn resolve_fills_documentation_from_carried_data() {
+        let uri: Url = "file:///main.ws".parse().unwrap();
+        let backend = opened_backend(&uri);
+        let start = SOURCE.find("DoThing").expect("fixture contains DoThing");
+        let data = do_thing_data(&uri, start..start + "DoThing".len());
+
+        let resolved = backend
+            ._completion_item_resolve_blocking(CompletionItem::default(), &data)
+            .expect("resolve succeeds");
+        let text = documentation_text(&resolved).expect("resolve must fill documentation");
+        assert!(
+            text.contains("(method) CExample.DoThing()"),
+            "documentation must carry the hover markdown, got {text:?}"
+        );
+    }
+
+    #[test]
+    fn resolve_falls_back_by_name_when_selection_is_stale() {
+        let uri: Url = "file:///main.ws".parse().unwrap();
+        let backend = opened_backend(&uri);
+        let data = do_thing_data(&uri, 0..1);
+
+        let resolved = backend
+            ._completion_item_resolve_blocking(CompletionItem::default(), &data)
+            .expect("resolve succeeds");
+        assert!(
+            documentation_text(&resolved).is_some_and(|text| text.contains("DoThing")),
+            "stale selection must fall back to name lookup"
+        );
+    }
+
+    #[test]
+    fn resolve_returns_item_unchanged_when_symbol_is_gone() {
+        let uri: Url = "file:///main.ws".parse().unwrap();
+        let backend = opened_backend(&uri);
+        let data = CompletionItemData {
+            name: "NoSuchSymbol".to_string(),
+            ..do_thing_data(&uri, 0..1)
+        };
+
+        let resolved = backend
+            ._completion_item_resolve_blocking(CompletionItem::default(), &data)
+            .expect("resolve succeeds");
+        assert!(
+            resolved.documentation.is_none(),
+            "missing symbol must leave the item without documentation"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_passes_dataless_item_through_unchanged() {
+        let uri: Url = "file:///main.ws".parse().unwrap();
+        let backend = opened_backend(&uri);
+        let item = CompletionItem {
+            label: "var".to_string(),
+            ..CompletionItem::default()
+        };
+
+        let resolved = backend
+            ._completion_item_resolve(item.clone())
+            .await
+            .expect("resolve succeeds");
+        assert_eq!(
+            resolved, item,
+            "an item without data must pass through unchanged"
+        );
+    }
 }
 
 mod builtin_source_request {

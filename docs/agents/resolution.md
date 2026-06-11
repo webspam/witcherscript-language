@@ -34,9 +34,13 @@ direct_members_of(container, min_access)          // all direct members of a typ
 superclass_of(class_name)                         // one hop up the chain
 members_of(container, min_access)                 // full chain including inherited
 full_parameters_of(uri, callable_id)              // Parameter symbols of a callable, in order
+find_symbol_at_selection(uri, selection)          // O(n) doc scan by selection byte range
+find_symbol_by_name(uri, name)                    // O(n) doc scan by name
 all_types()                                       // all Class/Struct/State/Enum symbols
 all_top_level_callables()                         // all Function/Event, excluding exec/quest
 ```
+
+`SymbolDb::definition_at_selection(uri, selection, name)` probes workspace -> base -> builtins with the two doc-scan queries (exact selection first, then name); completionItem/resolve uses it to re-derive a symbol after edits.
 
 ## SymbolDb
 

@@ -1,11 +1,11 @@
 use std::time::Instant;
 
-use async_lsp::ResponseError;
+use async_lsp::{ErrorCode, ResponseError};
 use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse,
-    CompletionTriggerKind, InsertTextFormat,
+    CompletionTriggerKind, Documentation, InsertTextFormat, MarkupContent, MarkupKind, Url,
 };
-use tracing::trace;
+use tracing::{debug, trace};
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::resolve::{
     BUILTIN_TYPE_COMPLETIONS, Definition, OverrideBody, SymbolDb, annotation_arg_completions,
@@ -19,9 +19,10 @@ use witcherscript_language::symbols::SymbolKind;
 
 use crate::backend::Backend;
 use crate::convert::{
-    annotation_name_items, builtin_type_item, class_body_kw_item, completion_item,
-    keyword_snippet_item, lsp_range, replace_method_snippet, script_body_item, source_position,
-    source_range, this_super_item, type_completion_item, wrap_method_snippet,
+    CompletionItemData, annotation_name_items, builtin_type_item, class_body_kw_item,
+    completion_item, hover_markdown, keyword_snippet_item, lsp_range, replace_method_snippet,
+    script_body_item, source_position, source_range, this_super_item, type_completion_item,
+    wrap_method_snippet,
 };
 
 type Result<T> = std::result::Result<T, ResponseError>;
@@ -34,8 +35,13 @@ fn triggered_by_dot(params: &CompletionParams) -> bool {
         && ctx.trigger_character.as_deref() == Some(".")
 }
 
-fn sorted_completion_item(db: &SymbolDb, def: &Definition, tier: u8) -> CompletionItem {
-    let mut item = completion_item(def, db);
+fn sorted_completion_item(
+    db: &SymbolDb,
+    origin: &Url,
+    def: &Definition,
+    tier: u8,
+) -> CompletionItem {
+    let mut item = completion_item(def, db, origin);
     item.sort_text = Some(format!("{}_{}", tier, def.symbol.name));
     item
 }
@@ -97,7 +103,7 @@ impl Backend {
             let member_items: Vec<CompletionItem> =
                 completion_members(&canonical, document, &db, pos)
                     .iter()
-                    .map(|(tier, def)| sorted_completion_item(&db, def, *tier))
+                    .map(|(tier, def)| sorted_completion_item(&db, &uri, def, *tier))
                     .collect();
             trace!(
                 op = "completion",
@@ -121,7 +127,7 @@ impl Backend {
             if !default_or_hint.is_empty() {
                 let items: Vec<CompletionItem> = default_or_hint
                     .iter()
-                    .map(|def| sorted_completion_item(&db, def, 0))
+                    .map(|def| sorted_completion_item(&db, &uri, def, 0))
                     .collect();
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }
@@ -239,7 +245,7 @@ impl Backend {
             if !new_lifetime.is_empty() {
                 let items: Vec<CompletionItem> = new_lifetime
                     .iter()
-                    .map(|def| sorted_completion_item(&db, def, 0))
+                    .map(|def| sorted_completion_item(&db, &uri, def, 0))
                     .collect();
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }
@@ -289,13 +295,13 @@ impl Backend {
                     items.push(keyword_snippet_item("continue", "continue;"));
                 }
                 for def in &stmt.locals {
-                    items.push(sorted_completion_item(&db, def, 0));
+                    items.push(sorted_completion_item(&db, &uri, def, 0));
                 }
                 for def in &stmt.members {
-                    items.push(sorted_completion_item(&db, def, 1));
+                    items.push(sorted_completion_item(&db, &uri, def, 1));
                 }
                 for def in stmt_globals {
-                    items.push(sorted_completion_item(&db, def, 2));
+                    items.push(sorted_completion_item(&db, &uri, def, 2));
                 }
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }
@@ -317,13 +323,13 @@ impl Backend {
                 items.push(keyword_snippet_item("true", "true"));
                 items.push(keyword_snippet_item("false", "false"));
                 for def in &expr.locals {
-                    items.push(sorted_completion_item(&db, def, 0));
+                    items.push(sorted_completion_item(&db, &uri, def, 0));
                 }
                 for def in &expr.members {
-                    items.push(sorted_completion_item(&db, def, 0));
+                    items.push(sorted_completion_item(&db, &uri, def, 0));
                 }
                 for def in expr_globals {
-                    items.push(sorted_completion_item(&db, def, 2));
+                    items.push(sorted_completion_item(&db, &uri, def, 2));
                 }
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }
@@ -337,5 +343,55 @@ impl Backend {
             "complete",
         );
         result
+    }
+
+    pub(crate) async fn _completion_item_resolve(
+        &self,
+        mut item: CompletionItem,
+    ) -> Result<CompletionItem> {
+        // Keyword/type/pseudo-variable items carry no data; they have nothing to resolve.
+        let Some(data) = item.data.take() else {
+            return Ok(item);
+        };
+        let data: CompletionItemData = serde_json::from_value(data).map_err(|err| {
+            ResponseError::new(
+                ErrorCode::INVALID_PARAMS,
+                format!("malformed completion item data: {err}"),
+            )
+        })?;
+        self.spawn_compute(move |b| b._completion_item_resolve_blocking(item, &data))
+            .await
+    }
+
+    pub(crate) fn _completion_item_resolve_blocking(
+        &self,
+        mut item: CompletionItem,
+        data: &CompletionItemData,
+    ) -> Result<CompletionItem> {
+        let started_at = Instant::now();
+        trace!(op = "completion_item_resolve", label = %item.label, "start");
+        let snap = self.snapshot();
+        let handles = self.db_handles_for_with_snapshot(&data.origin, &snap);
+        let db = handles.db();
+        if let Some(def) = db.definition_at_selection(&data.def_uri, &data.selection, &data.name) {
+            item.documentation = Some(Documentation::MarkupContent(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: hover_markdown(&def, &db),
+            }));
+        } else {
+            // Stale data after edits is expected; the item just ships without documentation.
+            debug!(
+                def_uri = %data.def_uri,
+                name = %data.name,
+                "completion resolve target not found",
+            );
+        }
+        trace!(
+            op = "completion_item_resolve",
+            label = %item.label,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
+        Ok(item)
     }
 }

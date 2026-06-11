@@ -9,13 +9,13 @@ use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
 use futures::future::BoxFuture;
 use lsp_types::request::Request as LspRequest;
 use lsp_types::{
-    CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, CompletionParams,
-    CompletionResponse, DidChangeConfigurationParams, DidChangeTextDocumentParams,
-    DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentDiagnosticParams, DocumentDiagnosticReportResult, DocumentFormattingParams,
-    DocumentHighlight, DocumentHighlightParams, DocumentSymbolParams, DocumentSymbolResponse,
-    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, InitializeParams,
-    InitializeResult, InitializedParams, InlayHint, InlayHintParams, Location,
+    CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, CompletionItem,
+    CompletionParams, CompletionResponse, DidChangeConfigurationParams,
+    DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReportResult,
+    DocumentFormattingParams, DocumentHighlight, DocumentHighlightParams, DocumentSymbolParams,
+    DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams,
+    InitializeParams, InitializeResult, InitializedParams, InlayHint, InlayHintParams, Location,
     PrepareRenameResponse, ReferenceParams, RenameParams, SemanticTokensDeltaParams,
     SemanticTokensFullDeltaResult, SemanticTokensParams, SemanticTokensRangeParams,
     SemanticTokensRangeResult, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
@@ -749,6 +749,14 @@ impl LanguageServer for Backend {
     ) -> BoxFuture<'static, Result<Option<CompletionResponse>>> {
         let backend = self.clone();
         Box::pin(async move { backend.spawn_compute(move |b| b._completion(params)).await })
+    }
+
+    fn completion_item_resolve(
+        &mut self,
+        params: CompletionItem,
+    ) -> BoxFuture<'static, Result<CompletionItem>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._completion_item_resolve(params).await })
     }
 
     fn formatting(

@@ -1,8 +1,8 @@
-use lsp_types::request::Completion;
+use lsp_types::request::{Completion, ResolveCompletionItem};
 use lsp_types::{
     CompletionContext, CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse,
-    CompletionTriggerKind, PartialResultParams, TextDocumentIdentifier, TextDocumentPositionParams,
-    WorkDoneProgressParams,
+    CompletionTriggerKind, Documentation, PartialResultParams, TextDocumentIdentifier,
+    TextDocumentPositionParams, WorkDoneProgressParams,
 };
 
 use super::fixture::Fixture;
@@ -59,6 +59,87 @@ async fn completion_after_dot_returns_class_method() {
         .find(|i| i.label == "DoThing")
         .expect("DoThing completion item present");
     assert_eq!(method.kind, Some(CompletionItemKind::METHOD));
+}
+
+#[tokio::test]
+async fn resolve_fills_documentation_without_touching_eager_fields() {
+    let f = Fixture::parse(concat!(
+        "class CExample {\n",
+        "    public function DoThing() : void {}\n",
+        "}\n",
+        "function Test() {\n",
+        "    var e : CExample;\n",
+        "    e.$0\n",
+        "}\n",
+    ));
+
+    let mut client = LspClient::spawn().await;
+    for file in &f.files {
+        client.open(&file.uri, &file.text).await;
+    }
+
+    assert_eq!(
+        client
+            .server_capabilities()
+            .completion_provider
+            .as_ref()
+            .and_then(|p| p.resolve_provider),
+        Some(true),
+        "server must advertise completionItem/resolve support",
+    );
+
+    let (cursor_uri, pos) = f.cursor();
+    let resp = client
+        .request::<Completion>(CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: cursor_uri },
+                position: pos,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: None,
+        })
+        .await
+        .expect("completion response");
+
+    let items = items_of(resp);
+    let method = items
+        .iter()
+        .find(|i| i.label == "DoThing")
+        .expect("DoThing completion item present");
+    assert!(
+        method.documentation.is_none(),
+        "list items must not carry documentation eagerly"
+    );
+    assert!(method.data.is_some(), "list items must carry resolve data");
+
+    let resolved = client
+        .request::<ResolveCompletionItem>(method.clone())
+        .await;
+    let Some(Documentation::MarkupContent(markup)) = &resolved.documentation else {
+        panic!(
+            "resolve must fill markdown documentation, got {:?}",
+            resolved.documentation
+        );
+    };
+    assert!(
+        markup.value.contains("(method) CExample.DoThing(): void"),
+        "documentation must carry the signature, got {:?}",
+        markup.value
+    );
+    assert_eq!(resolved.label, method.label, "label must not change");
+    assert_eq!(
+        resolved.insert_text, method.insert_text,
+        "insertText must not change during resolve"
+    );
+    assert_eq!(
+        resolved.sort_text, method.sort_text,
+        "sortText must not change during resolve"
+    );
+    assert_eq!(
+        resolved.detail, method.detail,
+        "detail must not change during resolve"
+    );
 }
 
 #[tokio::test]
