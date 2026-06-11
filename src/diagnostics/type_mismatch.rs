@@ -10,7 +10,7 @@ use crate::document::ParsedDocument;
 use crate::resolve::{
     Assignability, SymbolDb, assignability, callee_params, infer_type, resolve_definition_at_byte,
 };
-use crate::symbols::{Symbol, SymbolKind, node_text};
+use crate::symbols::{SymbolKind, node_text};
 use crate::types::{Primitive, Type, native_type_accepts};
 
 use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, run_rules_on_document};
