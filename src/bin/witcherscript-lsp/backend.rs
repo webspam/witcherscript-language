@@ -16,9 +16,10 @@ use lsp_types::{
     DocumentHighlight, DocumentHighlightParams, DocumentSymbolParams, DocumentSymbolResponse,
     GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, InitializeParams,
     InitializeResult, InitializedParams, InlayHint, InlayHintParams, Location,
-    PrepareRenameResponse, ReferenceParams, RenameParams, SemanticTokensParams,
-    SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult, SignatureHelp,
-    SignatureHelpParams, TextDocumentPositionParams, TextEdit, Url, WorkspaceDiagnosticParams,
+    PrepareRenameResponse, ReferenceParams, RenameParams, SemanticTokensDeltaParams,
+    SemanticTokensFullDeltaResult, SemanticTokensParams, SemanticTokensRangeParams,
+    SemanticTokensRangeResult, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
+    TextDocumentPositionParams, TextEdit, Url, WorkspaceDiagnosticParams,
     WorkspaceDiagnosticReportResult, WorkspaceEdit, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 use parking_lot::Mutex;
@@ -40,6 +41,7 @@ use crate::edit_queue::PendingEdit;
 use crate::file_scope::{FileScope, classify_file_scope};
 use crate::file_scope_status::FileScopeStatusParams;
 use crate::legacy_status::LegacyScriptStatusParams;
+use crate::semantic_tokens_cache::CachedSemanticTokens;
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
@@ -122,6 +124,9 @@ pub(crate) struct Backend {
     pub(crate) diag_bundle_cache: Arc<Mutex<Option<crate::diagnostics_publish::CachedBundle>>>,
     pub(crate) merged_completion_cache_workspace: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) merged_completion_cache_loose: Arc<Mutex<Option<MergedCompletionCache>>>,
+    // Exact data sent with the last result_id per open document; replaced wholesale, evicted on close.
+    pub(crate) semantic_tokens_cache: Arc<Mutex<HashMap<Url, CachedSemanticTokens>>>,
+    pub(crate) semantic_tokens_result_id: Arc<AtomicU64>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
     pub(crate) legacy_db_generation: Arc<AtomicU64>,
     pub(crate) state_version: Arc<AtomicU64>,
@@ -227,6 +232,8 @@ impl Backend {
             diag_bundle_cache: Arc::new(Mutex::new(None)),
             merged_completion_cache_workspace: Arc::new(Mutex::new(None)),
             merged_completion_cache_loose: Arc::new(Mutex::new(None)),
+            semantic_tokens_cache: Arc::new(Mutex::new(HashMap::new())),
+            semantic_tokens_result_id: Arc::new(AtomicU64::new(0)),
             initial_index_done: Arc::new(AtomicBool::new(false)),
             legacy_db_generation: Arc::new(AtomicU64::new(0)),
             state_version: Arc::new(AtomicU64::new(0)),
@@ -672,6 +679,18 @@ impl LanguageServer for Backend {
         Box::pin(async move {
             backend
                 .spawn_compute(move |b| b._semantic_tokens_range(params))
+                .await
+        })
+    }
+
+    fn semantic_tokens_full_delta(
+        &mut self,
+        params: SemanticTokensDeltaParams,
+    ) -> BoxFuture<'static, Result<Option<SemanticTokensFullDeltaResult>>> {
+        let backend = self.clone();
+        Box::pin(async move {
+            backend
+                .spawn_compute(move |b| b._semantic_tokens_full_delta(params))
                 .await
         })
     }

@@ -139,6 +139,7 @@ impl Backend {
         }
         self.publish_file_scope_status();
         self.sent_file_scope_status.lock().remove(&uri);
+        self.semantic_tokens_cache.lock().remove(&uri);
         trace!(
             op = "did_close",
             uri = %uri,

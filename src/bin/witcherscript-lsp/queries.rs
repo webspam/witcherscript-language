@@ -10,8 +10,9 @@ use lsp_types::{
     FullDocumentDiagnosticReport, GotoDefinitionParams, GotoDefinitionResponse, Hover,
     HoverContents, HoverParams, InlayHint, InlayHintParams, Location, MarkupContent, MarkupKind,
     Position, Range, RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport,
-    SemanticToken, SemanticTokens, SemanticTokensParams, SemanticTokensRangeParams,
-    SemanticTokensRangeResult, SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextEdit,
+    SemanticTokens, SemanticTokensDelta, SemanticTokensDeltaParams, SemanticTokensFullDeltaResult,
+    SemanticTokensParams, SemanticTokensRangeParams, SemanticTokensRangeResult,
+    SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextEdit,
     UnchangedDocumentDiagnosticReport, Url, WorkspaceDiagnosticParams, WorkspaceDiagnosticReport,
     WorkspaceDiagnosticReportResult, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
@@ -38,6 +39,9 @@ use crate::convert::{
     source_range, workspace_symbol,
 };
 use crate::diagnostics_publish::publish_url;
+use crate::semantic_tokens_cache::{
+    CachedSemanticTokens, semantic_token_edits, semantic_token_structs,
+};
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
@@ -131,18 +135,6 @@ fn diagnostics_server_cancelled(message: &str) -> ResponseError {
         })
         .expect("DiagnosticServerCancellationData serializes"),
     )
-}
-
-fn semantic_token_structs(data: &[u32]) -> Vec<SemanticToken> {
-    data.chunks_exact(5)
-        .map(|c| SemanticToken {
-            delta_line: c[0],
-            delta_start: c[1],
-            length: c[2],
-            token_type: c[3],
-            token_modifiers_bitset: c[4],
-        })
-        .collect()
 }
 
 impl Backend {
@@ -723,10 +715,21 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "semantic_tokens_full", uri = %uri, "start");
         let result = match self.computed_semantic_tokens(&uri) {
-            Ok(Some(data)) => Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
-                result_id: None,
-                data: semantic_token_structs(&data),
-            }))),
+            Ok(Some(data)) => {
+                let result_id = self.next_semantic_tokens_result_id();
+                let tokens = semantic_token_structs(&data);
+                self.semantic_tokens_cache.lock().insert(
+                    uri.clone(),
+                    CachedSemanticTokens {
+                        result_id: result_id.clone(),
+                        data,
+                    },
+                );
+                Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
+                    result_id: Some(result_id),
+                    data: tokens,
+                })))
+            }
             Ok(None) => Ok(None),
             Err(err) => Err(err),
         };
@@ -737,6 +740,51 @@ impl Backend {
             "complete",
         );
         result
+    }
+
+    pub(crate) fn _semantic_tokens_full_delta(
+        &self,
+        params: SemanticTokensDeltaParams,
+    ) -> Result<Option<SemanticTokensFullDeltaResult>> {
+        let uri = params.text_document.uri;
+        let started_at = Instant::now();
+        trace!(op = "semantic_tokens_full_delta", uri = %uri, "start");
+        let result = match self.computed_semantic_tokens(&uri) {
+            Ok(Some(data)) => {
+                let result_id = self.next_semantic_tokens_result_id();
+                let mut cache = self.semantic_tokens_cache.lock();
+                let response = match cache.get(&uri) {
+                    Some(previous) if previous.result_id == params.previous_result_id => {
+                        SemanticTokensFullDeltaResult::TokensDelta(SemanticTokensDelta {
+                            result_id: Some(result_id.clone()),
+                            edits: semantic_token_edits(&previous.data, &data),
+                        })
+                    }
+                    // Unknown previous_result_id: protocol says answer with a full payload.
+                    _ => SemanticTokensFullDeltaResult::Tokens(SemanticTokens {
+                        result_id: Some(result_id.clone()),
+                        data: semantic_token_structs(&data),
+                    }),
+                };
+                cache.insert(uri.clone(), CachedSemanticTokens { result_id, data });
+                Ok(Some(response))
+            }
+            Ok(None) => Ok(None),
+            Err(err) => Err(err),
+        };
+        trace!(
+            op = "semantic_tokens_full_delta",
+            uri = %uri,
+            elapsed_us = started_at.elapsed().as_micros(),
+            "complete",
+        );
+        result
+    }
+
+    fn next_semantic_tokens_result_id(&self) -> String {
+        self.semantic_tokens_result_id
+            .fetch_add(1, Ordering::Relaxed)
+            .to_string()
     }
 
     pub(crate) fn _semantic_tokens_range(

@@ -105,6 +105,17 @@ LSP semantic tokens use delta encoding. The output is a flat `Vec<u32>` with gro
 
 Tokens are produced in tree walk order (top-to-bottom, left-to-right), which matches LSP requirements.
 
+## Range requests
+
+`textDocument/semanticTokens/range` is served by `collect_semantic_tokens_in_range_cancellable`, which converts the LSP range to a byte range (clamped on conversion failure, mirroring `inlay_hints`) and prunes every CST subtree that does not intersect it. Tokens partially overlapping the range edges are included; the LSP spec permits overflow. The encoded deltas still start from the document origin, so a range payload is standalone.
+
+## Full/delta requests
+
+`textDocument/semanticTokens/full` and `full/delta` mint a monotonically increasing `result_id` and store the exact returned `Vec<u32>` per open document in `Backend::semantic_tokens_cache` (`src/bin/witcherscript-lsp/semantic_tokens_cache.rs`), evicted on `did_close`. A `full/delta` request recomputes tokens (the saving is wire size and client work, not server CPU), then:
+
+- previous entry matches `previousResultId` -> `SemanticTokensDelta` with a single minimal edit from `semantic_token_edits` (whole-token prefix/suffix trim; lsp-types represents edit data as `SemanticToken` structs, so edits stay 5-u32 aligned),
+- otherwise -> a full payload with a fresh `result_id` (protocol-correct fallback, never an error).
+
 ## Single-line constraint
 
 Multi-line tokens are silently skipped:
