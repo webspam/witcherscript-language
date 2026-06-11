@@ -11,7 +11,11 @@ pub(super) struct LocalTempDir {
 
 impl LocalTempDir {
     pub(super) fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(name);
+        // Keep scratch dirs inside the build tree, not the shared system temp.
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("tmp")
+            .join(name);
         std::fs::remove_dir_all(&path).ok();
         std::fs::create_dir_all(&path).expect("mkdir tempdir");
         Self { path }
