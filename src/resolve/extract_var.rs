@@ -544,13 +544,7 @@ fn if_chain_above(statement: Node) -> Option<(Node, Vec<Node>)> {
 }
 
 fn has_side_effect(node: Node) -> bool {
-    let mut found = Vec::new();
-    collect_nodes_of_kinds(
-        node,
-        &[kinds::FUNC_CALL_EXPR, kinds::ASSIGN_OP_EXPR],
-        &mut found,
-    );
-    !found.is_empty()
+    contains_any_kind(node, &[kinds::FUNC_CALL_EXPR, kinds::ASSIGN_OP_EXPR])
 }
 
 fn name_base(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> String {
@@ -632,9 +626,7 @@ fn tracked_write_in_window(
 // Any function/method may be redirected by @wrapMethod/@replaceMethod beyond our visibility, so a
 // call that can run before the expression could mutate the non-local state it reads.
 fn reads_nonlocal_state(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> bool {
-    let mut calls = Vec::new();
-    collect_nodes_of_kinds(node, &[kinds::FUNC_CALL_EXPR], &mut calls);
-    if !calls.is_empty() {
+    if contains_any_kind(node, &[kinds::FUNC_CALL_EXPR]) {
         return true;
     }
     let mut idents = Vec::new();
@@ -759,6 +751,28 @@ fn collect_nodes_of_kinds<'tree>(root: Node<'tree>, kinds: &[&str], out: &mut Ve
         }
     }
     walk(root, &mut Collector { kinds, out });
+}
+
+fn contains_any_kind(root: Node, kinds: &[&str]) -> bool {
+    struct Finder<'a> {
+        kinds: &'a [&'a str],
+        found: bool,
+    }
+    impl<'tree> CstVisitor<'tree> for Finder<'_> {
+        fn enter(&mut self, node: Node<'tree>) -> Visit {
+            if self.kinds.contains(&node.kind()) {
+                self.found = true;
+                return Visit::SkipChildren;
+            }
+            Visit::Children
+        }
+    }
+    let mut finder = Finder {
+        kinds,
+        found: false,
+    };
+    walk(root, &mut finder);
+    finder.found
 }
 
 fn lowercase_first(s: &str) -> String {
