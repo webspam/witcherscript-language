@@ -484,20 +484,64 @@ fn split_declares_at_callable_top_when_field_written_first() {
     .assert_eq(&applied(src, "count + 1"));
 }
 
-#[rstest]
-#[case::write_earlier_in_same_statement(
-    "function Fill(out target : int) : int { return 0; }\nfunction Use(x : int, y : int) {}\nfunction F() {\n    var a : int;\n    Use(Fill(a), a + 1);\n}\n",
-    "a + 1"
-)]
-#[case::braceless_if_body(
-    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    if (true) Use(a + 1);\n}\n",
-    "a + 1"
-)]
-fn refuses_when_split_cannot_place_assignment(#[case] src: &str, #[case] needle: &str) {
+#[test]
+fn refuses_when_split_cannot_place_assignment() {
+    let src = "function Fill(out target : int) : int { return 0; }\nfunction Use(x : int, y : int) {}\nfunction F() {\n    var a : int;\n    Use(Fill(a), a + 1);\n}\n";
     assert!(
-        refused(src, needle),
-        "{needle:?} has no safe in-place assignment slot and must not be offered"
+        refused(src, "a + 1"),
+        "\"a + 1\" has no safe in-place assignment slot and must not be offered"
     );
+}
+
+#[test]
+fn split_wraps_braceless_if_body_in_block() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    if (true) Use(a + 1);\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            var x : int;
+            a = 2;
+            if (true) {
+                x = a + 1;
+                Use(x);
+            }
+        }
+    "]]
+    .assert_eq(&applied(src, "a + 1"));
+}
+
+#[test]
+fn split_desugars_else_if_condition_into_else_block() {
+    let src = "function F() {\n    var a : int;\n    var b : int;\n    a = 1;\n    if (a > 0) {}\n    else if (a + b > 0) {}\n}\n";
+    expect![[r"
+        function F() {
+            var a : int;
+            var b : int;
+            var newVar : int;
+            a = 1;
+            if (a > 0) {}
+            else {
+                newVar = a + b;
+                if (newVar > 0) {}
+            }
+        }
+    "]]
+    .assert_eq(&applied(src, "a + b"));
+}
+
+#[test]
+fn hoists_braceless_if_body_with_init_when_no_write_precedes() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    if (true) Use(a + 1);\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            var x : int = a + 1;
+            if (true) Use(x);
+        }
+    "]]
+    .assert_eq(&applied(src, "a + 1"));
 }
 
 #[rstest]

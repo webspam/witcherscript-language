@@ -146,9 +146,9 @@ pub fn extract_variable(
                 ));
             }
             // Hoisting the whole decl would skip a write; split it so the computation stays in place.
-            let statement = enclosing_block_statement(node)?;
-            let assign_at = statement.start_byte();
-            let window = assign_at..selection.start;
+            let slot = assign_slot(node)?;
+            let statement = slot.statement();
+            let window = statement.start_byte()..selection.start;
             if tracked_write_in_window(uri, document, db, node, block, window, callable.id) {
                 return None;
             }
@@ -156,9 +156,23 @@ pub fn extract_variable(
                 "\n{indent}{}",
                 uninitialised_declaration(&name, &ty, options)
             );
-            let assign_indent = line_indent(source, assign_at);
-            let assign = format!("{name} = {expr};\n{assign_indent}");
-            Some(split(at, decl, assign_at, assign, selection, name))
+            match slot {
+                AssignSlot::BeforeStatement(statement) => {
+                    let assign_at = statement.start_byte();
+                    let assign_indent = line_indent(source, assign_at);
+                    let assign = format!("{name} = {expr};\n{assign_indent}");
+                    Some(split(at, decl, assign_at, assign, selection, name))
+                }
+                AssignSlot::WrapBraceless(statement) => {
+                    let decl = Splice {
+                        range: at..at,
+                        text: decl,
+                    };
+                    Some(split_braceless(
+                        decl, statement, expr, source, options, selection, name,
+                    ))
+                }
+            }
         }
     }
 }
@@ -204,6 +218,44 @@ fn split(
             Splice {
                 range: assign_at..assign_at,
                 text: assign_text,
+            },
+            Splice {
+                range: selection,
+                text: name.clone(),
+            },
+        ],
+        name,
+        name_anchor,
+    }
+}
+
+// Wrap a braceless statement in a synthesised block holding the assignment, keeping it in place.
+fn split_braceless(
+    decl: Splice,
+    statement: Node,
+    expr: &str,
+    source: &str,
+    options: FormatOptions,
+    selection: Range<usize>,
+    name: String,
+) -> VariableExtraction {
+    let indent = line_indent(source, statement.start_byte()).to_string();
+    let unit = indent_unit_for(&options);
+    let open = format!("{{\n{indent}{unit}{name} = {expr};\n{indent}{unit}");
+    let close = format!("\n{indent}}}");
+    let name_anchor = selection.start;
+    let stmt_start = statement.start_byte();
+    let stmt_end = statement.end_byte();
+    VariableExtraction {
+        edits: vec![
+            decl,
+            Splice {
+                range: stmt_start..stmt_start,
+                text: open,
+            },
+            Splice {
+                range: stmt_end..stmt_end,
+                text: close,
             },
             Splice {
                 range: selection,
@@ -391,14 +443,37 @@ fn enclosing_loop_end(node: Node, block: Node) -> Option<usize> {
         .map(|loop_node| loop_node.end_byte())
 }
 
-// Nearest statement that is a direct child of a function block; None if the selection sits in a
-// braceless control-flow body (an assignment cannot be spliced there without synthesising a block).
-fn enclosing_block_statement(node: Node) -> Option<Node> {
+const BRACELESS_HOST_KINDS: &[&str] = &[
+    kinds::IF_STMT,
+    kinds::FOR_STMT,
+    kinds::WHILE_STMT,
+    kinds::DO_WHILE_STMT,
+];
+
+enum AssignSlot<'tree> {
+    BeforeStatement(Node<'tree>),
+    // Braceless control-flow body (or the inner `if` of an `else if`): hosting the assignment needs braces.
+    WrapBraceless(Node<'tree>),
+}
+
+impl<'tree> AssignSlot<'tree> {
+    fn statement(&self) -> Node<'tree> {
+        match self {
+            AssignSlot::BeforeStatement(s) | AssignSlot::WrapBraceless(s) => *s,
+        }
+    }
+}
+
+// Where the in-place split assignment lands. A braceless control-flow body interposes no func_block,
+// so the statement's parent being a control-flow node identifies the braces-needed case.
+fn assign_slot(node: Node) -> Option<AssignSlot> {
     let statement = node_and_ancestors(node).find(|n| STATEMENT_KINDS.contains(&n.kind()))?;
-    statement
-        .parent()
-        .filter(|parent| parent.kind() == kinds::FUNC_BLOCK)
-        .map(|_| statement)
+    let parent = statement.parent()?;
+    match parent.kind() {
+        kinds::FUNC_BLOCK => Some(AssignSlot::BeforeStatement(statement)),
+        k if BRACELESS_HOST_KINDS.contains(&k) => Some(AssignSlot::WrapBraceless(statement)),
+        _ => None,
+    }
 }
 
 fn name_base(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> String {
