@@ -423,6 +423,16 @@ fn splits_field_read_when_an_earlier_call_could_mutate_it() {
 }
 
 #[test]
+fn hoists_field_read_despite_call_in_an_earlier_initializer() {
+    let src = "class C {\n    var count : int;\n    function Setup() : int { return 1; }\n    function M() {\n        var a : int = Setup();\n        var r : int;\n        r = count + 1;\n    }\n}\n";
+    assert_eq!(
+        edit_count(src, "count + 1"),
+        2,
+        "a call in an earlier initializer runs before the inserted decl, so it cannot mutate the read"
+    );
+}
+
+#[test]
 fn hoists_local_only_expression_despite_preceding_call() {
     let src = "function Mutate() {}\nfunction F() {\n    var a : int;\n    Mutate();\n    var r : int;\n    r = a + 1;\n}\n";
     assert_eq!(

@@ -117,9 +117,9 @@ pub fn extract_variable(
     let loop_end = enclosing_loop_end(node, block);
     let hoist_end = loop_end.unwrap_or(selection.start);
     let cannot_hoist_initializer = |window: Range<usize>| {
-        tracked_write_in_window(uri, document, db, node, block, window, callable.id)
+        tracked_write_in_window(uri, document, db, node, block, window.clone(), callable.id)
             || (reads_nonlocal_state(uri, document, db, node)
-                && overridable_call_precedes(node, block, hoist_end, loop_end.is_some()))
+                && overridable_call_precedes(node, block, window, loop_end.is_some()))
     };
 
     match decl_site(source, block, &selection, options)? {
@@ -645,11 +645,14 @@ fn reads_nonlocal_state(uri: &str, document: &ParsedDocument, db: &SymbolDb, nod
     })
 }
 
-fn overridable_call_precedes(node: Node, block: Node, hoist_end: usize, in_loop: bool) -> bool {
+// Calls in an earlier initializer run before our decl regardless, so only those from the insertion
+// point (window start, after the last leading var decl) up to the hoist end can change the reads.
+fn overridable_call_precedes(node: Node, block: Node, window: Range<usize>, in_loop: bool) -> bool {
     let mut calls = Vec::new();
     collect_nodes_of_kinds(block, &[kinds::FUNC_CALL_EXPR], &mut calls);
     calls.iter().any(|call| {
-        call.start_byte() < hoist_end && (in_loop || !mutually_exclusive_branches(*call, node))
+        window.contains(&call.start_byte())
+            && (in_loop || !mutually_exclusive_branches(*call, node))
     })
 }
 
