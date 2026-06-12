@@ -219,7 +219,7 @@ FunctionName(${1:param1}, ${2:param2})$0
 
 The parameter names come from `db.display_parameters_of(&definition)`; `completion_item` excludes optional parameters from the snippet slots. The same parameter list renders the item's `detail` via `render_signature`.
 
-Documentation includes a markdown code block (from `hover_text`) and a file:line location link.
+Documentation is NOT built eagerly. Symbol-backed items carry a `CompletionItemData` payload (origin URI + definition URI + selection byte range + name) in `CompletionItem.data`; `completionItem/resolve` re-derives the symbol from the current snapshot via `SymbolDb::definition_at_selection` (exact selection match, then by-name fallback) and fills `documentation` with `hover_markdown` (a markdown code block plus a file:line location link). A stale or missing symbol leaves the item unchanged. Keyword/type/pseudo-variable items carry no `data` and pass through resolve untouched.
 
 ## Rename
 
@@ -250,7 +250,7 @@ Open `documents` (editor-open) take precedence over `workspace_documents` (backg
 | `source_position(pos: Position)` | LSP `Position` → `SourcePosition` |
 | `hover_markdown(def, doc)` | Formats hover content: code block + location link |
 | `hover_location_markdown(uri, range)` | `file:///path#L{line}` markdown link |
-| `completion_item(def, doc, db)` | Builds `CompletionItem` with snippet + docs |
+| `completion_item(def, db, origin)` | Builds `CompletionItem` with snippet + resolve `data` (docs defer to resolve) |
 | `document_symbols(syms, parent_id)` | Recursively builds LSP `DocumentSymbol` tree; skips Variable/Parameter |
 | `workspace_symbol(def)` | Flat `Definition` → LSP `WorkspaceSymbol` with resolved `Location` |
 | `lsp_symbol_kind(kind)` | `SymbolKind` → LSP `SymbolKind` enum |

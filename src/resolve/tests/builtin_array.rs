@@ -38,6 +38,31 @@ fn array_int_member_is_resolved_with_substituted_param_type() {
 }
 
 #[test]
+fn definition_at_selection_substitutes_generic_member_param() {
+    let t = TestDb::new("").with_builtins_index();
+    let db = t.db();
+    let raw = db
+        .find_member("array<int>", "PushBack", AccessLevel::Public)
+        .expect("PushBack resolves");
+
+    let def = db
+        .definition_at_selection(
+            BUILTIN_ARRAY_URI,
+            &raw.symbol.selection_byte_range,
+            "PushBack",
+            Some("array<int>"),
+        )
+        .expect("resolve must re-derive the generic member");
+
+    let params = db.display_parameters_of(&def);
+    assert_eq!(
+        params[0].type_annotation,
+        Some(Type::from_annotation("int")),
+        "resolve must substitute the param type, not leave it as T"
+    );
+}
+
+#[test]
 fn array_method_returning_placeholder_substitutes_return_type() {
     let t = TestDb::new("").with_builtins_index();
     let def = t

@@ -1,10 +1,12 @@
 use std::collections::HashMap;
+use std::ops::Range;
 
 use tree_sitter::Node;
 
 use crate::cst::kinds;
 use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::document::ParsedDocument;
+use crate::line_index::SourceRange;
 use crate::resolve::{SymbolDb, classify_definition_at_ident};
 use crate::symbols::{SymbolId, SymbolKind};
 
@@ -65,10 +67,40 @@ pub fn collect_semantic_tokens_cancellable(
     db: &SymbolDb,
     should_continue: &dyn Fn() -> bool,
 ) -> Option<Vec<u32>> {
+    collect_in_byte_range(uri, document, db, 0..document.source.len(), should_continue)
+}
+
+// Tokens partially overlapping the range are included; the LSP spec permits overflow.
+pub fn collect_semantic_tokens_in_range_cancellable(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    range: SourceRange,
+    should_continue: &dyn Fn() -> bool,
+) -> Option<Vec<u32>> {
+    let lo = document
+        .line_index
+        .position_to_byte(&document.source, range.start)
+        .unwrap_or(0);
+    let hi = document
+        .line_index
+        .position_to_byte(&document.source, range.end)
+        .unwrap_or(document.source.len());
+    collect_in_byte_range(uri, document, db, lo..hi, should_continue)
+}
+
+fn collect_in_byte_range(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_range: Range<usize>,
+    should_continue: &dyn Fn() -> bool,
+) -> Option<Vec<u32>> {
     let mut collector = TokenCollector {
         uri,
         document,
         db,
+        byte_range,
         cache: HashMap::new(),
         tokens: Vec::new(),
     };
@@ -89,12 +121,16 @@ struct TokenCollector<'a, 'db> {
     uri: &'a str,
     document: &'a ParsedDocument,
     db: &'a SymbolDb<'db>,
+    byte_range: Range<usize>,
     cache: ClassifyCache,
     tokens: Vec<RawToken>,
 }
 
 impl<'tree> CstVisitor<'tree> for TokenCollector<'_, '_> {
     fn enter(&mut self, node: Node<'tree>) -> Visit {
+        if node.end_byte() <= self.byte_range.start || node.start_byte() >= self.byte_range.end {
+            return Visit::SkipChildren;
+        }
         if let Some((token_type, token_modifiers)) =
             classify(node, self.uri, self.document, self.db, &mut self.cache)
         {

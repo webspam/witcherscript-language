@@ -1,7 +1,7 @@
 use lsp_types::{
-    Command, CompletionItem, CompletionItemKind, CompletionTextEdit, Documentation,
-    InsertTextFormat, MarkupContent, MarkupKind, ParameterInformation, ParameterLabel, Range,
-    SignatureHelp, SignatureInformation, TextEdit,
+    Command, CompletionItem, CompletionItemKind, CompletionTextEdit, InsertTextFormat,
+    ParameterInformation, ParameterLabel, Range, SignatureHelp, SignatureInformation, TextEdit,
+    Url,
 };
 use witcherscript_language::resolve::{
     Definition, SignatureHelpInfo, SymbolDb, render_parameters, render_signature,
@@ -9,9 +9,24 @@ use witcherscript_language::resolve::{
 use witcherscript_language::symbols::{Symbol, SymbolKind};
 use witcherscript_language::types::Type;
 
-use super::symbols::hover_markdown;
+// Identifies the symbol behind a completion item so resolve can re-derive its documentation.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct CompletionItemData {
+    /// Document where completion was invoked; routes loose vs workspace at resolve time.
+    pub(crate) origin: Url,
+    pub(crate) def_uri: String,
+    pub(crate) selection: std::ops::Range<usize>,
+    pub(crate) name: String,
+    /// Owning container; a generic instance (`array<int>`) drives re-substitution at resolve.
+    #[serde(default)]
+    pub(crate) container: Option<String>,
+}
 
-pub(crate) fn completion_item(definition: &Definition, db: &SymbolDb) -> CompletionItem {
+pub(crate) fn completion_item(
+    definition: &Definition,
+    db: &SymbolDb,
+    origin: &Url,
+) -> CompletionItem {
     let symbol = &definition.symbol;
     let is_callable = symbol.kind.is_callable();
     let kind = Some(match symbol.kind {
@@ -64,17 +79,21 @@ pub(crate) fn completion_item(definition: &Definition, db: &SymbolDb) -> Complet
         command: "editor.action.triggerParameterHints".to_string(),
         arguments: None,
     });
+    let data = CompletionItemData {
+        origin: origin.clone(),
+        def_uri: definition.uri.clone(),
+        selection: symbol.selection_byte_range.clone(),
+        name: symbol.name.clone(),
+        container: symbol.container_name.clone(),
+    };
     CompletionItem {
         label: symbol.name.clone(),
         kind,
         detail,
-        documentation: Some(Documentation::MarkupContent(MarkupContent {
-            kind: MarkupKind::Markdown,
-            value: hover_markdown(definition, db),
-        })),
         insert_text,
         insert_text_format,
         command,
+        data: Some(serde_json::to_value(data).expect("CompletionItemData always serializes")),
         ..CompletionItem::default()
     }
 }

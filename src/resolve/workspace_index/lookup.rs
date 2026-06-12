@@ -154,6 +154,21 @@ impl WorkspaceIndex {
             .map(|(_, base)| base.clone())
     }
 
+    pub(crate) fn find_symbol_at_selection(
+        &self,
+        uri: &str,
+        selection: &std::ops::Range<usize>,
+    ) -> Option<&Symbol> {
+        self.documents
+            .get(uri)?
+            .iter()
+            .find(|s| s.selection_byte_range == *selection)
+    }
+
+    pub(crate) fn find_symbol_by_name(&self, uri: &str, name: &str) -> Option<&Symbol> {
+        self.documents.get(uri)?.iter().find(|s| s.name == name)
+    }
+
     pub fn full_parameters_of(&self, uri: &str, callable_id: SymbolId) -> Vec<Symbol> {
         let Some(symbols) = self.documents.get(uri) else {
             return vec![];

@@ -11,5 +11,6 @@ mod inlay_hints;
 mod notifications;
 mod panic_boundary;
 mod rename;
+mod semantic_tokens;
 mod type_definition;
 mod workspace_symbol;

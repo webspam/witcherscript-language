@@ -216,6 +216,7 @@ impl Backend {
                         ":".to_string(),
                         "@".to_string(),
                     ]),
+                    resolve_provider: Some(true),
                     ..CompletionOptions::default()
                 }),
                 signature_help_provider: Some(SignatureHelpOptions {
@@ -247,7 +248,8 @@ impl Backend {
                                     .map(|s| SemanticTokenModifier::new(s))
                                     .collect(),
                             },
-                            full: Some(SemanticTokensFullOptions::Bool(true)),
+                            full: Some(SemanticTokensFullOptions::Delta { delta: Some(true) }),
+                            range: Some(true),
                             ..SemanticTokensOptions::default()
                         },
                     ),

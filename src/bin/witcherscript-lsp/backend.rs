@@ -9,17 +9,18 @@ use async_lsp::{ClientSocket, ErrorCode, LanguageServer, ResponseError};
 use futures::future::BoxFuture;
 use lsp_types::request::Request as LspRequest;
 use lsp_types::{
-    CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, CompletionParams,
-    CompletionResponse, DidChangeConfigurationParams, DidChangeTextDocumentParams,
-    DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentDiagnosticParams, DocumentDiagnosticReportResult, DocumentFormattingParams,
-    DocumentHighlight, DocumentHighlightParams, DocumentSymbolParams, DocumentSymbolResponse,
-    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, InitializeParams,
-    InitializeResult, InitializedParams, InlayHint, InlayHintParams, Location,
-    PrepareRenameResponse, ReferenceParams, RenameParams, SemanticTokensParams,
-    SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextDocumentPositionParams, TextEdit,
-    Url, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult, WorkspaceEdit,
-    WorkspaceSymbolParams, WorkspaceSymbolResponse,
+    CodeActionParams, CodeActionResponse, CodeLens, CodeLensParams, CompletionItem,
+    CompletionParams, CompletionResponse, DidChangeConfigurationParams,
+    DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReportResult,
+    DocumentFormattingParams, DocumentHighlight, DocumentHighlightParams, DocumentSymbolParams,
+    DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams,
+    InitializeParams, InitializeResult, InitializedParams, InlayHint, InlayHintParams, Location,
+    PrepareRenameResponse, ReferenceParams, RenameParams, SemanticTokensDeltaParams,
+    SemanticTokensFullDeltaResult, SemanticTokensParams, SemanticTokensRangeParams,
+    SemanticTokensRangeResult, SemanticTokensResult, SignatureHelp, SignatureHelpParams,
+    TextDocumentPositionParams, TextEdit, Url, WorkspaceDiagnosticParams,
+    WorkspaceDiagnosticReportResult, WorkspaceEdit, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 use parking_lot::Mutex;
 use serde_json::{Value, json};
@@ -40,6 +41,7 @@ use crate::edit_queue::PendingEdit;
 use crate::file_scope::{FileScope, classify_file_scope};
 use crate::file_scope_status::FileScopeStatusParams;
 use crate::legacy_status::LegacyScriptStatusParams;
+use crate::semantic_tokens_cache::CachedSemanticTokens;
 
 type Result<T> = std::result::Result<T, ResponseError>;
 
@@ -122,6 +124,9 @@ pub(crate) struct Backend {
     pub(crate) diag_bundle_cache: Arc<Mutex<Option<crate::diagnostics_publish::CachedBundle>>>,
     pub(crate) merged_completion_cache_workspace: Arc<Mutex<Option<MergedCompletionCache>>>,
     pub(crate) merged_completion_cache_loose: Arc<Mutex<Option<MergedCompletionCache>>>,
+    // Exact data sent with the last result_id per open document; replaced wholesale, evicted on close.
+    pub(crate) semantic_tokens_cache: Arc<Mutex<HashMap<Url, CachedSemanticTokens>>>,
+    pub(crate) semantic_tokens_result_id: Arc<AtomicU64>,
     pub(crate) initial_index_done: Arc<AtomicBool>,
     pub(crate) legacy_db_generation: Arc<AtomicU64>,
     pub(crate) state_version: Arc<AtomicU64>,
@@ -227,6 +232,8 @@ impl Backend {
             diag_bundle_cache: Arc::new(Mutex::new(None)),
             merged_completion_cache_workspace: Arc::new(Mutex::new(None)),
             merged_completion_cache_loose: Arc::new(Mutex::new(None)),
+            semantic_tokens_cache: Arc::new(Mutex::new(HashMap::new())),
+            semantic_tokens_result_id: Arc::new(AtomicU64::new(0)),
             initial_index_done: Arc::new(AtomicBool::new(false)),
             legacy_db_generation: Arc::new(AtomicU64::new(0)),
             state_version: Arc::new(AtomicU64::new(0)),
@@ -664,6 +671,30 @@ impl LanguageServer for Backend {
         })
     }
 
+    fn semantic_tokens_range(
+        &mut self,
+        params: SemanticTokensRangeParams,
+    ) -> BoxFuture<'static, Result<Option<SemanticTokensRangeResult>>> {
+        let backend = self.clone();
+        Box::pin(async move {
+            backend
+                .spawn_compute(move |b| b._semantic_tokens_range(params))
+                .await
+        })
+    }
+
+    fn semantic_tokens_full_delta(
+        &mut self,
+        params: SemanticTokensDeltaParams,
+    ) -> BoxFuture<'static, Result<Option<SemanticTokensFullDeltaResult>>> {
+        let backend = self.clone();
+        Box::pin(async move {
+            backend
+                .spawn_compute(move |b| b._semantic_tokens_full_delta(params))
+                .await
+        })
+    }
+
     fn inlay_hint(
         &mut self,
         params: InlayHintParams,
@@ -718,6 +749,14 @@ impl LanguageServer for Backend {
     ) -> BoxFuture<'static, Result<Option<CompletionResponse>>> {
         let backend = self.clone();
         Box::pin(async move { backend.spawn_compute(move |b| b._completion(params)).await })
+    }
+
+    fn completion_item_resolve(
+        &mut self,
+        params: CompletionItem,
+    ) -> BoxFuture<'static, Result<CompletionItem>> {
+        let backend = self.clone();
+        Box::pin(async move { backend._completion_item_resolve(params).await })
     }
 
     fn formatting(

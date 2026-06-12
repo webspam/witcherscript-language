@@ -16,6 +16,7 @@ mod logging;
 mod project_manifest;
 mod queries;
 mod references_rename;
+mod semantic_tokens_cache;
 #[cfg(test)]
 mod tests;
 mod text_sync;

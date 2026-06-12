@@ -105,6 +105,48 @@ impl SymbolDb<'_> {
             .or_else(|| self.base.find_state_backing_class(name))
     }
 
+    /// Exact selection-range match first, then by name; edits may have shifted the symbol.
+    /// Script-env globals live in no index, so they are probed by name as a last resort.
+    pub fn definition_at_selection(
+        &self,
+        uri: &str,
+        selection: &std::ops::Range<usize>,
+        name: &str,
+        container: Option<&str>,
+    ) -> Option<Definition> {
+        // Generic-instance members must be re-substituted; the index only holds the raw `T` form.
+        if let Some(container) = container
+            && generic_lookup_target(container).1.is_some()
+        {
+            return self.find_member(container, name, AccessLevel::Private);
+        }
+        let indexes = [Some(self.workspace), Some(self.base), self.builtins];
+        if let Some(symbol) = indexes
+            .iter()
+            .flatten()
+            .find_map(|index| index.find_symbol_at_selection(uri, selection))
+        {
+            return Some(Definition {
+                uri: uri.to_string(),
+                symbol: symbol.clone(),
+            });
+        }
+        // Selection went stale after edits; a member disambiguates by container, others by name.
+        if let Some(container) = container {
+            return self.find_member(container, name, AccessLevel::Private);
+        }
+        let symbol = indexes
+            .iter()
+            .flatten()
+            .find_map(|index| index.find_symbol_by_name(uri, name))
+            .cloned()
+            .or_else(|| self.script_env?.find(name).map(|g| g.symbol.clone()))?;
+        Some(Definition {
+            uri: uri.to_string(),
+            symbol,
+        })
+    }
+
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {
         self.record_enum_member(name);
         self.workspace

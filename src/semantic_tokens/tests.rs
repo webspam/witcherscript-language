@@ -2,9 +2,11 @@ use rstest::rstest;
 
 use super::{
     SemanticTokenView, TT_CLASS, TT_ENUM, TT_ENUM_MEMBER, TT_FUNCTION, TT_PARAMETER, TT_PROPERTY,
-    TT_VARIABLE, collect_semantic_tokens, collect_semantic_tokens_cancellable, decode_tokens,
+    TT_VARIABLE, collect_semantic_tokens, collect_semantic_tokens_cancellable,
+    collect_semantic_tokens_in_range_cancellable, decode_tokens,
 };
 use crate::document::parse_document;
+use crate::line_index::{SourcePosition, SourceRange};
 use crate::resolve::{SymbolDb, WorkspaceIndex};
 
 const TEST_URI: &str = "file:///semtok_test.ws";
@@ -206,11 +208,15 @@ fn type_annotation_from_base_scripts_gets_class_token() {
 fn classified_tokens(source: &str, db: &SymbolDb) -> Vec<(String, u32)> {
     let document = parse_document(source).expect("parse");
     let tokens = decode_tokens(&collect_semantic_tokens(TEST_URI, &document, db));
+    token_texts(source, &tokens)
+}
+
+fn token_texts(source: &str, tokens: &[SemanticTokenView]) -> Vec<(String, u32)> {
     let lines: Vec<&str> = source.lines().collect();
     let mut out = Vec::new();
     let mut line: u32 = 0;
     let mut start: u32 = 0;
-    for t in &tokens {
+    for t in tokens {
         line += t.delta_line;
         start = if t.delta_line > 0 {
             t.delta_start
@@ -444,6 +450,69 @@ fn cancellable_walk_returns_some_when_should_continue_is_true() {
     assert!(
         result.is_some_and(|tokens| !tokens.is_empty()),
         "non-cancelled walk should return tokens"
+    );
+}
+
+const TWO_FUNCTIONS: &str = "function First() {}\nfunction Second() {}\n";
+
+fn range_token_texts(source: &str, start: (u32, u32), end: (u32, u32)) -> Vec<(String, u32)> {
+    let document = parse_document(source).expect("parse");
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&empty, &empty);
+    let range = SourceRange {
+        start: SourcePosition {
+            line: start.0,
+            character: start.1,
+        },
+        end: SourcePosition {
+            line: end.0,
+            character: end.1,
+        },
+    };
+    let data =
+        collect_semantic_tokens_in_range_cancellable(TEST_URI, &document, &db, range, &|| true)
+            .expect("should_continue=|| true cannot cancel");
+    token_texts(source, &decode_tokens(&data))
+}
+
+#[rstest]
+#[case::second_function_only("second function only", (1, 0), (2, 0), &["function", "Second"])]
+#[case::first_function_only("first function only", (0, 0), (0, 19), &["function", "First"])]
+#[case::partial_token_overlap("partial token overlap", (0, 2), (0, 5), &["function"])]
+#[case::gap_between_functions("gap between functions", (0, 19), (1, 0), &[])]
+fn range_collection_emits_only_intersecting_tokens(
+    #[case] name: &str,
+    #[case] start: (u32, u32),
+    #[case] end: (u32, u32),
+    #[case] expected: &[&str],
+) {
+    let toks = range_token_texts(TWO_FUNCTIONS, start, end);
+    let texts: Vec<&str> = toks.iter().map(|(t, _)| t.as_str()).collect();
+    assert_eq!(texts, expected, "case '{name}': range token texts mismatch");
+}
+
+#[test]
+fn full_document_range_matches_full_collection() {
+    let document = parse_document(TWO_FUNCTIONS).expect("parse");
+    let empty = WorkspaceIndex::default();
+    let db = SymbolDb::new(&empty, &empty);
+    let range = SourceRange {
+        start: SourcePosition {
+            line: 0,
+            character: 0,
+        },
+        end: SourcePosition {
+            line: 2,
+            character: 0,
+        },
+    };
+    let ranged =
+        collect_semantic_tokens_in_range_cancellable(TEST_URI, &document, &db, range, &|| true)
+            .expect("should_continue=|| true cannot cancel");
+    let full = collect_semantic_tokens(TEST_URI, &document, &db);
+    assert_eq!(
+        ranged, full,
+        "full-document range must produce identical encoded tokens"
     );
 }
 
