@@ -3,11 +3,12 @@ use std::ops::Range;
 
 use tree_sitter::Node;
 
-use crate::cst::ancestors::node_and_ancestors;
+use crate::cst::ancestors::{enclosing_callable_block, node_and_ancestors};
 use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
 use crate::cst::grammar::{
     arg_slots, call_callee, callee_ident, member_access_member, write_target,
 };
+use crate::cst::if_stmt::{if_chain_above, mutually_exclusive_branches};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::formatter::{FormatOptions, indent_unit_for, line_indent};
@@ -396,14 +397,6 @@ fn is_call_callee(node: Node) -> bool {
         .is_some_and(|callee| callee.id() == node.id())
 }
 
-fn enclosing_callable_block(node: Node) -> Option<Node> {
-    node_and_ancestors(node).find(|n| {
-        n.kind() == kinds::FUNC_BLOCK
-            && n.parent()
-                .is_some_and(|p| matches!(p.kind(), kinds::FUNC_DECL | kinds::EVENT_DECL))
-    })
-}
-
 fn declaration_statement(name: &str, ty: &Type, expr: &str, options: FormatOptions) -> String {
     let colon = if options.compact_colon { ": " } else { " : " };
     format!("var {name}{colon}{ty} = {expr};")
@@ -521,29 +514,6 @@ fn pre_chain_head<'tree>(statement: Node<'tree>, expr: Node) -> Option<Node<'tre
     Some(head)
 }
 
-// Chain head (outermost `if`) above an else-branch statement and the conditions leading to it; None
-// when the statement is not in an `else if` position.
-fn if_chain_above(statement: Node) -> Option<(Node, Vec<Node>)> {
-    let mut conditions = Vec::new();
-    let mut head = statement;
-    while let Some(parent) = head.parent() {
-        if parent.kind() != kinds::IF_STMT {
-            break;
-        }
-        let is_else = parent
-            .child_by_field_name(fields::ELSE)
-            .is_some_and(|e| e.id() == head.id());
-        if !is_else {
-            break;
-        }
-        if let Some(cond) = parent.child_by_field_name(fields::COND) {
-            conditions.push(cond);
-        }
-        head = parent;
-    }
-    (!conditions.is_empty()).then_some((head, conditions))
-}
-
 fn has_side_effect(node: Node) -> bool {
     has_descendant_of_kind(node, &[kinds::FUNC_CALL_EXPR, kinds::ASSIGN_OP_EXPR])
 }
@@ -644,42 +614,10 @@ fn overridable_call_precedes(node: Node, block: Node, window: Range<usize>, in_l
     let mut calls = Vec::new();
     collect_descendants_of_kind(block, &[kinds::FUNC_CALL_EXPR], &mut calls);
     calls.iter().any(|call| {
+        // A loop re-runs both branches, so the then/else exclusion only holds outside one.
         window.contains(&call.start_byte())
             && (in_loop || !mutually_exclusive_branches(*call, node))
     })
-}
-
-#[derive(PartialEq)]
-enum IfBranch {
-    Body,
-    Else,
-}
-
-// A loop re-runs both branches, so this then/else exclusion only holds outside one (see caller).
-fn mutually_exclusive_branches(a: Node, b: Node) -> bool {
-    node_and_ancestors(a)
-        .filter(|n| n.kind() == kinds::IF_STMT)
-        .any(
-            |if_stmt| match (if_branch_of(if_stmt, a), if_branch_of(if_stmt, b)) {
-                (Some(branch_a), Some(branch_b)) => branch_a != branch_b,
-                _ => false,
-            },
-        )
-}
-
-fn if_branch_of(if_stmt: Node, node: Node) -> Option<IfBranch> {
-    let within = |field| {
-        if_stmt
-            .child_by_field_name(field)
-            .is_some_and(|c| c.start_byte() <= node.start_byte() && node.end_byte() <= c.end_byte())
-    };
-    if within(fields::BODY) {
-        Some(IfBranch::Body)
-    } else if within(fields::ELSE) {
-        Some(IfBranch::Else)
-    } else {
-        None
-    }
 }
 
 fn out_args<'tree>(
