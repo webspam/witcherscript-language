@@ -51,13 +51,13 @@ pub(crate) fn classify_watched_event(
         return None;
     }
     let canonical = canonical_uri(&event.uri);
+    // An open file is owned by its editor buffer, not the disk; did_close reconciles with disk later.
+    if open_canonical.contains(&canonical) {
+        return None;
+    }
     match event.typ {
-        // A delete must drop the file even while it is open: the file is gone.
         FileChangeType::DELETED => Some(WatchedEvent::Remove { canonical }),
         FileChangeType::CREATED | FileChangeType::CHANGED => {
-            if open_canonical.contains(&canonical) {
-                return None;
-            }
             if filter.matches(&path) {
                 return None;
             }
