@@ -166,7 +166,7 @@ impl<'a> Formatter<'a> {
         }
         self.flush_comments_before(node.start_byte());
         if node.is_error() {
-            let t = self.text(node).trim().to_string();
+            let t = self.original_node_text(node);
             self.emit(&t);
             self.consume_comments_before(node.end_byte());
             return;
@@ -293,7 +293,7 @@ impl<'a> Formatter<'a> {
             return String::new();
         }
         if node.is_error() {
-            return self.text(node).trim().to_string();
+            return self.original_node_text(node);
         }
         if node.child_count() == 0 {
             return self.text(node).to_string();
@@ -318,5 +318,9 @@ impl<'a> Formatter<'a> {
             prev = Some(*child);
         }
         s
+    }
+
+    pub(super) fn original_node_text(&self, node: Node) -> String {
+        self.text(node).trim().to_string()
     }
 }

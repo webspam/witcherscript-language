@@ -107,7 +107,7 @@ impl Formatter<'_> {
         );
         if node.is_error() || (!is_compound && node.has_error()) {
             self.flush_comments_before(node.start_byte());
-            let t = self.text(node).trim().to_string();
+            let t = self.original_node_text(node);
             self.emit_indent();
             self.emit(&t);
             if trailing_semi {
@@ -125,7 +125,7 @@ impl Formatter<'_> {
     fn format_stmt(&mut self, node: Node) {
         self.flush_comments_before(node.start_byte());
         if node.is_error() || node.has_error() {
-            let t = self.text(node).trim().to_string();
+            let t = self.original_node_text(node);
             self.emit_indent();
             self.emit(&t);
             self.consume_comments_before(node.end_byte());
