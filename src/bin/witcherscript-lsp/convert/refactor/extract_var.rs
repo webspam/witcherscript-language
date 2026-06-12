@@ -5,7 +5,7 @@ use lsp_types::{
     WorkspaceEdit,
 };
 use witcherscript_language::line_index::LineIndex;
-use witcherscript_language::resolve::{VariableExtraction, extract_variable};
+use witcherscript_language::resolve::{Splice, VariableExtraction, extract_variable};
 
 use super::super::lsp_range;
 use super::{RefactorContext, Refactoring};
@@ -13,17 +13,26 @@ use super::{RefactorContext, Refactoring};
 // A bare rename races VS Code's cursor placement, so a custom command repositions before renaming.
 const EXTRACT_COMMAND: &str = "witcherscript.extractVariable";
 
+fn apply_edits(source: &str, edits: &[Splice]) -> String {
+    let mut splices: Vec<&Splice> = edits.iter().collect();
+    splices.sort_by_key(|s| std::cmp::Reverse(s.range.start));
+    let mut applied = source.to_string();
+    for splice in splices {
+        applied.replace_range(splice.range.clone(), &splice.text);
+    }
+    applied
+}
+
 // Post-edit position of the original selection's left-most byte, now the start of the new var name.
 fn rename_position(source: &str, extraction: &VariableExtraction) -> Position {
-    let mut applied =
-        String::with_capacity(source.len() + extraction.new_text.len() + extraction.name.len());
-    applied.push_str(&source[..extraction.insert_at]);
-    applied.push_str(&extraction.new_text);
-    applied.push_str(&source[extraction.insert_at..extraction.replace_range.start]);
-    applied.push_str(&extraction.name);
-    applied.push_str(&source[extraction.replace_range.end..]);
-
-    let byte = extraction.replace_range.start + extraction.new_text.len();
+    let shift: usize = extraction
+        .edits
+        .iter()
+        .filter(|s| s.range.end <= extraction.name_anchor)
+        .map(|s| s.text.len() - s.range.len())
+        .sum();
+    let applied = apply_edits(source, &extraction.edits);
+    let byte = extraction.name_anchor + shift;
     let p = LineIndex::new(&applied).byte_to_position(&applied, byte);
     Position {
         line: p.line,
@@ -61,24 +70,20 @@ impl Refactoring for ExtractVariableRefactoring {
         let source = &ctx.document.source;
         let line_index = &ctx.document.line_index;
         let position = rename_position(source, &extraction);
-        let insert = TextEdit {
-            range: lsp_range(line_index.byte_range_to_range(
-                source,
-                extraction.insert_at,
-                extraction.insert_at,
-            )),
-            new_text: extraction.new_text,
-        };
-        let replace = TextEdit {
-            range: lsp_range(line_index.byte_range_to_range(
-                source,
-                extraction.replace_range.start,
-                extraction.replace_range.end,
-            )),
-            new_text: extraction.name,
-        };
+        let edits = extraction
+            .edits
+            .iter()
+            .map(|splice| TextEdit {
+                range: lsp_range(line_index.byte_range_to_range(
+                    source,
+                    splice.range.start,
+                    splice.range.end,
+                )),
+                new_text: splice.text.clone(),
+            })
+            .collect();
         let mut changes = HashMap::new();
-        changes.insert(ctx.uri.clone(), vec![insert, replace]);
+        changes.insert(ctx.uri.clone(), edits);
         let edit = WorkspaceEdit {
             changes: Some(changes),
             ..WorkspaceEdit::default()

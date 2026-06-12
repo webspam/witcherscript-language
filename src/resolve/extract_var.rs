@@ -19,13 +19,20 @@ use super::inference::infer_type;
 use super::symbol_db::SymbolDb;
 
 #[derive(Debug)]
+pub struct Splice {
+    /// Byte range in the original source this edit replaces; an empty range is a pure insertion.
+    pub range: Range<usize>,
+    pub text: String,
+}
+
+#[derive(Debug)]
 pub struct VariableExtraction {
-    /// Byte offset to splice `new_text` into the document, leaving surrounding text unchanged.
-    pub insert_at: usize,
-    /// Declaration statement plus the newline/indent that joins it to its neighbours.
-    pub new_text: String,
-    pub replace_range: Range<usize>,
+    /// Non-overlapping edits against the original source: the declaration insert, an optional
+    /// in-place assignment insert (split form), and the selection-to-name replacement.
+    pub edits: Vec<Splice>,
     pub name: String,
+    /// Byte offset in the original source where the new name lands (selection start), for cursor placement.
+    pub name_anchor: usize,
 }
 
 const EXTRACTABLE_KINDS: &[&str] = &[
@@ -48,6 +55,22 @@ const EXTRACTABLE_KINDS: &[&str] = &[
 
 const CALLABLE_KINDS: &[SymbolKind] =
     &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event];
+
+const STATEMENT_KINDS: &[&str] = &[
+    kinds::LOCAL_VAR_DECL_STMT,
+    kinds::FOR_STMT,
+    kinds::WHILE_STMT,
+    kinds::DO_WHILE_STMT,
+    kinds::IF_STMT,
+    kinds::SWITCH_STMT,
+    kinds::BREAK_STMT,
+    kinds::CONTINUE_STMT,
+    kinds::RETURN_STMT,
+    kinds::DELETE_STMT,
+    kinds::FUNC_BLOCK,
+    kinds::EXPR_STMT,
+    kinds::NOP,
+];
 
 pub fn extract_variable(
     uri: &str,
@@ -72,17 +95,102 @@ pub fn extract_variable(
         return None;
     }
     let name = unique_name(&name_base(uri, document, db, node), document, db, callable);
-    let statement = declaration_statement(&name, &ty, &source[selection.clone()], options);
-    let (insert_at, new_text) = insertion(source, block, &selection, &statement, options)?;
-    if hoisting_skips_a_write(uri, document, db, node, block, insert_at, callable.id) {
-        return None;
+    let expr = &source[selection.clone()];
+
+    match decl_site(source, block, &selection, options)? {
+        DeclSite::AboveLeadingDecl { at, indent } => {
+            // The selection feeds a leading decl's initializer; only a with-init decl above it is legal.
+            if tracked_write_in_window(uri, document, db, node, block, at..usize::MAX, callable.id)
+            {
+                return None;
+            }
+            let stmt = declaration_statement(&name, &ty, expr, options);
+            Some(single_insert(
+                at,
+                format!("{stmt}\n{indent}"),
+                selection,
+                name,
+            ))
+        }
+        DeclSite::TopOfBlock { at, indent } => {
+            if !tracked_write_in_window(uri, document, db, node, block, at..usize::MAX, callable.id)
+            {
+                let stmt = declaration_statement(&name, &ty, expr, options);
+                return Some(single_insert(
+                    at,
+                    format!("\n{indent}{stmt}"),
+                    selection,
+                    name,
+                ));
+            }
+            // Hoisting the whole decl would skip a write; split it so the computation stays in place.
+            let statement = enclosing_block_statement(node)?;
+            let assign_at = statement.start_byte();
+            let window = assign_at..selection.start;
+            if tracked_write_in_window(uri, document, db, node, block, window, callable.id) {
+                return None;
+            }
+            let decl = format!(
+                "\n{indent}{}",
+                uninitialised_declaration(&name, &ty, options)
+            );
+            let assign_indent = line_indent(source, assign_at);
+            let assign = format!("{name} = {expr};\n{assign_indent}");
+            Some(split(at, decl, assign_at, assign, selection, name))
+        }
     }
-    Some(VariableExtraction {
-        insert_at,
-        new_text,
-        replace_range: selection,
+}
+
+fn single_insert(
+    at: usize,
+    text: String,
+    selection: Range<usize>,
+    name: String,
+) -> VariableExtraction {
+    let name_anchor = selection.start;
+    VariableExtraction {
+        edits: vec![
+            Splice {
+                range: at..at,
+                text,
+            },
+            Splice {
+                range: selection,
+                text: name.clone(),
+            },
+        ],
         name,
-    })
+        name_anchor,
+    }
+}
+
+fn split(
+    decl_at: usize,
+    decl_text: String,
+    assign_at: usize,
+    assign_text: String,
+    selection: Range<usize>,
+    name: String,
+) -> VariableExtraction {
+    let name_anchor = selection.start;
+    VariableExtraction {
+        edits: vec![
+            Splice {
+                range: decl_at..decl_at,
+                text: decl_text,
+            },
+            Splice {
+                range: assign_at..assign_at,
+                text: assign_text,
+            },
+            Splice {
+                range: selection,
+                text: name.clone(),
+            },
+        ],
+        name,
+        name_anchor,
+    }
 }
 
 fn trim_selection(source: &str, selection: Range<usize>) -> Option<Range<usize>> {
@@ -130,13 +238,24 @@ fn declaration_statement(name: &str, ty: &Type, expr: &str, options: FormatOptio
     format!("var {name}{colon}{ty} = {expr};")
 }
 
-fn insertion(
+fn uninitialised_declaration(name: &str, ty: &Type, options: FormatOptions) -> String {
+    let colon = if options.compact_colon { ": " } else { " : " };
+    format!("var {name}{colon}{ty};")
+}
+
+enum DeclSite {
+    // Selection sits inside a leading var-decl initializer; the new decl must precede that decl, with init.
+    AboveLeadingDecl { at: usize, indent: String },
+    // Top of the function block, after any leading decls or the open brace.
+    TopOfBlock { at: usize, indent: String },
+}
+
+fn decl_site(
     source: &str,
     block: Node,
     selection: &Range<usize>,
-    statement: &str,
     options: FormatOptions,
-) -> Option<(usize, String)> {
+) -> Option<DeclSite> {
     let mut last_leading_decl: Option<Node> = None;
     let mut cursor = block.walk();
     for child in block.children(&mut cursor) {
@@ -147,20 +266,38 @@ fn insertion(
             break;
         }
         if child.start_byte() <= selection.start && selection.end <= child.end_byte() {
-            // Inserting after this decl would read the new var before it is declared.
-            let indent = line_indent(source, child.start_byte());
-            return Some((child.start_byte(), format!("{statement}\n{indent}")));
+            let indent = line_indent(source, child.start_byte()).to_string();
+            return Some(DeclSite::AboveLeadingDecl {
+                at: child.start_byte(),
+                indent,
+            });
         }
         last_leading_decl = Some(child);
     }
     if let Some(decl) = last_leading_decl {
-        let indent = line_indent(source, decl.start_byte());
-        return Some((decl.end_byte(), format!("\n{indent}{statement}")));
+        let indent = line_indent(source, decl.start_byte()).to_string();
+        return Some(DeclSite::TopOfBlock {
+            at: decl.end_byte(),
+            indent,
+        });
     }
     let open_brace = block.child(0).filter(|c| c.kind() == "{")?;
     let unit = indent_unit_for(&options);
     let indent = format!("{}{unit}", line_indent(source, block.start_byte()));
-    Some((open_brace.end_byte(), format!("\n{indent}{statement}")))
+    Some(DeclSite::TopOfBlock {
+        at: open_brace.end_byte(),
+        indent,
+    })
+}
+
+// Nearest statement that is a direct child of a function block; None if the selection sits in a
+// braceless control-flow body (an assignment cannot be spliced there without synthesising a block).
+fn enclosing_block_statement(node: Node) -> Option<Node> {
+    let statement = node_and_ancestors(node).find(|n| STATEMENT_KINDS.contains(&n.kind()))?;
+    statement
+        .parent()
+        .filter(|parent| parent.kind() == kinds::FUNC_BLOCK)
+        .map(|_| statement)
 }
 
 fn name_base(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> String {
@@ -202,14 +339,15 @@ fn parameter_slot_name(
         .map(|parameter| parameter.name.clone())
 }
 
-// Scans from the hoist point rather than the selection: in a loop, a textually later write still precedes re-evaluation.
-fn hoisting_skips_a_write(
+// A write inside `window` to any id the selection reads makes moving the computation there unsafe.
+// The hoist-to-top window is unbounded above: in a loop a textually later write still precedes re-evaluation.
+fn tracked_write_in_window(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
     selection_node: Node,
     block: Node,
-    insert_at: usize,
+    window: Range<usize>,
     callable: SymbolId,
 ) -> bool {
     let tracked = selection_tracked_ids(uri, document, db, selection_node, callable);
@@ -223,7 +361,7 @@ fn hoisting_skips_a_write(
         &mut writes,
     );
     let is_tracked_write = |target: Node| {
-        target.start_byte() >= insert_at
+        window.contains(&target.start_byte())
             && resolved_write_tracked_id(uri, document, db, target, callable)
                 .is_some_and(|id| tracked.contains(&id))
     };

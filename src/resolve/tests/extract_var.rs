@@ -1,7 +1,7 @@
 use expect_test::expect;
 use rstest::rstest;
 
-use super::super::{VariableExtraction, extract_variable};
+use super::super::{Splice, VariableExtraction, extract_variable};
 use crate::formatter::FormatOptions;
 use crate::test_support::{TestDb, script_env};
 
@@ -23,13 +23,20 @@ fn extraction(src: &str, needle: &str) -> VariableExtraction {
         .unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"))
 }
 
+fn apply(source: &str, edits: &[Splice]) -> String {
+    let mut splices: Vec<&Splice> = edits.iter().collect();
+    splices.sort_by_key(|s| std::cmp::Reverse(s.range.start));
+    let mut out = source.to_string();
+    for splice in splices {
+        out.replace_range(splice.range.clone(), &splice.text);
+    }
+    out
+}
+
 fn applied_with(src: &str, needle: &str, options: FormatOptions) -> String {
     let (source, result) = run(src, needle, options);
     let x = result.unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"));
-    let mut out = source;
-    out.replace_range(x.replace_range.clone(), &x.name);
-    out.insert_str(x.insert_at, &x.new_text);
-    out
+    apply(&source, &x.edits)
 }
 
 fn applied(src: &str, needle: &str) -> String {
@@ -289,6 +296,11 @@ fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
     );
 }
 
+// A split extraction has three edits (decl + in-place assignment + replacement); with-init has two.
+fn is_split(src: &str, needle: &str) -> bool {
+    extraction(src, needle).edits.len() == 3
+}
+
 #[rstest]
 #[case::local_reassigned_after_selection(
     "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    Use(a + 1);\n    a = 2;\n}\n",
@@ -318,10 +330,60 @@ fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
     "function Use(x : int) {}\nclass C {\n    var count : int;\n    function M() {\n        this.count = 5;\n        Use(count + 1);\n    }\n}\n",
     "count + 1"
 )]
-fn refuses_when_selection_local_is_written(#[case] src: &str, #[case] needle: &str) {
+fn splits_when_selection_local_is_written(#[case] src: &str, #[case] needle: &str) {
+    assert!(
+        is_split(src, needle),
+        "writing {needle:?}'s reads must split the decl, not hoist with an initializer"
+    );
+}
+
+#[test]
+fn split_keeps_assignment_above_the_use_site() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    Use(a + 1);\n    a = 2;\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            var x : int;
+            x = a + 1;
+            Use(x);
+            a = 2;
+        }
+    "]]
+    .assert_eq(&applied(src, "a + 1"));
+}
+
+#[test]
+fn split_declares_at_callable_top_when_field_written_first() {
+    let src = "function Use(x : int) {}\nclass C {\n    var count : int;\n    function M() {\n        count = 5;\n        Use(count + 1);\n    }\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        class C {
+            var count : int;
+            function M() {
+                var x : int;
+                count = 5;
+                x = count + 1;
+                Use(x);
+            }
+        }
+    "]]
+    .assert_eq(&applied(src, "count + 1"));
+}
+
+#[rstest]
+#[case::write_earlier_in_same_statement(
+    "function Fill(out target : int) : int { return 0; }\nfunction Use(x : int, y : int) {}\nfunction F() {\n    var a : int;\n    Use(Fill(a), a + 1);\n}\n",
+    "a + 1"
+)]
+#[case::braceless_if_body(
+    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    if (true) Use(a + 1);\n    a = 2;\n}\n",
+    "a + 1"
+)]
+fn refuses_when_split_cannot_place_assignment(#[case] src: &str, #[case] needle: &str) {
     assert!(
         refused(src, needle),
-        "hoisting {needle:?} past a write must not be offered"
+        "{needle:?} has no safe in-place assignment slot and must not be offered"
     );
 }
 
@@ -375,10 +437,10 @@ fn allows_extraction_despite_other_writes(#[case] src: &str, #[case] needle: &st
     ),
     "a + 1"
 )]
-fn refuses_when_selection_local_is_written_via_out_arg(#[case] src: &str, #[case] needle: &str) {
+fn splits_when_selection_local_is_written_via_out_arg(#[case] src: &str, #[case] needle: &str) {
     assert!(
-        refused(src, needle),
-        "hoisting {needle:?} past an out-arg mutation must not be offered"
+        is_split(src, needle),
+        "an out-arg mutation after {needle:?} must split the decl, not hoist with an initializer"
     );
 }
 
