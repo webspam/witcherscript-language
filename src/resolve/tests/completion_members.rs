@@ -1,5 +1,27 @@
 use super::super::completion_members;
+use crate::symbols::SymbolKind;
 use crate::test_support::TestDb;
+
+#[test]
+fn definition_at_selection_disambiguates_member_by_container_when_stale() {
+    let t = TestDb::new(concat!(
+        "function Run() {}\n",
+        "class CExample {\n",
+        "  public function Run() {}\n",
+        "}\n",
+    ));
+    let db = t.db();
+    let def = db
+        .definition_at_selection(t.primary_uri(), &(0..0), "Run", Some("CExample"))
+        .expect("must resolve via container");
+
+    assert_eq!(
+        def.symbol.kind,
+        SymbolKind::Method,
+        "container must select the method, not the same-named top-level function"
+    );
+    assert_eq!(def.symbol.container_name.as_deref(), Some("CExample"));
+}
 
 #[test]
 fn completion_after_dot_returns_public_members() {

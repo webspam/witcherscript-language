@@ -121,16 +121,24 @@ impl SymbolDb<'_> {
             return self.find_member(container, name, AccessLevel::Private);
         }
         let indexes = [Some(self.workspace), Some(self.base), self.builtins];
-        let symbol = indexes
+        if let Some(symbol) = indexes
             .iter()
             .flatten()
             .find_map(|index| index.find_symbol_at_selection(uri, selection))
-            .or_else(|| {
-                indexes
-                    .iter()
-                    .flatten()
-                    .find_map(|index| index.find_symbol_by_name(uri, name))
-            })
+        {
+            return Some(Definition {
+                uri: uri.to_string(),
+                symbol: symbol.clone(),
+            });
+        }
+        // Selection went stale after edits; a member disambiguates by container, others by name.
+        if let Some(container) = container {
+            return self.find_member(container, name, AccessLevel::Private);
+        }
+        let symbol = indexes
+            .iter()
+            .flatten()
+            .find_map(|index| index.find_symbol_by_name(uri, name))
             .cloned()
             .or_else(|| self.script_env?.find(name).map(|g| g.symbol.clone()))?;
         Some(Definition {
