@@ -1,9 +1,9 @@
 use lsp_types::{DidCloseTextDocumentParams, Position, TextDocumentIdentifier, Url};
 use witcherscript_language::diagnostics::collect_duplicate_symbol_diagnostics;
 
-use super::legacy_helpers::{LocalTempDir, write_script};
+use super::legacy_helpers::write_script;
 use crate::file_scope::FileScope;
-use crate::tests::support::{make_backend, open_params};
+use crate::tests::support::{LocalTempDir, make_backend, open_params};
 
 fn close_params(uri: &Url) -> DidCloseTextDocumentParams {
     DidCloseTextDocumentParams {

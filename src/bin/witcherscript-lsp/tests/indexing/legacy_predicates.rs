@@ -5,7 +5,7 @@ use lsp_types::{FileChangeType, FileEvent, Url};
 use crate::indexing::{legacy_base_replacements, legacy_replaces_base};
 use crate::watcher::event_touches_legacy_dir;
 
-use super::legacy_helpers::LocalTempDir;
+use crate::tests::support::LocalTempDir;
 
 #[test]
 fn legacy_replaces_base_matches_same_relpath() {

@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -7,6 +8,29 @@ use lsp_types::{DidOpenTextDocumentParams, TextDocumentItem, Url};
 
 use crate::backend::Backend;
 use crate::config::{Config, DiagnosticsScope};
+
+pub(crate) struct LocalTempDir {
+    path: PathBuf,
+}
+
+impl LocalTempDir {
+    pub(crate) fn new(name: &str) -> Self {
+        let path = std::env::temp_dir().join(name);
+        std::fs::remove_dir_all(&path).ok();
+        std::fs::create_dir_all(&path).expect("mkdir tempdir");
+        Self { path }
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for LocalTempDir {
+    fn drop(&mut self) {
+        std::fs::remove_dir_all(&self.path).ok();
+    }
+}
 
 pub(crate) fn make_backend() -> Backend {
     make_backend_with(DiagnosticsScope::None)

@@ -2,8 +2,8 @@ use lsp_types::{
     DidChangeWorkspaceFoldersParams, Url, WorkspaceFolder, WorkspaceFoldersChangeEvent,
 };
 
-use super::legacy_helpers::{LocalTempDir, write_script};
-use crate::tests::support::make_backend;
+use super::legacy_helpers::write_script;
+use crate::tests::support::{LocalTempDir, make_backend};
 
 fn folders(uris: &[&Url]) -> Vec<WorkspaceFolder> {
     uris.iter()

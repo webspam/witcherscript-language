@@ -4,10 +4,10 @@ use lsp_types::{
     DeleteFilesParams, DidChangeWatchedFilesParams, FileDelete, FileRename, RenameFilesParams, Url,
 };
 
-use super::legacy_helpers::{LocalTempDir, write_script};
+use super::legacy_helpers::write_script;
 use crate::backend::Backend;
 use crate::convert::{deleted_files_to_watched, renamed_files_to_watched};
-use crate::tests::support::make_backend;
+use crate::tests::support::{LocalTempDir, make_backend};
 
 async fn index_dir(backend: &Backend, dir: &Path) {
     backend.set_workspace_roots(vec![dir.to_path_buf()]);

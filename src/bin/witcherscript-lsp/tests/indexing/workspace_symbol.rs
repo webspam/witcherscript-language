@@ -2,9 +2,9 @@ use lsp_types::{
     OneOf, SymbolKind, Url, WorkspaceSymbol, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 
-use super::legacy_helpers::{LocalTempDir, write_script};
+use super::legacy_helpers::write_script;
 use crate::backend::Backend;
-use crate::tests::support::make_backend;
+use crate::tests::support::{LocalTempDir, make_backend};
 
 fn query(backend: &Backend, q: &str) -> Vec<WorkspaceSymbol> {
     let response = backend

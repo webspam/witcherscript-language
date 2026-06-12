@@ -8,11 +8,11 @@ use lsp_types::{
     WorkspaceDocumentDiagnosticReport,
 };
 
-use super::legacy_helpers::{LocalTempDir, write_script};
+use super::legacy_helpers::write_script;
 use crate::backend::Backend;
 use crate::config::DiagnosticsScope;
 use crate::cst_cache::{CstCacheEntry, DbFingerprint};
-use crate::tests::support;
+use crate::tests::support::{self, LocalTempDir};
 
 fn make_backend_with(scope: DiagnosticsScope) -> Backend {
     let backend = support::make_backend_with(scope);
