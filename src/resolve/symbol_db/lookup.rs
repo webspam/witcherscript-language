@@ -112,7 +112,14 @@ impl SymbolDb<'_> {
         uri: &str,
         selection: &std::ops::Range<usize>,
         name: &str,
+        container: Option<&str>,
     ) -> Option<Definition> {
+        // Generic-instance members must be re-substituted; the index only holds the raw `T` form.
+        if let Some(container) = container
+            && generic_lookup_target(container).1.is_some()
+        {
+            return self.find_member(container, name, AccessLevel::Private);
+        }
         let indexes = [Some(self.workspace), Some(self.base), self.builtins];
         let symbol = indexes
             .iter()

@@ -17,6 +17,9 @@ pub(crate) struct CompletionItemData {
     pub(crate) def_uri: String,
     pub(crate) selection: std::ops::Range<usize>,
     pub(crate) name: String,
+    /// Owning container; a generic instance (`array<int>`) drives re-substitution at resolve.
+    #[serde(default)]
+    pub(crate) container: Option<String>,
 }
 
 pub(crate) fn completion_item(
@@ -81,6 +84,7 @@ pub(crate) fn completion_item(
         def_uri: definition.uri.clone(),
         selection: symbol.selection_byte_range.clone(),
         name: symbol.name.clone(),
+        container: symbol.container_name.clone(),
     };
     CompletionItem {
         label: symbol.name.clone(),

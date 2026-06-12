@@ -8,7 +8,7 @@ fn definition_at_selection_resolves_script_global_by_name() {
     let env = script_env("theGame", "CR4Game");
     let db = t.db().with_script_env(&env);
     let def = db
-        .definition_at_selection("file:///redscripts.ini", &(0..7), "theGame")
+        .definition_at_selection("file:///redscripts.ini", &(0..7), "theGame", None)
         .expect("script global must resolve to its own symbol");
     assert_eq!(def.symbol.name, "theGame");
     assert_eq!(def.uri, "file:///redscripts.ini");

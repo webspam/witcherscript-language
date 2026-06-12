@@ -373,7 +373,12 @@ impl Backend {
         let snap = self.snapshot();
         let handles = self.db_handles_for_with_snapshot(&data.origin, &snap);
         let db = handles.db();
-        if let Some(def) = db.definition_at_selection(&data.def_uri, &data.selection, &data.name) {
+        if let Some(def) = db.definition_at_selection(
+            &data.def_uri,
+            &data.selection,
+            &data.name,
+            data.container.as_deref(),
+        ) {
             item.documentation = Some(Documentation::MarkupContent(MarkupContent {
                 kind: MarkupKind::Markdown,
                 value: hover_markdown(&def, &db),

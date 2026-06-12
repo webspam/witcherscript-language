@@ -206,6 +206,7 @@ mod resolve {
             def_uri: canonical_uri(uri),
             selection,
             name: "DoThing".to_string(),
+            container: None,
         }
     }
 
