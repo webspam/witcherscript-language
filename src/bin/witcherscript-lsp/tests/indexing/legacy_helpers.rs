@@ -3,30 +3,7 @@ use std::path::{Path, PathBuf};
 use lsp_types::Url;
 
 use crate::backend::Backend;
-use crate::tests::support::make_backend;
-
-pub(super) struct LocalTempDir {
-    path: PathBuf,
-}
-
-impl LocalTempDir {
-    pub(super) fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(name);
-        std::fs::remove_dir_all(&path).ok();
-        std::fs::create_dir_all(&path).expect("mkdir tempdir");
-        Self { path }
-    }
-
-    pub(super) fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for LocalTempDir {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.path).ok();
-    }
-}
+use crate::tests::support::{LocalTempDir, make_backend};
 
 pub(super) fn write_script(dir: &Path, rel: &str, contents: &str) -> PathBuf {
     let path = dir.join(rel);
