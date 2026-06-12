@@ -512,18 +512,38 @@ fn split_wraps_braceless_if_body_in_block() {
 }
 
 #[test]
-fn split_desugars_else_if_condition_into_else_block() {
-    let src = "function F() {\n    var a : int;\n    var b : int;\n    a = 1;\n    if (a > 0) {}\n    else if (a + b > 0) {}\n}\n";
+fn else_if_condition_assigns_before_chain_when_preceding_reads_are_pure() {
+    let src = "function F() {\n    var a : int;\n    var b : int;\n    a = 1;\n    if (a > 0) {}\n    else if (a + b > 0) {}\n    else {}\n}\n";
     expect![[r"
         function F() {
             var a : int;
             var b : int;
             var newVar : int;
             a = 1;
+            newVar = a + b;
             if (a > 0) {}
+            else if (newVar > 0) {}
+            else {}
+        }
+    "]]
+    .assert_eq(&applied(src, "a + b"));
+}
+
+#[test]
+fn split_desugars_else_if_into_else_block_when_a_preceding_condition_can_mutate() {
+    let src = "function Check() : bool { return true; }\nfunction F() {\n    var a : int;\n    var b : int;\n    a = 1;\n    if (Check()) {}\n    else if (a + b > 0) {}\n    else {}\n}\n";
+    expect![[r"
+        function Check() : bool { return true; }
+        function F() {
+            var a : int;
+            var b : int;
+            var newVar : int;
+            a = 1;
+            if (Check()) {}
             else {
                 newVar = a + b;
                 if (newVar > 0) {}
+            else {}
             }
         }
     "]]

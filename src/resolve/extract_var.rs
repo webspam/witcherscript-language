@@ -157,21 +157,38 @@ pub fn extract_variable(
                 uninitialised_declaration(&name, &ty, options)
             );
             match slot {
-                AssignSlot::BeforeStatement(statement) => {
-                    let assign_at = statement.start_byte();
-                    let assign_indent = line_indent(source, assign_at);
-                    let assign = format!("{name} = {expr};\n{assign_indent}");
-                    Some(split(at, decl, assign_at, assign, selection, name))
-                }
-                AssignSlot::WrapBraceless(statement) => {
-                    let decl = Splice {
-                        range: at..at,
-                        text: decl,
-                    };
-                    Some(split_braceless(
-                        decl, statement, expr, source, options, selection, name,
-                    ))
-                }
+                AssignSlot::BeforeStatement(statement) => Some(split_before(
+                    at,
+                    decl,
+                    statement.start_byte(),
+                    source,
+                    name,
+                    expr,
+                    selection,
+                )),
+                AssignSlot::WrapBraceless(statement) => match pre_chain_head(statement, node) {
+                    Some(head) => Some(split_before(
+                        at,
+                        decl,
+                        head.start_byte(),
+                        source,
+                        name,
+                        expr,
+                        selection,
+                    )),
+                    None => Some(split_braceless(
+                        Splice {
+                            range: at..at,
+                            text: decl,
+                        },
+                        statement,
+                        expr,
+                        source,
+                        options,
+                        selection,
+                        name,
+                    )),
+                },
             }
         }
     }
@@ -227,6 +244,20 @@ fn split(
         name,
         name_anchor,
     }
+}
+
+fn split_before(
+    decl_at: usize,
+    decl_text: String,
+    assign_at: usize,
+    source: &str,
+    name: String,
+    expr: &str,
+    selection: Range<usize>,
+) -> VariableExtraction {
+    let assign_indent = line_indent(source, assign_at);
+    let assign = format!("{name} = {expr};\n{assign_indent}");
+    split(decl_at, decl_text, assign_at, assign, selection, name)
 }
 
 // Wrap a braceless statement in a synthesised block holding the assignment, keeping it in place.
@@ -474,6 +505,52 @@ fn assign_slot(node: Node) -> Option<AssignSlot> {
         k if BRACELESS_HOST_KINDS.contains(&k) => Some(AssignSlot::WrapBraceless(statement)),
         _ => None,
     }
+}
+
+// An else-if assignment can precede the chain's first `if` (no block needed) only if nothing reached
+// on the way - the extracted expression and every preceding condition - can mutate the reads.
+fn pre_chain_head<'tree>(statement: Node<'tree>, expr: Node) -> Option<Node<'tree>> {
+    let (head, preceding_conditions) = if_chain_above(statement)?;
+    if head.parent()?.kind() != kinds::FUNC_BLOCK {
+        return None;
+    }
+    if has_side_effect(expr) || preceding_conditions.iter().any(|c| has_side_effect(*c)) {
+        return None;
+    }
+    Some(head)
+}
+
+// Chain head (outermost `if`) above an else-branch statement and the conditions leading to it; None
+// when the statement is not in an `else if` position.
+fn if_chain_above(statement: Node) -> Option<(Node, Vec<Node>)> {
+    let mut conditions = Vec::new();
+    let mut head = statement;
+    while let Some(parent) = head.parent() {
+        if parent.kind() != kinds::IF_STMT {
+            break;
+        }
+        let is_else = parent
+            .child_by_field_name(fields::ELSE)
+            .is_some_and(|e| e.id() == head.id());
+        if !is_else {
+            break;
+        }
+        if let Some(cond) = parent.child_by_field_name(fields::COND) {
+            conditions.push(cond);
+        }
+        head = parent;
+    }
+    (!conditions.is_empty()).then_some((head, conditions))
+}
+
+fn has_side_effect(node: Node) -> bool {
+    let mut found = Vec::new();
+    collect_nodes_of_kinds(
+        node,
+        &[kinds::FUNC_CALL_EXPR, kinds::ASSIGN_OP_EXPR],
+        &mut found,
+    );
+    !found.is_empty()
 }
 
 fn name_base(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> String {
