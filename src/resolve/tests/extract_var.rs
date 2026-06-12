@@ -26,10 +26,7 @@ fn extraction(src: &str, needle: &str) -> VariableExtraction {
 fn applied_with(src: &str, needle: &str, options: FormatOptions) -> String {
     let (source, result) = run(src, needle, options);
     let x = result.unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"));
-    let mut out = source;
-    out.replace_range(x.replace_range.clone(), &x.name);
-    out.insert_str(x.insert_at, &x.new_text);
-    out
+    x.apply(&source)
 }
 
 fn applied(src: &str, needle: &str) -> String {
@@ -289,6 +286,11 @@ fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
     );
 }
 
+// With-init extraction emits two edits (decl + replacement); the split form adds an in-place assignment.
+fn edit_count(src: &str, needle: &str) -> usize {
+    extraction(src, needle).edits.len()
+}
+
 #[rstest]
 #[case::local_reassigned_after_selection(
     "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    Use(a + 1);\n    a = 2;\n}\n",
@@ -302,15 +304,24 @@ fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
     "function Use(x : int) {}\nfunction F(p : int) {\n    Use(p + 1);\n    p = 2;\n}\n",
     "p + 1"
 )]
-#[case::write_between_insertion_point_and_selection(
-    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    Use(a + 1);\n}\n",
-    "a + 1"
-)]
 #[case::array_element_of_local_assigned(
     "function Use(x : int) {}\nfunction F() {\n    var arr : array<int>;\n    var i : int;\n    Use(arr[0] + 1);\n    arr[i] = 5;\n}\n",
     "arr[0] + 1"
 )]
-#[case::field_written_between_hoist_point_and_selection(
+fn hoists_with_init_when_write_follows_selection(#[case] src: &str, #[case] needle: &str) {
+    assert_eq!(
+        edit_count(src, needle),
+        2,
+        "a write after {needle:?} cannot change its value; hoist with an initializer"
+    );
+}
+
+#[rstest]
+#[case::local_written_before_selection(
+    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    Use(a + 1);\n}\n",
+    "a + 1"
+)]
+#[case::field_written_before_selection(
     "function Use(x : int) {}\nclass C {\n    var count : int;\n    function M() {\n        count = 5;\n        Use(count + 1);\n    }\n}\n",
     "count + 1"
 )]
@@ -318,10 +329,79 @@ fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
     "function Use(x : int) {}\nclass C {\n    var count : int;\n    function M() {\n        this.count = 5;\n        Use(count + 1);\n    }\n}\n",
     "count + 1"
 )]
-fn refuses_when_selection_local_is_written(#[case] src: &str, #[case] needle: &str) {
+fn splits_when_write_precedes_selection(#[case] src: &str, #[case] needle: &str) {
+    assert_eq!(
+        edit_count(src, needle),
+        3,
+        "a write before {needle:?} forces a split, not a with-init hoist"
+    );
+}
+
+#[test]
+fn split_keeps_assignment_below_an_earlier_write() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    Use(a + 1);\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            var x : int;
+            a = 2;
+            x = a + 1;
+            Use(x);
+        }
+    "]]
+    .assert_eq(&applied(src, "a + 1"));
+}
+
+#[test]
+fn splits_when_a_read_is_written_inside_an_enclosing_loop() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    while (a < 10) {\n        Use(a + 1);\n        a += 1;\n    }\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            var x : int;
+            while (a < 10) {
+                x = a + 1;
+                Use(x);
+                a += 1;
+            }
+        }
+    "]]
+    .assert_eq(&applied(src, "a + 1"));
+}
+
+#[test]
+fn split_declares_at_callable_top_when_field_written_first() {
+    let src = "function Use(x : int) {}\nclass C {\n    var count : int;\n    function M() {\n        count = 5;\n        Use(count + 1);\n    }\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        class C {
+            var count : int;
+            function M() {
+                var x : int;
+                count = 5;
+                x = count + 1;
+                Use(x);
+            }
+        }
+    "]]
+    .assert_eq(&applied(src, "count + 1"));
+}
+
+#[rstest]
+#[case::write_earlier_in_same_statement(
+    "function Fill(out target : int) : int { return 0; }\nfunction Use(x : int, y : int) {}\nfunction F() {\n    var a : int;\n    Use(Fill(a), a + 1);\n}\n",
+    "a + 1"
+)]
+#[case::braceless_if_body(
+    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    if (true) Use(a + 1);\n}\n",
+    "a + 1"
+)]
+fn refuses_when_split_cannot_place_assignment(#[case] src: &str, #[case] needle: &str) {
     assert!(
         refused(src, needle),
-        "hoisting {needle:?} past a write must not be offered"
+        "{needle:?} has no safe in-place assignment slot and must not be offered"
     );
 }
 
@@ -375,10 +455,11 @@ fn allows_extraction_despite_other_writes(#[case] src: &str, #[case] needle: &st
     ),
     "a + 1"
 )]
-fn refuses_when_selection_local_is_written_via_out_arg(#[case] src: &str, #[case] needle: &str) {
-    assert!(
-        refused(src, needle),
-        "hoisting {needle:?} past an out-arg mutation must not be offered"
+fn hoists_with_init_when_out_arg_write_follows(#[case] src: &str, #[case] needle: &str) {
+    assert_eq!(
+        edit_count(src, needle),
+        2,
+        "an out-arg mutation after {needle:?} cannot change its value; hoist with an initializer"
     );
 }
 

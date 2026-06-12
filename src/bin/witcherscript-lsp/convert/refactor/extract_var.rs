@@ -15,15 +15,14 @@ const EXTRACT_COMMAND: &str = "witcherscript.extractVariable";
 
 // Post-edit position of the original selection's left-most byte, now the start of the new var name.
 fn rename_position(source: &str, extraction: &VariableExtraction) -> Position {
-    let mut applied =
-        String::with_capacity(source.len() + extraction.new_text.len() + extraction.name.len());
-    applied.push_str(&source[..extraction.insert_at]);
-    applied.push_str(&extraction.new_text);
-    applied.push_str(&source[extraction.insert_at..extraction.replace_range.start]);
-    applied.push_str(&extraction.name);
-    applied.push_str(&source[extraction.replace_range.end..]);
-
-    let byte = extraction.replace_range.start + extraction.new_text.len();
+    let shift: usize = extraction
+        .edits
+        .iter()
+        .filter(|s| s.range.end <= extraction.name_anchor)
+        .map(|s| s.text.len() - s.range.len())
+        .sum();
+    let applied = extraction.apply(source);
+    let byte = extraction.name_anchor + shift;
     let p = LineIndex::new(&applied).byte_to_position(&applied, byte);
     Position {
         line: p.line,
@@ -61,24 +60,20 @@ impl Refactoring for ExtractVariableRefactoring {
         let source = &ctx.document.source;
         let line_index = &ctx.document.line_index;
         let position = rename_position(source, &extraction);
-        let insert = TextEdit {
-            range: lsp_range(line_index.byte_range_to_range(
-                source,
-                extraction.insert_at,
-                extraction.insert_at,
-            )),
-            new_text: extraction.new_text,
-        };
-        let replace = TextEdit {
-            range: lsp_range(line_index.byte_range_to_range(
-                source,
-                extraction.replace_range.start,
-                extraction.replace_range.end,
-            )),
-            new_text: extraction.name,
-        };
+        let edits = extraction
+            .edits
+            .iter()
+            .map(|splice| TextEdit {
+                range: lsp_range(line_index.byte_range_to_range(
+                    source,
+                    splice.range.start,
+                    splice.range.end,
+                )),
+                new_text: splice.text.clone(),
+            })
+            .collect();
         let mut changes = HashMap::new();
-        changes.insert(ctx.uri.clone(), vec![insert, replace]);
+        changes.insert(ctx.uri.clone(), edits);
         let edit = WorkspaceEdit {
             changes: Some(changes),
             ..WorkspaceEdit::default()

@@ -338,3 +338,40 @@ fn no_extract_action_for_caret_only_request() {
         "caret without selection must not offer extract, got {actions:?}"
     );
 }
+
+// A write before the selection forces the split form: uninitialised decl at the top, assignment in place.
+const EXTRACT_SPLIT_SRC: &str =
+    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    Use(a + 1);\n}\n";
+
+#[test]
+fn split_extract_emits_decl_assignment_and_replacement() {
+    let actions = refactor_actions_for_selection(EXTRACT_SPLIT_SRC, "a + 1");
+    assert_eq!(titles(&actions), vec!["Extract to variable"]);
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    let edits = extract_workspace_edit(action);
+    assert_eq!(
+        edits.len(),
+        3,
+        "decl plus in-place assignment plus replacement"
+    );
+    assert_eq!(edits[0].new_text, "\n    var x : int;");
+    assert_eq!(edits[1].new_text, "x = a + 1;\n    ");
+    assert_eq!(edits[2].new_text, "x");
+}
+
+#[test]
+fn split_extract_places_rename_on_the_use_site() {
+    let actions = refactor_actions_for_selection(EXTRACT_SPLIT_SRC, "a + 1");
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    let command = action
+        .command
+        .as_ref()
+        .expect("extract must trigger rename");
+    let args = command.arguments.as_ref().unwrap();
+    // After the split's two inserts, the original `a + 1` is the new `x` in `Use(x)`.
+    assert_eq!(args[1], json!({ "line": 6, "character": 8 }));
+}
