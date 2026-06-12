@@ -97,11 +97,13 @@ pub fn extract_variable(
     let name = unique_name(&name_base(uri, document, db, node), document, db, callable);
     let expr = &source[selection.clone()];
 
+    // A frozen top-of-block value is stale once a read is written before the expression re-evaluates:
+    // before it textually, or anywhere in an enclosing loop body (which re-runs the expression).
+    let hoist_end = enclosing_loop_end(node, block).unwrap_or(selection.start);
+
     match decl_site(source, block, &selection, options)? {
         DeclSite::AboveLeadingDecl { at, indent } => {
-            // The selection feeds a leading decl's initializer; only a with-init decl above it is legal.
-            if tracked_write_in_window(uri, document, db, node, block, at..usize::MAX, callable.id)
-            {
+            if tracked_write_in_window(uri, document, db, node, block, at..hoist_end, callable.id) {
                 return None;
             }
             let stmt = declaration_statement(&name, &ty, expr, options);
@@ -113,7 +115,7 @@ pub fn extract_variable(
             ))
         }
         DeclSite::TopOfBlock { at, indent } => {
-            if !tracked_write_in_window(uri, document, db, node, block, at..usize::MAX, callable.id)
+            if !tracked_write_in_window(uri, document, db, node, block, at..hoist_end, callable.id)
             {
                 let stmt = declaration_statement(&name, &ty, expr, options);
                 return Some(single_insert(
@@ -290,6 +292,20 @@ fn decl_site(
     })
 }
 
+// End byte of the outermost loop enclosing the selection within `block`; None if it sits in no loop.
+fn enclosing_loop_end(node: Node, block: Node) -> Option<usize> {
+    node_and_ancestors(node)
+        .take_while(|n| n.id() != block.id())
+        .filter(|n| {
+            matches!(
+                n.kind(),
+                kinds::FOR_STMT | kinds::WHILE_STMT | kinds::DO_WHILE_STMT
+            )
+        })
+        .last()
+        .map(|loop_node| loop_node.end_byte())
+}
+
 // Nearest statement that is a direct child of a function block; None if the selection sits in a
 // braceless control-flow body (an assignment cannot be spliced there without synthesising a block).
 fn enclosing_block_statement(node: Node) -> Option<Node> {
@@ -340,7 +356,6 @@ fn parameter_slot_name(
 }
 
 // A write inside `window` to any id the selection reads makes moving the computation there unsafe.
-// The hoist-to-top window is unbounded above: in a loop a textually later write still precedes re-evaluation.
 fn tracked_write_in_window(
     uri: &str,
     document: &ParsedDocument,

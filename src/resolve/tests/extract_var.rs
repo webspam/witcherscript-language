@@ -296,9 +296,9 @@ fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
     );
 }
 
-// A split extraction has three edits (decl + in-place assignment + replacement); with-init has two.
-fn is_split(src: &str, needle: &str) -> bool {
-    extraction(src, needle).edits.len() == 3
+// With-init extraction emits two edits (decl + replacement); the split form adds an in-place assignment.
+fn edit_count(src: &str, needle: &str) -> usize {
+    extraction(src, needle).edits.len()
 }
 
 #[rstest]
@@ -314,15 +314,24 @@ fn is_split(src: &str, needle: &str) -> bool {
     "function Use(x : int) {}\nfunction F(p : int) {\n    Use(p + 1);\n    p = 2;\n}\n",
     "p + 1"
 )]
-#[case::write_between_insertion_point_and_selection(
-    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    Use(a + 1);\n}\n",
-    "a + 1"
-)]
 #[case::array_element_of_local_assigned(
     "function Use(x : int) {}\nfunction F() {\n    var arr : array<int>;\n    var i : int;\n    Use(arr[0] + 1);\n    arr[i] = 5;\n}\n",
     "arr[0] + 1"
 )]
-#[case::field_written_between_hoist_point_and_selection(
+fn hoists_with_init_when_write_follows_selection(#[case] src: &str, #[case] needle: &str) {
+    assert_eq!(
+        edit_count(src, needle),
+        2,
+        "a write after {needle:?} cannot change its value; hoist with an initializer"
+    );
+}
+
+#[rstest]
+#[case::local_written_before_selection(
+    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    Use(a + 1);\n}\n",
+    "a + 1"
+)]
+#[case::field_written_before_selection(
     "function Use(x : int) {}\nclass C {\n    var count : int;\n    function M() {\n        count = 5;\n        Use(count + 1);\n    }\n}\n",
     "count + 1"
 )]
@@ -330,24 +339,43 @@ fn is_split(src: &str, needle: &str) -> bool {
     "function Use(x : int) {}\nclass C {\n    var count : int;\n    function M() {\n        this.count = 5;\n        Use(count + 1);\n    }\n}\n",
     "count + 1"
 )]
-fn splits_when_selection_local_is_written(#[case] src: &str, #[case] needle: &str) {
-    assert!(
-        is_split(src, needle),
-        "writing {needle:?}'s reads must split the decl, not hoist with an initializer"
+fn splits_when_write_precedes_selection(#[case] src: &str, #[case] needle: &str) {
+    assert_eq!(
+        edit_count(src, needle),
+        3,
+        "a write before {needle:?} forces a split, not a with-init hoist"
     );
 }
 
 #[test]
-fn split_keeps_assignment_above_the_use_site() {
-    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    Use(a + 1);\n    a = 2;\n}\n";
+fn split_keeps_assignment_below_an_earlier_write() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    Use(a + 1);\n}\n";
     expect![[r"
         function Use(x : int) {}
         function F() {
             var a : int;
             var x : int;
+            a = 2;
             x = a + 1;
             Use(x);
-            a = 2;
+        }
+    "]]
+    .assert_eq(&applied(src, "a + 1"));
+}
+
+#[test]
+fn splits_when_a_read_is_written_inside_an_enclosing_loop() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    while (a < 10) {\n        Use(a + 1);\n        a += 1;\n    }\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            var x : int;
+            while (a < 10) {
+                x = a + 1;
+                Use(x);
+                a += 1;
+            }
         }
     "]]
     .assert_eq(&applied(src, "a + 1"));
@@ -377,7 +405,7 @@ fn split_declares_at_callable_top_when_field_written_first() {
     "a + 1"
 )]
 #[case::braceless_if_body(
-    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    if (true) Use(a + 1);\n    a = 2;\n}\n",
+    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    if (true) Use(a + 1);\n}\n",
     "a + 1"
 )]
 fn refuses_when_split_cannot_place_assignment(#[case] src: &str, #[case] needle: &str) {
@@ -437,10 +465,11 @@ fn allows_extraction_despite_other_writes(#[case] src: &str, #[case] needle: &st
     ),
     "a + 1"
 )]
-fn splits_when_selection_local_is_written_via_out_arg(#[case] src: &str, #[case] needle: &str) {
-    assert!(
-        is_split(src, needle),
-        "an out-arg mutation after {needle:?} must split the decl, not hoist with an initializer"
+fn hoists_with_init_when_out_arg_write_follows(#[case] src: &str, #[case] needle: &str) {
+    assert_eq!(
+        edit_count(src, needle),
+        2,
+        "an out-arg mutation after {needle:?} cannot change its value; hoist with an initializer"
     );
 }
 
