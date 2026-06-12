@@ -46,7 +46,7 @@ pub use definition::{
     resolve_definition_at_byte, resolve_definition_at_ident,
 };
 pub use document_highlight::{HighlightKind, document_highlights};
-pub use extract_var::{Splice, VariableExtraction, extract_variable};
+pub use extract_var::{Extraction, Splice, extract_variable};
 pub(crate) use inference::infer_type;
 pub(crate) use inference::infer_type_memo;
 pub use inlay_hints::{InlayHintInfo, inlay_hints};

@@ -1,37 +1,10 @@
 use std::collections::HashMap;
 
-use lsp_types::{
-    CodeAction, CodeActionKind, CodeActionOrCommand, Command, Position, TextEdit, Url,
-    WorkspaceEdit,
-};
-use witcherscript_language::line_index::LineIndex;
-use witcherscript_language::resolve::{VariableExtraction, extract_variable};
+use lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, TextEdit, WorkspaceEdit};
+use witcherscript_language::resolve::extract_variable;
 
 use super::super::lsp_range;
-use super::{RefactorContext, Refactoring};
-
-// A bare rename races VS Code's cursor placement, so a custom command repositions before renaming.
-const EXTRACT_COMMAND: &str = "witcherscript.extractVariable";
-
-fn rename_position(source: &str, extraction: &VariableExtraction) -> Position {
-    let applied = extraction.apply(source);
-    let p = LineIndex::new(&applied).byte_to_position(&applied, extraction.cursor);
-    Position {
-        line: p.line,
-        character: p.character,
-    }
-}
-
-fn extract_command(uri: &Url, position: Position) -> Command {
-    Command {
-        title: "Rename extracted variable".to_string(),
-        command: EXTRACT_COMMAND.to_string(),
-        arguments: Some(vec![
-            serde_json::to_value(uri).expect("Url serializes"),
-            serde_json::to_value(position).expect("Position serializes"),
-        ]),
-    }
-}
+use super::{RefactorContext, Refactoring, extract_command, rename_position};
 
 pub(super) struct ExtractVariableRefactoring;
 
