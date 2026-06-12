@@ -8,6 +8,7 @@ pub mod line_index;
 pub mod resolve;
 pub mod script_env;
 pub mod semantic_tokens;
+pub(crate) mod strings;
 pub mod symbols;
 pub mod types;
 

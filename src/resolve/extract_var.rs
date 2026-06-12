@@ -11,6 +11,7 @@ use crate::cst::grammar::{
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::formatter::{FormatOptions, indent_unit_for, line_indent};
+use crate::strings::lowercase_first;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
 
@@ -735,14 +736,6 @@ fn resolved_write_tracked_id(
         _ => false,
     };
     tracked.then_some(symbol.id)
-}
-
-fn lowercase_first(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(first) => first.to_lowercase().chain(chars).collect(),
-        None => String::new(),
-    }
 }
 
 fn unique_name(base: &str, document: &ParsedDocument, db: &SymbolDb, callable: &Symbol) -> String {
