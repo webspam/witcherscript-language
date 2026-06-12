@@ -588,7 +588,7 @@ impl Formatter<'_> {
     fn format_class_member(&mut self, node: Node, colon_align_col: Option<usize>) {
         self.flush_comments_before(node.start_byte());
         if self.renders_verbatim(node) {
-            let t = self.text(node).trim().to_string();
+            let t = self.original_node_text(node);
             self.emit_indent();
             self.emit(&t);
             self.consume_comments_before(node.end_byte());

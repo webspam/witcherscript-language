@@ -243,11 +243,7 @@ fn collect_comments(root: Node) -> Vec<Node> {
 }
 
 pub fn format_document(root: Node, source: &str, options: FormatOptions) -> String {
-    let indent_unit = if options.use_tabs {
-        "\t".to_string()
-    } else {
-        " ".repeat(options.tab_size as usize)
-    };
+    let indent_unit = indent_unit_for(&options);
     let mut f = Formatter {
         source,
         indent_unit,

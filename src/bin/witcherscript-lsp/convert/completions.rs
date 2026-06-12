@@ -3,7 +3,9 @@ use lsp_types::{
     InsertTextFormat, MarkupContent, MarkupKind, ParameterInformation, ParameterLabel, Range,
     SignatureHelp, SignatureInformation, TextEdit,
 };
-use witcherscript_language::resolve::{Definition, SignatureHelpInfo, SymbolDb, render_signature};
+use witcherscript_language::resolve::{
+    Definition, SignatureHelpInfo, SymbolDb, render_parameters, render_signature,
+};
 use witcherscript_language::symbols::{Symbol, SymbolKind};
 use witcherscript_language::types::Type;
 
@@ -104,26 +106,7 @@ fn wire_u32(n: usize) -> u32 {
 }
 
 fn method_signature(name: &str, params: &[Symbol]) -> String {
-    let param_list = params
-        .iter()
-        .map(|p| {
-            let mut s = String::new();
-            if p.is_optional {
-                s.push_str("optional ");
-            }
-            if p.is_out {
-                s.push_str("out ");
-            }
-            s.push_str(&p.name);
-            if let Some(ty) = &p.type_annotation {
-                s.push_str(" : ");
-                s.push_str(&ty.to_string());
-            }
-            s
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("{name}({param_list})")
+    format!("{name}{}", render_parameters(params, " : "))
 }
 
 pub(crate) fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String {
