@@ -544,9 +544,17 @@ async fn workspace_pull_matches_previous_result_ids_in_client_uri_form() {
         .expect("initial pull must include the broken file as Full");
     let emitted_result_id = emitted_result_id.expect("Full report must carry a result_id");
 
-    let client_form: Url = emitted_uri
-        .to_string()
-        .replacen("file:///C:/", "file:///c%3A/", 1)
+    let emitted_str = emitted_uri.to_string();
+    let drive = emitted_str
+        .strip_prefix("file:///")
+        .and_then(|rest| rest.chars().next())
+        .expect("windows file URL starts with a drive letter");
+    let client_form: Url = emitted_str
+        .replacen(
+            &format!("file:///{drive}:/"),
+            &format!("file:///{}%3A/", drive.to_ascii_lowercase()),
+            1,
+        )
         .parse()
         .expect("client-form URL parses");
     assert_ne!(
