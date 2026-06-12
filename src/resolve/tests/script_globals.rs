@@ -3,6 +3,18 @@ use crate::symbols::SymbolKind;
 use crate::test_support::{TestDb, script_env};
 
 #[test]
+fn definition_at_selection_resolves_script_global_by_name() {
+    let t = TestDb::new("function Test() {}\n");
+    let env = script_env("theGame", "CR4Game");
+    let db = t.db().with_script_env(&env);
+    let def = db
+        .definition_at_selection("file:///redscripts.ini", &(0..7), "theGame")
+        .expect("script global must resolve to its own symbol");
+    assert_eq!(def.symbol.name, "theGame");
+    assert_eq!(def.uri, "file:///redscripts.ini");
+}
+
+#[test]
 fn script_global_resolves_to_ini_when_class_not_loaded() {
     let t = TestDb::new("function Test() {\n t$0heGame;\n}\n");
     let (uri, pos) = t.cursor();

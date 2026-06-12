@@ -106,6 +106,7 @@ impl SymbolDb<'_> {
     }
 
     /// Exact selection-range match first, then by name; edits may have shifted the symbol.
+    /// Script-env globals live in no index, so they are probed by name as a last resort.
     pub fn definition_at_selection(
         &self,
         uri: &str,
@@ -122,10 +123,12 @@ impl SymbolDb<'_> {
                     .iter()
                     .flatten()
                     .find_map(|index| index.find_symbol_by_name(uri, name))
-            })?;
+            })
+            .cloned()
+            .or_else(|| self.script_env?.find(name).map(|g| g.symbol.clone()))?;
         Some(Definition {
             uri: uri.to_string(),
-            symbol: symbol.clone(),
+            symbol,
         })
     }
 
