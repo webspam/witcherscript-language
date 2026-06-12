@@ -35,6 +35,19 @@ pub struct VariableExtraction {
     pub name_anchor: usize,
 }
 
+impl VariableExtraction {
+    // Splice rightmost-first so each replace_range leaves earlier byte offsets untouched.
+    pub fn apply(&self, source: &str) -> String {
+        let mut splices: Vec<&Splice> = self.edits.iter().collect();
+        splices.sort_by_key(|s| std::cmp::Reverse(s.range.start));
+        let mut applied = source.to_string();
+        for splice in splices {
+            applied.replace_range(splice.range.clone(), &splice.text);
+        }
+        applied
+    }
+}
+
 const EXTRACTABLE_KINDS: &[&str] = &[
     kinds::BINARY_OP_EXPR,
     kinds::UNARY_OP_EXPR,

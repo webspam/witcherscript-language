@@ -1,7 +1,7 @@
 use expect_test::expect;
 use rstest::rstest;
 
-use super::super::{Splice, VariableExtraction, extract_variable};
+use super::super::{VariableExtraction, extract_variable};
 use crate::formatter::FormatOptions;
 use crate::test_support::{TestDb, script_env};
 
@@ -23,20 +23,10 @@ fn extraction(src: &str, needle: &str) -> VariableExtraction {
         .unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"))
 }
 
-fn apply(source: &str, edits: &[Splice]) -> String {
-    let mut splices: Vec<&Splice> = edits.iter().collect();
-    splices.sort_by_key(|s| std::cmp::Reverse(s.range.start));
-    let mut out = source.to_string();
-    for splice in splices {
-        out.replace_range(splice.range.clone(), &splice.text);
-    }
-    out
-}
-
 fn applied_with(src: &str, needle: &str, options: FormatOptions) -> String {
     let (source, result) = run(src, needle, options);
     let x = result.unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"));
-    apply(&source, &x.edits)
+    x.apply(&source)
 }
 
 fn applied(src: &str, needle: &str) -> String {

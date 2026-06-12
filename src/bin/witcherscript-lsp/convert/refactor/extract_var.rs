@@ -5,23 +5,13 @@ use lsp_types::{
     WorkspaceEdit,
 };
 use witcherscript_language::line_index::LineIndex;
-use witcherscript_language::resolve::{Splice, VariableExtraction, extract_variable};
+use witcherscript_language::resolve::{VariableExtraction, extract_variable};
 
 use super::super::lsp_range;
 use super::{RefactorContext, Refactoring};
 
 // A bare rename races VS Code's cursor placement, so a custom command repositions before renaming.
 const EXTRACT_COMMAND: &str = "witcherscript.extractVariable";
-
-fn apply_edits(source: &str, edits: &[Splice]) -> String {
-    let mut splices: Vec<&Splice> = edits.iter().collect();
-    splices.sort_by_key(|s| std::cmp::Reverse(s.range.start));
-    let mut applied = source.to_string();
-    for splice in splices {
-        applied.replace_range(splice.range.clone(), &splice.text);
-    }
-    applied
-}
 
 // Post-edit position of the original selection's left-most byte, now the start of the new var name.
 fn rename_position(source: &str, extraction: &VariableExtraction) -> Position {
@@ -31,7 +21,7 @@ fn rename_position(source: &str, extraction: &VariableExtraction) -> Position {
         .filter(|s| s.range.end <= extraction.name_anchor)
         .map(|s| s.text.len() - s.range.len())
         .sum();
-    let applied = apply_edits(source, &extraction.edits);
+    let applied = extraction.apply(source);
     let byte = extraction.name_anchor + shift;
     let p = LineIndex::new(&applied).byte_to_position(&applied, byte);
     Position {
