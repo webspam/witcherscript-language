@@ -1,3 +1,4 @@
+use async_lsp::ErrorCode;
 use lsp_types::request::{
     Request, SemanticTokensFullDeltaRequest, SemanticTokensFullRequest, SemanticTokensRangeRequest,
 };
@@ -96,7 +97,11 @@ async fn delta_request_settled(
             .await;
         if let Some(err) = v.get("error") {
             let code = err.get("code").and_then(serde_json::Value::as_i64);
-            assert_eq!(code, Some(-32801), "unexpected delta error: {err}");
+            assert_eq!(
+                code,
+                Some(i64::from(ErrorCode::CONTENT_MODIFIED.0)),
+                "unexpected delta error: {err}"
+            );
             continue;
         }
         let result = v.get("result").cloned().expect("delta response has result");
