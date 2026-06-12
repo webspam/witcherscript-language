@@ -303,6 +303,258 @@ fn names_new_function(#[case] src: &str, #[case] needle: &str, #[case] expected:
     );
 }
 
+#[test]
+fn extracts_statement_run_as_void_function() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 1;\n    Use(a);\n    Use(a + 1);\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            a = 1;
+            NewFunction(a);
+        }
+
+        function NewFunction(a : int) {
+            Use(a);
+            Use(a + 1);
+        }
+    "]]
+    .assert_eq(&applied(src, "Use(a);\n    Use(a + 1);"));
+}
+
+#[test]
+fn single_unconditional_output_is_returned() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var x : int;\n    var a : int;\n    a = 2;\n    x = a + 3;\n    Use(x);\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var x : int;
+            var a : int;
+            a = 2;
+            x = NewFunction(a);
+            Use(x);
+        }
+
+        function NewFunction(a : int) : int {
+            var x : int;
+            x = a + 3;
+            return x;
+        }
+    "]]
+    .assert_eq(&applied(src, "x = a + 3;"));
+}
+
+#[test]
+fn output_reading_its_entry_value_becomes_out_parameter() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var x : int;\n    x = 1;\n    x = x + 2;\n    Use(x);\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var x : int;
+            x = 1;
+            NewFunction(x);
+            Use(x);
+        }
+
+        function NewFunction(out x : int) {
+            x = x + 2;
+        }
+    "]]
+    .assert_eq(&applied(src, "x = x + 2;"));
+}
+
+#[test]
+fn multiple_outputs_all_become_out_parameters() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    var b : int;\n    a = 1;\n    b = 2;\n    Use(a + b);\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            var b : int;
+            NewFunction(a, b);
+            Use(a + b);
+        }
+
+        function NewFunction(out a : int, out b : int) {
+            a = 1;
+            b = 2;
+        }
+    "]]
+    .assert_eq(&applied(src, "a = 1;\n    b = 2;"));
+}
+
+#[test]
+fn internal_local_moves_with_its_declaration() {
+    let src =
+        "function Use(x : int) {}\nfunction F() {\n    var t : int;\n    t = 1;\n    Use(t);\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            NewFunction();
+        }
+
+        function NewFunction() {
+            var t : int;
+            t = 1;
+            Use(t);
+        }
+    "]]
+    .assert_eq(&applied(src, "var t : int;\n    t = 1;\n    Use(t);"));
+}
+
+#[test]
+fn loop_back_edge_keeps_written_local_live() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    var n : int;\n    n = 3;\n    while (n > 0) {\n        Use(a);\n        a = 7;\n        n = n - 1;\n    }\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            var n : int;
+            n = 3;
+            while (n > 0) {
+                Use(a);
+                a = NewFunction();
+                n = n - 1;
+            }
+        }
+
+        function NewFunction() : int {
+            var a : int;
+            a = 7;
+            return a;
+        }
+    "]]
+    .assert_eq(&applied(src, "a = 7;"));
+}
+
+#[test]
+fn moved_loop_keeps_relative_indentation() {
+    let src = "function F() {\n    var n : int;\n    n = 3;\n    while (n > 0) {\n        n = n - 1;\n        if (n == 1) {\n            break;\n        }\n    }\n}\n";
+    expect![[r"
+        function F() {
+            var n : int;
+            n = 3;
+            NewFunction(n);
+        }
+
+        function NewFunction(n : int) {
+            while (n > 0) {
+                n = n - 1;
+                if (n == 1) {
+                    break;
+                }
+            }
+        }
+    "]]
+    .assert_eq(&applied(
+        src,
+        "while (n > 0) {\n        n = n - 1;\n        if (n == 1) {\n            break;\n        }\n    }",
+    ));
+}
+
+#[test]
+fn statement_run_in_method_dedents_to_global_depth() {
+    let src = "class C {\n    function M() {\n        var a : int;\n        a = 1;\n        a = a + 1;\n    }\n}\n";
+    expect![[r"
+        class C {
+            function M() {
+                var a : int;
+                NewFunction(a);
+            }
+        }
+
+        function NewFunction(a : int) {
+            a = 1;
+            a = a + 1;
+        }
+    "]]
+    .assert_eq(&applied(src, "a = 1;\n        a = a + 1;"));
+}
+
+#[test]
+fn field_write_routes_through_receiver_reference() {
+    let src = "class CR4Player {\n    var health : int;\n    function M() {\n        var dmg : int;\n        dmg = 5;\n        health = health - dmg;\n    }\n}\n";
+    expect![[r"
+        class CR4Player {
+            var health : int;
+            function M() {
+                var dmg : int;
+                dmg = 5;
+                NewFunction(this, dmg);
+            }
+        }
+
+        function NewFunction(r4Player : CR4Player, dmg : int) {
+            r4Player.health = r4Player.health - dmg;
+        }
+    "]]
+    .assert_eq(&applied(src, "health = health - dmg;"));
+}
+
+#[test]
+fn comment_between_statements_moves_with_them() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 1; // set up\n    Use(a);\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            NewFunction(a);
+        }
+
+        function NewFunction(a : int) {
+            a = 1; // set up
+            Use(a);
+        }
+    "]]
+    .assert_eq(&applied(src, "a = 1; // set up\n    Use(a);"));
+}
+
+#[rstest]
+#[case::return_inside(
+    "function F() {\n    var a : int;\n    a = 1;\n    return;\n}\n",
+    "a = 1;\n    return;"
+)]
+#[case::bare_break(
+    "function F() {\n    var n : int;\n    n = 3;\n    while (n > 0) {\n        n = n - 1;\n        if (n == 1) {\n            break;\n        }\n    }\n}\n",
+    "if (n == 1) {\n            break;\n        }"
+)]
+#[case::bare_continue(
+    "function F() {\n    var n : int;\n    n = 3;\n    while (n > 0) {\n        n = n - 1;\n        continue;\n    }\n}\n",
+    "n = n - 1;\n        continue;"
+)]
+#[case::internal_local_read_after_selection(
+    "function Use(x : int) {}\nfunction F() {\n    var t : int;\n    t = 1;\n    Use(t);\n}\n",
+    "var t : int;\n    t = 1;"
+)]
+#[case::partial_statement(
+    "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 1;\n    Use(a);\n}\n",
+    "1;\n    Use(a)"
+)]
+fn refuses_unextractable_statement_runs(#[case] src: &str, #[case] needle: &str) {
+    assert!(refused(src, needle), "must refuse needle {needle:?}");
+}
+
+#[test]
+fn break_inside_selected_switch_is_allowed() {
+    let src = "function Use(x : int) {}\nfunction F(k : int) {\n    switch (k) {\n        case 1:\n            Use(1);\n            break;\n    }\n}\n";
+    let needle = "switch (k) {\n        case 1:\n            Use(1);\n            break;\n    }";
+    expect![[r"
+        function Use(x : int) {}
+        function F(k : int) {
+            NewFunction(k);
+        }
+
+        function NewFunction(k : int) {
+            switch (k) {
+                case 1:
+                    Use(1);
+                    break;
+            }
+        }
+    "]]
+    .assert_eq(&applied(src, needle));
+}
+
 #[rstest]
 #[case::super_call(
     "class B {\n    function M() : int { return 1; }\n}\nclass C extends B {\n    function M() : int {\n        var r : int;\n        r = super.M() + 1;\n        return r;\n    }\n}\n",
