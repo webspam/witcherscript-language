@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use async_lsp::ResponseError;
 use lsp_types::{
     CodeActionKind, CodeActionOptions, CodeActionProviderCapability, CodeLensOptions,
     CompletionOptions, DiagnosticOptions, DiagnosticServerCapabilities,
@@ -21,12 +20,10 @@ use tracing::{info, trace};
 use witcherscript_language::formatter::AnnotationPlacement;
 use witcherscript_language::semantic_tokens::{TOKEN_MODIFIERS, TOKEN_TYPES};
 
-use crate::backend::Backend;
+use crate::backend::{Backend, Result};
 use crate::config::DiagnosticsScope;
 use crate::convert::workspace_roots;
 use crate::logging::{level_from_str, level_to_u8};
-
-type Result<T> = std::result::Result<T, ResponseError>;
 
 fn ws_file_operations_capabilities() -> WorkspaceFileOperationsServerCapabilities {
     let registration = || {
