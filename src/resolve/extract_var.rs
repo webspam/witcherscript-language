@@ -94,7 +94,9 @@ pub fn extract_variable(
 ) -> Option<VariableExtraction> {
     let source = &document.source;
     let selection = trim_selection(source, selection)?;
-    let node = exact_expression_at(document.tree.root_node(), &selection)?;
+    let root = document.tree.root_node();
+    let selection = expand_through_logical_operator(root, &selection).unwrap_or(selection);
+    let node = exact_expression_at(root, &selection)?;
     if is_call_callee(node) {
         // A bare reference to the callee is a function reference, which WitcherScript has no values for.
         return None;
@@ -231,6 +233,26 @@ fn exact_expression_at<'tree>(root: Node<'tree>, selection: &Range<usize>) -> Op
             _ => return best,
         }
     }
+}
+
+// Extracting both operands the touched `||`/`&&` joins keeps short-circuit evaluation intact.
+fn expand_through_logical_operator(root: Node, selection: &Range<usize>) -> Option<Range<usize>> {
+    let mut node = root.named_descendant_for_byte_range(selection.start, selection.end)?;
+    loop {
+        if node.kind() == kinds::BINARY_OP_EXPR && selection_touches_logical_op(node, selection) {
+            return Some(node.byte_range());
+        }
+        node = node.parent()?;
+    }
+}
+
+fn selection_touches_logical_op(binary: Node, selection: &Range<usize>) -> bool {
+    let Some(op) = binary.child_by_field_name(fields::OP) else {
+        return false;
+    };
+    matches!(op.kind(), kinds::BINARY_OP_OR | kinds::BINARY_OP_AND)
+        && op.start_byte() < selection.end
+        && selection.start < op.end_byte()
 }
 
 fn is_call_callee(node: Node) -> bool {

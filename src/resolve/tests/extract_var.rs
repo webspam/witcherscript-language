@@ -337,6 +337,46 @@ fn splits_when_write_precedes_selection(#[case] src: &str, #[case] needle: &str)
     );
 }
 
+fn extracted_expr(src: &str, needle: &str) -> String {
+    let (source, result) = run(src, needle, FormatOptions::default());
+    let x = result.unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"));
+    let splice = x
+        .edits
+        .iter()
+        .find(|s| s.text == x.name)
+        .expect("selection-replacement splice present");
+    source[splice.range.clone()].to_string()
+}
+
+const OR_CHAIN: &str = "function F() {\n    var a : bool;\n    var b : bool;\n    var c : bool;\n    var r : bool;\n    r = !a || !b || !c;\n}\n";
+const AND_CHAIN: &str = "function F() {\n    var a : bool;\n    var b : bool;\n    var c : bool;\n    var r : bool;\n    r = !a && !b && !c;\n}\n";
+
+#[rstest]
+#[case::first_or_expands_to_left_pair(OR_CHAIN, "a || !b", "!a || !b")]
+#[case::second_or_expands_to_full_chain(OR_CHAIN, "b || !c", "!a || !b || !c")]
+#[case::first_and_expands_to_left_pair(AND_CHAIN, "a && !b", "!a && !b")]
+#[case::second_and_expands_to_full_chain(AND_CHAIN, "b && !c", "!a && !b && !c")]
+fn touching_logical_operator_expands_to_both_operands(
+    #[case] src: &str,
+    #[case] needle: &str,
+    #[case] expected: &str,
+) {
+    assert_eq!(
+        extracted_expr(src, needle),
+        expected,
+        "selection {needle:?} should extract both operands of the touched operator"
+    );
+}
+
+#[test]
+fn arithmetic_operator_does_not_expand() {
+    let src = "function F() {\n    var a : int;\n    var b : int;\n    var c : int;\n    var r : int;\n    r = a + b + c;\n}\n";
+    assert!(
+        refused(src, "a + b +"),
+        "non-short-circuit operators keep the exact-selection requirement"
+    );
+}
+
 #[test]
 fn split_keeps_assignment_below_an_earlier_write() {
     let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    Use(a + 1);\n}\n";
