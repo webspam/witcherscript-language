@@ -103,7 +103,7 @@ fn skips_event_for_open_file() {
 }
 
 #[test]
-fn delete_of_open_file_returns_remove() {
+fn delete_of_open_file_is_skipped() {
     let url = uri_under_root("open.ws");
     let mut open = HashSet::new();
     open.insert(url.to_string());
@@ -113,10 +113,8 @@ fn delete_of_open_file_returns_remove() {
         &no_filter(),
     );
     assert_eq!(
-        decision,
-        Some(WatchedEvent::Remove {
-            canonical: url.to_string()
-        })
+        decision, None,
+        "deleting an open file on disk (e.g. branch switch) must not drop the editor buffer from the index"
     );
 }
 
