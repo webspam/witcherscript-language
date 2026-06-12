@@ -8,10 +8,8 @@ use tracing::trace;
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::resolve::inlay_hints;
 
-use crate::backend::Backend;
+use crate::backend::{Backend, Result};
 use crate::convert::{inlay_hint, source_position, source_range};
-
-type Result<T> = std::result::Result<T, ResponseError>;
 
 impl Backend {
     pub(crate) fn _inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {

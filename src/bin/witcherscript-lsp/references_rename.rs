@@ -13,11 +13,9 @@ use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::resolve::{find_references, resolve_definition};
 
-use crate::backend::Backend;
+use crate::backend::{Backend, Result};
 use crate::compilation::Compilation;
 use crate::convert::{lsp_range, source_position};
-
-type Result<T> = std::result::Result<T, ResponseError>;
 
 // Open editor docs shadow workspace docs which shadow base docs - unsaved edits win.
 // Loose files form a compilation isolated from the workspace, so a search whose

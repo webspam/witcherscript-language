@@ -43,7 +43,7 @@ use crate::file_scope_status::FileScopeStatusParams;
 use crate::legacy_status::LegacyScriptStatusParams;
 use crate::semantic_tokens_cache::CachedSemanticTokens;
 
-type Result<T> = std::result::Result<T, ResponseError>;
+pub(crate) type Result<T> = std::result::Result<T, ResponseError>;
 
 const BASE_SCRIPTS_SUBDIR: &str = r"content\content0\scripts";
 

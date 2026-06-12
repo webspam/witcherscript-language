@@ -17,15 +17,13 @@ use witcherscript_language::resolve::{
 };
 use witcherscript_language::symbols::SymbolKind;
 
-use crate::backend::Backend;
+use crate::backend::{Backend, Result};
 use crate::convert::{
     CompletionItemData, annotation_name_items, builtin_type_item, class_body_kw_item,
     completion_item, hover_markdown, keyword_snippet_item, lsp_range, replace_method_snippet,
     script_body_item, source_position, source_range, this_super_item, type_completion_item,
     wrap_method_snippet,
 };
-
-type Result<T> = std::result::Result<T, ResponseError>;
 
 fn triggered_by_dot(params: &CompletionParams) -> bool {
     let Some(ctx) = &params.context else {

@@ -1,15 +1,12 @@
 use std::time::Instant;
 
-use async_lsp::ResponseError;
 use lsp_types::{WorkspaceSymbolParams, WorkspaceSymbolResponse};
 
 use tracing::trace;
 use witcherscript_language::resolve::workspace_symbols;
 
-use crate::backend::Backend;
+use crate::backend::{Backend, Result};
 use crate::convert::workspace_symbol;
-
-type Result<T> = std::result::Result<T, ResponseError>;
 
 const MAX_WORKSPACE_SYMBOL_RESULTS: usize = 256;
 

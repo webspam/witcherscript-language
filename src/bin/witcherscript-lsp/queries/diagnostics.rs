@@ -13,10 +13,8 @@ use lsp_types::{
 use crate::config::DiagnosticsScope;
 use tracing::trace;
 
-use crate::backend::{Backend, diagnostics_document_for};
+use crate::backend::{Backend, Result, diagnostics_document_for};
 use crate::diagnostics_publish::publish_url;
-
-type Result<T> = std::result::Result<T, ResponseError>;
 
 pub(crate) fn empty_full_document_report() -> DocumentDiagnosticReportResult {
     DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(

@@ -1,16 +1,13 @@
 use std::time::Instant;
 
-use async_lsp::ResponseError;
 use lsp_types::{DocumentFormattingParams, TextEdit};
 
 use tracing::trace;
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::formatter::format_document;
 
-use crate::backend::Backend;
+use crate::backend::{Backend, Result};
 use crate::convert::lsp_range;
-
-type Result<T> = std::result::Result<T, ResponseError>;
 
 impl Backend {
     pub(crate) fn _formatting(

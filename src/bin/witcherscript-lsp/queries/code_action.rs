@@ -1,15 +1,12 @@
 use std::time::Instant;
 
-use async_lsp::ResponseError;
 use lsp_types::{CodeActionParams, CodeActionResponse, CodeActionTriggerKind, Range, Url};
 
 use tracing::trace;
 use witcherscript_language::files::canonical_uri;
 
-use crate::backend::Backend;
+use crate::backend::{Backend, Result};
 use crate::convert::{base_script_conflict_code_actions, refactor_code_actions, source_position};
-
-type Result<T> = std::result::Result<T, ResponseError>;
 
 impl Backend {
     pub(crate) fn _code_action(

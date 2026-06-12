@@ -1,16 +1,13 @@
 use std::time::Instant;
 
-use async_lsp::ResponseError;
 use lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, Location, Url};
 
 use tracing::trace;
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::resolve::{resolve_all_definitions, resolve_type_definition};
 
-use crate::backend::Backend;
+use crate::backend::{Backend, Result};
 use crate::convert::{lsp_range, source_position};
-
-type Result<T> = std::result::Result<T, ResponseError>;
 
 impl Backend {
     pub(crate) fn _definition(

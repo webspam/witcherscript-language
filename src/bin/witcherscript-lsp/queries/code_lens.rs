@@ -8,10 +8,8 @@ use witcherscript_language::resolve::{OverriddenSymbol, overridden_top_level};
 use witcherscript_language::symbols::{Symbol, SymbolKind};
 
 use super::ReferenceLensData;
-use crate::backend::Backend;
+use crate::backend::{Backend, Result};
 use crate::convert::lsp_range;
-
-type Result<T> = std::result::Result<T, ResponseError>;
 
 const GO_TO_BASE_COMMAND: &str = "witcherscript.goToBaseDefinition";
 const GO_TO_BASE_TITLE: &str = "game definition";

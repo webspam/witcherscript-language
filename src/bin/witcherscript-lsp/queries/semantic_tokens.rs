@@ -15,13 +15,11 @@ use witcherscript_language::semantic_tokens::{
     collect_semantic_tokens_cancellable, collect_semantic_tokens_in_range_cancellable,
 };
 
-use crate::backend::Backend;
+use crate::backend::{Backend, Result};
 use crate::convert::{source_position, source_range};
 use crate::semantic_tokens_cache::{
     CachedSemanticTokens, semantic_token_edits, semantic_token_structs,
 };
-
-type Result<T> = std::result::Result<T, ResponseError>;
 
 impl Backend {
     fn computed_semantic_tokens(

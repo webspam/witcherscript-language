@@ -1,14 +1,11 @@
 use std::time::Instant;
 
-use async_lsp::ResponseError;
 use lsp_types::{DocumentSymbolParams, DocumentSymbolResponse};
 
 use tracing::trace;
 
-use crate::backend::Backend;
+use crate::backend::{Backend, Result};
 use crate::convert::document_symbols;
-
-type Result<T> = std::result::Result<T, ResponseError>;
 
 impl Backend {
     pub(crate) fn _document_symbol(

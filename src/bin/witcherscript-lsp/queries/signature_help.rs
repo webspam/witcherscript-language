@@ -1,16 +1,13 @@
 use std::time::Instant;
 
-use async_lsp::ResponseError;
 use lsp_types::{SignatureHelp, SignatureHelpParams};
 
 use tracing::trace;
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::resolve::signature_help;
 
-use crate::backend::Backend;
+use crate::backend::{Backend, Result};
 use crate::convert::{signature_help_response, source_position};
-
-type Result<T> = std::result::Result<T, ResponseError>;
 
 impl Backend {
     pub(crate) fn _signature_help(
