@@ -1,6 +1,8 @@
 use witcherscript_language::document::parse_document;
 use witcherscript_language::resolve::WorkspaceIndex;
 
+use crate::tests::support::LocalTempDir;
+
 #[test]
 #[cfg(windows)]
 fn opening_a_workspace_indexed_file_does_not_self_conflict() {
@@ -85,28 +87,26 @@ fn build_index_segments_skips_missing_extra_dir() {
 
 #[test]
 fn build_index_segments_never_emits_mod_shared_imports() {
-    let game_dir = std::env::temp_dir().join("ws_test_segments_no_msi");
-    let msi = game_dir.join("Mods").join("modSharedImports");
+    let temp = LocalTempDir::new("ws_test_segments_no_msi");
+    let msi = temp.path().join("Mods").join("modSharedImports");
     std::fs::create_dir_all(&msi).expect("mkdir mods");
-    let segments = crate::indexing::build_index_segments(Some(&game_dir), &[]);
+    let segments = crate::indexing::build_index_segments(Some(temp.path()), &[]);
     let labels: Vec<&str> = segments.iter().map(|(l, _)| *l).collect();
     assert!(
         !labels.contains(&"modSharedImports"),
         "modSharedImports must be routed through legacy dirs, not base segments"
     );
-    std::fs::remove_dir_all(game_dir.join("Mods")).ok();
 }
 
 #[test]
 fn mod_shared_imports_dir_detects_present_dir() {
-    let game_dir = std::env::temp_dir().join("ws_test_msi_detect");
-    let msi = game_dir.join("Mods").join("modSharedImports");
+    let temp = LocalTempDir::new("ws_test_msi_detect");
+    let msi = temp.path().join("Mods").join("modSharedImports");
     std::fs::create_dir_all(&msi).expect("mkdir mods");
     assert_eq!(
-        crate::indexing::mod_shared_imports_dir(&game_dir).as_deref(),
+        crate::indexing::mod_shared_imports_dir(temp.path()).as_deref(),
         Some(msi.as_path())
     );
-    std::fs::remove_dir_all(game_dir.join("Mods")).ok();
 }
 
 #[test]

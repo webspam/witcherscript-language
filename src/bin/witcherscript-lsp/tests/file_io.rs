@@ -1,4 +1,7 @@
+use rstest::rstest;
 use witcherscript_language::files::read_text_file;
+
+use crate::tests::support::LocalTempDir;
 
 fn encode_utf16le(s: &str) -> Vec<u8> {
     let mut bytes = vec![0xFF, 0xFE]; // BOM
@@ -16,43 +19,34 @@ fn encode_utf16be(s: &str) -> Vec<u8> {
     bytes
 }
 
-fn write_temp(name: &str, bytes: &[u8]) -> std::path::PathBuf {
-    let path = std::env::temp_dir().join(name);
+fn read_temp(dir_name: &str, bytes: &[u8]) -> std::io::Result<String> {
+    let temp = LocalTempDir::new(dir_name);
+    let path = temp.path().join("script.ws");
     std::fs::write(&path, bytes).expect("temp file write should succeed");
-    path
+    read_text_file(&path)
 }
 
-#[test]
-fn reads_utf8_script_file() {
-    let path = write_temp("ws_test_utf8.ws", b"class CExample {}\n");
-    assert_eq!(
-        read_text_file(&path).expect("should read"),
-        "class CExample {}\n"
-    );
-}
-
-#[test]
-fn reads_utf16le_script_file() {
-    let bytes = encode_utf16le("class CExample {}\n");
-    let path = write_temp("ws_test_utf16le.ws", &bytes);
-    assert_eq!(
-        read_text_file(&path).expect("should read"),
-        "class CExample {}\n"
-    );
-}
-
-#[test]
-fn reads_utf16be_script_file() {
-    let bytes = encode_utf16be("class CExample {}\n");
-    let path = write_temp("ws_test_utf16be.ws", &bytes);
-    assert_eq!(
-        read_text_file(&path).expect("should read"),
-        "class CExample {}\n"
-    );
-}
-
-#[test]
-fn returns_error_for_invalid_utf8() {
-    let path = write_temp("ws_test_bad.ws", &[0x80, 0x81, 0x82]);
-    assert!(read_text_file(&path).is_err());
+#[rstest]
+#[case::utf8("ws_test_utf8", b"class CExample {}\n".to_vec(), Some("class CExample {}\n"))]
+#[case::utf16le(
+    "ws_test_utf16le",
+    encode_utf16le("class CExample {}\n"),
+    Some("class CExample {}\n")
+)]
+#[case::utf16be(
+    "ws_test_utf16be",
+    encode_utf16be("class CExample {}\n"),
+    Some("class CExample {}\n")
+)]
+#[case::invalid_utf8("ws_test_bad", vec![0x80, 0x81, 0x82], None)]
+fn read_text_file_decodes_or_errors(
+    #[case] dir_name: &str,
+    #[case] bytes: Vec<u8>,
+    #[case] expected: Option<&str>,
+) {
+    let got = read_temp(dir_name, &bytes);
+    match expected {
+        Some(text) => assert_eq!(got.expect("should read"), text),
+        None => assert!(got.is_err()),
+    }
 }
