@@ -184,16 +184,22 @@ fn push_parameter(label: &mut String, param: &Symbol, colon: &str) {
     }
 }
 
-/// Single renderer so hover and completion detail stay identical.
-pub fn render_signature(params: &[Symbol], return_type: Option<&Type>) -> String {
+/// `colon` varies by context: `": "` for compact hover, `" : "` for inserted code.
+pub fn render_parameters(params: &[Symbol], colon: &str) -> String {
     let mut out = String::from("(");
     for (i, param) in params.iter().enumerate() {
         if i > 0 {
             out.push_str(", ");
         }
-        push_parameter(&mut out, param, ": ");
+        push_parameter(&mut out, param, colon);
     }
     out.push(')');
+    out
+}
+
+/// Single renderer so hover and completion detail stay identical.
+pub fn render_signature(params: &[Symbol], return_type: Option<&Type>) -> String {
+    let mut out = render_parameters(params, ": ");
     if let Some(ret) = return_type {
         out.push_str(": ");
         out.push_str(&ret.to_string());
