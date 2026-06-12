@@ -11,7 +11,7 @@ use crate::cst::grammar::{
 use crate::cst::if_stmt::{if_chain_above, mutually_exclusive_branches};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
-use crate::formatter::{FormatOptions, indent_unit_for, line_indent};
+use crate::formatter::{FormatOptions, indent_block, indent_unit_for, line_indent};
 use crate::strings::lowercase_first;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
@@ -29,12 +29,11 @@ pub struct Splice {
 
 #[derive(Debug)]
 pub struct VariableExtraction {
-    /// Non-overlapping edits against the original source: the declaration insert, an optional
-    /// in-place assignment insert (split form), and the selection-to-name replacement.
+    /// Non-overlapping edits against the original source.
     pub edits: Vec<Splice>,
     pub name: String,
-    /// Byte offset in the original source where the new name lands (selection start), for cursor placement.
-    pub name_anchor: usize,
+    /// Byte offset in the applied text where the new name starts, for cursor placement.
+    pub cursor: usize,
 }
 
 impl VariableExtraction {
@@ -196,26 +195,36 @@ pub fn extract_variable(
     }
 }
 
+// Where `original` lands after the edits apply: shift it past every edit that ends at or before it.
+fn applied_offset(edits: &[Splice], original: usize) -> usize {
+    edits
+        .iter()
+        .filter(|s| s.range.end <= original)
+        .fold(original, |pos, s| pos + s.text.len() - s.range.len())
+}
+
 fn single_insert(
     at: usize,
     text: String,
     selection: Range<usize>,
     name: String,
 ) -> VariableExtraction {
-    let name_anchor = selection.start;
+    let anchor = selection.start;
+    let edits = vec![
+        Splice {
+            range: at..at,
+            text,
+        },
+        Splice {
+            range: selection,
+            text: name.clone(),
+        },
+    ];
+    let cursor = applied_offset(&edits, anchor);
     VariableExtraction {
-        edits: vec![
-            Splice {
-                range: at..at,
-                text,
-            },
-            Splice {
-                range: selection,
-                text: name.clone(),
-            },
-        ],
+        edits,
         name,
-        name_anchor,
+        cursor,
     }
 }
 
@@ -227,24 +236,26 @@ fn split(
     selection: Range<usize>,
     name: String,
 ) -> VariableExtraction {
-    let name_anchor = selection.start;
+    let anchor = selection.start;
+    let edits = vec![
+        Splice {
+            range: decl_at..decl_at,
+            text: decl_text,
+        },
+        Splice {
+            range: assign_at..assign_at,
+            text: assign_text,
+        },
+        Splice {
+            range: selection,
+            text: name.clone(),
+        },
+    ];
+    let cursor = applied_offset(&edits, anchor);
     VariableExtraction {
-        edits: vec![
-            Splice {
-                range: decl_at..decl_at,
-                text: decl_text,
-            },
-            Splice {
-                range: assign_at..assign_at,
-                text: assign_text,
-            },
-            Splice {
-                range: selection,
-                text: name.clone(),
-            },
-        ],
+        edits,
         name,
-        name_anchor,
+        cursor,
     }
 }
 
@@ -262,7 +273,7 @@ fn split_before(
     split(decl_at, decl_text, assign_at, assign, selection, name)
 }
 
-// Wrap a braceless statement in a synthesised block holding the assignment, keeping it in place.
+// Wrap a braceless statement in a synthesised block; the whole region is one rendered replacement.
 fn split_braceless(
     decl: Splice,
     statement: Node,
@@ -272,31 +283,33 @@ fn split_braceless(
     selection: Range<usize>,
     name: String,
 ) -> VariableExtraction {
-    let indent = line_indent(source, statement.start_byte()).to_string();
-    let unit = indent_unit_for(&options);
-    let open = format!("{{\n{indent}{unit}{name} = {expr};\n{indent}{unit}");
-    let close = format!("\n{indent}}}");
-    let name_anchor = selection.start;
     let stmt_start = statement.start_byte();
     let stmt_end = statement.end_byte();
+
+    let body = &source[stmt_start..stmt_end];
+    let rel = (selection.start - stmt_start)..(selection.end - stmt_start);
+
+    let indent = line_indent(source, statement.start_byte()).to_string();
+    let substituted = format!(
+        "{indent}{name} = {expr};\n{indent}{}{name}{}",
+        &body[..rel.start],
+        &body[rel.end..]
+    );
+    let block = format!("{{\n{}\n{indent}}}", indent_block(&substituted, &options));
+
+    // `decl` inserts above the block, we need to count to symbol loc
+    let body_indent = indent_unit_for(&options).len() + indent.len();
+    let cursor = stmt_start + decl.text.len() + "{\n".len() + body_indent;
     VariableExtraction {
         edits: vec![
             decl,
             Splice {
-                range: stmt_start..stmt_start,
-                text: open,
-            },
-            Splice {
-                range: stmt_end..stmt_end,
-                text: close,
-            },
-            Splice {
-                range: selection,
-                text: name.clone(),
+                range: stmt_start..stmt_end,
+                text: block,
             },
         ],
         name,
-        name_anchor,
+        cursor,
     }
 }
 

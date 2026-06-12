@@ -553,7 +553,30 @@ fn split_desugars_else_if_into_else_block_when_a_preceding_condition_can_mutate(
             else {
                 newVar = a + b;
                 if (newVar > 0) {}
-            else {}
+                else {}
+            }
+        }
+    "]]
+    .assert_eq(&applied(src, "a + b"));
+}
+
+#[test]
+fn wrapped_statement_reindents_its_continuation_lines() {
+    let src = "function Check() : bool { return true; }\nfunction Do() {}\nfunction F() {\n    var a : int;\n    var b : int;\n    a = 1;\n    if (Check()) {}\n    else if (a + b > 0) {\n        Do();\n    }\n}\n";
+    expect![[r"
+        function Check() : bool { return true; }
+        function Do() {}
+        function F() {
+            var a : int;
+            var b : int;
+            var newVar : int;
+            a = 1;
+            if (Check()) {}
+            else {
+                newVar = a + b;
+                if (newVar > 0) {
+                    Do();
+                }
             }
         }
     "]]

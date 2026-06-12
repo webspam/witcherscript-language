@@ -13,17 +13,9 @@ use super::{RefactorContext, Refactoring};
 // A bare rename races VS Code's cursor placement, so a custom command repositions before renaming.
 const EXTRACT_COMMAND: &str = "witcherscript.extractVariable";
 
-// Post-edit position of the original selection's left-most byte, now the start of the new var name.
 fn rename_position(source: &str, extraction: &VariableExtraction) -> Position {
-    let shift: usize = extraction
-        .edits
-        .iter()
-        .filter(|s| s.range.end <= extraction.name_anchor)
-        .map(|s| s.text.len() - s.range.len())
-        .sum();
     let applied = extraction.apply(source);
-    let byte = extraction.name_anchor + shift;
-    let p = LineIndex::new(&applied).byte_to_position(&applied, byte);
+    let p = LineIndex::new(&applied).byte_to_position(&applied, extraction.cursor);
     Position {
         line: p.line,
         character: p.character,
