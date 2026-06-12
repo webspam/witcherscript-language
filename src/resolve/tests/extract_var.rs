@@ -402,6 +402,36 @@ fn touching_chain_boundary_expands_to_whole_value(
     );
 }
 
+const RESET_CHAIN: &str = "class C {\n    var cutPending : int;\n    function Reset() {}\n    function GetMultiplier(dt : float) : bool {\n        if (dt > 5.0) {\n            Reset();\n        }\n        else if (cutPending > 0 && dt > 3.0) {\n            Reset();\n        }\n        return cutPending > 10;\n    }\n}\n";
+
+#[test]
+fn hoists_field_read_when_no_call_can_run_before_it() {
+    assert_eq!(
+        edit_count(RESET_CHAIN, "cutPending > 0 && dt > 3.0"),
+        2,
+        "a call in a mutually exclusive branch cannot precede the else-if condition"
+    );
+}
+
+#[test]
+fn splits_field_read_when_an_earlier_call_could_mutate_it() {
+    assert_eq!(
+        edit_count(RESET_CHAIN, "cutPending > 10"),
+        3,
+        "an overridable call before the return may mutate the field, so keep the computation in place"
+    );
+}
+
+#[test]
+fn hoists_local_only_expression_despite_preceding_call() {
+    let src = "function Mutate() {}\nfunction F() {\n    var a : int;\n    Mutate();\n    var r : int;\n    r = a + 1;\n}\n";
+    assert_eq!(
+        edit_count(src, "a + 1"),
+        2,
+        "a preceding call cannot mutate a local, so the value still hoists with an initializer"
+    );
+}
+
 #[test]
 fn split_keeps_assignment_below_an_earlier_write() {
     let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    Use(a + 1);\n}\n";

@@ -114,11 +114,17 @@ pub fn extract_variable(
 
     // A frozen top-of-block value is stale once a read is written before the expression re-evaluates:
     // before it textually, or anywhere in an enclosing loop body (which re-runs the expression).
-    let hoist_end = enclosing_loop_end(node, block).unwrap_or(selection.start);
+    let loop_end = enclosing_loop_end(node, block);
+    let hoist_end = loop_end.unwrap_or(selection.start);
+    let cannot_hoist_initializer = |window: Range<usize>| {
+        tracked_write_in_window(uri, document, db, node, block, window, callable.id)
+            || (reads_nonlocal_state(uri, document, db, node)
+                && overridable_call_precedes(node, block, hoist_end, loop_end.is_some()))
+    };
 
     match decl_site(source, block, &selection, options)? {
         DeclSite::AboveLeadingDecl { at, indent } => {
-            if tracked_write_in_window(uri, document, db, node, block, at..hoist_end, callable.id) {
+            if cannot_hoist_initializer(at..hoist_end) {
                 return None;
             }
             let stmt = declaration_statement(&name, &ty, expr, options);
@@ -130,8 +136,7 @@ pub fn extract_variable(
             ))
         }
         DeclSite::TopOfBlock { at, indent } => {
-            if !tracked_write_in_window(uri, document, db, node, block, at..hoist_end, callable.id)
-            {
+            if !cannot_hoist_initializer(at..hoist_end) {
                 let stmt = declaration_statement(&name, &ty, expr, options);
                 return Some(single_insert(
                     at,
@@ -470,6 +475,63 @@ fn tracked_write_in_window(
             .filter_map(write_target)
             .any(is_tracked_write),
     })
+}
+
+// Any function/method may be redirected by @wrapMethod/@replaceMethod beyond our visibility, so a
+// call that can run before the expression could mutate the non-local state it reads.
+fn reads_nonlocal_state(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> bool {
+    let mut calls = Vec::new();
+    collect_nodes_of_kinds(node, &[kinds::FUNC_CALL_EXPR], &mut calls);
+    if !calls.is_empty() {
+        return true;
+    }
+    let mut idents = Vec::new();
+    collect_nodes_of_kinds(node, &[kinds::IDENT], &mut idents);
+    idents.iter().any(|ident| {
+        resolve_definition_at_byte(uri, document, db, ident.start_byte())
+            .is_some_and(|def| def.symbol.kind == SymbolKind::Field)
+    })
+}
+
+fn overridable_call_precedes(node: Node, block: Node, hoist_end: usize, in_loop: bool) -> bool {
+    let mut calls = Vec::new();
+    collect_nodes_of_kinds(block, &[kinds::FUNC_CALL_EXPR], &mut calls);
+    calls.iter().any(|call| {
+        call.start_byte() < hoist_end && (in_loop || !mutually_exclusive_branches(*call, node))
+    })
+}
+
+#[derive(PartialEq)]
+enum IfBranch {
+    Body,
+    Else,
+}
+
+// A loop re-runs both branches, so this then/else exclusion only holds outside one (see caller).
+fn mutually_exclusive_branches(a: Node, b: Node) -> bool {
+    node_and_ancestors(a)
+        .filter(|n| n.kind() == kinds::IF_STMT)
+        .any(
+            |if_stmt| match (if_branch_of(if_stmt, a), if_branch_of(if_stmt, b)) {
+                (Some(branch_a), Some(branch_b)) => branch_a != branch_b,
+                _ => false,
+            },
+        )
+}
+
+fn if_branch_of(if_stmt: Node, node: Node) -> Option<IfBranch> {
+    let within = |field| {
+        if_stmt
+            .child_by_field_name(field)
+            .is_some_and(|c| c.start_byte() <= node.start_byte() && node.end_byte() <= c.end_byte())
+    };
+    if within(fields::BODY) {
+        Some(IfBranch::Body)
+    } else if within(fields::ELSE) {
+        Some(IfBranch::Else)
+    } else {
+        None
+    }
 }
 
 fn out_args<'tree>(
