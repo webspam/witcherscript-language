@@ -271,10 +271,6 @@ fn returns_none_for_empty_selection() {
     "class C {}\nfunction F() {\n    var c : C;\n    var ok : bool;\n    ok = c == NULL;\n}\n",
     "NULL"
 )]
-#[case::method_reference_callee(
-    "class C {\n    function GetPos() : int { return 1; }\n}\nfunction F() {\n    var c : C;\n    var r : int;\n    r = c.GetPos();\n}\n",
-    "c.GetPos"
-)]
 #[case::function_reference_callee(
     "function F() {\n    var r : int;\n    r = Take(1);\n}\nfunction Take(amount : int) : int { return amount; }\n",
     "Take"
@@ -374,6 +370,35 @@ fn arithmetic_operator_does_not_expand() {
     assert!(
         refused(src, "a + b +"),
         "non-short-circuit operators keep the exact-selection requirement"
+    );
+}
+
+const CALL_CHAIN: &str = "function F() {\n    var components : CManager;\n    var spotLights : int;\n    spotLights = components.Size();\n}\nclass CManager {\n    function Size() : int { return 1; }\n}\n";
+const NESTED_CALL_CHAIN: &str = "class CComp {\n    function Size() : int { return 1; }\n}\nclass CManager {\n    function GetComponent(n : name) : CComp { var c : CComp; return c; }\n}\nfunction F() {\n    var manager : CManager;\n    var r : int;\n    r = manager.GetComponent('leftArm').Size();\n}\n";
+
+#[rstest]
+#[case::receiver_then_dot(CALL_CHAIN, "s.", "components.Size()")]
+#[case::dot_then_member(CALL_CHAIN, ".S", "components.Size()")]
+#[case::member_then_paren(CALL_CHAIN, "e(", "components.Size()")]
+#[case::method_reference_promotes_to_call(
+    "class C {\n    function GetPos() : int { return 1; }\n}\nfunction F() {\n    var c : C;\n    var r : int;\n    r = c.GetPos();\n}\n",
+    "c.GetPos",
+    "c.GetPos()"
+)]
+#[case::dot_expands_whole_left_chain(
+    NESTED_CALL_CHAIN,
+    ".S",
+    "manager.GetComponent('leftArm').Size()"
+)]
+fn touching_chain_boundary_expands_to_whole_value(
+    #[case] src: &str,
+    #[case] needle: &str,
+    #[case] expected: &str,
+) {
+    assert_eq!(
+        extracted_expr(src, needle),
+        expected,
+        "selection {needle:?} should extract the whole call chain"
     );
 }
 

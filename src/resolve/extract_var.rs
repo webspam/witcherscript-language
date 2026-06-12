@@ -95,7 +95,7 @@ pub fn extract_variable(
     let source = &document.source;
     let selection = trim_selection(source, selection)?;
     let root = document.tree.root_node();
-    let selection = expand_through_logical_operator(root, &selection).unwrap_or(selection);
+    let selection = expand_selection(root, &selection).unwrap_or(selection);
     let node = exact_expression_at(root, &selection)?;
     if is_call_callee(node) {
         // A bare reference to the callee is a function reference, which WitcherScript has no values for.
@@ -233,6 +233,51 @@ fn exact_expression_at<'tree>(root: Node<'tree>, selection: &Range<usize>) -> Op
             _ => return best,
         }
     }
+}
+
+// A selection landing on a structural boundary expands to the whole value rather than refusing.
+fn expand_selection(root: Node, selection: &Range<usize>) -> Option<Range<usize>> {
+    expand_through_logical_operator(root, selection)
+        .or_else(|| expand_through_postfix_chain(root, selection))
+}
+
+const POSTFIX_CHAIN_KINDS: &[&str] = &[
+    kinds::MEMBER_ACCESS_EXPR,
+    kinds::FUNC_CALL_EXPR,
+    kinds::ARRAY_EXPR,
+];
+
+// Promoting a touched method reference to its call yields a value, not an uncallable handle.
+fn expand_through_postfix_chain(root: Node, selection: &Range<usize>) -> Option<Range<usize>> {
+    let mut node = root.named_descendant_for_byte_range(selection.start, selection.end)?;
+    loop {
+        if POSTFIX_CHAIN_KINDS.contains(&node.kind())
+            && selection_touches_separator(node, selection)
+        {
+            return Some(promote_callee(node).byte_range());
+        }
+        node = node.parent()?;
+    }
+}
+
+fn selection_touches_separator(node: Node, selection: &Range<usize>) -> bool {
+    let mut cursor = node.walk();
+    node.children(&mut cursor).any(|child| {
+        !child.is_named()
+            && child.start_byte() < selection.end
+            && selection.start < child.end_byte()
+    })
+}
+
+fn promote_callee(node: Node) -> Node {
+    node.parent()
+        .filter(|parent| parent.kind() == kinds::FUNC_CALL_EXPR)
+        .filter(|parent| {
+            parent
+                .child_by_field_name(fields::FUNC)
+                .is_some_and(|func| func.id() == node.id())
+        })
+        .unwrap_or(node)
 }
 
 // Extracting both operands the touched `||`/`&&` joins keeps short-circuit evaluation intact.
