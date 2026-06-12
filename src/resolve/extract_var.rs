@@ -3,14 +3,16 @@ use std::ops::Range;
 
 use tree_sitter::Node;
 
-use crate::cst::ancestors::node_and_ancestors;
+use crate::cst::ancestors::{enclosing_callable_block, node_and_ancestors};
+use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
 use crate::cst::grammar::{
     arg_slots, call_callee, callee_ident, member_access_member, write_target,
 };
-use crate::cst::walk::{CstVisitor, Visit, walk};
+use crate::cst::if_stmt::{if_chain_above, mutually_exclusive_branches};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
-use crate::formatter::{FormatOptions, indent_unit_for, line_indent};
+use crate::formatter::{FormatOptions, indent_block, indent_unit_for, line_indent};
+use crate::strings::lowercase_first;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
 
@@ -27,12 +29,11 @@ pub struct Splice {
 
 #[derive(Debug)]
 pub struct VariableExtraction {
-    /// Non-overlapping edits against the original source: the declaration insert, an optional
-    /// in-place assignment insert (split form), and the selection-to-name replacement.
+    /// Non-overlapping edits against the original source.
     pub edits: Vec<Splice>,
     pub name: String,
-    /// Byte offset in the original source where the new name lands (selection start), for cursor placement.
-    pub name_anchor: usize,
+    /// Byte offset in the applied text where the new name starts, for cursor placement.
+    pub cursor: usize,
 }
 
 impl VariableExtraction {
@@ -94,7 +95,9 @@ pub fn extract_variable(
 ) -> Option<VariableExtraction> {
     let source = &document.source;
     let selection = trim_selection(source, selection)?;
-    let node = exact_expression_at(document.tree.root_node(), &selection)?;
+    let root = document.tree.root_node();
+    let selection = expand_selection(root, &selection).unwrap_or(selection);
+    let node = exact_expression_at(root, &selection)?;
     if is_call_callee(node) {
         // A bare reference to the callee is a function reference, which WitcherScript has no values for.
         return None;
@@ -112,11 +115,17 @@ pub fn extract_variable(
 
     // A frozen top-of-block value is stale once a read is written before the expression re-evaluates:
     // before it textually, or anywhere in an enclosing loop body (which re-runs the expression).
-    let hoist_end = enclosing_loop_end(node, block).unwrap_or(selection.start);
+    let loop_end = enclosing_loop_end(node, block);
+    let hoist_end = loop_end.unwrap_or(selection.start);
+    let cannot_hoist_initializer = |window: Range<usize>| {
+        tracked_write_in_window(uri, document, db, node, block, window.clone(), callable.id)
+            || (reads_nonlocal_state(uri, document, db, node)
+                && overridable_call_precedes(node, block, window, loop_end.is_some()))
+    };
 
     match decl_site(source, block, &selection, options)? {
         DeclSite::AboveLeadingDecl { at, indent } => {
-            if tracked_write_in_window(uri, document, db, node, block, at..hoist_end, callable.id) {
+            if cannot_hoist_initializer(at..hoist_end) {
                 return None;
             }
             let stmt = declaration_statement(&name, &ty, expr, options);
@@ -128,8 +137,7 @@ pub fn extract_variable(
             ))
         }
         DeclSite::TopOfBlock { at, indent } => {
-            if !tracked_write_in_window(uri, document, db, node, block, at..hoist_end, callable.id)
-            {
+            if !cannot_hoist_initializer(at..hoist_end) {
                 let stmt = declaration_statement(&name, &ty, expr, options);
                 return Some(single_insert(
                     at,
@@ -139,9 +147,9 @@ pub fn extract_variable(
                 ));
             }
             // Hoisting the whole decl would skip a write; split it so the computation stays in place.
-            let statement = enclosing_block_statement(node)?;
-            let assign_at = statement.start_byte();
-            let window = assign_at..selection.start;
+            let slot = assign_slot(node)?;
+            let statement = slot.statement();
+            let window = statement.start_byte()..selection.start;
             if tracked_write_in_window(uri, document, db, node, block, window, callable.id) {
                 return None;
             }
@@ -149,11 +157,50 @@ pub fn extract_variable(
                 "\n{indent}{}",
                 uninitialised_declaration(&name, &ty, options)
             );
-            let assign_indent = line_indent(source, assign_at);
-            let assign = format!("{name} = {expr};\n{assign_indent}");
-            Some(split(at, decl, assign_at, assign, selection, name))
+            match slot {
+                AssignSlot::BeforeStatement(statement) => Some(split_before(
+                    at,
+                    decl,
+                    statement.start_byte(),
+                    source,
+                    name,
+                    expr,
+                    selection,
+                )),
+                AssignSlot::WrapBraceless(statement) => match pre_chain_head(statement, node) {
+                    Some(head) => Some(split_before(
+                        at,
+                        decl,
+                        head.start_byte(),
+                        source,
+                        name,
+                        expr,
+                        selection,
+                    )),
+                    None => Some(split_braceless(
+                        Splice {
+                            range: at..at,
+                            text: decl,
+                        },
+                        statement,
+                        expr,
+                        source,
+                        options,
+                        selection,
+                        name,
+                    )),
+                },
+            }
         }
     }
+}
+
+// Where `original` lands after the edits apply: shift it past every edit that ends at or before it.
+fn applied_offset(edits: &[Splice], original: usize) -> usize {
+    edits
+        .iter()
+        .filter(|s| s.range.end <= original)
+        .fold(original, |pos, s| pos + s.text.len() - s.range.len())
 }
 
 fn single_insert(
@@ -162,20 +209,22 @@ fn single_insert(
     selection: Range<usize>,
     name: String,
 ) -> VariableExtraction {
-    let name_anchor = selection.start;
+    let anchor = selection.start;
+    let edits = vec![
+        Splice {
+            range: at..at,
+            text,
+        },
+        Splice {
+            range: selection,
+            text: name.clone(),
+        },
+    ];
+    let cursor = applied_offset(&edits, anchor);
     VariableExtraction {
-        edits: vec![
-            Splice {
-                range: at..at,
-                text,
-            },
-            Splice {
-                range: selection,
-                text: name.clone(),
-            },
-        ],
+        edits,
         name,
-        name_anchor,
+        cursor,
     }
 }
 
@@ -187,24 +236,80 @@ fn split(
     selection: Range<usize>,
     name: String,
 ) -> VariableExtraction {
-    let name_anchor = selection.start;
+    let anchor = selection.start;
+    let edits = vec![
+        Splice {
+            range: decl_at..decl_at,
+            text: decl_text,
+        },
+        Splice {
+            range: assign_at..assign_at,
+            text: assign_text,
+        },
+        Splice {
+            range: selection,
+            text: name.clone(),
+        },
+    ];
+    let cursor = applied_offset(&edits, anchor);
+    VariableExtraction {
+        edits,
+        name,
+        cursor,
+    }
+}
+
+fn split_before(
+    decl_at: usize,
+    decl_text: String,
+    assign_at: usize,
+    source: &str,
+    name: String,
+    expr: &str,
+    selection: Range<usize>,
+) -> VariableExtraction {
+    let assign_indent = line_indent(source, assign_at);
+    let assign = format!("{name} = {expr};\n{assign_indent}");
+    split(decl_at, decl_text, assign_at, assign, selection, name)
+}
+
+// Wrap a braceless statement in a synthesised block; the whole region is one rendered replacement.
+fn split_braceless(
+    decl: Splice,
+    statement: Node,
+    expr: &str,
+    source: &str,
+    options: FormatOptions,
+    selection: Range<usize>,
+    name: String,
+) -> VariableExtraction {
+    let stmt_start = statement.start_byte();
+    let stmt_end = statement.end_byte();
+
+    let body = &source[stmt_start..stmt_end];
+    let rel = (selection.start - stmt_start)..(selection.end - stmt_start);
+
+    let indent = line_indent(source, statement.start_byte()).to_string();
+    let substituted = format!(
+        "{indent}{name} = {expr};\n{indent}{}{name}{}",
+        &body[..rel.start],
+        &body[rel.end..]
+    );
+    let block = format!("{{\n{}\n{indent}}}", indent_block(&substituted, &options));
+
+    // `decl` inserts above the block, we need to count to symbol loc
+    let body_indent = indent_unit_for(&options).len() + indent.len();
+    let cursor = stmt_start + decl.text.len() + "{\n".len() + body_indent;
     VariableExtraction {
         edits: vec![
+            decl,
             Splice {
-                range: decl_at..decl_at,
-                text: decl_text,
-            },
-            Splice {
-                range: assign_at..assign_at,
-                text: assign_text,
-            },
-            Splice {
-                range: selection,
-                text: name.clone(),
+                range: stmt_start..stmt_end,
+                text: block,
             },
         ],
         name,
-        name_anchor,
+        cursor,
     }
 }
 
@@ -233,19 +338,76 @@ fn exact_expression_at<'tree>(root: Node<'tree>, selection: &Range<usize>) -> Op
     }
 }
 
+// A selection landing on a structural boundary expands to the whole value rather than refusing.
+fn expand_selection(root: Node, selection: &Range<usize>) -> Option<Range<usize>> {
+    expand_through_logical_operator(root, selection)
+        .or_else(|| expand_through_postfix_chain(root, selection))
+}
+
+const POSTFIX_CHAIN_KINDS: &[&str] = &[
+    kinds::MEMBER_ACCESS_EXPR,
+    kinds::FUNC_CALL_EXPR,
+    kinds::ARRAY_EXPR,
+];
+
+// Promoting a touched method reference to its call yields a value, not an uncallable handle.
+fn expand_through_postfix_chain(root: Node, selection: &Range<usize>) -> Option<Range<usize>> {
+    let mut node = root.named_descendant_for_byte_range(selection.start, selection.end)?;
+    loop {
+        if POSTFIX_CHAIN_KINDS.contains(&node.kind())
+            && selection_touches_separator(node, selection)
+        {
+            return Some(promote_callee(node).byte_range());
+        }
+        node = node.parent()?;
+    }
+}
+
+fn selection_touches_separator(node: Node, selection: &Range<usize>) -> bool {
+    let mut cursor = node.walk();
+    node.children(&mut cursor).any(|child| {
+        !child.is_named()
+            && child.start_byte() < selection.end
+            && selection.start < child.end_byte()
+    })
+}
+
+fn promote_callee(node: Node) -> Node {
+    node.parent()
+        .filter(|parent| parent.kind() == kinds::FUNC_CALL_EXPR)
+        .filter(|parent| {
+            parent
+                .child_by_field_name(fields::FUNC)
+                .is_some_and(|func| func.id() == node.id())
+        })
+        .unwrap_or(node)
+}
+
+// Extracting both operands the touched `||`/`&&` joins keeps short-circuit evaluation intact.
+fn expand_through_logical_operator(root: Node, selection: &Range<usize>) -> Option<Range<usize>> {
+    let mut node = root.named_descendant_for_byte_range(selection.start, selection.end)?;
+    loop {
+        if node.kind() == kinds::BINARY_OP_EXPR && selection_touches_logical_op(node, selection) {
+            return Some(node.byte_range());
+        }
+        node = node.parent()?;
+    }
+}
+
+fn selection_touches_logical_op(binary: Node, selection: &Range<usize>) -> bool {
+    let Some(op) = binary.child_by_field_name(fields::OP) else {
+        return false;
+    };
+    matches!(op.kind(), kinds::BINARY_OP_OR | kinds::BINARY_OP_AND)
+        && op.start_byte() < selection.end
+        && selection.start < op.end_byte()
+}
+
 fn is_call_callee(node: Node) -> bool {
     node.parent()
         .filter(|parent| parent.kind() == kinds::FUNC_CALL_EXPR)
         .and_then(call_callee)
         .is_some_and(|callee| callee.id() == node.id())
-}
-
-fn enclosing_callable_block(node: Node) -> Option<Node> {
-    node_and_ancestors(node).find(|n| {
-        n.kind() == kinds::FUNC_BLOCK
-            && n.parent()
-                .is_some_and(|p| matches!(p.kind(), kinds::FUNC_DECL | kinds::EVENT_DECL))
-    })
 }
 
 fn declaration_statement(name: &str, ty: &Type, expr: &str, options: FormatOptions) -> String {
@@ -319,14 +481,54 @@ fn enclosing_loop_end(node: Node, block: Node) -> Option<usize> {
         .map(|loop_node| loop_node.end_byte())
 }
 
-// Nearest statement that is a direct child of a function block; None if the selection sits in a
-// braceless control-flow body (an assignment cannot be spliced there without synthesising a block).
-fn enclosing_block_statement(node: Node) -> Option<Node> {
+const BRACELESS_HOST_KINDS: &[&str] = &[
+    kinds::IF_STMT,
+    kinds::FOR_STMT,
+    kinds::WHILE_STMT,
+    kinds::DO_WHILE_STMT,
+];
+
+enum AssignSlot<'tree> {
+    BeforeStatement(Node<'tree>),
+    // Braceless control-flow body (or the inner `if` of an `else if`): hosting the assignment needs braces.
+    WrapBraceless(Node<'tree>),
+}
+
+impl<'tree> AssignSlot<'tree> {
+    fn statement(&self) -> Node<'tree> {
+        match self {
+            AssignSlot::BeforeStatement(s) | AssignSlot::WrapBraceless(s) => *s,
+        }
+    }
+}
+
+// Where the in-place split assignment lands. A braceless control-flow body interposes no func_block,
+// so the statement's parent being a control-flow node identifies the braces-needed case.
+fn assign_slot(node: Node) -> Option<AssignSlot> {
     let statement = node_and_ancestors(node).find(|n| STATEMENT_KINDS.contains(&n.kind()))?;
-    statement
-        .parent()
-        .filter(|parent| parent.kind() == kinds::FUNC_BLOCK)
-        .map(|_| statement)
+    let parent = statement.parent()?;
+    match parent.kind() {
+        kinds::FUNC_BLOCK => Some(AssignSlot::BeforeStatement(statement)),
+        k if BRACELESS_HOST_KINDS.contains(&k) => Some(AssignSlot::WrapBraceless(statement)),
+        _ => None,
+    }
+}
+
+// An else-if assignment can precede the chain's first `if` (no block needed) only if nothing reached
+// on the way - the extracted expression and every preceding condition - can mutate the reads.
+fn pre_chain_head<'tree>(statement: Node<'tree>, expr: Node) -> Option<Node<'tree>> {
+    let (head, preceding_conditions) = if_chain_above(statement)?;
+    if head.parent()?.kind() != kinds::FUNC_BLOCK {
+        return None;
+    }
+    if has_side_effect(expr) || preceding_conditions.iter().any(|c| has_side_effect(*c)) {
+        return None;
+    }
+    Some(head)
+}
+
+fn has_side_effect(node: Node) -> bool {
+    has_descendant_of_kind(node, &[kinds::FUNC_CALL_EXPR, kinds::ASSIGN_OP_EXPR])
 }
 
 fn name_base(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> String {
@@ -383,7 +585,7 @@ fn tracked_write_in_window(
         return false;
     }
     let mut writes = Vec::new();
-    collect_nodes_of_kinds(
+    collect_descendants_of_kind(
         block,
         &[kinds::ASSIGN_OP_EXPR, kinds::FUNC_CALL_EXPR],
         &mut writes,
@@ -402,6 +604,32 @@ fn tracked_write_in_window(
             .into_iter()
             .filter_map(write_target)
             .any(is_tracked_write),
+    })
+}
+
+// Any function/method may be redirected by @wrapMethod/@replaceMethod beyond our visibility, so a
+// call that can run before the expression could mutate the non-local state it reads.
+fn reads_nonlocal_state(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> bool {
+    if has_descendant_of_kind(node, &[kinds::FUNC_CALL_EXPR]) {
+        return true;
+    }
+    let mut idents = Vec::new();
+    collect_descendants_of_kind(node, &[kinds::IDENT], &mut idents);
+    idents.iter().any(|ident| {
+        resolve_definition_at_byte(uri, document, db, ident.start_byte())
+            .is_some_and(|def| def.symbol.kind == SymbolKind::Field)
+    })
+}
+
+// Calls in an earlier initializer run before our decl regardless, so only those from the insertion
+// point (window start, after the last leading var decl) up to the hoist end can change the reads.
+fn overridable_call_precedes(node: Node, block: Node, window: Range<usize>, in_loop: bool) -> bool {
+    let mut calls = Vec::new();
+    collect_descendants_of_kind(block, &[kinds::FUNC_CALL_EXPR], &mut calls);
+    calls.iter().any(|call| {
+        // A loop re-runs both branches, so the then/else exclusion only holds outside one.
+        window.contains(&call.start_byte())
+            && (in_loop || !mutually_exclusive_branches(*call, node))
     })
 }
 
@@ -433,7 +661,7 @@ fn selection_tracked_ids(
     callable: SymbolId,
 ) -> HashSet<SymbolId> {
     let mut idents = Vec::new();
-    collect_nodes_of_kinds(node, &[kinds::IDENT], &mut idents);
+    collect_descendants_of_kind(node, &[kinds::IDENT], &mut idents);
     idents
         .iter()
         .filter_map(|ident| resolved_write_tracked_id(uri, document, db, *ident, callable))
@@ -459,30 +687,6 @@ fn resolved_write_tracked_id(
         _ => false,
     };
     tracked.then_some(symbol.id)
-}
-
-fn collect_nodes_of_kinds<'tree>(root: Node<'tree>, kinds: &[&str], out: &mut Vec<Node<'tree>>) {
-    struct Collector<'a, 'tree> {
-        kinds: &'a [&'a str],
-        out: &'a mut Vec<Node<'tree>>,
-    }
-    impl<'tree> CstVisitor<'tree> for Collector<'_, 'tree> {
-        fn enter(&mut self, node: Node<'tree>) -> Visit {
-            if self.kinds.contains(&node.kind()) {
-                self.out.push(node);
-            }
-            Visit::Children
-        }
-    }
-    walk(root, &mut Collector { kinds, out });
-}
-
-fn lowercase_first(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(first) => first.to_lowercase().chain(chars).collect(),
-        None => String::new(),
-    }
 }
 
 fn unique_name(base: &str, document: &ParsedDocument, db: &SymbolDb, callable: &Symbol) -> String {

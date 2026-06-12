@@ -19,6 +19,22 @@ pub(crate) fn indent_unit_for(options: &FormatOptions) -> String {
     }
 }
 
+pub(crate) fn indent_block(block: &str, options: &FormatOptions) -> String {
+    let indent = indent_unit_for(options);
+    let mut out = String::with_capacity(block.len());
+
+    for (i, line) in block.lines().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        if !line.is_empty() {
+            out.push_str(&indent);
+            out.push_str(line);
+        }
+    }
+    out
+}
+
 pub(crate) fn line_indent(source: &str, byte: usize) -> &str {
     let line_start = source[..byte].rfind('\n').map_or(0, |nl| nl + 1);
     let prefix = &source[line_start..byte];
