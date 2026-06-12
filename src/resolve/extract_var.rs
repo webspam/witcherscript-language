@@ -4,10 +4,10 @@ use std::ops::Range;
 use tree_sitter::Node;
 
 use crate::cst::ancestors::node_and_ancestors;
+use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
 use crate::cst::grammar::{
     arg_slots, call_callee, callee_ident, member_access_member, write_target,
 };
-use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::formatter::{FormatOptions, indent_unit_for, line_indent};
@@ -544,7 +544,7 @@ fn if_chain_above(statement: Node) -> Option<(Node, Vec<Node>)> {
 }
 
 fn has_side_effect(node: Node) -> bool {
-    contains_any_kind(node, &[kinds::FUNC_CALL_EXPR, kinds::ASSIGN_OP_EXPR])
+    has_descendant_of_kind(node, &[kinds::FUNC_CALL_EXPR, kinds::ASSIGN_OP_EXPR])
 }
 
 fn name_base(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> String {
@@ -601,7 +601,7 @@ fn tracked_write_in_window(
         return false;
     }
     let mut writes = Vec::new();
-    collect_nodes_of_kinds(
+    collect_descendants_of_kind(
         block,
         &[kinds::ASSIGN_OP_EXPR, kinds::FUNC_CALL_EXPR],
         &mut writes,
@@ -626,11 +626,11 @@ fn tracked_write_in_window(
 // Any function/method may be redirected by @wrapMethod/@replaceMethod beyond our visibility, so a
 // call that can run before the expression could mutate the non-local state it reads.
 fn reads_nonlocal_state(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> bool {
-    if contains_any_kind(node, &[kinds::FUNC_CALL_EXPR]) {
+    if has_descendant_of_kind(node, &[kinds::FUNC_CALL_EXPR]) {
         return true;
     }
     let mut idents = Vec::new();
-    collect_nodes_of_kinds(node, &[kinds::IDENT], &mut idents);
+    collect_descendants_of_kind(node, &[kinds::IDENT], &mut idents);
     idents.iter().any(|ident| {
         resolve_definition_at_byte(uri, document, db, ident.start_byte())
             .is_some_and(|def| def.symbol.kind == SymbolKind::Field)
@@ -641,7 +641,7 @@ fn reads_nonlocal_state(uri: &str, document: &ParsedDocument, db: &SymbolDb, nod
 // point (window start, after the last leading var decl) up to the hoist end can change the reads.
 fn overridable_call_precedes(node: Node, block: Node, window: Range<usize>, in_loop: bool) -> bool {
     let mut calls = Vec::new();
-    collect_nodes_of_kinds(block, &[kinds::FUNC_CALL_EXPR], &mut calls);
+    collect_descendants_of_kind(block, &[kinds::FUNC_CALL_EXPR], &mut calls);
     calls.iter().any(|call| {
         window.contains(&call.start_byte())
             && (in_loop || !mutually_exclusive_branches(*call, node))
@@ -709,7 +709,7 @@ fn selection_tracked_ids(
     callable: SymbolId,
 ) -> HashSet<SymbolId> {
     let mut idents = Vec::new();
-    collect_nodes_of_kinds(node, &[kinds::IDENT], &mut idents);
+    collect_descendants_of_kind(node, &[kinds::IDENT], &mut idents);
     idents
         .iter()
         .filter_map(|ident| resolved_write_tracked_id(uri, document, db, *ident, callable))
@@ -735,44 +735,6 @@ fn resolved_write_tracked_id(
         _ => false,
     };
     tracked.then_some(symbol.id)
-}
-
-fn collect_nodes_of_kinds<'tree>(root: Node<'tree>, kinds: &[&str], out: &mut Vec<Node<'tree>>) {
-    struct Collector<'a, 'tree> {
-        kinds: &'a [&'a str],
-        out: &'a mut Vec<Node<'tree>>,
-    }
-    impl<'tree> CstVisitor<'tree> for Collector<'_, 'tree> {
-        fn enter(&mut self, node: Node<'tree>) -> Visit {
-            if self.kinds.contains(&node.kind()) {
-                self.out.push(node);
-            }
-            Visit::Children
-        }
-    }
-    walk(root, &mut Collector { kinds, out });
-}
-
-fn contains_any_kind(root: Node, kinds: &[&str]) -> bool {
-    struct Finder<'a> {
-        kinds: &'a [&'a str],
-        found: bool,
-    }
-    impl<'tree> CstVisitor<'tree> for Finder<'_> {
-        fn enter(&mut self, node: Node<'tree>) -> Visit {
-            if self.kinds.contains(&node.kind()) {
-                self.found = true;
-                return Visit::SkipChildren;
-            }
-            Visit::Children
-        }
-    }
-    let mut finder = Finder {
-        kinds,
-        found: false,
-    };
-    walk(root, &mut finder);
-    finder.found
 }
 
 fn lowercase_first(s: &str) -> String {

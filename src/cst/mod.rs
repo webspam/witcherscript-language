@@ -1,4 +1,5 @@
 pub(crate) mod ancestors;
+pub(crate) mod descendants;
 pub(crate) mod fields;
 pub(crate) mod grammar;
 pub(crate) mod kinds;
