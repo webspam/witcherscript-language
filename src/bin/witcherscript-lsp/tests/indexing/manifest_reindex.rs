@@ -4,7 +4,8 @@ use lsp_types::{FileChangeType, FileEvent, Url};
 
 use crate::config::{Config, DiagnosticsScope};
 
-use super::legacy_helpers::{LocalTempDir, make_backend};
+use super::legacy_helpers::LocalTempDir;
+use crate::tests::support::make_backend;
 
 fn write_manifest(temp: &std::path::Path, rel_dir: &str, scripts_subdir: &str) -> Url {
     let dir = temp.join(rel_dir);

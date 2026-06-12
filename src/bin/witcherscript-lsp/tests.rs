@@ -10,6 +10,7 @@ mod indexing;
 mod inlay_hints;
 mod jsonrpc_client;
 mod refactoring;
+mod support;
 
 #[test]
 fn release_profile_does_not_abort_on_panic() {
