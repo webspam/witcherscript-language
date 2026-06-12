@@ -89,7 +89,7 @@ client extension to connect to `127.0.0.1:9257` instead of spawning the binary.
 | Semantic tokens | Full-document semantic highlighting; legend exposed in `initialize` |
 | Inlay hints | Parameter-name labels at call sites (`out` parameters shown as `out name:`); honours the requested range and skips a non-`out` argument that already spells the parameter name. On by default; toggle with `witcherscript.inlayHints` |
 | Document formatting | Pretty-prints whole documents using `witcherscript.formatter.*` settings |
-| Code actions | Quick fix for `base_script_conflict`; toggle `switch` cases and `if`/`else` chains between inline and block layout; extract a selected expression to a new local variable (declared at the top of the enclosing function, rename offered immediately) |
+| Code actions | Quick fix for `base_script_conflict`; toggle `switch` cases and `if`/`else` chains between inline and block layout; extract a selected expression to a new local variable (declared at the top of the enclosing function, rename offered immediately); extract a selected expression or run of statements to a new global function (locals in use become parameters, modified locals become `out` parameters or the return value, `this` and field access arrive through a receiver parameter, rename offered immediately) |
 | Code lens | On legacy override files, a "game definition" lens above each top-level symbol that shadows a base game symbol; jumps to the vanilla definition. Gated by `witcherscript.codeLens.overriddenSymbols`. Optionally, an "N references" lens above declarations and class methods; clicking it lists the references. Gated by `witcherscript.codeLens.references` |
 
 On startup the server indexes every `.ws` file in the workspace root(s), then keeps
