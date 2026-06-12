@@ -8,6 +8,7 @@ mod completion;
 mod completion_catalog;
 mod definition;
 mod document_highlight;
+mod extract_func;
 mod extract_var;
 mod inference;
 mod inlay_hints;
@@ -46,6 +47,7 @@ pub use definition::{
     resolve_definition_at_byte, resolve_definition_at_ident,
 };
 pub use document_highlight::{HighlightKind, document_highlights};
+pub use extract_func::extract_function;
 pub use extract_var::{Extraction, Splice, extract_variable};
 pub(crate) use inference::infer_type;
 pub(crate) use inference::infer_type_memo;

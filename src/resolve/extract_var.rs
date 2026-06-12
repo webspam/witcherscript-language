@@ -635,7 +635,7 @@ fn overridable_call_precedes(node: Node, block: Node, window: Range<usize>, in_l
     })
 }
 
-fn out_args<'tree>(
+pub(super) fn out_args<'tree>(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
