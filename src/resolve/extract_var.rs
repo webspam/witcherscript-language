@@ -352,6 +352,24 @@ pub(super) fn exact_expression_at<'tree>(
 pub(super) fn expand_selection(root: Node, selection: &Range<usize>) -> Option<Range<usize>> {
     expand_through_logical_operator(root, selection)
         .or_else(|| expand_through_postfix_chain(root, selection))
+        .or_else(|| expand_through_new_expr(root, selection))
+}
+
+// In `new T in obj`, only the lifetime object is a standalone value; the rest expands to the whole.
+fn expand_through_new_expr(root: Node, selection: &Range<usize>) -> Option<Range<usize>> {
+    let mut node = root.named_descendant_for_byte_range(selection.start, selection.end)?;
+    loop {
+        if node.kind() == kinds::NEW_EXPR && !selection_within_lifetime_obj(node, selection) {
+            return Some(node.byte_range());
+        }
+        node = node.parent()?;
+    }
+}
+
+fn selection_within_lifetime_obj(new_expr: Node, selection: &Range<usize>) -> bool {
+    new_expr
+        .child_by_field_name(fields::LIFETIME_OBJ)
+        .is_some_and(|obj| obj.start_byte() <= selection.start && selection.end <= obj.end_byte())
 }
 
 const POSTFIX_CHAIN_KINDS: &[&str] = &[

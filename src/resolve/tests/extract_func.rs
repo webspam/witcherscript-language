@@ -594,6 +594,16 @@ fn out_parameter_and_return_value_combine() {
 }
 
 #[test]
+fn new_expr_type_selection_expands_to_whole_construction() {
+    let src = "function F(entity : CGuiObject) {\n    var rewriter : CGuiObject;\n    rewriter = new CR4HudModule in entity;\n}\n";
+    assert_eq!(
+        applied(src, "CR4HudModule"),
+        applied(src, "new CR4HudModule in entity"),
+        "selecting the type expands to the whole new-expression"
+    );
+}
+
+#[test]
 fn expression_extraction_ignores_trailing_semicolon() {
     let src = "function F() {\n    var gameStarted : bool;\n    gameStarted = true;\n}\n";
     assert_eq!(
