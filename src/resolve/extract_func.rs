@@ -493,7 +493,7 @@ fn collect_captures(
                         name: definition.symbol.name.clone(),
                         ty,
                         always_live: definition.symbol.kind == SymbolKind::Parameter
-                            && definition.symbol.is_out,
+                            && definition.symbol.specifiers.is_out(),
                         reads: Vec::new(),
                         writes: Vec::new(),
                         dominating_write_ends: Vec::new(),
