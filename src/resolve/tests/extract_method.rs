@@ -111,8 +111,48 @@ fn private_method_call_is_kept_verbatim() {
     .assert_eq(&applied(src, "Secret() + 1"));
 }
 
-// Statement-level, not expression: a `super` expression's type is unresolved, so both extracts
-// refuse it as a value; moving it verbatim only needs no type, which is the method's advantage.
+#[test]
+fn super_call_expression_extracts_to_a_typed_method() {
+    let src = "class B {\n    function Hit() : int { return 1; }\n}\nclass C extends B {\n    function M() {\n        var r : int;\n        r = super.Hit() + 1;\n    }\n}\n";
+    expect![[r"
+        class B {
+            function Hit() : int { return 1; }
+        }
+        class C extends B {
+            function M() {
+                var r : int;
+                r = NewMethod();
+            }
+
+            private function NewMethod() : int {
+                return super.Hit() + 1;
+            }
+        }
+    "]]
+    .assert_eq(&applied(src, "super.Hit() + 1"));
+}
+
+#[test]
+fn parent_call_expression_extracts_to_a_typed_method() {
+    let src = "class Owner {\n    function Ping() : int { return 1; }\n}\nstate S in Owner {\n    function M() {\n        var r : int;\n        r = parent.Ping() + 1;\n    }\n}\n";
+    expect![[r"
+        class Owner {
+            function Ping() : int { return 1; }
+        }
+        state S in Owner {
+            function M() {
+                var r : int;
+                r = NewMethod();
+            }
+
+            private function NewMethod() : int {
+                return parent.Ping() + 1;
+            }
+        }
+    "]]
+    .assert_eq(&applied(src, "parent.Ping() + 1"));
+}
+
 #[test]
 fn statement_run_with_super_and_sibling_call_moves_verbatim() {
     let src = "class B {\n    function Setup() {}\n}\nclass C extends B {\n    function M() {\n        super.Setup();\n        DoMore();\n    }\n    function DoMore() {}\n}\n";

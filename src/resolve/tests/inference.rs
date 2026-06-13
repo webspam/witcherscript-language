@@ -206,3 +206,23 @@ fn ternary_stays_unknown() {
         "ternary is not valid WitcherScript; inference must stay unknown"
     );
 }
+
+#[test]
+fn super_member_call_infers_base_return_type() {
+    let fixture = "class B {\n    function Hit() : int { return 1; }\n}\nclass C extends B {\n    function M() {\n        var r : int;\n        r = super.Hit();\n    }\n}\n";
+    assert_eq!(
+        inferred(fixture, "super.Hit()"),
+        Type::Primitive(Primitive::Int),
+        "super resolves to the base class, so super.Hit() is the base method's return type"
+    );
+}
+
+#[test]
+fn parent_member_call_infers_owner_return_type() {
+    let fixture = "class Owner {\n    function Ping() : int { return 1; }\n}\nstate S in Owner {\n    function M() {\n        var r : int;\n        r = parent.Ping();\n    }\n}\n";
+    assert_eq!(
+        inferred(fixture, "parent.Ping()"),
+        Type::Primitive(Primitive::Int),
+        "parent resolves to the owner class, so parent.Ping() is the owner method's return type"
+    );
+}
