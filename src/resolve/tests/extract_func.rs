@@ -466,6 +466,44 @@ fn call_statement_extraction_ignores_trailing_semicolon() {
     );
 }
 
+const ASSIGNMENT_SRC: &str = "class C {\n    function IsEnabled() : bool { return true; }\n    function M() {\n        var pointLight : C;\n        var wasEnabled : bool;\n        wasEnabled = pointLight.IsEnabled();\n        Use(wasEnabled);\n    }\n}\nfunction Use(b : bool) {}\n";
+
+#[test]
+fn assignment_statement_extracts_without_trailing_semicolon() {
+    expect![[r"
+        class C {
+            function IsEnabled() : bool { return true; }
+            function M() {
+                var pointLight : C;
+                var wasEnabled : bool;
+                wasEnabled = NewFunction(pointLight);
+                Use(wasEnabled);
+            }
+        }
+
+        function NewFunction(pointLight : C) : bool {
+            var wasEnabled : bool;
+            wasEnabled = pointLight.IsEnabled();
+            return wasEnabled;
+        }
+
+        function Use(b : bool) {}
+    "]]
+    .assert_eq(&applied(
+        ASSIGNMENT_SRC,
+        "wasEnabled = pointLight.IsEnabled()",
+    ));
+}
+
+#[test]
+fn assignment_statement_extraction_ignores_trailing_semicolon() {
+    assert_eq!(
+        applied(ASSIGNMENT_SRC, "wasEnabled = pointLight.IsEnabled()"),
+        applied(ASSIGNMENT_SRC, "wasEnabled = pointLight.IsEnabled();"),
+        "the trailing semicolon must not change an assignment-statement extraction"
+    );
+}
+
 #[test]
 fn single_unconditional_output_is_returned() {
     let src = "function Use(x : int) {}\nfunction F() {\n    var x : int;\n    var a : int;\n    a = 2;\n    x = a + 3;\n    Use(x);\n}\n";

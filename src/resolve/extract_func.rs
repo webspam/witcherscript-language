@@ -243,9 +243,10 @@ fn statement_run<'tree>(
         if !child.is_named() {
             continue;
         }
-        let inside = selection.start <= child.start_byte() && child.end_byte() <= selection.end;
+        let starts_within = selection.start <= child.start_byte();
+        let content_covered = statement_content_end(child) <= selection.end;
         let overlaps = child.start_byte() < selection.end && selection.start < child.end_byte();
-        if inside {
+        if starts_within && content_covered {
             stmts.push(child);
         } else if overlaps {
             // A partially covered statement is ambiguous; expression mode handles sub-statement picks.
@@ -259,12 +260,22 @@ fn statement_run<'tree>(
         return None;
     }
     let snapped = stmts.first()?.start_byte()..stmts.last()?.end_byte();
-    let leading = &source[selection.start..snapped.start];
-    let trailing = &source[snapped.end..selection.end];
-    if !leading.trim().is_empty() || !trailing.trim().is_empty() {
+    if !source[selection.start..snapped.start].trim().is_empty() {
+        return None;
+    }
+    // The selection may stop before the run's trailing `;`; only text reaching past it disqualifies.
+    if selection.end > snapped.end && !source[snapped.end..selection.end].trim().is_empty() {
         return None;
     }
     Some((block, stmts, snapped))
+}
+
+// A trailing `;` is not content, so a selection that stops before it still covers the statement.
+fn statement_content_end(stmt: Node) -> usize {
+    let mut cursor = stmt.walk();
+    stmt.named_children(&mut cursor)
+        .last()
+        .map_or(stmt.end_byte(), |child| child.end_byte())
 }
 
 fn has_escaping_control_flow(stmts: &[Node], range: &Range<usize>) -> bool {
