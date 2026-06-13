@@ -275,6 +275,10 @@ fn returns_none_for_empty_selection() {
     "function F() {\n    var r : int;\n    r = Take(1);\n}\nfunction Take(amount : int) : int { return amount; }\n",
     "Take"
 )]
+#[case::whole_expression_statement(
+    "class C {\n    function BlockedBefore() : bool { return true; }\n    function M() {\n        var was : C;\n        was.BlockedBefore();\n    }\n}\n",
+    "was.BlockedBefore()"
+)]
 fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
     assert!(
         refused(src, needle),

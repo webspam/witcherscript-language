@@ -100,8 +100,14 @@ pub fn extract_variable(
     let source = &document.source;
     let selection = trim_selection(source, selection)?;
     let root = document.tree.root_node();
-    let selection = expand_selection(root, &selection).unwrap_or(selection);
-    let node = exact_expression_at(root, &selection)?;
+    let SelectionKind::Expression {
+        node,
+        range: selection,
+    } = classify_selection(root, &selection)
+    else {
+        // A whole expression statement is not a value to bind; replacing it would leave a bare `name;`.
+        return None;
+    };
     if is_call_callee(node) {
         // A bare reference to the callee is a function reference, which WitcherScript has no values for.
         return None;
