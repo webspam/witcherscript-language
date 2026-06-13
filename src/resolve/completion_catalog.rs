@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::symbols::SymbolKind;
+use crate::symbols::{FuncFlavour, SymbolKind};
 
 use super::Definition;
 use super::workspace_index::ObservedKey;
@@ -26,7 +26,10 @@ pub fn build_callables(
         .flat_map(|defs| defs.iter())
         .filter(|d| {
             matches!(d.symbol.kind, SymbolKind::Function)
-                && !matches!(d.symbol.flavour.as_deref(), Some("exec" | "quest"))
+                && !matches!(
+                    d.symbol.flavour,
+                    Some(FuncFlavour::Exec | FuncFlavour::Quest)
+                )
         })
         .cloned()
         .collect()

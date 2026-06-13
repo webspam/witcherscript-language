@@ -171,10 +171,10 @@ fn call_site_of(node: Node, byte_offset: usize) -> Option<CallSite> {
 }
 
 fn push_parameter(label: &mut String, param: &Symbol, colon: &str) {
-    if param.is_optional {
+    if param.specifiers.is_optional() {
         label.push_str("optional ");
     }
-    if param.is_out {
+    if param.specifiers.is_out() {
         label.push_str("out ");
     }
     label.push_str(&param.name);
@@ -270,8 +270,7 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb) -> String {
                 );
                 let flavour_prefix = symbol
                     .flavour
-                    .as_deref()
-                    .map(|f| format!("{f} "))
+                    .map(|f| format!("{} ", f.as_keyword()))
                     .unwrap_or_default();
                 lines.push(format!("{flavour_prefix}{label} {}{sig}", symbol.name));
             } else if let Some(type_annotation) = &symbol.type_annotation {

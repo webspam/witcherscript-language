@@ -6,7 +6,10 @@ use crate::cst::{fields, kinds};
 use crate::line_index::LineIndex;
 use crate::types::Type;
 
-use super::types::{AccessLevel, Annotation, DocumentSymbols, Symbol, SymbolId, SymbolKind};
+use super::types::{
+    AccessLevel, Annotation, DocumentSymbols, FuncFlavour, Specifier, Specifiers, Symbol, SymbolId,
+    SymbolKind,
+};
 use super::util::{base_type, direct_child_text, node_text};
 
 pub fn extract_symbols(root: Node, source: &str, line_index: &LineIndex) -> DocumentSymbols {
@@ -52,12 +55,9 @@ struct SymbolSpec {
     declaration_text: Option<String>,
     base_class: Option<String>,
     owner_class: Option<String>,
-    flavour: Option<String>,
+    flavour: Option<FuncFlavour>,
     access: AccessLevel,
-    is_optional: bool,
-    is_out: bool,
-    is_state_machine: bool,
-    is_abstract: bool,
+    specifiers: Specifiers,
 }
 
 impl<'tree> CstVisitor<'tree> for SymbolExtractor<'_> {
@@ -219,22 +219,8 @@ impl<'a> SymbolExtractor<'a> {
             return Visit::Children;
         };
         let base_class = base_type(node, self.source);
-        let (is_state_machine, is_abstract) = {
-            let mut c = node.walk();
-            let mut sm = false;
-            let mut ab = false;
-            for child in node.children(&mut c) {
-                if child.kind() != kinds::SPECIFIER {
-                    continue;
-                }
-                match &self.source[child.start_byte()..child.end_byte()] {
-                    "statemachine" => sm = true,
-                    "abstract" => ab = true,
-                    _ => {}
-                }
-            }
-            (sm, ab)
-        };
+        // Type declarations keep the default public access; only their flag specifiers matter.
+        let (_, specifiers) = self.specifiers_of(node);
         let id = self.push_symbol(
             node,
             name_node,
@@ -243,8 +229,7 @@ impl<'a> SymbolExtractor<'a> {
                 container,
                 annotations,
                 base_class,
-                is_state_machine,
-                is_abstract,
+                specifiers,
                 ..Default::default()
             },
         );
@@ -337,9 +322,9 @@ impl<'a> SymbolExtractor<'a> {
         };
         let type_annotation = direct_child_text(node, kinds::TYPE_ANNOT, self.source)
             .map(|t| Type::from_annotation(&t));
-        let flavour =
-            first_child_kind(node, kinds::FUNC_FLAVOUR).map(|n| node_text(n, self.source));
-        let access = self.node_access_level(node);
+        let flavour = first_child_kind(node, kinds::FUNC_FLAVOUR)
+            .and_then(|n| FuncFlavour::from_keyword(&node_text(n, self.source)));
+        let (access, specifiers) = self.specifiers_of(node);
         let id = self.push_symbol(
             node,
             name_node,
@@ -350,6 +335,7 @@ impl<'a> SymbolExtractor<'a> {
                 type_annotation,
                 flavour,
                 access,
+                specifiers,
                 ..Default::default()
             },
         );
@@ -390,23 +376,7 @@ impl<'a> SymbolExtractor<'a> {
         } else {
             None
         };
-        let access = self.node_access_level(node);
-        let is_optional = {
-            let mut c = node.walk();
-
-            node.children(&mut c).any(|child| {
-                child.kind() == kinds::SPECIFIER
-                    && &self.source[child.start_byte()..child.end_byte()] == "optional"
-            })
-        };
-        let is_out = {
-            let mut c = node.walk();
-
-            node.children(&mut c).any(|child| {
-                child.kind() == kinds::SPECIFIER
-                    && &self.source[child.start_byte()..child.end_byte()] == "out"
-            })
-        };
+        let (access, specifiers) = self.specifiers_of(node);
         let mut cursor = node.walk();
         let names_field = if node.kind() == kinds::AUTOBIND_DECL {
             fields::NAME
@@ -426,8 +396,7 @@ impl<'a> SymbolExtractor<'a> {
                         type_annotation: type_annotation.clone(),
                         declaration_text: declaration_text.clone(),
                         access,
-                        is_optional,
-                        is_out,
+                        specifiers,
                         ..Default::default()
                     },
                 );
@@ -490,24 +459,29 @@ impl<'a> SymbolExtractor<'a> {
             flavour: spec.flavour,
             annotations: spec.annotations,
             access: spec.access,
-            is_optional: spec.is_optional,
-            is_out: spec.is_out,
-            is_state_machine: spec.is_state_machine,
-            is_abstract: spec.is_abstract,
+            specifiers: spec.specifiers,
         })
     }
 
-    fn node_access_level(&self, node: Node) -> AccessLevel {
+    fn specifiers_of(&self, node: Node) -> (AccessLevel, Specifiers) {
+        let mut access = AccessLevel::Public;
+        let mut specifiers = Specifiers::default();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == kinds::SPECIFIER {
-                match &self.source[child.start_byte()..child.end_byte()] {
-                    "private" => return AccessLevel::Private,
-                    "protected" => return AccessLevel::Protected,
-                    _ => {}
+            if child.kind() != kinds::SPECIFIER {
+                continue;
+            }
+            match &self.source[child.start_byte()..child.end_byte()] {
+                "private" => access = AccessLevel::Private,
+                "protected" => access = AccessLevel::Protected,
+                "public" => access = AccessLevel::Public,
+                other => {
+                    if let Some(specifier) = Specifier::from_keyword(other) {
+                        specifiers.insert(specifier);
+                    }
                 }
             }
         }
-        AccessLevel::Public
+        (access, specifiers)
     }
 }

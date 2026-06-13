@@ -33,7 +33,7 @@ fn parameters_of_top_level(
     let params: Vec<(String, bool)> = db
         .display_parameters_of(&def)
         .into_iter()
-        .map(|p| (p.name, p.is_optional))
+        .map(|p| (p.name, p.specifiers.is_optional()))
         .collect();
     let expected: Vec<(String, bool)> = expected
         .iter()

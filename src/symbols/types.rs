@@ -6,12 +6,165 @@ use crate::types::Type;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SymbolId(pub usize);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub enum AccessLevel {
     Private,
     Protected,
     #[default]
     Public,
+}
+
+impl AccessLevel {
+    /// `None` for the default `Public`; editors omit the redundant keyword.
+    pub fn as_keyword(self) -> Option<&'static str> {
+        match self {
+            AccessLevel::Private => Some("private"),
+            AccessLevel::Protected => Some("protected"),
+            AccessLevel::Public => None,
+        }
+    }
+}
+
+/// A function flavour keyword (`func_flavour` in the grammar); at most one per declaration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FuncFlavour {
+    Cleanup,
+    Entry,
+    Exec,
+    Quest,
+    Reward,
+    Storyscene,
+    Timer,
+}
+
+impl FuncFlavour {
+    pub fn from_keyword(keyword: &str) -> Option<Self> {
+        Some(match keyword {
+            "cleanup" => Self::Cleanup,
+            "entry" => Self::Entry,
+            "exec" => Self::Exec,
+            "quest" => Self::Quest,
+            "reward" => Self::Reward,
+            "storyscene" => Self::Storyscene,
+            "timer" => Self::Timer,
+            _ => return None,
+        })
+    }
+
+    pub fn as_keyword(self) -> &'static str {
+        match self {
+            Self::Cleanup => "cleanup",
+            Self::Entry => "entry",
+            Self::Exec => "exec",
+            Self::Quest => "quest",
+            Self::Reward => "reward",
+            Self::Storyscene => "storyscene",
+            Self::Timer => "timer",
+        }
+    }
+}
+
+/// A non-access `specifier` keyword. Access (`private`/`protected`/`public`) is modelled
+/// separately as [`AccessLevel`] because it is an ordered visibility, not a flag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Specifier {
+    Import,
+    Final,
+    Latent,
+    Abstract,
+    Statemachine,
+    Editable,
+    Saved,
+    Const,
+    Inlined,
+    Optional,
+    Out,
+}
+
+impl Specifier {
+    pub fn from_keyword(keyword: &str) -> Option<Self> {
+        Some(match keyword {
+            "import" => Self::Import,
+            "final" => Self::Final,
+            "latent" => Self::Latent,
+            "abstract" => Self::Abstract,
+            "statemachine" => Self::Statemachine,
+            "editable" => Self::Editable,
+            "saved" => Self::Saved,
+            "const" => Self::Const,
+            "inlined" => Self::Inlined,
+            "optional" => Self::Optional,
+            "out" => Self::Out,
+            _ => return None,
+        })
+    }
+
+    pub fn as_keyword(self) -> &'static str {
+        match self {
+            Self::Import => "import",
+            Self::Final => "final",
+            Self::Latent => "latent",
+            Self::Abstract => "abstract",
+            Self::Statemachine => "statemachine",
+            Self::Editable => "editable",
+            Self::Saved => "saved",
+            Self::Const => "const",
+            Self::Inlined => "inlined",
+            Self::Optional => "optional",
+            Self::Out => "out",
+        }
+    }
+}
+
+/// The set of non-access specifiers on one declaration, as a bitset over [`Specifier`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct Specifiers(u16);
+
+impl Specifiers {
+    /// Canonical render order; only specifiers actually present are yielded by [`Self::iter`].
+    const RENDER_ORDER: [Specifier; 11] = [
+        Specifier::Import,
+        Specifier::Final,
+        Specifier::Latent,
+        Specifier::Abstract,
+        Specifier::Statemachine,
+        Specifier::Editable,
+        Specifier::Saved,
+        Specifier::Const,
+        Specifier::Inlined,
+        Specifier::Optional,
+        Specifier::Out,
+    ];
+
+    pub fn insert(&mut self, specifier: Specifier) {
+        self.0 |= 1 << specifier as u16;
+    }
+
+    pub fn contains(self, specifier: Specifier) -> bool {
+        self.0 & (1 << specifier as u16) != 0
+    }
+
+    pub fn iter(self) -> impl Iterator<Item = Specifier> {
+        Self::RENDER_ORDER
+            .into_iter()
+            .filter(move |specifier| self.contains(*specifier))
+    }
+
+    pub fn is_optional(self) -> bool {
+        self.contains(Specifier::Optional)
+    }
+
+    pub fn is_out(self) -> bool {
+        self.contains(Specifier::Out)
+    }
+
+    pub fn is_abstract(self) -> bool {
+        self.contains(Specifier::Abstract)
+    }
+
+    pub fn is_state_machine(self) -> bool {
+        self.contains(Specifier::Statemachine)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,13 +253,10 @@ pub struct Symbol {
     pub declaration_text: Option<String>,
     pub base_class: Option<String>,
     pub owner_class: Option<String>,
-    pub flavour: Option<String>,
+    pub flavour: Option<FuncFlavour>,
     pub annotations: Vec<Annotation>,
     pub access: AccessLevel,
-    pub is_optional: bool,
-    pub is_out: bool,
-    pub is_state_machine: bool,
-    pub is_abstract: bool,
+    pub specifiers: Specifiers,
 }
 
 impl Symbol {

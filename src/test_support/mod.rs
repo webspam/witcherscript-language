@@ -6,7 +6,7 @@ use crate::document::{ParsedDocument, parse_document};
 use crate::line_index::{SourcePosition, SourceRange};
 use crate::resolve::{Definition, SymbolDb, WorkspaceIndex};
 use crate::script_env::{ScriptEnvironment, ScriptGlobal};
-use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+use crate::symbols::{AccessLevel, Specifiers, Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
 
 pub struct TestDb {
@@ -132,10 +132,7 @@ pub fn script_env(name: &str, type_name: &str) -> ScriptEnvironment {
             flavour: None,
             annotations: Vec::new(),
             access: AccessLevel::Public,
-            is_optional: false,
-            is_out: false,
-            is_state_machine: false,
-            is_abstract: false,
+            specifiers: Specifiers::default(),
         },
     }])
 }

@@ -85,7 +85,7 @@ impl Walk<'_, '_> {
         };
         for (param, arg) in params.iter().zip(slots.iter()) {
             // Suppress a redundant name echo, except for `out` params whose write-through is the point.
-            if !param.is_out
+            if !param.specifiers.is_out()
                 && arg.kind() == kinds::IDENT
                 && node_text(*arg, &self.document.source) == param.name
             {
@@ -95,7 +95,7 @@ impl Walk<'_, '_> {
                 .document
                 .line_index
                 .byte_to_position(&self.document.source, arg.start_byte());
-            let label = if param.is_out {
+            let label = if param.specifiers.is_out() {
                 format!("out {}:", param.name)
             } else {
                 format!("{}:", param.name)
