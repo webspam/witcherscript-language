@@ -5,7 +5,7 @@ use tree_sitter::Node;
 
 use crate::cst::ancestors::{enclosing_callable_block, find_ancestor_of_kind, node_and_ancestors};
 use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
-use crate::cst::grammar::{call_callee, member_access_member, write_target};
+use crate::cst::grammar::{member_access_member, write_target};
 use crate::cst::nav::first_named_child;
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
@@ -17,8 +17,8 @@ use crate::types::Type;
 use super::Definition;
 use super::definition::{definition_key, resolve_definition_at_byte};
 use super::extract_var::{
-    CALLABLE_KINDS, Extraction, SelectionKind, Splice, applied_offset, apply_splices,
-    classify_selection, is_call_callee, out_args, trim_selection,
+    CALLABLE_KINDS, Extraction, SelectionKind, Splice, WriteSite, applied_offset, apply_splices,
+    classify_selection, is_call_callee, trim_selection, write_sites,
 };
 use super::inference::{TypeContext, enclosing_type_context, infer_type};
 use super::symbol_db::SymbolDb;
@@ -606,33 +606,13 @@ fn detect_promoted_writes(ctx: &ResolveCtx, roots: &[Node], promoted: &mut [Prom
     if promoted.is_empty() {
         return;
     }
-    let mut sites = Vec::new();
-    for root in roots {
-        collect_descendants_of_kind(
-            *root,
-            &[kinds::ASSIGN_OP_EXPR, kinds::FUNC_CALL_EXPR],
-            &mut sites,
-        );
-    }
-    for site in sites {
-        if site.kind() == kinds::ASSIGN_OP_EXPR {
-            let Some(left) = site.child_by_field_name(fields::LEFT) else {
-                continue;
-            };
-            if let Some(target) = write_target(left) {
-                mark_field_written(ctx, target, promoted, false);
+    for write in write_sites(ctx.uri, ctx.document, ctx.db, roots) {
+        match write {
+            WriteSite::AssignTarget(node) | WriteSite::OutArg(node) => {
+                mark_field_written(ctx, node, promoted, false);
             }
-            if let Some(base) = lvalue_base_ident(left) {
-                mark_field_written(ctx, base, promoted, true);
-            }
-        } else {
-            for arg in out_args(ctx.uri, ctx.document, ctx.db, site) {
-                if let Some(target) = write_target(arg) {
-                    mark_field_written(ctx, target, promoted, false);
-                }
-            }
-            if let Some(base) = method_call_receiver_base(site) {
-                mark_field_written(ctx, base, promoted, true);
+            WriteSite::AssignBase(node) | WriteSite::ReceiverBase(node) => {
+                mark_field_written(ctx, node, promoted, true);
             }
         }
     }
@@ -751,34 +731,14 @@ fn unconditional_statement_end(assign: Node, run_block: Option<Node>) -> Option<
 }
 
 fn record_indirect_writes(ctx: &ResolveCtx, roots: &[Node], locals: &mut [CapturedLocal]) {
-    let mut sites = Vec::new();
-    for root in roots {
-        collect_descendants_of_kind(
-            *root,
-            &[kinds::ASSIGN_OP_EXPR, kinds::FUNC_CALL_EXPR],
-            &mut sites,
-        );
-    }
-    for site in sites {
-        if site.kind() == kinds::ASSIGN_OP_EXPR {
-            let Some(left) = site.child_by_field_name(fields::LEFT) else {
-                continue;
-            };
-            // `pos.x = 1` on a struct local writes the value itself, not a shared object.
-            if let (Some(target), Some(base)) = (write_target(left), lvalue_base_ident(left))
-                && base.id() != target.id()
-            {
-                record_value_type_write(ctx, base, locals);
-            }
-        } else {
-            for arg in out_args(ctx.uri, ctx.document, ctx.db, site) {
-                if let Some(target) = write_target(arg) {
-                    record_write(ctx, target, locals);
-                }
-            }
-            // Array methods mutate in place; a value-param copy would swallow the mutation.
-            if let Some(base) = method_call_receiver_base(site) {
-                record_value_type_write(ctx, base, locals);
+    for write in write_sites(ctx.uri, ctx.document, ctx.db, roots) {
+        match write {
+            // The direct assignment target's read/write is recorded from the reference itself.
+            WriteSite::AssignTarget(_) => {}
+            WriteSite::OutArg(node) => record_write(ctx, node, locals),
+            // A path base or method receiver mutates a value type in place, not a shared handle.
+            WriteSite::AssignBase(node) | WriteSite::ReceiverBase(node) => {
+                record_value_type_write(ctx, node, locals);
             }
         }
     }
@@ -829,32 +789,6 @@ fn is_value_type(ty: &Type, db: &SymbolDb) -> bool {
             .is_some_and(|d| d.symbol.kind == SymbolKind::Struct),
         Type::Null | Type::Unknown | Type::Void | Type::Primitive(_) => false,
     }
-}
-
-fn lvalue_base_ident(expr: Node) -> Option<Node> {
-    match expr.kind() {
-        kinds::IDENT => Some(expr),
-        kinds::MEMBER_ACCESS_EXPR => {
-            let child = first_named_child(expr)?;
-            // `this.field` is rooted at the field, not at an outer local.
-            if child.kind() == kinds::THIS_EXPR {
-                member_access_member(expr)
-            } else {
-                lvalue_base_ident(child)
-            }
-        }
-        kinds::NESTED_EXPR => lvalue_base_ident(first_named_child(expr)?),
-        kinds::ARRAY_EXPR => lvalue_base_ident(expr.child_by_field_name(fields::ACCESSOR)?),
-        _ => None,
-    }
-}
-
-fn method_call_receiver_base(call: Node) -> Option<Node> {
-    let callee = call_callee(call)?;
-    if callee.kind() != kinds::MEMBER_ACCESS_EXPR {
-        return None;
-    }
-    lvalue_base_ident(first_named_child(callee)?)
 }
 
 fn build_receiver(

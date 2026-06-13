@@ -9,6 +9,7 @@ use crate::cst::grammar::{
     arg_slots, call_callee, callee_ident, member_access_member, write_target,
 };
 use crate::cst::if_stmt::{if_chain_above, mutually_exclusive_branches};
+use crate::cst::nav::first_named_child;
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::formatter::{FormatOptions, indent_block, indent_unit_for, line_indent};
@@ -630,6 +631,86 @@ fn parameter_slot_name(
         .map(|parameter| parameter.name.clone())
 }
 
+pub(super) enum WriteSite<'tree> {
+    /// `x = ...`: the assignment's left-hand lvalue.
+    AssignTarget(Node<'tree>),
+    /// `x.f = ...` / `a[i] = ...`: the base local mutated in place (distinct from the target).
+    AssignBase(Node<'tree>),
+    /// `f(out x)`: an argument bound to an `out` parameter.
+    OutArg(Node<'tree>),
+    /// `x.Method()`: the receiver base, mutated in place when it is a value type.
+    ReceiverBase(Node<'tree>),
+}
+
+pub(super) fn write_sites<'tree>(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    roots: &[Node<'tree>],
+) -> Vec<WriteSite<'tree>> {
+    let mut nodes = Vec::new();
+    for root in roots {
+        collect_descendants_of_kind(
+            *root,
+            &[kinds::ASSIGN_OP_EXPR, kinds::FUNC_CALL_EXPR],
+            &mut nodes,
+        );
+    }
+    let mut writes = Vec::new();
+    for site in nodes {
+        if site.kind() == kinds::ASSIGN_OP_EXPR {
+            let Some(left) = site.child_by_field_name(fields::LEFT) else {
+                continue;
+            };
+            if let Some(target) = write_target(left) {
+                writes.push(WriteSite::AssignTarget(target));
+                // `pos.x = 1` also mutates the base value; a bare `x = 1` is the target itself.
+                if let Some(base) = lvalue_base_ident(left)
+                    && base.id() != target.id()
+                {
+                    writes.push(WriteSite::AssignBase(base));
+                }
+            }
+        } else {
+            for arg in out_args(uri, document, db, site) {
+                if let Some(target) = write_target(arg) {
+                    writes.push(WriteSite::OutArg(target));
+                }
+            }
+            if let Some(base) = method_call_receiver_base(site) {
+                writes.push(WriteSite::ReceiverBase(base));
+            }
+        }
+    }
+    writes
+}
+
+pub(super) fn lvalue_base_ident(expr: Node) -> Option<Node> {
+    match expr.kind() {
+        kinds::IDENT => Some(expr),
+        kinds::MEMBER_ACCESS_EXPR => {
+            let child = first_named_child(expr)?;
+            // `this.field` is rooted at the field, not at an outer local.
+            if child.kind() == kinds::THIS_EXPR {
+                member_access_member(expr)
+            } else {
+                lvalue_base_ident(child)
+            }
+        }
+        kinds::NESTED_EXPR => lvalue_base_ident(first_named_child(expr)?),
+        kinds::ARRAY_EXPR => lvalue_base_ident(expr.child_by_field_name(fields::ACCESSOR)?),
+        _ => None,
+    }
+}
+
+fn method_call_receiver_base(call: Node) -> Option<Node> {
+    let callee = call_callee(call)?;
+    if callee.kind() != kinds::MEMBER_ACCESS_EXPR {
+        return None;
+    }
+    lvalue_base_ident(first_named_child(callee)?)
+}
+
 // A write inside `window` to any id the selection reads makes moving the computation there unsafe.
 fn tracked_write_in_window(
     uri: &str,
@@ -644,27 +725,17 @@ fn tracked_write_in_window(
     if tracked.is_empty() {
         return false;
     }
-    let mut writes = Vec::new();
-    collect_descendants_of_kind(
-        block,
-        &[kinds::ASSIGN_OP_EXPR, kinds::FUNC_CALL_EXPR],
-        &mut writes,
-    );
     let is_tracked_write = |target: Node| {
         window.contains(&target.start_byte())
             && resolved_write_tracked_id(uri, document, db, target, callable)
                 .is_some_and(|id| tracked.contains(&id))
     };
-    writes.iter().any(|node| match node.kind() {
-        kinds::ASSIGN_OP_EXPR => node
-            .child_by_field_name(fields::LEFT)
-            .and_then(write_target)
-            .is_some_and(is_tracked_write),
-        _ => out_args(uri, document, db, *node)
-            .into_iter()
-            .filter_map(write_target)
-            .any(is_tracked_write),
-    })
+    write_sites(uri, document, db, &[block])
+        .into_iter()
+        .any(|write| match write {
+            WriteSite::AssignTarget(target) | WriteSite::OutArg(target) => is_tracked_write(target),
+            WriteSite::AssignBase(_) | WriteSite::ReceiverBase(_) => false,
+        })
 }
 
 // Any function/method may be redirected by @wrapMethod/@replaceMethod beyond our visibility, so a
