@@ -321,7 +321,9 @@ fn split_braceless(
 pub(super) fn trim_selection(source: &str, selection: Range<usize>) -> Option<Range<usize>> {
     let slice = source.get(selection.clone())?;
     let start = selection.start + (slice.len() - slice.trim_start().len());
-    let end = selection.end - (slice.len() - slice.trim_end().len());
+    // A trailing `;` is not part of the value; selecting `x;` means the value `x`, not the statement.
+    let trimmed = slice.trim_end_matches(|c: char| c.is_whitespace() || c == ';');
+    let end = selection.end - (slice.len() - trimmed.len());
     (start < end).then_some(start..end)
 }
 

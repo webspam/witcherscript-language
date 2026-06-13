@@ -594,6 +594,16 @@ fn out_parameter_and_return_value_combine() {
 }
 
 #[test]
+fn expression_extraction_ignores_trailing_semicolon() {
+    let src = "function F() {\n    var gameStarted : bool;\n    gameStarted = true;\n}\n";
+    assert_eq!(
+        applied(src, "true"),
+        applied(src, "true;"),
+        "selecting the trailing semicolon must not change an expression extraction"
+    );
+}
+
+#[test]
 fn multi_statement_run_ignores_trailing_semicolon() {
     let src =
         "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 1;\n    Use(a);\n}\n";

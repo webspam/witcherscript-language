@@ -172,6 +172,29 @@ fn trims_whitespace_around_selection() {
 }
 
 #[test]
+fn extracts_value_left_of_trailing_semicolon() {
+    let src = "function F() {\n    var gameStarted : bool;\n    gameStarted = true;\n}\n";
+    expect![[r"
+        function F() {
+            var gameStarted : bool;
+            var newVar : bool = true;
+            gameStarted = newVar;
+        }
+    "]]
+    .assert_eq(&applied(src, "true;"));
+}
+
+#[test]
+fn trailing_semicolon_does_not_change_extraction() {
+    let src = "function F() {\n    var gameStarted : bool;\n    gameStarted = true;\n}\n";
+    assert_eq!(
+        applied(src, "true"),
+        applied(src, "true;"),
+        "selecting the trailing semicolon must not change the extraction"
+    );
+}
+
+#[test]
 fn indent_follows_tab_indented_source() {
     let src = "function Use(x : int) {}\nfunction F() {\n\tvar a : int;\n\tUse(a + 1);\n}\n";
     expect![[r"
