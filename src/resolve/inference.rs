@@ -131,13 +131,15 @@ fn infer_binary_op_type(
             if is_concat_operand(&left) || is_concat_operand(&right) {
                 Type::Primitive(Primitive::String)
             } else {
-                numeric_join(&left, &right)
+                arithmetic_join(&left, &right, db)
             }
         }
         kinds::BINARY_OP_DIFF
         | kinds::BINARY_OP_MULT
         | kinds::BINARY_OP_DIV
-        | kinds::BINARY_OP_MOD => numeric_join(&operand(fields::LEFT), &operand(fields::RIGHT)),
+        | kinds::BINARY_OP_MOD => {
+            arithmetic_join(&operand(fields::LEFT), &operand(fields::RIGHT), db)
+        }
         _ => Type::Unknown,
     }
 }
@@ -169,17 +171,33 @@ fn is_concat_operand(ty: &Type) -> bool {
     matches!(ty, Type::Primitive(Primitive::String | Primitive::Name))
 }
 
-fn numeric_join(left: &Type, right: &Type) -> Type {
-    let (Type::Primitive(l), Type::Primitive(r)) = (left, right) else {
-        return Type::Unknown;
-    };
-    if !is_numeric(*l) || !is_numeric(*r) {
+fn arithmetic_join(left: &Type, right: &Type, db: &SymbolDb) -> Type {
+    match (left, right) {
+        (Type::Primitive(l), Type::Primitive(r)) => numeric_widen(*l, *r),
+        // Only structs carry their type through arithmetic; enums are int-backed, classes/states have none.
+        (Type::Named(a), Type::Named(b)) if a == b && is_struct(db, a) => Type::Named(a.clone()),
+        (Type::Named(n), Type::Primitive(p)) | (Type::Primitive(p), Type::Named(n))
+            if is_numeric(*p) && is_struct(db, n) =>
+        {
+            Type::Named(n.clone())
+        }
+        _ => Type::Unknown,
+    }
+}
+
+fn is_struct(db: &SymbolDb, name: &str) -> bool {
+    db.find_top_level(name)
+        .is_some_and(|d| d.symbol.kind == SymbolKind::Struct)
+}
+
+fn numeric_widen(l: Primitive, r: Primitive) -> Type {
+    if !is_numeric(l) || !is_numeric(r) {
         return Type::Unknown;
     }
     if l == r {
-        return Type::Primitive(*l);
+        return Type::Primitive(l);
     }
-    if *l == Primitive::Float || *r == Primitive::Float {
+    if l == Primitive::Float || r == Primitive::Float {
         return Type::Primitive(Primitive::Float);
     }
     if matches!(l, Primitive::Int | Primitive::Byte)

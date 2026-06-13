@@ -108,6 +108,50 @@ fn arithmetic_join_rules(#[case] needle: &str, #[case] expected: Type) {
     );
 }
 
+#[rstest]
+#[case::vec_plus_vec("a + b", Type::Named("Vector".to_string()))]
+#[case::vec_div_float("a / f", Type::Named("Vector".to_string()))]
+#[case::float_times_vec("f * a", Type::Named("Vector".to_string()))]
+#[case::vec_times_vec("a * b", Type::Named("Vector".to_string()))]
+#[case::mismatched_structs("a + o", Type::Unknown)]
+fn struct_arithmetic_preserves_struct_type(#[case] needle: &str, #[case] expected: Type) {
+    let fixture = format!(
+        concat!(
+            "struct Vector {{ var X : float; }}\n",
+            "struct Other {{ var X : float; }}\n",
+            "function F() {{\n",
+            " var a : Vector;\n var b : Vector;\n var o : Other;\n var f : float;\n",
+            " var r : Vector;\n r = {needle};\n}}\n",
+        ),
+        needle = needle
+    );
+    assert_eq!(
+        inferred(&fixture, needle),
+        expected,
+        "struct arithmetic {needle} join mismatch"
+    );
+}
+
+#[rstest]
+#[case::enum_times_float("e * h")]
+#[case::enum_plus_enum("e + e")]
+fn enum_arithmetic_stays_unknown(#[case] needle: &str) {
+    let fixture = format!(
+        concat!(
+            "enum E {{ A, B }}\n",
+            "function F() {{\n",
+            " var e : E;\n var h : float;\n",
+            " var r : float;\n r = {needle};\n}}\n",
+        ),
+        needle = needle
+    );
+    assert_eq!(
+        inferred(&fixture, needle),
+        Type::Unknown,
+        "enum arithmetic {needle} should stay Unknown, not infer the enum type"
+    );
+}
+
 #[test]
 fn unary_not_yields_bool() {
     let fixture = "function F() {\n var a : bool;\n var r : bool;\n r = !a;\n}\n";
