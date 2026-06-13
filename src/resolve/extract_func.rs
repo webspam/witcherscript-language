@@ -30,6 +30,22 @@ const WRAPPED_METHOD_MACRO: &str = "wrappedMethod";
 
 const LOOP_KINDS: &[&str] = &[kinds::FOR_STMT, kinds::WHILE_STMT, kinds::DO_WHILE_STMT];
 
+struct ResolveCtx<'a> {
+    uri: &'a str,
+    document: &'a ParsedDocument,
+    db: &'a SymbolDb<'a>,
+}
+
+impl ResolveCtx<'_> {
+    fn resolve_at(&self, byte: usize) -> Option<Definition> {
+        resolve_definition_at_byte(self.uri, self.document, self.db, byte)
+    }
+
+    fn infer(&self, node: Node, byte: usize) -> Type {
+        infer_type(self.uri, self.document, self.db, node, byte)
+    }
+}
+
 pub fn extract_function(
     uri: &str,
     document: &ParsedDocument,
@@ -39,20 +55,15 @@ pub fn extract_function(
 ) -> Option<Extraction> {
     let selection = trim_selection(&document.source, selection)?;
     let root = document.tree.root_node();
+    let ctx = ResolveCtx { uri, document, db };
     match classify_selection(root, &selection) {
-        SelectionKind::Expression { node, range } => {
-            extract_expression(uri, document, db, node, range, options)
-        }
-        SelectionKind::Statements { range } => {
-            extract_statements(uri, document, db, root, range, options)
-        }
+        SelectionKind::Expression { node, range } => extract_expression(&ctx, node, range, options),
+        SelectionKind::Statements { range } => extract_statements(&ctx, root, range, options),
     }
 }
 
 fn extract_expression(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    ctx: &ResolveCtx,
     node: Node,
     selection: Range<usize>,
     options: FormatOptions,
@@ -62,18 +73,17 @@ fn extract_expression(
         return None;
     }
     enclosing_callable_block(node)?;
-    let callable = document
+    let callable = ctx
+        .document
         .symbols
         .enclosing_symbol_at(selection.start, CALLABLE_KINDS)?;
-    let ty = infer_type(uri, document, db, node, selection.start);
+    let ty = ctx.infer(node, selection.start);
     if matches!(ty, Type::Unknown | Type::Null | Type::Void) {
         return None;
     }
-    let type_context = enclosing_type_context(document, db, selection.start);
+    let type_context = enclosing_type_context(ctx.document, ctx.db, selection.start);
     let captures = collect_captures(
-        uri,
-        document,
-        db,
+        ctx,
         &[node],
         &selection,
         None,
@@ -82,44 +92,41 @@ fn extract_expression(
     )?;
     let body = format!(
         "return {};",
-        moved_text(&document.source, &selection, &captures)
+        moved_text(&ctx.document.source, &selection, &captures)
     );
     let (value_locals, out_locals): (Vec<_>, Vec<_>) =
         captures.locals.iter().partition(|l| !l.is_written());
     let plan = FunctionPlan {
-        name: unique_function_name(document, db, callable, type_context.as_ref()),
+        name: unique_function_name(ctx.document, ctx.db, callable, type_context.as_ref()),
         receiver: captures.receiver.clone(),
         params: assemble_params(&value_locals, &out_locals, &captures.promoted),
         return_type: ty,
         body,
     };
     let call_text = call_expression(&plan);
-    build_extraction(document, node, selection, call_text, 0, &plan, options)
+    build_extraction(ctx.document, node, selection, call_text, 0, &plan, options)
 }
 
 fn extract_statements(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    ctx: &ResolveCtx,
     root: Node,
     selection: Range<usize>,
     options: FormatOptions,
 ) -> Option<Extraction> {
-    let source = &document.source;
+    let source = &ctx.document.source;
     let (run_block, stmts, range) = statement_run(root, source, &selection)?;
     if has_escaping_control_flow(&stmts, &range) {
         return None;
     }
     let first = *stmts.first()?;
     let callable_block = enclosing_callable_block(first)?;
-    let callable = document
+    let callable = ctx
+        .document
         .symbols
         .enclosing_symbol_at(range.start, CALLABLE_KINDS)?;
-    let type_context = enclosing_type_context(document, db, range.start);
+    let type_context = enclosing_type_context(ctx.document, ctx.db, range.start);
     let captures = collect_captures(
-        uri,
-        document,
-        db,
+        ctx,
         &stmts,
         &range,
         Some(run_block),
@@ -134,7 +141,7 @@ fn extract_statements(
         .map(|l| l.id)
         .collect();
     tracked.extend(captures.internals.iter().map(|i| i.id));
-    let live = live_after(uri, document, db, callable_block, first, &range, &tracked);
+    let live = live_after(ctx, callable_block, first, &range, &tracked);
     if captures.internals.iter().any(|i| live.contains(&i.id)) {
         // A local declared in the selection but used after it cannot move wholesale.
         return None;
@@ -166,7 +173,7 @@ fn extract_statements(
     let returned = returned.map(|i| &captures.locals[i]);
 
     let plan = FunctionPlan {
-        name: unique_function_name(document, db, callable, type_context.as_ref()),
+        name: unique_function_name(ctx.document, ctx.db, callable, type_context.as_ref()),
         receiver: captures.receiver.clone(),
         params: assemble_params(&value_locals, &out_locals, &captures.promoted),
         return_type: returned.map_or(Type::Void, |r| r.ty.clone()),
@@ -178,7 +185,7 @@ fn extract_statements(
         None => (format!("{call};"), 0),
     };
     build_extraction(
-        document,
+        ctx.document,
         first,
         range,
         call_text,
@@ -303,9 +310,7 @@ fn jump_target_inside(jump: Node, range: &Range<usize>) -> bool {
 }
 
 fn live_after(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    ctx: &ResolveCtx,
     callable_block: Node,
     first_stmt: Node,
     range: &Range<usize>,
@@ -325,8 +330,8 @@ fn live_after(
     idents
         .iter()
         .filter(|ident| windows.iter().any(|w| w.contains(&ident.start_byte())))
-        .filter_map(|ident| resolve_definition_at_byte(uri, document, db, ident.start_byte()))
-        .filter(|def| def.uri == uri && tracked.contains(&def.symbol.id))
+        .filter_map(|ident| ctx.resolve_at(ident.start_byte()))
+        .filter(|def| def.uri == ctx.uri && tracked.contains(&def.symbol.id))
         .map(|def| def.symbol.id)
         .collect()
 }
@@ -407,11 +412,8 @@ impl CapturedLocal {
     }
 }
 
-#[expect(clippy::too_many_arguments)]
 fn collect_captures(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    ctx: &ResolveCtx,
     roots: &[Node],
     range: &Range<usize>,
     run_block: Option<Node>,
@@ -433,14 +435,14 @@ fn collect_captures(
     }
     references.sort_by_key(Node::start_byte);
 
-    let source = document.source.as_bytes();
+    let source = ctx.document.source.as_bytes();
     let mut rewrites = Vec::new();
     let mut locals: Vec<CapturedLocal> = Vec::new();
     let mut promoted: Vec<PromotedField> = Vec::new();
     let mut internals: Vec<InternalLocal> = Vec::new();
     for reference in references {
         if reference.kind() == kinds::THIS_EXPR {
-            match this_member(reference, uri, document, db) {
+            match this_member(reference, ctx) {
                 Some((member, def)) => match member_disposition(&def) {
                     Disposition::Receiver => {
                         rewrites.push(BodyRewrite::ReplaceThis(reference.byte_range()));
@@ -462,14 +464,13 @@ fn collect_captures(
         if reference.utf8_text(source).ok()? == WRAPPED_METHOD_MACRO {
             return None;
         }
-        let Some(definition) =
-            resolve_definition_at_byte(uri, document, db, reference.start_byte())
-        else {
+        let Some(definition) = ctx.resolve_at(reference.start_byte()) else {
             continue;
         };
         match definition.symbol.kind {
             SymbolKind::Variable | SymbolKind::Parameter
-                if definition.uri == uri && definition.symbol.container == Some(callable.id) =>
+                if definition.uri == ctx.uri
+                    && definition.symbol.container == Some(callable.id) =>
             {
                 if range.contains(&definition.symbol.selection_byte_range.start) {
                     if internals.iter().all(|i| i.id != definition.symbol.id) {
@@ -518,7 +519,7 @@ fn collect_captures(
             _ => {}
         }
     }
-    record_indirect_writes(uri, document, db, roots, &mut locals);
+    record_indirect_writes(ctx, roots, &mut locals);
 
     let mut taken: HashSet<String> = locals
         .iter()
@@ -527,18 +528,18 @@ fn collect_captures(
         .collect();
     for field in &mut promoted {
         let name = suffixed_unique(&field.name, |n| {
-            taken.contains(n) || db.find_script_global(n).is_some()
+            taken.contains(n) || ctx.db.find_script_global(n).is_some()
         });
         taken.insert(name.clone());
         field.name = name;
     }
-    detect_promoted_writes(uri, document, db, roots, &mut promoted);
+    detect_promoted_writes(ctx, roots, &mut promoted);
 
     let needs_receiver = rewrites
         .iter()
         .any(|r| matches!(r, BodyRewrite::Qualify(_) | BodyRewrite::ReplaceThis(_)));
     let receiver = if needs_receiver {
-        Some(build_receiver(db, type_context?, &taken)?)
+        Some(build_receiver(ctx.db, type_context?, &taken)?)
     } else {
         None
     };
@@ -569,9 +570,7 @@ fn member_disposition(definition: &Definition) -> Disposition {
 
 fn this_member<'tree>(
     this_expr: Node<'tree>,
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    ctx: &ResolveCtx,
 ) -> Option<(Node<'tree>, Definition)> {
     let parent = this_expr.parent()?;
     if parent.kind() != kinds::MEMBER_ACCESS_EXPR {
@@ -581,7 +580,7 @@ fn this_member<'tree>(
         return None;
     }
     let member = member_access_member(parent)?;
-    let definition = resolve_definition_at_byte(uri, document, db, member.start_byte())?;
+    let definition = ctx.resolve_at(member.start_byte())?;
     Some((member, definition))
 }
 
@@ -603,13 +602,7 @@ fn promote_field(promoted: &mut Vec<PromotedField>, definition: &Definition) -> 
     Some(promoted.len() - 1)
 }
 
-fn detect_promoted_writes(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    roots: &[Node],
-    promoted: &mut [PromotedField],
-) {
+fn detect_promoted_writes(ctx: &ResolveCtx, roots: &[Node], promoted: &mut [PromotedField]) {
     if promoted.is_empty() {
         return;
     }
@@ -627,33 +620,31 @@ fn detect_promoted_writes(
                 continue;
             };
             if let Some(target) = write_target(left) {
-                mark_field_written(uri, document, db, target, promoted, false);
+                mark_field_written(ctx, target, promoted, false);
             }
             if let Some(base) = lvalue_base_ident(left) {
-                mark_field_written(uri, document, db, base, promoted, true);
+                mark_field_written(ctx, base, promoted, true);
             }
         } else {
-            for arg in out_args(uri, document, db, site) {
+            for arg in out_args(ctx.uri, ctx.document, ctx.db, site) {
                 if let Some(target) = write_target(arg) {
-                    mark_field_written(uri, document, db, target, promoted, false);
+                    mark_field_written(ctx, target, promoted, false);
                 }
             }
             if let Some(base) = method_call_receiver_base(site) {
-                mark_field_written(uri, document, db, base, promoted, true);
+                mark_field_written(ctx, base, promoted, true);
             }
         }
     }
 }
 
 fn mark_field_written(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    ctx: &ResolveCtx,
     ident: Node,
     promoted: &mut [PromotedField],
     value_type_only: bool,
 ) {
-    let Some(definition) = resolve_definition_at_byte(uri, document, db, ident.start_byte()) else {
+    let Some(definition) = ctx.resolve_at(ident.start_byte()) else {
         return;
     };
     if definition.symbol.kind != SymbolKind::Field {
@@ -661,7 +652,7 @@ fn mark_field_written(
     }
     let key = definition_key(&definition);
     if let Some(field) = promoted.iter_mut().find(|p| p.key == key)
-        && (!value_type_only || is_value_type(&field.ty, db))
+        && (!value_type_only || is_value_type(&field.ty, ctx.db))
     {
         field.is_written = true;
     }
@@ -759,13 +750,7 @@ fn unconditional_statement_end(assign: Node, run_block: Option<Node>) -> Option<
     (stmt.parent()?.id() == block.id()).then(|| stmt.end_byte())
 }
 
-fn record_indirect_writes(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    roots: &[Node],
-    locals: &mut [CapturedLocal],
-) {
+fn record_indirect_writes(ctx: &ResolveCtx, roots: &[Node], locals: &mut [CapturedLocal]) {
     let mut sites = Vec::new();
     for root in roots {
         collect_descendants_of_kind(
@@ -783,67 +768,53 @@ fn record_indirect_writes(
             if let (Some(target), Some(base)) = (write_target(left), lvalue_base_ident(left))
                 && base.id() != target.id()
             {
-                record_value_type_write(uri, document, db, base, locals);
+                record_value_type_write(ctx, base, locals);
             }
         } else {
-            for arg in out_args(uri, document, db, site) {
+            for arg in out_args(ctx.uri, ctx.document, ctx.db, site) {
                 if let Some(target) = write_target(arg) {
-                    record_write(uri, document, db, target, locals);
+                    record_write(ctx, target, locals);
                 }
             }
             // Array methods mutate in place; a value-param copy would swallow the mutation.
             if let Some(base) = method_call_receiver_base(site) {
-                record_value_type_write(uri, document, db, base, locals);
+                record_value_type_write(ctx, base, locals);
             }
         }
     }
 }
 
 fn captured_local_mut<'a>(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    ctx: &ResolveCtx,
     ident: Node,
     locals: &'a mut [CapturedLocal],
 ) -> Option<&'a mut CapturedLocal> {
-    let definition = resolve_definition_at_byte(uri, document, db, ident.start_byte())?;
-    if definition.uri != uri {
+    let definition = ctx.resolve_at(ident.start_byte())?;
+    if definition.uri != ctx.uri {
         return None;
     }
     locals.iter_mut().find(|l| l.id == definition.symbol.id)
 }
 
 // Indirect writes go through a reference, so the prior value counts as read too.
-fn record_write(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    ident: Node,
-    locals: &mut [CapturedLocal],
-) {
-    if let Some(local) = captured_local_mut(uri, document, db, ident, locals) {
+fn record_write(ctx: &ResolveCtx, ident: Node, locals: &mut [CapturedLocal]) {
+    if let Some(local) = captured_local_mut(ctx, ident, locals) {
         local.reads.push(ident.start_byte());
         local.writes.push(ident.start_byte());
     }
 }
 
-fn record_value_type_write(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    ident: Node,
-    locals: &mut [CapturedLocal],
-) {
-    let Some(definition) = resolve_definition_at_byte(uri, document, db, ident.start_byte()) else {
+fn record_value_type_write(ctx: &ResolveCtx, ident: Node, locals: &mut [CapturedLocal]) {
+    let Some(definition) = ctx.resolve_at(ident.start_byte()) else {
         return;
     };
-    if definition.uri != uri {
+    if definition.uri != ctx.uri {
         return;
     }
     let Some(local) = locals.iter_mut().find(|l| l.id == definition.symbol.id) else {
         return;
     };
-    if is_value_type(&local.ty, db) {
+    if is_value_type(&local.ty, ctx.db) {
         local.reads.push(ident.start_byte());
         local.writes.push(ident.start_byte());
     }
