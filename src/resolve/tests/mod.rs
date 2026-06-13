@@ -19,6 +19,7 @@ mod completion_statement;
 mod completion_type;
 mod definition;
 mod document_highlight;
+mod extract_access;
 mod extract_func;
 mod extract_method;
 mod extract_var;
