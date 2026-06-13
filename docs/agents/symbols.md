@@ -43,18 +43,16 @@ pub struct Symbol {
     pub container: Option<SymbolId>,          // Parent symbol ID; None = top-level
     pub container_name: Option<String>,       // Cached parent name for fast index inserts
     pub type_annotation: Option<Type>,        // Parsed declared type (var/field/param type, callable return)
-    pub declaration_text: Option<String>,     // Field declaration as written; display only, never parsed
     pub base_class: Option<String>,           // Raw superclass name for Class/Struct/State
     pub owner_class: Option<String>,          // Raw owner class name for State (second ident in state_decl)
-    pub flavour: Option<String>,              // func_flavour text for callables (e.g. "quest", "timer")
+    pub flavour: Option<FuncFlavour>,         // func_flavour keyword for callables (e.g. quest, timer)
     pub annotations: Vec<Annotation>,        // @addField, @wrapMethod, etc.
     pub access: AccessLevel,                  // default: Public
-    pub is_optional: bool,                    // true if specifier "optional" present (Parameters only)
-    pub is_out: bool,                         // true if specifier "out" present (Parameters only)
+    pub specifiers: Specifiers,              // non-access modifier bitset (editable, optional, out, ...)
 }
 ```
 
-Callables carry no signature text. Their display signature is rendered on demand by `render_signature()` in `resolve/signature.rs` from the callable's `Parameter` symbols plus its `type_annotation` (the return type).
+No symbol carries rendered signature or declaration text. Callable signatures are rendered on demand by `render_signature()` in `resolve/signature.rs` from the callable's `Parameter` symbols plus its `type_annotation` (the return type); field declarations are rendered the same way by `hover_text()` from `access`, `specifiers`, `name`, and `type_annotation`.
 
 **`Symbol::display_detail()`** renders the human-readable detail string used in hover popups and the document outline. It reads from `base_class` / `owner_class`:
 - Class/Struct: `"extends BaseClass"` (or `None` if no base)

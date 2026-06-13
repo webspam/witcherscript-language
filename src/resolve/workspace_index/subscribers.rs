@@ -57,7 +57,6 @@ fn hash_symbol_fields<H: std::hash::Hasher>(s: &Symbol, h: &mut H) {
     (s.kind as u8).hash(h);
     s.container_name.hash(h);
     s.type_annotation.hash(h);
-    s.declaration_text.hash(h);
     s.base_class.hash(h);
     s.owner_class.hash(h);
     s.flavour.hash(h);
