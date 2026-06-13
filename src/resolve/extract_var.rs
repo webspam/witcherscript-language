@@ -28,7 +28,7 @@ pub struct Splice {
 }
 
 #[derive(Debug)]
-pub struct VariableExtraction {
+pub struct Extraction {
     /// Non-overlapping edits against the original source.
     pub edits: Vec<Splice>,
     pub name: String,
@@ -36,20 +36,24 @@ pub struct VariableExtraction {
     pub cursor: usize,
 }
 
-impl VariableExtraction {
-    // Splice rightmost-first so each replace_range leaves earlier byte offsets untouched.
+impl Extraction {
     pub fn apply(&self, source: &str) -> String {
-        let mut splices: Vec<&Splice> = self.edits.iter().collect();
-        splices.sort_by_key(|s| std::cmp::Reverse(s.range.start));
-        let mut applied = source.to_string();
-        for splice in splices {
-            applied.replace_range(splice.range.clone(), &splice.text);
-        }
-        applied
+        apply_splices(source, &self.edits)
     }
 }
 
-const EXTRACTABLE_KINDS: &[&str] = &[
+// Splice rightmost-first so each replace_range leaves earlier byte offsets untouched.
+pub(super) fn apply_splices(text: &str, splices: &[Splice]) -> String {
+    let mut ordered: Vec<&Splice> = splices.iter().collect();
+    ordered.sort_by_key(|s| std::cmp::Reverse(s.range.start));
+    let mut applied = text.to_string();
+    for splice in ordered {
+        applied.replace_range(splice.range.clone(), &splice.text);
+    }
+    applied
+}
+
+pub(super) const EXTRACTABLE_KINDS: &[&str] = &[
     kinds::BINARY_OP_EXPR,
     kinds::UNARY_OP_EXPR,
     kinds::FUNC_CALL_EXPR,
@@ -67,10 +71,10 @@ const EXTRACTABLE_KINDS: &[&str] = &[
     kinds::LITERAL_NAME,
 ];
 
-const CALLABLE_KINDS: &[SymbolKind] =
+pub(super) const CALLABLE_KINDS: &[SymbolKind] =
     &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event];
 
-const STATEMENT_KINDS: &[&str] = &[
+pub(super) const STATEMENT_KINDS: &[&str] = &[
     kinds::LOCAL_VAR_DECL_STMT,
     kinds::FOR_STMT,
     kinds::WHILE_STMT,
@@ -92,12 +96,18 @@ pub fn extract_variable(
     db: &SymbolDb,
     selection: Range<usize>,
     options: FormatOptions,
-) -> Option<VariableExtraction> {
+) -> Option<Extraction> {
     let source = &document.source;
     let selection = trim_selection(source, selection)?;
     let root = document.tree.root_node();
-    let selection = expand_selection(root, &selection).unwrap_or(selection);
-    let node = exact_expression_at(root, &selection)?;
+    let SelectionKind::Expression {
+        node,
+        range: selection,
+    } = classify_selection(root, &selection)
+    else {
+        // A whole expression statement is not a value to bind; replacing it would leave a bare `name;`.
+        return None;
+    };
     if is_call_callee(node) {
         // A bare reference to the callee is a function reference, which WitcherScript has no values for.
         return None;
@@ -196,19 +206,14 @@ pub fn extract_variable(
 }
 
 // Where `original` lands after the edits apply: shift it past every edit that ends at or before it.
-fn applied_offset(edits: &[Splice], original: usize) -> usize {
+pub(super) fn applied_offset(edits: &[Splice], original: usize) -> usize {
     edits
         .iter()
         .filter(|s| s.range.end <= original)
         .fold(original, |pos, s| pos + s.text.len() - s.range.len())
 }
 
-fn single_insert(
-    at: usize,
-    text: String,
-    selection: Range<usize>,
-    name: String,
-) -> VariableExtraction {
+fn single_insert(at: usize, text: String, selection: Range<usize>, name: String) -> Extraction {
     let anchor = selection.start;
     let edits = vec![
         Splice {
@@ -221,7 +226,7 @@ fn single_insert(
         },
     ];
     let cursor = applied_offset(&edits, anchor);
-    VariableExtraction {
+    Extraction {
         edits,
         name,
         cursor,
@@ -235,7 +240,7 @@ fn split(
     assign_text: String,
     selection: Range<usize>,
     name: String,
-) -> VariableExtraction {
+) -> Extraction {
     let anchor = selection.start;
     let edits = vec![
         Splice {
@@ -252,7 +257,7 @@ fn split(
         },
     ];
     let cursor = applied_offset(&edits, anchor);
-    VariableExtraction {
+    Extraction {
         edits,
         name,
         cursor,
@@ -267,7 +272,7 @@ fn split_before(
     name: String,
     expr: &str,
     selection: Range<usize>,
-) -> VariableExtraction {
+) -> Extraction {
     let assign_indent = line_indent(source, assign_at);
     let assign = format!("{name} = {expr};\n{assign_indent}");
     split(decl_at, decl_text, assign_at, assign, selection, name)
@@ -282,7 +287,7 @@ fn split_braceless(
     options: FormatOptions,
     selection: Range<usize>,
     name: String,
-) -> VariableExtraction {
+) -> Extraction {
     let stmt_start = statement.start_byte();
     let stmt_end = statement.end_byte();
 
@@ -300,7 +305,7 @@ fn split_braceless(
     // `decl` inserts above the block, we need to count to symbol loc
     let body_indent = indent_unit_for(&options).len() + indent.len();
     let cursor = stmt_start + decl.text.len() + "{\n".len() + body_indent;
-    VariableExtraction {
+    Extraction {
         edits: vec![
             decl,
             Splice {
@@ -313,7 +318,7 @@ fn split_braceless(
     }
 }
 
-fn trim_selection(source: &str, selection: Range<usize>) -> Option<Range<usize>> {
+pub(super) fn trim_selection(source: &str, selection: Range<usize>) -> Option<Range<usize>> {
     let slice = source.get(selection.clone())?;
     let start = selection.start + (slice.len() - slice.trim_start().len());
     let end = selection.end - (slice.len() - slice.trim_end().len());
@@ -321,7 +326,10 @@ fn trim_selection(source: &str, selection: Range<usize>) -> Option<Range<usize>>
 }
 
 // The smallest covering node can be a leaf inside same-range wrappers; keep the outermost extractable one.
-fn exact_expression_at<'tree>(root: Node<'tree>, selection: &Range<usize>) -> Option<Node<'tree>> {
+pub(super) fn exact_expression_at<'tree>(
+    root: Node<'tree>,
+    selection: &Range<usize>,
+) -> Option<Node<'tree>> {
     let mut node = root.named_descendant_for_byte_range(selection.start, selection.end)?;
     if node.byte_range() != *selection {
         return None;
@@ -339,7 +347,7 @@ fn exact_expression_at<'tree>(root: Node<'tree>, selection: &Range<usize>) -> Op
 }
 
 // A selection landing on a structural boundary expands to the whole value rather than refusing.
-fn expand_selection(root: Node, selection: &Range<usize>) -> Option<Range<usize>> {
+pub(super) fn expand_selection(root: Node, selection: &Range<usize>) -> Option<Range<usize>> {
     expand_through_logical_operator(root, selection)
         .or_else(|| expand_through_postfix_chain(root, selection))
 }
@@ -403,11 +411,43 @@ fn selection_touches_logical_op(binary: Node, selection: &Range<usize>) -> bool 
         && selection.start < op.end_byte()
 }
 
-fn is_call_callee(node: Node) -> bool {
+pub(super) fn is_call_callee(node: Node) -> bool {
     node.parent()
         .filter(|parent| parent.kind() == kinds::FUNC_CALL_EXPR)
         .and_then(call_callee)
         .is_some_and(|callee| callee.id() == node.id())
+}
+
+pub(super) enum SelectionKind<'tree> {
+    Expression {
+        node: Node<'tree>,
+        range: Range<usize>,
+    },
+    Statements {
+        range: Range<usize>,
+    },
+}
+
+pub(super) fn classify_selection<'tree>(
+    root: Node<'tree>,
+    selection: &Range<usize>,
+) -> SelectionKind<'tree> {
+    let expanded = expand_selection(root, selection).unwrap_or_else(|| selection.clone());
+    let Some(node) = exact_expression_at(root, &expanded) else {
+        return SelectionKind::Statements {
+            range: selection.clone(),
+        };
+    };
+    // An expression that is an entire statement is a statement, not a value to bind or return.
+    match node.parent().filter(|p| p.kind() == kinds::EXPR_STMT) {
+        Some(stmt) => SelectionKind::Statements {
+            range: stmt.byte_range(),
+        },
+        None => SelectionKind::Expression {
+            node,
+            range: expanded,
+        },
+    }
 }
 
 fn declaration_statement(name: &str, ty: &Type, expr: &str, options: FormatOptions) -> String {
@@ -633,7 +673,7 @@ fn overridable_call_precedes(node: Node, block: Node, window: Range<usize>, in_l
     })
 }
 
-fn out_args<'tree>(
+pub(super) fn out_args<'tree>(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,

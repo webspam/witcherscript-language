@@ -1,11 +1,11 @@
 use expect_test::expect;
 use rstest::rstest;
 
-use super::super::{VariableExtraction, extract_variable};
+use super::super::{Extraction, extract_variable};
 use crate::formatter::FormatOptions;
 use crate::test_support::{TestDb, script_env};
 
-fn run(src: &str, needle: &str, options: FormatOptions) -> (String, Option<VariableExtraction>) {
+fn run(src: &str, needle: &str, options: FormatOptions) -> (String, Option<Extraction>) {
     let t = TestDb::new(src);
     let uri = t.primary_uri();
     let doc = t.doc_for(uri);
@@ -17,7 +17,7 @@ fn run(src: &str, needle: &str, options: FormatOptions) -> (String, Option<Varia
     (doc.source.clone(), result)
 }
 
-fn extraction(src: &str, needle: &str) -> VariableExtraction {
+fn extraction(src: &str, needle: &str) -> Extraction {
     run(src, needle, FormatOptions::default())
         .1
         .unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"))
@@ -274,6 +274,10 @@ fn returns_none_for_empty_selection() {
 #[case::function_reference_callee(
     "function F() {\n    var r : int;\n    r = Take(1);\n}\nfunction Take(amount : int) : int { return amount; }\n",
     "Take"
+)]
+#[case::whole_expression_statement(
+    "class C {\n    function BlockedBefore() : bool { return true; }\n    function M() {\n        var was : C;\n        was.BlockedBefore();\n    }\n}\n",
+    "was.BlockedBefore()"
 )]
 fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
     assert!(

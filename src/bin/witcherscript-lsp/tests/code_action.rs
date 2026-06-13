@@ -292,7 +292,10 @@ const EXTRACT_SRC: &str = "function Use(x : int) {}\nfunction F() {\n    Use(1 +
 #[test]
 fn offers_extract_for_exact_expression_selection() {
     let actions = refactor_actions_for_selection(EXTRACT_SRC, "1 + 2");
-    assert_eq!(titles(&actions), vec!["Extract to variable"]);
+    assert_eq!(
+        titles(&actions),
+        vec!["Extract to variable", "Extract to function"]
+    );
     let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
         panic!("expected a CodeAction, got {:?}", actions[0]);
     };
@@ -331,6 +334,60 @@ fn extract_action_carries_rename_command() {
 }
 
 #[test]
+fn extract_function_offered_for_expression_selection() {
+    let actions = refactor_actions_for_selection(EXTRACT_SRC, "1 + 2");
+    let action = actions
+        .iter()
+        .find_map(|a| match a {
+            CodeActionOrCommand::CodeAction(action) if action.title == "Extract to function" => {
+                Some(action)
+            }
+            _ => None,
+        })
+        .expect("expression selection offers extract to function");
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_EXTRACT));
+    let edits = extract_workspace_edit(action);
+    assert_eq!(edits.len(), 2, "one insert plus one replace");
+    assert_eq!(
+        edits[0].new_text,
+        "\n\nfunction NewFunction() : int {\n    return 1 + 2;\n}"
+    );
+    assert_eq!(edits[1].new_text, "NewFunction()");
+}
+
+#[test]
+fn statement_selection_offers_extract_function_only() {
+    let actions = refactor_actions_for_selection(EXTRACT_SRC, "Use(1 + 2);");
+    assert_eq!(titles(&actions), vec!["Extract to function"]);
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    let edits = extract_workspace_edit(action);
+    assert_eq!(
+        edits[0].new_text,
+        "\n\nfunction NewFunction() {\n    Use(1 + 2);\n}"
+    );
+    assert_eq!(edits[1].new_text, "NewFunction();");
+}
+
+#[test]
+fn extract_function_reuses_the_extract_command() {
+    let actions = refactor_actions_for_selection(EXTRACT_SRC, "Use(1 + 2);");
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    let command = action
+        .command
+        .as_ref()
+        .expect("extract must trigger rename");
+    assert_eq!(command.command, "witcherscript.extractVariable");
+    assert_eq!(command.title, "Rename extracted function");
+    let args = command.arguments.as_ref().unwrap();
+    // The call replaces the statement in place, so the new name starts at the same position.
+    assert_eq!(args[1], json!({ "line": 2, "character": 4 }));
+}
+
+#[test]
 fn no_extract_action_for_caret_only_request() {
     let actions = refactor_actions(EXTRACT_SRC, "1 + 2");
     assert!(
@@ -346,7 +403,10 @@ const EXTRACT_SPLIT_SRC: &str =
 #[test]
 fn split_extract_emits_decl_assignment_and_replacement() {
     let actions = refactor_actions_for_selection(EXTRACT_SPLIT_SRC, "a + 1");
-    assert_eq!(titles(&actions), vec!["Extract to variable"]);
+    assert_eq!(
+        titles(&actions),
+        vec!["Extract to variable", "Extract to function"]
+    );
     let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
         panic!("expected a CodeAction, got {:?}", actions[0]);
     };

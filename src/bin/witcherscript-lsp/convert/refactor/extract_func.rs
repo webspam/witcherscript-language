@@ -1,16 +1,16 @@
 use lsp_types::CodeActionOrCommand;
-use witcherscript_language::resolve::extract_variable;
+use witcherscript_language::resolve::extract_function;
 
 use super::{RefactorContext, Refactoring, extraction_code_action};
 
-pub(super) struct ExtractVariableRefactoring;
+pub(super) struct ExtractFunctionRefactoring;
 
-impl Refactoring for ExtractVariableRefactoring {
+impl Refactoring for ExtractFunctionRefactoring {
     fn actions(&self, ctx: &RefactorContext) -> Vec<CodeActionOrCommand> {
         if ctx.selection.is_empty() {
             return Vec::new();
         }
-        let Some(extraction) = extract_variable(
+        let Some(extraction) = extract_function(
             ctx.canonical_uri,
             ctx.document,
             ctx.db,
@@ -22,8 +22,8 @@ impl Refactoring for ExtractVariableRefactoring {
         vec![extraction_code_action(
             ctx,
             &extraction,
-            "Extract to variable",
-            "Rename extracted variable",
+            "Extract to function",
+            "Rename extracted function",
         )]
     }
 }

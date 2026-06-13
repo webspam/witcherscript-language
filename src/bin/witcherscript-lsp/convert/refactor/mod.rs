@@ -1,23 +1,88 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-use lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, TextEdit, Url, WorkspaceEdit};
+use lsp_types::{
+    CodeAction, CodeActionKind, CodeActionOrCommand, Command, Position, TextEdit, Url,
+    WorkspaceEdit,
+};
 use tree_sitter::Node;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::formatter::FormatOptions;
-use witcherscript_language::resolve::SymbolDb;
+use witcherscript_language::line_index::LineIndex;
+use witcherscript_language::resolve::{Extraction, SymbolDb};
 
 use super::lsp_range;
 
+mod extract_func;
 mod extract_var;
 mod if_stmt;
 mod switch;
+
+// A bare rename races VS Code's cursor placement, so a custom command repositions before renaming.
+// The command is extraction-agnostic; reusing it for every extract action spares an extension release.
+const EXTRACT_COMMAND: &str = "witcherscript.extractVariable";
+
+fn rename_position(source: &str, extraction: &Extraction) -> Position {
+    let applied = extraction.apply(source);
+    let p = LineIndex::new(&applied).byte_to_position(&applied, extraction.cursor);
+    Position {
+        line: p.line,
+        character: p.character,
+    }
+}
+
+fn extract_command(title: &str, uri: &Url, position: Position) -> Command {
+    Command {
+        title: title.to_string(),
+        command: EXTRACT_COMMAND.to_string(),
+        arguments: Some(vec![
+            serde_json::to_value(uri).expect("Url serializes"),
+            serde_json::to_value(position).expect("Position serializes"),
+        ]),
+    }
+}
+
+fn extraction_code_action(
+    ctx: &RefactorContext,
+    extraction: &Extraction,
+    title: &str,
+    command_title: &str,
+) -> CodeActionOrCommand {
+    let source = &ctx.document.source;
+    let line_index = &ctx.document.line_index;
+    let position = rename_position(source, extraction);
+    let edits = extraction
+        .edits
+        .iter()
+        .map(|splice| TextEdit {
+            range: lsp_range(line_index.byte_range_to_range(
+                source,
+                splice.range.start,
+                splice.range.end,
+            )),
+            new_text: splice.text.clone(),
+        })
+        .collect();
+    let mut changes = HashMap::new();
+    changes.insert(ctx.uri.clone(), edits);
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: title.to_string(),
+        kind: Some(CodeActionKind::REFACTOR_EXTRACT),
+        edit: Some(WorkspaceEdit {
+            changes: Some(changes),
+            ..WorkspaceEdit::default()
+        }),
+        command: Some(extract_command(command_title, ctx.uri, position)),
+        ..CodeAction::default()
+    })
+}
 
 // Adding a construct means writing a `Refactoring` impl and listing it here.
 const REFACTORINGS: &[&dyn Refactoring] = &[
     &switch::SwitchLayoutRefactoring,
     &if_stmt::IfLayoutRefactoring,
     &extract_var::ExtractVariableRefactoring,
+    &extract_func::ExtractFunctionRefactoring,
 ];
 
 // A cursor-driven "rewrite this construct" code action. Each impl locates its own target node
