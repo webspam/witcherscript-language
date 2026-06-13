@@ -172,6 +172,64 @@ fn trims_whitespace_around_selection() {
 }
 
 #[test]
+fn extracts_value_left_of_trailing_semicolon() {
+    let src = "function F() {\n    var gameStarted : bool;\n    gameStarted = true;\n}\n";
+    expect![[r"
+        function F() {
+            var gameStarted : bool;
+            var newVar : bool = true;
+            gameStarted = newVar;
+        }
+    "]]
+    .assert_eq(&applied(src, "true;"));
+}
+
+#[test]
+fn trailing_semicolon_does_not_change_extraction() {
+    let src = "function F() {\n    var gameStarted : bool;\n    gameStarted = true;\n}\n";
+    assert_eq!(
+        applied(src, "true"),
+        applied(src, "true;"),
+        "selecting the trailing semicolon must not change the extraction"
+    );
+}
+
+const NEW_EXPR_SRC: &str = "function F(entity : CGuiObject) {\n    var rewriter : CGuiObject;\n    rewriter = new CR4HudModule in entity;\n}\n";
+
+#[test]
+fn new_expr_type_selection_expands_to_whole_construction() {
+    expect![[r"
+        function F(entity : CGuiObject) {
+            var rewriter : CGuiObject;
+            var newVar : CR4HudModule = new CR4HudModule in entity;
+            rewriter = newVar;
+        }
+    "]]
+    .assert_eq(&applied(NEW_EXPR_SRC, "CR4HudModule"));
+}
+
+#[test]
+fn new_expr_keyword_selection_matches_whole_construction() {
+    assert_eq!(
+        applied(NEW_EXPR_SRC, "new"),
+        applied(NEW_EXPR_SRC, "new CR4HudModule in entity"),
+        "selecting the `new` keyword extracts the whole construction"
+    );
+}
+
+#[test]
+fn new_expr_lifetime_object_is_not_expanded() {
+    expect![[r"
+        function F(entity : CGuiObject) {
+            var rewriter : CGuiObject;
+            var newVar : CGuiObject = entity;
+            rewriter = new CR4HudModule in newVar;
+        }
+    "]]
+    .assert_eq(&applied(NEW_EXPR_SRC, "entity;"));
+}
+
+#[test]
 fn indent_follows_tab_indented_source() {
     let src = "function Use(x : int) {}\nfunction F() {\n\tvar a : int;\n\tUse(a + 1);\n}\n";
     expect![[r"

@@ -5,11 +5,9 @@ use tree_sitter::Node;
 
 use crate::cst::ancestors::{enclosing_callable_block, node_and_ancestors};
 use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
-use crate::cst::grammar::{
-    arg_slots, call_callee, callee_ident, member_access_member, write_target,
-};
+use crate::cst::grammar::{arg_slots, call_callee, callee_ident, member_access_member};
 use crate::cst::if_stmt::{if_chain_above, mutually_exclusive_branches};
-use crate::cst::{fields, kinds};
+use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::formatter::{FormatOptions, indent_block, indent_unit_for, line_indent};
 use crate::strings::lowercase_first;
@@ -17,64 +15,14 @@ use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
 
 use super::definition::{callee_params, resolve_definition_at_byte};
+use super::extract_common::{
+    CALLABLE_KINDS, Extraction, SelectionKind, Splice, WriteSite, applied_offset,
+    classify_selection, is_call_callee, trim_selection, write_sites,
+};
 use super::inference::infer_type;
 use super::symbol_db::SymbolDb;
 
-#[derive(Debug)]
-pub struct Splice {
-    /// Byte range in the original source this edit replaces; an empty range is a pure insertion.
-    pub range: Range<usize>,
-    pub text: String,
-}
-
-#[derive(Debug)]
-pub struct Extraction {
-    /// Non-overlapping edits against the original source.
-    pub edits: Vec<Splice>,
-    pub name: String,
-    /// Byte offset in the applied text where the new name starts, for cursor placement.
-    pub cursor: usize,
-}
-
-impl Extraction {
-    pub fn apply(&self, source: &str) -> String {
-        apply_splices(source, &self.edits)
-    }
-}
-
-// Splice rightmost-first so each replace_range leaves earlier byte offsets untouched.
-pub(super) fn apply_splices(text: &str, splices: &[Splice]) -> String {
-    let mut ordered: Vec<&Splice> = splices.iter().collect();
-    ordered.sort_by_key(|s| std::cmp::Reverse(s.range.start));
-    let mut applied = text.to_string();
-    for splice in ordered {
-        applied.replace_range(splice.range.clone(), &splice.text);
-    }
-    applied
-}
-
-pub(super) const EXTRACTABLE_KINDS: &[&str] = &[
-    kinds::BINARY_OP_EXPR,
-    kinds::UNARY_OP_EXPR,
-    kinds::FUNC_CALL_EXPR,
-    kinds::MEMBER_ACCESS_EXPR,
-    kinds::ARRAY_EXPR,
-    kinds::NESTED_EXPR,
-    kinds::CAST_EXPR,
-    kinds::NEW_EXPR,
-    kinds::IDENT,
-    kinds::LITERAL_INT,
-    kinds::LITERAL_HEX,
-    kinds::LITERAL_FLOAT,
-    kinds::LITERAL_BOOL,
-    kinds::LITERAL_STRING,
-    kinds::LITERAL_NAME,
-];
-
-pub(super) const CALLABLE_KINDS: &[SymbolKind] =
-    &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event];
-
-pub(super) const STATEMENT_KINDS: &[&str] = &[
+const STATEMENT_KINDS: &[&str] = &[
     kinds::LOCAL_VAR_DECL_STMT,
     kinds::FOR_STMT,
     kinds::WHILE_STMT,
@@ -205,14 +153,6 @@ pub fn extract_variable(
     }
 }
 
-// Where `original` lands after the edits apply: shift it past every edit that ends at or before it.
-pub(super) fn applied_offset(edits: &[Splice], original: usize) -> usize {
-    edits
-        .iter()
-        .filter(|s| s.range.end <= original)
-        .fold(original, |pos, s| pos + s.text.len() - s.range.len())
-}
-
 fn single_insert(at: usize, text: String, selection: Range<usize>, name: String) -> Extraction {
     let anchor = selection.start;
     let edits = vec![
@@ -315,138 +255,6 @@ fn split_braceless(
         ],
         name,
         cursor,
-    }
-}
-
-pub(super) fn trim_selection(source: &str, selection: Range<usize>) -> Option<Range<usize>> {
-    let slice = source.get(selection.clone())?;
-    let start = selection.start + (slice.len() - slice.trim_start().len());
-    let end = selection.end - (slice.len() - slice.trim_end().len());
-    (start < end).then_some(start..end)
-}
-
-// The smallest covering node can be a leaf inside same-range wrappers; keep the outermost extractable one.
-pub(super) fn exact_expression_at<'tree>(
-    root: Node<'tree>,
-    selection: &Range<usize>,
-) -> Option<Node<'tree>> {
-    let mut node = root.named_descendant_for_byte_range(selection.start, selection.end)?;
-    if node.byte_range() != *selection {
-        return None;
-    }
-    let mut best = None;
-    loop {
-        if EXTRACTABLE_KINDS.contains(&node.kind()) {
-            best = Some(node);
-        }
-        match node.parent() {
-            Some(parent) if parent.byte_range() == *selection => node = parent,
-            _ => return best,
-        }
-    }
-}
-
-// A selection landing on a structural boundary expands to the whole value rather than refusing.
-pub(super) fn expand_selection(root: Node, selection: &Range<usize>) -> Option<Range<usize>> {
-    expand_through_logical_operator(root, selection)
-        .or_else(|| expand_through_postfix_chain(root, selection))
-}
-
-const POSTFIX_CHAIN_KINDS: &[&str] = &[
-    kinds::MEMBER_ACCESS_EXPR,
-    kinds::FUNC_CALL_EXPR,
-    kinds::ARRAY_EXPR,
-];
-
-// Promoting a touched method reference to its call yields a value, not an uncallable handle.
-fn expand_through_postfix_chain(root: Node, selection: &Range<usize>) -> Option<Range<usize>> {
-    let mut node = root.named_descendant_for_byte_range(selection.start, selection.end)?;
-    loop {
-        if POSTFIX_CHAIN_KINDS.contains(&node.kind())
-            && selection_touches_separator(node, selection)
-        {
-            return Some(promote_callee(node).byte_range());
-        }
-        node = node.parent()?;
-    }
-}
-
-fn selection_touches_separator(node: Node, selection: &Range<usize>) -> bool {
-    let mut cursor = node.walk();
-    node.children(&mut cursor).any(|child| {
-        !child.is_named()
-            && child.start_byte() < selection.end
-            && selection.start < child.end_byte()
-    })
-}
-
-fn promote_callee(node: Node) -> Node {
-    node.parent()
-        .filter(|parent| parent.kind() == kinds::FUNC_CALL_EXPR)
-        .filter(|parent| {
-            parent
-                .child_by_field_name(fields::FUNC)
-                .is_some_and(|func| func.id() == node.id())
-        })
-        .unwrap_or(node)
-}
-
-// Extracting both operands the touched `||`/`&&` joins keeps short-circuit evaluation intact.
-fn expand_through_logical_operator(root: Node, selection: &Range<usize>) -> Option<Range<usize>> {
-    let mut node = root.named_descendant_for_byte_range(selection.start, selection.end)?;
-    loop {
-        if node.kind() == kinds::BINARY_OP_EXPR && selection_touches_logical_op(node, selection) {
-            return Some(node.byte_range());
-        }
-        node = node.parent()?;
-    }
-}
-
-fn selection_touches_logical_op(binary: Node, selection: &Range<usize>) -> bool {
-    let Some(op) = binary.child_by_field_name(fields::OP) else {
-        return false;
-    };
-    matches!(op.kind(), kinds::BINARY_OP_OR | kinds::BINARY_OP_AND)
-        && op.start_byte() < selection.end
-        && selection.start < op.end_byte()
-}
-
-pub(super) fn is_call_callee(node: Node) -> bool {
-    node.parent()
-        .filter(|parent| parent.kind() == kinds::FUNC_CALL_EXPR)
-        .and_then(call_callee)
-        .is_some_and(|callee| callee.id() == node.id())
-}
-
-pub(super) enum SelectionKind<'tree> {
-    Expression {
-        node: Node<'tree>,
-        range: Range<usize>,
-    },
-    Statements {
-        range: Range<usize>,
-    },
-}
-
-pub(super) fn classify_selection<'tree>(
-    root: Node<'tree>,
-    selection: &Range<usize>,
-) -> SelectionKind<'tree> {
-    let expanded = expand_selection(root, selection).unwrap_or_else(|| selection.clone());
-    let Some(node) = exact_expression_at(root, &expanded) else {
-        return SelectionKind::Statements {
-            range: selection.clone(),
-        };
-    };
-    // An expression that is an entire statement is a statement, not a value to bind or return.
-    match node.parent().filter(|p| p.kind() == kinds::EXPR_STMT) {
-        Some(stmt) => SelectionKind::Statements {
-            range: stmt.byte_range(),
-        },
-        None => SelectionKind::Expression {
-            node,
-            range: expanded,
-        },
     }
 }
 
@@ -624,27 +432,17 @@ fn tracked_write_in_window(
     if tracked.is_empty() {
         return false;
     }
-    let mut writes = Vec::new();
-    collect_descendants_of_kind(
-        block,
-        &[kinds::ASSIGN_OP_EXPR, kinds::FUNC_CALL_EXPR],
-        &mut writes,
-    );
     let is_tracked_write = |target: Node| {
         window.contains(&target.start_byte())
             && resolved_write_tracked_id(uri, document, db, target, callable)
                 .is_some_and(|id| tracked.contains(&id))
     };
-    writes.iter().any(|node| match node.kind() {
-        kinds::ASSIGN_OP_EXPR => node
-            .child_by_field_name(fields::LEFT)
-            .and_then(write_target)
-            .is_some_and(is_tracked_write),
-        _ => out_args(uri, document, db, *node)
-            .into_iter()
-            .filter_map(write_target)
-            .any(is_tracked_write),
-    })
+    write_sites(uri, document, db, &[block])
+        .into_iter()
+        .any(|write| match write {
+            WriteSite::AssignTarget(target) | WriteSite::OutArg(target) => is_tracked_write(target),
+            WriteSite::AssignBase(_) | WriteSite::ReceiverBase(_) => false,
+        })
 }
 
 // Any function/method may be redirected by @wrapMethod/@replaceMethod beyond our visibility, so a
@@ -671,26 +469,6 @@ fn overridable_call_precedes(node: Node, block: Node, window: Range<usize>, in_l
         window.contains(&call.start_byte())
             && (in_loop || !mutually_exclusive_branches(*call, node))
     })
-}
-
-pub(super) fn out_args<'tree>(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    call: Node<'tree>,
-) -> Vec<Node<'tree>> {
-    let Some(slots) = arg_slots(call) else {
-        return Vec::new();
-    };
-    let Some(params) = callee_params(uri, document, db, call) else {
-        return Vec::new();
-    };
-    params
-        .iter()
-        .zip(slots)
-        .filter(|(parameter, _)| parameter.specifiers.is_out())
-        .map(|(_, arg)| arg)
-        .collect()
 }
 
 fn selection_tracked_ids(
