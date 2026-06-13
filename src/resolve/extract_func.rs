@@ -16,7 +16,7 @@ use crate::types::Type;
 
 use super::Definition;
 use super::definition::{definition_key, resolve_definition_at_byte};
-use super::extract_var::{
+use super::extract_common::{
     CALLABLE_KINDS, Extraction, SelectionKind, Splice, WriteSite, applied_offset, apply_splices,
     classify_selection, is_call_callee, trim_selection, write_sites,
 };
