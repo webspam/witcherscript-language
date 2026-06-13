@@ -206,6 +206,57 @@ async fn offers_extract_function_for_statement_selection() {
 }
 
 #[tokio::test]
+async fn offers_extract_method_inside_a_class() {
+    let uri: Url = "file:///main.ws".parse().unwrap();
+    let mut client = LspClient::spawn().await;
+    let source =
+        "class C {\n    function M() {\n        Use(1 + 2);\n    }\n}\nfunction Use(x : int) {}\n";
+    client.open(&uri, source).await;
+
+    // Selection covering the whole `Use(1 + 2);` statement (line 2, characters 8..19).
+    let params = CodeActionParams {
+        text_document: TextDocumentIdentifier { uri },
+        range: Range::new(Position::new(2, 8), Position::new(2, 19)),
+        context: CodeActionContext::default(),
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    };
+
+    let response = client
+        .request::<CodeActionRequest>(params)
+        .await
+        .expect("expected a code action response");
+    assert_eq!(
+        response.len(),
+        2,
+        "statement inside a method offers extract to method and to function"
+    );
+    let CodeActionOrCommand::CodeAction(action) = &response[0] else {
+        panic!("expected a CodeAction, got {:?}", response[0]);
+    };
+    assert_eq!(action.title, "Extract to method");
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_EXTRACT));
+    let edits = action
+        .edit
+        .as_ref()
+        .and_then(|e| e.changes.as_ref())
+        .and_then(|c| c.values().next())
+        .expect("extract carries a WorkspaceEdit");
+    assert_eq!(edits.len(), 2, "one insert plus one replace");
+    assert_eq!(
+        edits[0].new_text,
+        "\n\n    private function NewMethod() {\n        Use(1 + 2);\n    }"
+    );
+    assert_eq!(edits[1].new_text, "NewMethod();");
+    let command = action
+        .command
+        .as_ref()
+        .expect("extract must trigger rename");
+    assert_eq!(command.command, "witcherscript.extractVariable");
+    assert_eq!(command.title, "Rename extracted method");
+}
+
+#[tokio::test]
 async fn automatic_trigger_suppresses_refactors() {
     let uri: Url = "file:///main.ws".parse().unwrap();
     let mut client = LspClient::spawn().await;
