@@ -1,7 +1,7 @@
 use expect_test::expect;
 use rstest::rstest;
 
-use super::super::{Extraction, extract_method};
+use super::super::{Extraction, extract_function, extract_method};
 use crate::formatter::FormatOptions;
 use crate::test_support::TestDb;
 
@@ -270,4 +270,86 @@ fn names_new_method(#[case] src: &str, #[case] needle: &str, #[case] expected: &
 )]
 fn refuses_outside_an_inline_type_body(#[case] src: &str, #[case] needle: &str) {
     assert!(refused(src, needle), "must refuse needle {needle:?}");
+}
+
+// Reads private + protected fields, calls a private helper, writes a public field: a global
+// function would have to promote two fields and then refuse outright on the private helper.
+const COMBAT_SRC: &str = "class CombatActor {\n    private var armor : int;\n    protected var resistance : int;\n    var lastHit : int;\n    private function Floor0(v : int) : int { return v; }\n    function TakeHit(incoming : int) : int {\n        var mitigated : int;\n        var dealt : int;\n        mitigated = incoming - armor - resistance;\n        dealt = Floor0(mitigated);\n        lastHit = dealt;\n        return mitigated + dealt;\n    }\n}\n";
+
+const COMBAT_SELECTION: &str = "mitigated = incoming - armor - resistance;\n        dealt = Floor0(mitigated);\n        lastHit = dealt;";
+
+#[test]
+fn complex_run_threads_locals_while_members_and_helper_stay_verbatim() {
+    expect![[r"
+        class CombatActor {
+            private var armor : int;
+            protected var resistance : int;
+            var lastHit : int;
+            private function Floor0(v : int) : int { return v; }
+            function TakeHit(incoming : int) : int {
+                var mitigated : int;
+                var dealt : int;
+                NewMethod(incoming, mitigated, dealt);
+                return mitigated + dealt;
+            }
+
+            private function NewMethod(incoming : int, out mitigated : int, out dealt : int) {
+                mitigated = incoming - armor - resistance;
+                dealt = Floor0(mitigated);
+                lastHit = dealt;
+            }
+        }
+    "]]
+    .assert_eq(&applied(COMBAT_SRC, COMBAT_SELECTION));
+}
+
+#[test]
+fn extract_to_function_refuses_what_extract_to_method_accepts() {
+    let t = TestDb::new(COMBAT_SRC);
+    let uri = t.primary_uri();
+    let doc = t.doc_for(uri);
+    let start = doc
+        .source
+        .find(COMBAT_SELECTION)
+        .expect("selection present");
+    let range = start..start + COMBAT_SELECTION.len();
+    assert!(
+        extract_function(uri, doc, &t.db(), range.clone(), FormatOptions::default()).is_none(),
+        "a global function cannot reach the private helper Floor0",
+    );
+    assert!(
+        extract_method(uri, doc, &t.db(), range, FormatOptions::default()).is_some(),
+        "a sibling method reaches every member, so the same selection extracts",
+    );
+}
+
+// A whole for-loop with a nested branch, an accumulator, a loop counter, an array field used via
+// a method call and index, a private helper, and a protected field - all reached verbatim.
+#[test]
+fn extracts_a_loop_with_nested_branch_and_private_helpers() {
+    let src = "class Inventory {\n    private var items : array<int>;\n    protected var maxStack : int;\n    private function IsValid(id : int) : bool { return true; }\n    function CountValid() : int {\n        var total : int;\n        var i : int;\n        total = 0;\n        for (i = 0; i < items.Size(); i += 1) {\n            if (IsValid(items[i]) && i < maxStack) {\n                total += 1;\n            }\n        }\n        return total;\n    }\n}\n";
+    let needle = "for (i = 0; i < items.Size(); i += 1) {\n            if (IsValid(items[i]) && i < maxStack) {\n                total += 1;\n            }\n        }";
+    expect![[r"
+        class Inventory {
+            private var items : array<int>;
+            protected var maxStack : int;
+            private function IsValid(id : int) : bool { return true; }
+            function CountValid() : int {
+                var total : int;
+                var i : int;
+                total = 0;
+                NewMethod(i, total);
+                return total;
+            }
+
+            private function NewMethod(i : int, out total : int) {
+                for (i = 0; i < items.Size(); i += 1) {
+                    if (IsValid(items[i]) && i < maxStack) {
+                        total += 1;
+                    }
+                }
+            }
+        }
+    "]]
+    .assert_eq(&applied(src, needle));
 }
