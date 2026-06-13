@@ -148,6 +148,120 @@ fn add_method_annotation_supplies_receiver_type() {
 }
 
 #[test]
+fn private_field_is_promoted_to_a_parameter_not_squashed() {
+    let src = "class CFoo {\n    private var secret : int;\n    function M() {\n        var r : int;\n        r = secret + 1;\n    }\n}\n";
+    expect![[r"
+        class CFoo {
+            private var secret : int;
+            function M() {
+                var r : int;
+                r = NewFunction(secret);
+            }
+        }
+
+        function NewFunction(secret : int) : int {
+            return secret + 1;
+        }
+    "]]
+    .assert_eq(&applied(src, "secret + 1"));
+}
+
+#[test]
+fn private_field_reached_through_this_is_promoted() {
+    let src = "class CLightRewriteSettings {\n    function WillBreakWhenExtracted() {}\n}\nclass CFoo {\n    private var settings : CLightRewriteSettings;\n    function M() {\n        this.settings.WillBreakWhenExtracted();\n    }\n}\n";
+    expect![[r"
+        class CLightRewriteSettings {
+            function WillBreakWhenExtracted() {}
+        }
+        class CFoo {
+            private var settings : CLightRewriteSettings;
+            function M() {
+                NewFunction(settings);
+            }
+        }
+
+        function NewFunction(settings : CLightRewriteSettings) {
+            settings.WillBreakWhenExtracted();
+        }
+    "]]
+    .assert_eq(&applied(src, "this.settings.WillBreakWhenExtracted();"));
+}
+
+#[test]
+fn protected_field_is_also_promoted() {
+    let src = "class CFoo {\n    protected var hp : int;\n    function M() {\n        var r : int;\n        r = hp * 2;\n    }\n}\n";
+    expect![[r"
+        class CFoo {
+            protected var hp : int;
+            function M() {
+                var r : int;
+                r = NewFunction(hp);
+            }
+        }
+
+        function NewFunction(hp : int) : int {
+            return hp * 2;
+        }
+    "]]
+    .assert_eq(&applied(src, "hp * 2"));
+}
+
+#[test]
+fn written_private_field_becomes_an_out_parameter() {
+    let src = "class CFoo {\n    private var count : int;\n    function M() {\n        count = count + 1;\n    }\n}\n";
+    expect![[r"
+        class CFoo {
+            private var count : int;
+            function M() {
+                NewFunction(count);
+            }
+        }
+
+        function NewFunction(out count : int) {
+            count = count + 1;
+        }
+    "]]
+    .assert_eq(&applied(src, "count = count + 1;"));
+}
+
+#[test]
+fn public_member_uses_receiver_while_private_field_is_promoted() {
+    let src = "class CFoo {\n    var health : int;\n    private var secret : int;\n    function M() {\n        var r : int;\n        r = health + secret;\n    }\n}\n";
+    expect![[r"
+        class CFoo {
+            var health : int;
+            private var secret : int;
+            function M() {
+                var r : int;
+                r = NewFunction(this, secret);
+            }
+        }
+
+        function NewFunction(foo : CFoo, secret : int) : int {
+            return foo.health + secret;
+        }
+    "]]
+    .assert_eq(&applied(src, "health + secret"));
+}
+
+#[rstest]
+#[case::bare_private_method(
+    "class CFoo {\n    private function Secret() : int { return 1; }\n    function M() {\n        var r : int;\n        r = Secret() + 1;\n    }\n}\n",
+    "Secret() + 1"
+)]
+#[case::this_private_method(
+    "class CFoo {\n    private function DirectMemberAccess() {}\n    function M() {\n        var someVar : int;\n        someVar = 13;\n        this.DirectMemberAccess();\n    }\n}\n",
+    "someVar = 13;\n        this.DirectMemberAccess();"
+)]
+#[case::protected_method(
+    "class CFoo {\n    protected function Guarded() : int { return 1; }\n    function M() {\n        var r : int;\n        r = Guarded() + 1;\n    }\n}\n",
+    "Guarded() + 1"
+)]
+fn refuses_private_or_protected_method_access(#[case] src: &str, #[case] needle: &str) {
+    assert!(refused(src, needle), "must refuse needle {needle:?}");
+}
+
+#[test]
 fn receiver_name_collision_with_local_gets_suffix() {
     let src = "class CFoo {\n    var bar : int;\n    function M() {\n        var foo : int;\n        var r : int;\n        r = bar + foo;\n    }\n}\n";
     expect![[r"

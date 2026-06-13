@@ -14,7 +14,8 @@ use crate::strings::receiver_name;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
 
-use super::definition::resolve_definition_at_byte;
+use super::Definition;
+use super::definition::{definition_key, resolve_definition_at_byte};
 use super::extract_var::{
     CALLABLE_KINDS, Extraction, Splice, applied_offset, apply_splices, exact_expression_at,
     expand_selection, is_call_callee, out_args, trim_selection,
@@ -80,13 +81,12 @@ fn extract_expression(
         "return {};",
         moved_text(&document.source, &selection, &captures)
     );
-    let (value_params, out_params): (Vec<_>, Vec<_>) =
+    let (value_locals, out_locals): (Vec<_>, Vec<_>) =
         captures.locals.iter().partition(|l| !l.is_written());
     let plan = FunctionPlan {
         name: unique_function_name(document, db, callable, type_context.as_ref()),
-        receiver: captures.receiver.as_ref(),
-        value_params,
-        out_params,
+        receiver: captures.receiver.clone(),
+        params: assemble_params(&value_locals, &out_locals, &captures.promoted),
         return_type: ty,
         body,
     };
@@ -148,25 +148,24 @@ fn extract_statements(
         [only] if captures.locals[*only].entry_value_unread() => Some(*only),
         _ => None,
     };
-    let mut value_params = Vec::new();
-    let mut out_params = Vec::new();
+    let mut value_locals = Vec::new();
+    let mut out_locals = Vec::new();
     for (i, local) in captures.locals.iter().enumerate() {
         if returned == Some(i) {
             continue;
         }
         if outputs.contains(&i) {
-            out_params.push(local);
+            out_locals.push(local);
         } else {
-            value_params.push(local);
+            value_locals.push(local);
         }
     }
     let returned = returned.map(|i| &captures.locals[i]);
 
     let plan = FunctionPlan {
         name: unique_function_name(document, db, callable, type_context.as_ref()),
-        receiver: captures.receiver.as_ref(),
-        value_params,
-        out_params,
+        receiver: captures.receiver.clone(),
+        params: assemble_params(&value_locals, &out_locals, &captures.promoted),
         return_type: returned.map_or(Type::Void, |r| r.ty.clone()),
         body: statement_body(source, &range, &captures, returned, options),
     };
@@ -327,21 +326,40 @@ fn enclosing_loop<'tree>(node: Node<'tree>, stop: Node) -> Option<Node<'tree>> {
 
 struct Captures {
     receiver: Option<Receiver>,
+    rewrites: Vec<BodyRewrite>,
     locals: Vec<CapturedLocal>,
+    promoted: Vec<PromotedField>,
     internals: Vec<InternalLocal>,
 }
 
+#[derive(Clone)]
 struct Receiver {
     type_name: String,
     param_name: String,
-    rewrites: Vec<ReceiverRewrite>,
 }
 
-enum ReceiverRewrite {
-    /// Insert `<receiver>.` before a bare implicit-this member reference.
-    QualifyAt(usize),
-    /// Replace a `this` expression with the receiver parameter name.
+enum BodyRewrite {
+    /// Insert `<receiver>.` before a bare implicit-this public member.
+    Qualify(usize),
+    /// Replace a `this` expression (value, or receiver of a public member access) with the receiver.
     ReplaceThis(Range<usize>),
+    /// Replace a private/protected field access (`this.f` or bare `f`) with its promoted parameter.
+    ReplacePromoted { range: Range<usize>, field: usize },
+}
+
+// A global function only reaches public members, so a private/protected field reached through `this`
+// is passed in by value (or `out`) instead of being squashed into an illegal `receiver.field`.
+struct PromotedField {
+    key: (String, Range<usize>),
+    name: String,
+    ty: Type,
+    is_written: bool,
+}
+
+struct Param {
+    name: String,
+    ty: Type,
+    is_out: bool,
 }
 
 struct CapturedLocal {
@@ -404,10 +422,24 @@ fn collect_captures(
     let source = document.source.as_bytes();
     let mut rewrites = Vec::new();
     let mut locals: Vec<CapturedLocal> = Vec::new();
+    let mut promoted: Vec<PromotedField> = Vec::new();
     let mut internals: Vec<InternalLocal> = Vec::new();
     for reference in references {
         if reference.kind() == kinds::THIS_EXPR {
-            rewrites.push(ReceiverRewrite::ReplaceThis(reference.byte_range()));
+            match this_member(reference, uri, document, db) {
+                Some((member, def)) => match member_disposition(&def) {
+                    Disposition::Receiver => {
+                        rewrites.push(BodyRewrite::ReplaceThis(reference.byte_range()));
+                    }
+                    Disposition::Promote => {
+                        let field = promote_field(&mut promoted, &def)?;
+                        let range = reference.start_byte()..member.end_byte();
+                        rewrites.push(BodyRewrite::ReplacePromoted { range, field });
+                    }
+                    Disposition::Refuse => return None,
+                },
+                None => rewrites.push(BodyRewrite::ReplaceThis(reference.byte_range())),
+            }
             continue;
         }
         if is_member_slot(reference) {
@@ -457,29 +489,197 @@ fn collect_captures(
                 record_occurrence(&mut locals[index], reference, run_block);
             }
             SymbolKind::Field | SymbolKind::Method | SymbolKind::Event => {
-                rewrites.push(ReceiverRewrite::QualifyAt(reference.start_byte()));
+                match member_disposition(&definition) {
+                    Disposition::Receiver => {
+                        rewrites.push(BodyRewrite::Qualify(reference.start_byte()));
+                    }
+                    Disposition::Promote => {
+                        let field = promote_field(&mut promoted, &definition)?;
+                        let range = reference.byte_range();
+                        rewrites.push(BodyRewrite::ReplacePromoted { range, field });
+                    }
+                    Disposition::Refuse => return None,
+                }
             }
             _ => {}
         }
     }
     record_indirect_writes(uri, document, db, roots, &mut locals);
 
-    let receiver = if rewrites.is_empty() {
-        None
+    let mut taken: HashSet<String> = locals
+        .iter()
+        .map(|l| l.name.clone())
+        .chain(internals.iter().map(|i| i.name.clone()))
+        .collect();
+    for field in &mut promoted {
+        let name = suffixed_unique(&field.name, |n| {
+            taken.contains(n) || db.find_script_global(n).is_some()
+        });
+        taken.insert(name.clone());
+        field.name = name;
+    }
+    detect_promoted_writes(uri, document, db, roots, &mut promoted);
+
+    let needs_receiver = rewrites
+        .iter()
+        .any(|r| matches!(r, BodyRewrite::Qualify(_) | BodyRewrite::ReplaceThis(_)));
+    let receiver = if needs_receiver {
+        Some(build_receiver(db, type_context?, &taken)?)
     } else {
-        Some(build_receiver(
-            db,
-            type_context?,
-            &locals,
-            &internals,
-            rewrites,
-        )?)
+        None
     };
     Some(Captures {
         receiver,
+        rewrites,
         locals,
+        promoted,
         internals,
     })
+}
+
+enum Disposition {
+    Receiver,
+    Promote,
+    Refuse,
+}
+
+// A global function can only reach public members of the enclosing type.
+fn member_disposition(definition: &Definition) -> Disposition {
+    let public = definition.symbol.access == AccessLevel::Public;
+    match definition.symbol.kind {
+        SymbolKind::Field if !public => Disposition::Promote,
+        SymbolKind::Method | SymbolKind::Event if !public => Disposition::Refuse,
+        _ => Disposition::Receiver,
+    }
+}
+
+fn this_member<'tree>(
+    this_expr: Node<'tree>,
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+) -> Option<(Node<'tree>, Definition)> {
+    let parent = this_expr.parent()?;
+    if parent.kind() != kinds::MEMBER_ACCESS_EXPR {
+        return None;
+    }
+    if first_named_child(parent).map(|c| c.id()) != Some(this_expr.id()) {
+        return None;
+    }
+    let member = member_access_member(parent)?;
+    let definition = resolve_definition_at_byte(uri, document, db, member.start_byte())?;
+    Some((member, definition))
+}
+
+fn promote_field(promoted: &mut Vec<PromotedField>, definition: &Definition) -> Option<usize> {
+    let key = definition_key(definition);
+    if let Some(index) = promoted.iter().position(|p| p.key == key) {
+        return Some(index);
+    }
+    let ty = definition.symbol.type_annotation.clone()?;
+    if matches!(ty, Type::Unknown | Type::Null | Type::Void) {
+        return None;
+    }
+    promoted.push(PromotedField {
+        key,
+        name: definition.symbol.name.clone(),
+        ty,
+        is_written: false,
+    });
+    Some(promoted.len() - 1)
+}
+
+fn detect_promoted_writes(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    roots: &[Node],
+    promoted: &mut [PromotedField],
+) {
+    if promoted.is_empty() {
+        return;
+    }
+    let mut sites = Vec::new();
+    for root in roots {
+        collect_descendants_of_kind(
+            *root,
+            &[kinds::ASSIGN_OP_EXPR, kinds::FUNC_CALL_EXPR],
+            &mut sites,
+        );
+    }
+    for site in sites {
+        if site.kind() == kinds::ASSIGN_OP_EXPR {
+            let Some(left) = site.child_by_field_name(fields::LEFT) else {
+                continue;
+            };
+            if let Some(target) = write_target(left) {
+                mark_field_written(uri, document, db, target, promoted, false);
+            }
+            if let Some(base) = lvalue_base_ident(left) {
+                mark_field_written(uri, document, db, base, promoted, true);
+            }
+        } else {
+            for arg in out_args(uri, document, db, site) {
+                if let Some(target) = write_target(arg) {
+                    mark_field_written(uri, document, db, target, promoted, false);
+                }
+            }
+            if let Some(base) = method_call_receiver_base(site) {
+                mark_field_written(uri, document, db, base, promoted, true);
+            }
+        }
+    }
+}
+
+fn mark_field_written(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    ident: Node,
+    promoted: &mut [PromotedField],
+    value_type_only: bool,
+) {
+    let Some(definition) = resolve_definition_at_byte(uri, document, db, ident.start_byte()) else {
+        return;
+    };
+    if definition.symbol.kind != SymbolKind::Field {
+        return;
+    }
+    let key = definition_key(&definition);
+    if let Some(field) = promoted.iter_mut().find(|p| p.key == key)
+        && (!value_type_only || is_value_type(&field.ty, db))
+    {
+        field.is_written = true;
+    }
+}
+
+fn assemble_params(
+    value_locals: &[&CapturedLocal],
+    out_locals: &[&CapturedLocal],
+    promoted: &[PromotedField],
+) -> Vec<Param> {
+    let mut params = Vec::new();
+    params.extend(value_locals.iter().map(|l| Param {
+        name: l.name.clone(),
+        ty: l.ty.clone(),
+        is_out: false,
+    }));
+    params.extend(promoted.iter().filter(|p| !p.is_written).map(|p| Param {
+        name: p.name.clone(),
+        ty: p.ty.clone(),
+        is_out: false,
+    }));
+    params.extend(out_locals.iter().map(|l| Param {
+        name: l.name.clone(),
+        ty: l.ty.clone(),
+        is_out: true,
+    }));
+    params.extend(promoted.iter().filter(|p| p.is_written).map(|p| Param {
+        name: p.name.clone(),
+        ty: p.ty.clone(),
+        is_out: true,
+    }));
+    params
 }
 
 fn is_member_slot(ident: Node) -> bool {
@@ -649,9 +849,16 @@ fn is_value_type(ty: &Type, db: &SymbolDb) -> bool {
 fn lvalue_base_ident(expr: Node) -> Option<Node> {
     match expr.kind() {
         kinds::IDENT => Some(expr),
-        kinds::MEMBER_ACCESS_EXPR | kinds::NESTED_EXPR => {
-            lvalue_base_ident(first_named_child(expr)?)
+        kinds::MEMBER_ACCESS_EXPR => {
+            let child = first_named_child(expr)?;
+            // `this.field` is rooted at the field, not at an outer local.
+            if child.kind() == kinds::THIS_EXPR {
+                member_access_member(expr)
+            } else {
+                lvalue_base_ident(child)
+            }
         }
+        kinds::NESTED_EXPR => lvalue_base_ident(first_named_child(expr)?),
         kinds::ARRAY_EXPR => lvalue_base_ident(expr.child_by_field_name(fields::ACCESSOR)?),
         _ => None,
     }
@@ -668,9 +875,7 @@ fn method_call_receiver_base(call: Node) -> Option<Node> {
 fn build_receiver(
     db: &SymbolDb,
     type_context: &TypeContext,
-    locals: &[CapturedLocal],
-    internals: &[InternalLocal],
-    rewrites: Vec<ReceiverRewrite>,
+    taken: &HashSet<String>,
 ) -> Option<Receiver> {
     // A state has no spellable parameter type; states wait for extract-to-method.
     if type_context.owner_class.is_some() {
@@ -683,34 +888,38 @@ fn build_receiver(
     {
         return None;
     }
-    let taken = |name: &str| {
-        locals.iter().any(|l| l.name == name)
-            || internals.iter().any(|i| i.name == name)
-            || db.find_script_global(name).is_some()
-    };
-    let param_name = suffixed_unique(&receiver_name(&type_context.name), taken);
+    let param_name = suffixed_unique(&receiver_name(&type_context.name), |n| {
+        taken.contains(n) || db.find_script_global(n).is_some()
+    });
     Some(Receiver {
         type_name: type_context.name.clone(),
         param_name,
-        rewrites,
     })
 }
 
 fn moved_text(source: &str, range: &Range<usize>, captures: &Captures) -> String {
-    let Some(receiver) = &captures.receiver else {
+    if captures.rewrites.is_empty() {
         return source[range.clone()].to_string();
-    };
-    let splices: Vec<Splice> = receiver
+    }
+    let receiver = captures.receiver.as_ref().map(|r| r.param_name.as_str());
+    let rel = |r: &Range<usize>| (r.start - range.start)..(r.end - range.start);
+    let splices: Vec<Splice> = captures
         .rewrites
         .iter()
         .map(|rewrite| match rewrite {
-            ReceiverRewrite::QualifyAt(at) => Splice {
+            BodyRewrite::Qualify(at) => Splice {
                 range: at - range.start..at - range.start,
-                text: format!("{}.", receiver.param_name),
+                text: format!("{}.", receiver.expect("qualify implies a receiver")),
             },
-            ReceiverRewrite::ReplaceThis(this) => Splice {
-                range: this.start - range.start..this.end - range.start,
-                text: receiver.param_name.clone(),
+            BodyRewrite::ReplaceThis(this) => Splice {
+                range: rel(this),
+                text: receiver
+                    .expect("this-replacement implies a receiver")
+                    .to_string(),
+            },
+            BodyRewrite::ReplacePromoted { range: r, field } => Splice {
+                range: rel(r),
+                text: captures.promoted[*field].name.clone(),
             },
         })
         .collect();
@@ -757,11 +966,10 @@ fn dedent_line<'a>(line: &'a str, base: &str) -> &'a str {
     rest
 }
 
-struct FunctionPlan<'a> {
+struct FunctionPlan {
     name: String,
-    receiver: Option<&'a Receiver>,
-    value_params: Vec<&'a CapturedLocal>,
-    out_params: Vec<&'a CapturedLocal>,
+    receiver: Option<Receiver>,
+    params: Vec<Param>,
     return_type: Type,
     body: String,
 }
@@ -771,30 +979,23 @@ fn call_expression(plan: &FunctionPlan) -> String {
     if plan.receiver.is_some() {
         args.push("this");
     }
-    args.extend(plan.value_params.iter().map(|l| l.name.as_str()));
-    args.extend(plan.out_params.iter().map(|l| l.name.as_str()));
+    args.extend(plan.params.iter().map(|p| p.name.as_str()));
     format!("{}({})", plan.name, args.join(", "))
 }
 
 fn render_function(plan: &FunctionPlan, options: FormatOptions) -> String {
     let colon = colon_for(options);
     let mut params = Vec::new();
-    if let Some(receiver) = plan.receiver {
+    if let Some(receiver) = &plan.receiver {
         params.push(format!(
             "{}{colon}{}",
             receiver.param_name, receiver.type_name
         ));
     }
-    params.extend(
-        plan.value_params
-            .iter()
-            .map(|l| format!("{}{colon}{}", l.name, l.ty)),
-    );
-    params.extend(
-        plan.out_params
-            .iter()
-            .map(|l| format!("out {}{colon}{}", l.name, l.ty)),
-    );
+    params.extend(plan.params.iter().map(|p| {
+        let out = if p.is_out { "out " } else { "" };
+        format!("{out}{}{colon}{}", p.name, p.ty)
+    }));
     let params = params.join(", ");
     let return_clause = match &plan.return_type {
         Type::Void => String::new(),
