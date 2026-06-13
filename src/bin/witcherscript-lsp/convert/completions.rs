@@ -47,10 +47,7 @@ pub(crate) fn completion_item(
             .collect();
         (Some(detail), snippet_params)
     } else {
-        let detail = symbol
-            .declaration_text
-            .clone()
-            .or_else(|| symbol.type_annotation.as_ref().map(ToString::to_string));
+        let detail = symbol.type_annotation.as_ref().map(ToString::to_string);
         (detail, Vec::new())
     };
     let (insert_text, insert_text_format) = if is_callable {

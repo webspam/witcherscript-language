@@ -105,11 +105,15 @@ fn inherited_method_hover_includes_defining_class_and_return_type() {
 
 #[test]
 fn field_hover_includes_name_and_type() {
-    let t = TestDb::new("class CExample {\n protected editable var $0ignore : bool;\n}\n");
-    let (uri, pos) = t.cursor();
-    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("field must resolve");
-    let text = witcherscript_language::resolve::hover_text(&def, &t.db());
-    assert!(text.starts_with("(field) "), "got {text:?}");
-    assert!(text.contains("ignore"), "got {text:?}");
-    assert!(text.contains("bool"), "got {text:?}");
+    let actual = markdown_at_cursor(
+        "//- /example.ws\n\
+         class CExample {\n protected editable var $0ignore : bool;\n}\n",
+    );
+    expect![[r"
+        ```witcherscript
+        (field) protected editable ignore : bool
+        ```
+
+        Defined in [example.ws:2](file:///example.ws#L2)"]]
+    .assert_eq(&actual);
 }
