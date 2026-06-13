@@ -226,3 +226,13 @@ fn parent_member_call_infers_owner_return_type() {
         "parent resolves to the owner class, so parent.Ping() is the owner method's return type"
     );
 }
+
+#[test]
+fn virtual_parent_member_call_infers_owner_return_type() {
+    let fixture = "class Owner {\n    function Ping() : int { return 1; }\n}\nstate S in Owner {\n    function M() {\n        var r : int;\n        r = virtual_parent.Ping();\n    }\n}\n";
+    assert_eq!(
+        inferred(fixture, "virtual_parent.Ping()"),
+        Type::Primitive(Primitive::Int),
+        "virtualParent resolves to the owner class, the same as parent"
+    );
+}
