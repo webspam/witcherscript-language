@@ -412,6 +412,38 @@ pub(super) fn is_call_callee(node: Node) -> bool {
         .is_some_and(|callee| callee.id() == node.id())
 }
 
+pub(super) enum SelectionKind<'tree> {
+    Expression {
+        node: Node<'tree>,
+        range: Range<usize>,
+    },
+    Statements {
+        range: Range<usize>,
+    },
+}
+
+pub(super) fn classify_selection<'tree>(
+    root: Node<'tree>,
+    selection: &Range<usize>,
+) -> SelectionKind<'tree> {
+    let expanded = expand_selection(root, selection).unwrap_or_else(|| selection.clone());
+    let Some(node) = exact_expression_at(root, &expanded) else {
+        return SelectionKind::Statements {
+            range: selection.clone(),
+        };
+    };
+    // An expression that is an entire statement is a statement, not a value to bind or return.
+    match node.parent().filter(|p| p.kind() == kinds::EXPR_STMT) {
+        Some(stmt) => SelectionKind::Statements {
+            range: stmt.byte_range(),
+        },
+        None => SelectionKind::Expression {
+            node,
+            range: expanded,
+        },
+    }
+}
+
 fn declaration_statement(name: &str, ty: &Type, expr: &str, options: FormatOptions) -> String {
     let colon = if options.compact_colon { ": " } else { " : " };
     format!("var {name}{colon}{ty} = {expr};")
