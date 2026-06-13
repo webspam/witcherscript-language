@@ -648,7 +648,7 @@ fn out_args<'tree>(
     params
         .iter()
         .zip(slots)
-        .filter(|(parameter, _)| parameter.is_out)
+        .filter(|(parameter, _)| parameter.specifiers.is_out())
         .map(|(_, arg)| arg)
         .collect()
 }

@@ -1,7 +1,7 @@
 use super::collect_shadowing_diagnostics;
 use crate::line_index::{SourcePosition, SourceRange};
 use crate::script_env::{ScriptEnvironment, ScriptGlobal};
-use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+use crate::symbols::{AccessLevel, Specifiers, Symbol, SymbolId, SymbolKind};
 use crate::test_support::TestDb;
 use crate::types::Type;
 
@@ -29,10 +29,7 @@ fn env(names_and_types: &[(&str, &str)]) -> ScriptEnvironment {
                 flavour: None,
                 annotations: Vec::new(),
                 access: AccessLevel::Public,
-                is_optional: false,
-                is_out: false,
-                is_state_machine: false,
-                is_abstract: false,
+                specifiers: Specifiers::default(),
             },
         })
         .collect();

@@ -66,7 +66,7 @@ fn check_state_owner<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
     let owner = ctx.db.find_top_level(owner_name)?;
 
     let is_class = owner.symbol.kind == SymbolKind::Class;
-    if is_class && owner.symbol.is_state_machine {
+    if is_class && owner.symbol.specifiers.is_state_machine() {
         return None;
     }
 

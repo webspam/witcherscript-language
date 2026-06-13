@@ -211,7 +211,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                     &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
                 )?;
                 // `default autoState` sets a statemachine's initial state, not a declared member.
-                if name == "autoState" && enclosing.is_state_machine {
+                if name == "autoState" && enclosing.specifiers.is_state_machine() {
                     return None;
                 }
                 let container_name = enclosing.name.clone();

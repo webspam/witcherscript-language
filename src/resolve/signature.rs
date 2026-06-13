@@ -171,10 +171,10 @@ fn call_site_of(node: Node, byte_offset: usize) -> Option<CallSite> {
 }
 
 fn push_parameter(label: &mut String, param: &Symbol, colon: &str) {
-    if param.is_optional {
+    if param.specifiers.is_optional() {
         label.push_str("optional ");
     }
-    if param.is_out {
+    if param.specifiers.is_out() {
         label.push_str("out ");
     }
     label.push_str(&param.name);
@@ -203,6 +203,24 @@ pub fn render_signature(params: &[Symbol], return_type: Option<&Type>) -> String
     if let Some(ret) = return_type {
         out.push_str(": ");
         out.push_str(&ret.to_string());
+    }
+    out
+}
+
+/// `access specifier* flavour?` in canonical order; ends with a trailing space when non-empty.
+fn declaration_keywords(symbol: &Symbol) -> String {
+    let mut out = String::new();
+    if let Some(access) = symbol.access.as_keyword() {
+        out.push_str(access);
+        out.push(' ');
+    }
+    for specifier in symbol.specifiers.iter() {
+        out.push_str(specifier.as_keyword());
+        out.push(' ');
+    }
+    if let Some(flavour) = symbol.flavour {
+        out.push_str(flavour.as_keyword());
+        out.push(' ');
     }
     out
 }
@@ -236,8 +254,11 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb) -> String {
                 .map(|cn| format!("{cn}."))
                 .unwrap_or_default();
             lines.push(format!(
-                "(method) {}{}{}",
-                class_prefix, symbol.name, params_and_return
+                "(method) {}{}{}{}",
+                declaration_keywords(symbol),
+                class_prefix,
+                symbol.name,
+                params_and_return
             ));
         }
         SymbolKind::Field => {
@@ -268,12 +289,8 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb) -> String {
                     &db.display_parameters_of(definition),
                     symbol.type_annotation.as_ref(),
                 );
-                let flavour_prefix = symbol
-                    .flavour
-                    .as_deref()
-                    .map(|f| format!("{f} "))
-                    .unwrap_or_default();
-                lines.push(format!("{flavour_prefix}{label} {}{sig}", symbol.name));
+                let keywords = declaration_keywords(symbol);
+                lines.push(format!("{keywords}{label} {}{sig}", symbol.name));
             } else if let Some(type_annotation) = &symbol.type_annotation {
                 lines.push(format!("{label} {} : {type_annotation}", symbol.name));
             } else {

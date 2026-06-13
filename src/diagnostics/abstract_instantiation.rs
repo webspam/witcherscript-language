@@ -70,7 +70,7 @@ fn check_new_expr<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> 
             "native_instantiation",
             format!("Cannot instantiate native type '{name}'."),
         )
-    } else if def.symbol.kind == SymbolKind::Class && def.symbol.is_abstract {
+    } else if def.symbol.kind == SymbolKind::Class && def.symbol.specifiers.is_abstract() {
         (
             "abstract_instantiation",
             format!("Cannot instantiate abstract class '{name}'."),

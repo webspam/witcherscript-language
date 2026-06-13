@@ -451,3 +451,30 @@ fn goto_def_on_added_method_call_resolves_to_annotation() {
     assert_eq!(def.uri, "file:///add.ws");
     assert_eq!(def.symbol.name, "Boost");
 }
+
+#[rstest]
+#[case::method_access_and_specifiers(
+    "class C {\n  private final function $0Foo() {}\n}\n",
+    "(method) private final C.Foo()"
+)]
+#[case::method_import_specifier_with_return(
+    "class CInv {}\nclass C {\n  import final function $0GetInv() : CInv;\n}\n",
+    "(method) import final C.GetInv(): CInv"
+)]
+#[case::method_public_keyword_omitted(
+    "class C {\n  public function $0Pub() {}\n}\n",
+    "(method) C.Pub()"
+)]
+#[case::function_latent_specifier("latent function $0Tick() {}\n", "latent function Tick()")]
+#[case::function_flavour("quest function $0Q() {}\n", "quest function Q()")]
+fn hover_shows_declaration_modifiers(#[case] source: &str, #[case] expected: &str) {
+    let t = TestDb::new(source);
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
+        .expect("declaration name should resolve to its own symbol");
+    assert_eq!(
+        hover_text(&def, &t.db()),
+        expected,
+        "hover signature should mirror the declared modifiers"
+    );
+}

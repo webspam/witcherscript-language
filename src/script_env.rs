@@ -5,7 +5,7 @@ use lsp_types::Url;
 
 use crate::files::read_text_file;
 use crate::line_index::{SourcePosition, SourceRange};
-use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+use crate::symbols::{AccessLevel, Specifiers, Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
 
 static SCRIPT_ENV_VERSION: AtomicU64 = AtomicU64::new(0);
@@ -182,10 +182,7 @@ fn global_symbol(
         flavour: None,
         annotations: Vec::new(),
         access: AccessLevel::Public,
-        is_optional: false,
-        is_out: false,
-        is_state_machine: false,
-        is_abstract: false,
+        specifiers: Specifiers::default(),
     }
 }
 

@@ -42,7 +42,7 @@ pub(crate) fn completion_item(
         // Optional parameters stay out of snippet slots (AGENTS.md key invariant #5).
         let snippet_params: Vec<String> = params
             .into_iter()
-            .filter(|p| !p.is_optional)
+            .filter(|p| !p.specifiers.is_optional())
             .map(|p| p.name)
             .collect();
         (Some(detail), snippet_params)
