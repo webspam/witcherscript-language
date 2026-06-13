@@ -20,6 +20,7 @@ mod completion_type;
 mod definition;
 mod document_highlight;
 mod extract_func;
+mod extract_method;
 mod extract_var;
 mod index;
 mod inference;

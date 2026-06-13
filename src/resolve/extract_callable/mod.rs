@@ -7,11 +7,11 @@ use std::ops::Range;
 
 use tree_sitter::Node;
 
-use crate::cst::ancestors::{enclosing_callable_block, node_and_ancestors};
+use crate::cst::ancestors::{enclosing_callable_block, find_ancestor_of_kind, node_and_ancestors};
 use crate::cst::kinds;
 use crate::document::ParsedDocument;
-use crate::formatter::FormatOptions;
-use crate::symbols::SymbolId;
+use crate::formatter::{FormatOptions, indent_block};
+use crate::symbols::{Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
 
 use super::Definition;
@@ -46,6 +46,15 @@ impl ResolveCtx<'_> {
     }
 }
 
+// Where an extracted callable lands: this fixes what it can reach and how it is rendered.
+#[derive(Clone, Copy)]
+enum Destination {
+    /// A new top-level free function (extract-to-function).
+    GlobalFunction,
+    /// A new sibling method of the enclosing class or state (extract-to-method).
+    Method,
+}
+
 pub fn extract_function(
     uri: &str,
     document: &ParsedDocument,
@@ -53,12 +62,67 @@ pub fn extract_function(
     selection: Range<usize>,
     options: FormatOptions,
 ) -> Option<Extraction> {
+    extract(
+        uri,
+        document,
+        db,
+        selection,
+        options,
+        Destination::GlobalFunction,
+    )
+}
+
+pub fn extract_method(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    selection: Range<usize>,
+    options: FormatOptions,
+) -> Option<Extraction> {
+    extract(uri, document, db, selection, options, Destination::Method)
+}
+
+fn extract(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    selection: Range<usize>,
+    options: FormatOptions,
+    destination: Destination,
+) -> Option<Extraction> {
     let selection = trim_selection(&document.source, selection)?;
     let root = document.tree.root_node();
     let ctx = ResolveCtx { uri, document, db };
     match classify_selection(root, &selection) {
-        SelectionKind::Expression { node, range } => extract_expression(&ctx, node, range, options),
-        SelectionKind::Statements { range } => extract_statements(&ctx, root, range, options),
+        SelectionKind::Expression { node, range } => {
+            extract_expression(&ctx, node, range, options, destination)
+        }
+        SelectionKind::Statements { range } => {
+            extract_statements(&ctx, root, range, options, destination)
+        }
+    }
+}
+
+// A method needs an enclosing class or state to hold it; a free function offers only itself.
+fn method_host(document: &ParsedDocument, callable: &Symbol) -> Option<()> {
+    callable
+        .container
+        .and_then(|id| document.symbols.by_id(id))
+        .filter(|host| matches!(host.kind, SymbolKind::Class | SymbolKind::State))
+        .map(|_| ())
+}
+
+fn modifier_for(destination: Destination) -> Option<&'static str> {
+    match destination {
+        Destination::Method => Some("private"),
+        Destination::GlobalFunction => None,
+    }
+}
+
+fn default_name(destination: Destination) -> &'static str {
+    match destination {
+        Destination::Method => "NewMethod",
+        Destination::GlobalFunction => "NewFunction",
     }
 }
 
@@ -67,6 +131,7 @@ fn extract_expression(
     node: Node,
     selection: Range<usize>,
     options: FormatOptions,
+    destination: Destination,
 ) -> Option<Extraction> {
     if is_call_callee(node) {
         // A bare reference to the callee is a function reference, which WitcherScript has no values for.
@@ -77,6 +142,9 @@ fn extract_expression(
         .document
         .symbols
         .enclosing_symbol_at(selection.start, CALLABLE_KINDS)?;
+    if matches!(destination, Destination::Method) {
+        method_host(ctx.document, callable)?;
+    }
     let ty = ctx.infer(node, selection.start);
     if matches!(ty, Type::Unknown | Type::Null | Type::Void) {
         return None;
@@ -89,6 +157,7 @@ fn extract_expression(
         None,
         callable,
         type_context.as_ref(),
+        destination,
     )?;
     let body = format!(
         "return {};",
@@ -97,14 +166,29 @@ fn extract_expression(
     let (value_locals, out_locals): (Vec<_>, Vec<_>) =
         captures.locals.iter().partition(|l| !l.is_written());
     let plan = FunctionPlan {
-        name: unique_function_name(ctx.document, ctx.db, callable, type_context.as_ref()),
+        name: unique_function_name(
+            ctx.document,
+            ctx.db,
+            callable,
+            type_context.as_ref(),
+            default_name(destination),
+        ),
+        modifier: modifier_for(destination),
         receiver: captures.receiver.clone(),
         params: assemble_params(&value_locals, &out_locals, &captures.promoted),
         return_type: ty,
         body,
     };
     let call_text = call_expression(&plan);
-    build_extraction(ctx.document, node, selection, call_text, 0, &plan, options)
+    let (insert_at, insert_text) = placement(ctx.document, node, &plan, options, destination)?;
+    Some(build_extraction(
+        insert_at,
+        insert_text,
+        selection,
+        call_text,
+        0,
+        plan.name,
+    ))
 }
 
 fn extract_statements(
@@ -112,6 +196,7 @@ fn extract_statements(
     root: Node,
     selection: Range<usize>,
     options: FormatOptions,
+    destination: Destination,
 ) -> Option<Extraction> {
     let source = &ctx.document.source;
     let (run_block, stmts, range) = statement_run(root, source, &selection)?;
@@ -124,6 +209,9 @@ fn extract_statements(
         .document
         .symbols
         .enclosing_symbol_at(range.start, CALLABLE_KINDS)?;
+    if matches!(destination, Destination::Method) {
+        method_host(ctx.document, callable)?;
+    }
     let type_context = enclosing_type_context(ctx.document, ctx.db, range.start);
     let captures = collect_captures(
         ctx,
@@ -132,6 +220,7 @@ fn extract_statements(
         Some(run_block),
         callable,
         type_context.as_ref(),
+        destination,
     )?;
 
     let mut tracked: HashSet<SymbolId> = captures
@@ -173,7 +262,14 @@ fn extract_statements(
     let returned = returned.map(|i| &captures.locals[i]);
 
     let plan = FunctionPlan {
-        name: unique_function_name(ctx.document, ctx.db, callable, type_context.as_ref()),
+        name: unique_function_name(
+            ctx.document,
+            ctx.db,
+            callable,
+            type_context.as_ref(),
+            default_name(destination),
+        ),
+        modifier: modifier_for(destination),
         receiver: captures.receiver.clone(),
         params: assemble_params(&value_locals, &out_locals, &captures.promoted),
         return_type: returned.map_or(Type::Void, |r| r.ty.clone()),
@@ -184,51 +280,91 @@ fn extract_statements(
         Some(r) => (format!("{} = {call};", r.name), r.name.len() + " = ".len()),
         None => (format!("{call};"), 0),
     };
-    build_extraction(
-        ctx.document,
-        first,
+    let (insert_at, insert_text) = placement(ctx.document, first, &plan, options, destination)?;
+    Some(build_extraction(
+        insert_at,
+        insert_text,
         range,
         call_text,
         cursor_prefix,
-        &plan,
-        options,
-    )
+        plan.name,
+    ))
+}
+
+fn placement(
+    document: &ParsedDocument,
+    anchor: Node,
+    plan: &FunctionPlan,
+    options: FormatOptions,
+    destination: Destination,
+) -> Option<(usize, String)> {
+    match destination {
+        Destination::GlobalFunction => global_insertion(document, anchor, plan, options),
+        Destination::Method => method_insertion(document, anchor, plan, options),
+    }
 }
 
 fn build_extraction(
-    document: &ParsedDocument,
-    inside_top_level: Node,
+    insert_at: usize,
+    insert_text: String,
     replace: Range<usize>,
     call_text: String,
     cursor_prefix: usize,
-    plan: &FunctionPlan,
-    options: FormatOptions,
-) -> Option<Extraction> {
-    let function_text = render_function(plan, options);
-    let insert_at = enclosing_top_level(inside_top_level)?.end_byte();
-    // A following declaration needs a blank line after the inserted function too.
-    let trailing = if document.source[insert_at..].trim().is_empty() {
-        ""
-    } else {
-        "\n"
-    };
-    let anchor = replace.start;
+    name: String,
+) -> Extraction {
+    let cursor_anchor = replace.start;
     let edits = vec![
         Splice {
             range: insert_at..insert_at,
-            text: format!("\n\n{function_text}{trailing}"),
+            text: insert_text,
         },
         Splice {
             range: replace,
             text: call_text,
         },
     ];
-    let cursor = applied_offset(&edits, anchor) + cursor_prefix;
-    Some(Extraction {
+    let cursor = applied_offset(&edits, cursor_anchor) + cursor_prefix;
+    Extraction {
         edits,
-        name: plan.name.clone(),
+        name,
         cursor,
-    })
+    }
+}
+
+fn global_insertion(
+    document: &ParsedDocument,
+    anchor: Node,
+    plan: &FunctionPlan,
+    options: FormatOptions,
+) -> Option<(usize, String)> {
+    let function_text = render_function(plan, options);
+    let insert_at = enclosing_top_level(anchor)?.end_byte();
+    // A following declaration needs a blank line after the inserted function too.
+    let trailing = if document.source[insert_at..].trim().is_empty() {
+        ""
+    } else {
+        "\n"
+    };
+    Some((insert_at, format!("\n\n{function_text}{trailing}")))
+}
+
+fn method_insertion(
+    document: &ParsedDocument,
+    anchor: Node,
+    plan: &FunctionPlan,
+    options: FormatOptions,
+) -> Option<(usize, String)> {
+    let method_decl = find_ancestor_of_kind(anchor, &[kinds::FUNC_DECL, kinds::EVENT_DECL])?;
+    let method_text = indent_block(&render_function(plan, options), &options);
+    let insert_at = method_decl.end_byte();
+    // A following member wants a blank line after the method, but the type's closing brace does not.
+    let rest = document.source[insert_at..].trim_start();
+    let trailing = if rest.starts_with('}') || rest.is_empty() {
+        ""
+    } else {
+        "\n"
+    };
+    Some((insert_at, format!("\n\n{method_text}{trailing}")))
 }
 
 fn enclosing_top_level(node: Node) -> Option<Node> {

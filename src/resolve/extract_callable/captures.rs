@@ -17,7 +17,7 @@ use super::super::definition::definition_key;
 use super::super::extract_common::{WriteSite, write_sites};
 use super::super::inference::TypeContext;
 use super::super::symbol_db::SymbolDb;
-use super::ResolveCtx;
+use super::{Destination, ResolveCtx};
 
 // Only valid inside the @wrapMethod body it belongs to; it cannot move into a global function.
 const WRAPPED_METHOD_MACRO: &str = "wrappedMethod";
@@ -92,8 +92,10 @@ pub(super) fn collect_captures(
     run_block: Option<Node>,
     callable: &Symbol,
     type_context: Option<&TypeContext>,
+    destination: Destination,
 ) -> Option<Captures> {
-    // super/parent name a relationship of the enclosing type; no global function can express them.
+    // super/parent name a relationship of the enclosing type; a global function cannot express
+    // them, but a sibling method shares that relationship and keeps them verbatim.
     let unmovable = &[
         kinds::SUPER_EXPR,
         kinds::PARENT_EXPR,
@@ -101,7 +103,9 @@ pub(super) fn collect_captures(
     ];
     let mut references = Vec::new();
     for root in roots {
-        if has_descendant_of_kind(*root, unmovable) {
+        if matches!(destination, Destination::GlobalFunction)
+            && has_descendant_of_kind(*root, unmovable)
+        {
             return None;
         }
         collect_descendants_of_kind(*root, &[kinds::IDENT, kinds::THIS_EXPR], &mut references);
@@ -115,6 +119,10 @@ pub(super) fn collect_captures(
     let mut internals: Vec<InternalLocal> = Vec::new();
     for reference in references {
         if reference.kind() == kinds::THIS_EXPR {
+            // A sibling method shares `this`; only the global-function path reroutes it.
+            if matches!(destination, Destination::Method) {
+                continue;
+            }
             match this_member(reference, ctx) {
                 Some((member, def)) => match member_disposition(&def) {
                     Disposition::Receiver => {
@@ -177,6 +185,10 @@ pub(super) fn collect_captures(
                 record_occurrence(&mut locals[index], reference, run_block);
             }
             SymbolKind::Field | SymbolKind::Method | SymbolKind::Event => {
+                // A sibling method reaches every member of the enclosing type directly.
+                if matches!(destination, Destination::Method) {
+                    continue;
+                }
                 match member_disposition(&definition) {
                     Disposition::Receiver => {
                         rewrites.push(BodyRewrite::Qualify(reference.start_byte()));
