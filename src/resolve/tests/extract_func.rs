@@ -505,6 +505,138 @@ fn assignment_statement_extraction_ignores_trailing_semicolon() {
 }
 
 #[test]
+fn if_statement_extracts_as_void_function() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 5;\n    if (a > 0) {\n        Use(a);\n    }\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            a = 5;
+            NewFunction(a);
+        }
+
+        function NewFunction(a : int) {
+            if (a > 0) {
+                Use(a);
+            }
+        }
+    "]]
+    .assert_eq(&applied(src, "if (a > 0) {\n        Use(a);\n    }"));
+}
+
+#[test]
+fn for_loop_with_continue_extracts_as_void_function() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var i : int;\n    for (i = 0; i < 3; i += 1) {\n        if (i == 1) {\n            continue;\n        }\n        Use(i);\n    }\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var i : int;
+            NewFunction(i);
+        }
+
+        function NewFunction(i : int) {
+            for (i = 0; i < 3; i += 1) {
+                if (i == 1) {
+                    continue;
+                }
+                Use(i);
+            }
+        }
+    "]]
+    .assert_eq(&applied(
+        src,
+        "for (i = 0; i < 3; i += 1) {\n        if (i == 1) {\n            continue;\n        }\n        Use(i);\n    }",
+    ));
+}
+
+#[test]
+fn statements_inside_a_nested_block_extract() {
+    let src = "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    if (true) {\n        a = 1;\n        Use(a);\n    }\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        function F() {
+            var a : int;
+            if (true) {
+                NewFunction(a);
+            }
+        }
+
+        function NewFunction(a : int) {
+            a = 1;
+            Use(a);
+        }
+    "]]
+    .assert_eq(&applied(src, "a = 1;\n        Use(a);"));
+}
+
+#[test]
+fn out_parameter_and_return_value_combine() {
+    let src = "function Use(x : int) {}\nclass CFoo {\n    private var count : int;\n    function M() {\n        var r : int;\n        count = count + 1;\n        r = count + 5;\n        Use(r);\n    }\n}\n";
+    expect![[r"
+        function Use(x : int) {}
+        class CFoo {
+            private var count : int;
+            function M() {
+                var r : int;
+                r = NewFunction(count);
+                Use(r);
+            }
+        }
+
+        function NewFunction(out count : int) : int {
+            var r : int;
+            count = count + 1;
+            r = count + 5;
+            return r;
+        }
+    "]]
+    .assert_eq(&applied(src, "count = count + 1;\n        r = count + 5;"));
+}
+
+#[test]
+fn multi_statement_run_ignores_trailing_semicolon() {
+    let src =
+        "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 1;\n    Use(a);\n}\n";
+    assert_eq!(
+        applied(src, "a = 1;\n    Use(a)"),
+        applied(src, "a = 1;\n    Use(a);"),
+        "omitting the final statement's semicolon must not change the extraction"
+    );
+}
+
+#[test]
+fn crlf_source_extracts_expression() {
+    let src = "function F() {\r\n    var a : int;\r\n    var r : int;\r\n    r = a + 1;\r\n}\r\n";
+    let out = applied(src, "a + 1");
+    assert!(
+        out.contains("r = NewFunction(a);"),
+        "call replaces the expression, got:\n{out}"
+    );
+    assert!(
+        out.contains("function NewFunction(a : int) : int {"),
+        "generated signature present, got:\n{out}"
+    );
+    assert!(
+        out.contains("return a + 1;"),
+        "generated body present, got:\n{out}"
+    );
+}
+
+#[test]
+fn tab_indented_source_statement_run_uses_tab_body() {
+    let src = "function Use(x : int) {}\nfunction F() {\n\tvar a : int;\n\ta = 1;\n\tUse(a);\n}\n";
+    let options = FormatOptions {
+        use_tabs: true,
+        ..FormatOptions::default()
+    };
+    let out = applied_with(src, "a = 1;\n\tUse(a);", options);
+    assert!(
+        out.contains("function NewFunction(a : int) {\n\ta = 1;\n\tUse(a);\n}"),
+        "generated body must use tab indentation, got:\n{out}"
+    );
+}
+
+#[test]
 fn single_unconditional_output_is_returned() {
     let src = "function Use(x : int) {}\nfunction F() {\n    var x : int;\n    var a : int;\n    a = 2;\n    x = a + 3;\n    Use(x);\n}\n";
     expect![[r"
@@ -713,6 +845,13 @@ fn comment_between_statements_moves_with_them() {
     "1;\n    Use(a)"
 )]
 fn refuses_unextractable_statement_runs(#[case] src: &str, #[case] needle: &str) {
+    assert!(refused(src, needle), "must refuse needle {needle:?}");
+}
+
+#[rstest]
+#[case::comment_only("function F() {\n    // nothing here\n}\n", "// nothing here")]
+#[case::whitespace_only("function F() {\n    Act();\n}\nfunction Act() {}\n", "    ")]
+fn refuses_empty_selections(#[case] src: &str, #[case] needle: &str) {
     assert!(refused(src, needle), "must refuse needle {needle:?}");
 }
 
