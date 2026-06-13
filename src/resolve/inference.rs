@@ -286,7 +286,7 @@ pub(super) fn resolve_member_access(
             resolve_document_member(uri, document, &current_type, name, AccessLevel::Private)
                 .or_else(|| db.find_member(&current_type, name, AccessLevel::Private))
         }
-        kinds::SUPER_EXPR | kinds::VIRTUAL_PARENT_EXPR => {
+        kinds::SUPER_EXPR => {
             let current_type = enclosing_type_context(document, db, ident.start_byte())?;
             db.find_member(
                 current_type.base_class.as_deref()?,
@@ -294,7 +294,8 @@ pub(super) fn resolve_member_access(
                 AccessLevel::Protected,
             )
         }
-        kinds::PARENT_EXPR => {
+        // virtualParent resolves to the owner class, same as parent: https://github.com/webspam/witcherscript-language/issues/114
+        kinds::PARENT_EXPR | kinds::VIRTUAL_PARENT_EXPR => {
             let current_type = enclosing_type_context(document, db, ident.start_byte())?;
             db.find_member(
                 current_type.owner_class.as_deref()?,
