@@ -132,6 +132,26 @@ fn struct_arithmetic_preserves_struct_type(#[case] needle: &str, #[case] expecte
     );
 }
 
+#[rstest]
+#[case::enum_times_float("e * h")]
+#[case::enum_plus_enum("e + e")]
+fn enum_arithmetic_stays_unknown(#[case] needle: &str) {
+    let fixture = format!(
+        concat!(
+            "enum E {{ A, B }}\n",
+            "function F() {{\n",
+            " var e : E;\n var h : float;\n",
+            " var r : float;\n r = {needle};\n}}\n",
+        ),
+        needle = needle
+    );
+    assert_eq!(
+        inferred(&fixture, needle),
+        Type::Unknown,
+        "enum arithmetic {needle} should stay Unknown, not infer the enum type"
+    );
+}
+
 #[test]
 fn unary_not_yields_bool() {
     let fixture = "function F() {\n var a : bool;\n var r : bool;\n r = !a;\n}\n";
