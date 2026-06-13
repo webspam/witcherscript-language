@@ -467,6 +467,15 @@ fn goto_def_on_added_method_call_resolves_to_annotation() {
 )]
 #[case::function_latent_specifier("latent function $0Tick() {}\n", "latent function Tick()")]
 #[case::function_flavour("quest function $0Q() {}\n", "quest function Q()")]
+#[case::field_access_and_specifiers(
+    "class C {\n  protected editable saved var $0hp : int;\n}\n",
+    "(field) protected editable saved hp : int"
+)]
+#[case::field_specifier_order_is_canonical(
+    "class C {\n  saved editable var $0hp : int;\n}\n",
+    "(field) editable saved hp : int"
+)]
+#[case::field_one_of_many_names("class C {\n  var a, $0b, c : float;\n}\n", "(field) b : float")]
 fn hover_shows_declaration_modifiers(#[case] source: &str, #[case] expected: &str) {
     let t = TestDb::new(source);
     let (uri, pos) = t.cursor();

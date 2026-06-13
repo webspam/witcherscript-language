@@ -52,7 +52,6 @@ struct SymbolSpec {
     container: Option<SymbolId>,
     annotations: Vec<Annotation>,
     type_annotation: Option<Type>,
-    declaration_text: Option<String>,
     base_class: Option<String>,
     owner_class: Option<String>,
     flavour: Option<FuncFlavour>,
@@ -371,11 +370,6 @@ impl<'a> SymbolExtractor<'a> {
         annotations.extend(self.direct_annotations(node));
         let type_annotation = direct_child_text(node, kinds::TYPE_ANNOT, self.source)
             .map(|t| Type::from_annotation(&t));
-        let declaration_text = if kind == SymbolKind::Field {
-            Some(node_text(node, self.source))
-        } else {
-            None
-        };
         let (access, specifiers) = self.specifiers_of(node);
         let mut cursor = node.walk();
         let names_field = if node.kind() == kinds::AUTOBIND_DECL {
@@ -394,7 +388,6 @@ impl<'a> SymbolExtractor<'a> {
                         container,
                         annotations: annotations.clone(),
                         type_annotation: type_annotation.clone(),
-                        declaration_text: declaration_text.clone(),
                         access,
                         specifiers,
                         ..Default::default()
@@ -453,7 +446,6 @@ impl<'a> SymbolExtractor<'a> {
             container: spec.container,
             container_name,
             type_annotation: spec.type_annotation,
-            declaration_text: spec.declaration_text,
             base_class: spec.base_class,
             owner_class: spec.owner_class,
             flavour: spec.flavour,

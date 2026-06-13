@@ -262,12 +262,15 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb) -> String {
             ));
         }
         SymbolKind::Field => {
-            if let Some(text) = &symbol.declaration_text {
-                lines.push(format!("(field) {text}"));
-            } else if let Some(type_annotation) = &symbol.type_annotation {
-                lines.push(format!("(field) {} : {type_annotation}", symbol.name));
-            } else {
-                lines.push(format!("(field) {}", symbol.name));
+            let keywords = declaration_keywords(symbol);
+            match &symbol.type_annotation {
+                Some(type_annotation) => {
+                    lines.push(format!(
+                        "(field) {keywords}{} : {type_annotation}",
+                        symbol.name
+                    ));
+                }
+                None => lines.push(format!("(field) {keywords}{}", symbol.name)),
             }
         }
         _ => {
