@@ -60,10 +60,11 @@ pub(crate) fn infer_type(
             infer_member_access_type(uri, document, db, node, context_byte)
         }
         kinds::THIS_EXPR => named_or_unknown(current_type_name(document, db, context_byte)),
-        kinds::SUPER_EXPR | kinds::VIRTUAL_PARENT_EXPR => named_or_unknown(
+        kinds::SUPER_EXPR => named_or_unknown(
             enclosing_type_context(document, db, context_byte).and_then(|c| c.base_class),
         ),
-        kinds::PARENT_EXPR => named_or_unknown(
+        // virtualParent resolves to the owner class, same as parent: https://github.com/webspam/witcherscript-language/issues/114
+        kinds::PARENT_EXPR | kinds::VIRTUAL_PARENT_EXPR => named_or_unknown(
             enclosing_type_context(document, db, context_byte).and_then(|c| c.owner_class),
         ),
         kinds::LITERAL_INT | kinds::LITERAL_HEX => Type::Primitive(Primitive::Int),
