@@ -39,10 +39,42 @@ pub fn extract_function(
 ) -> Option<Extraction> {
     let selection = trim_selection(&document.source, selection)?;
     let root = document.tree.root_node();
-    let expanded = expand_selection(root, &selection).unwrap_or_else(|| selection.clone());
-    match exact_expression_at(root, &expanded) {
-        Some(node) => extract_expression(uri, document, db, node, expanded, options),
-        None => extract_statements(uri, document, db, root, selection, options),
+    match extract_kind(root, &selection) {
+        ExtractKind::Expression { node, range } => {
+            extract_expression(uri, document, db, node, range, options)
+        }
+        ExtractKind::Statements { range } => {
+            extract_statements(uri, document, db, root, range, options)
+        }
+    }
+}
+
+enum ExtractKind<'tree> {
+    Expression {
+        node: Node<'tree>,
+        range: Range<usize>,
+    },
+    Statements {
+        range: Range<usize>,
+    },
+}
+
+fn extract_kind<'tree>(root: Node<'tree>, selection: &Range<usize>) -> ExtractKind<'tree> {
+    let expanded = expand_selection(root, selection).unwrap_or_else(|| selection.clone());
+    let Some(node) = exact_expression_at(root, &expanded) else {
+        return ExtractKind::Statements {
+            range: selection.clone(),
+        };
+    };
+    // Selecting a call with or without its trailing semicolon must extract the same statement.
+    match node.parent().filter(|p| p.kind() == kinds::EXPR_STMT) {
+        Some(stmt) => ExtractKind::Statements {
+            range: stmt.byte_range(),
+        },
+        None => ExtractKind::Expression {
+            node,
+            range: expanded,
+        },
     }
 }
 

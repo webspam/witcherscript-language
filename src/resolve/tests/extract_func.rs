@@ -437,6 +437,36 @@ fn extracts_statement_run_as_void_function() {
 }
 
 #[test]
+fn void_call_statement_extracts_without_trailing_semicolon() {
+    let src = "class CFoo {\n    function Do(n : int) {}\n}\nfunction F() {\n    var foo : CFoo;\n    var k : int;\n    foo.Do(k);\n}\n";
+    expect![[r"
+        class CFoo {
+            function Do(n : int) {}
+        }
+        function F() {
+            var foo : CFoo;
+            var k : int;
+            NewFunction(foo, k);
+        }
+
+        function NewFunction(foo : CFoo, k : int) {
+            foo.Do(k);
+        }
+    "]]
+    .assert_eq(&applied(src, "foo.Do(k)"));
+}
+
+#[test]
+fn call_statement_extraction_ignores_trailing_semicolon() {
+    let src = "function F() {\n    Act();\n}\nfunction Act() {}\n";
+    assert_eq!(
+        applied(src, "Act()"),
+        applied(src, "Act();"),
+        "the trailing semicolon must not change a call-statement extraction"
+    );
+}
+
+#[test]
 fn single_unconditional_output_is_returned() {
     let src = "function Use(x : int) {}\nfunction F() {\n    var x : int;\n    var a : int;\n    a = 2;\n    x = a + 3;\n    Use(x);\n}\n";
     expect![[r"
@@ -690,7 +720,6 @@ fn break_inside_selected_switch_is_allowed() {
     "function F() {\n    var r : int;\n    r = Go() + 1;\n}\nfunction Go() : int { return 1; }\n",
     "Go"
 )]
-#[case::void_call("function F() {\n    Act();\n}\nfunction Act() {}\n", "Act()")]
 #[case::unresolved_expression_type(
     "function F() {\n    var r : int;\n    r = q + 1;\n}\n",
     "q + 1"
