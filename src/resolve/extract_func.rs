@@ -874,7 +874,7 @@ fn is_value_type(ty: &Type, db: &SymbolDb) -> bool {
         Type::Named(name) => db
             .find_top_level(name)
             .is_some_and(|d| d.symbol.kind == SymbolKind::Struct),
-        _ => false,
+        Type::Null | Type::Unknown | Type::Void | Type::Primitive(_) => false,
     }
 }
 
