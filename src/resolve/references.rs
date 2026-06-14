@@ -7,7 +7,7 @@ use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::Definition;
 use super::ast::identifier_at;
-use super::definition::{all_declarations_of, definition_key, resolve_definition_at_byte};
+use super::definition::{all_declarations_of, definition_key, resolve_definition};
 use super::inference::{resolve_local_or_parameter, resolve_name};
 use super::symbol_db::SymbolDb;
 
@@ -230,8 +230,15 @@ pub fn find_references(
         }
 
         for byte_range in byte_ranges {
-            if !occurrence_resolves_to(uri, document, db, byte_range.start, &equiv_keys) {
-                continue;
+            // Semantic verification: resolve the candidate and confirm it points
+            // at the same definition (same file + same selection range).
+            let position = document
+                .line_index
+                .byte_to_position(&document.source, byte_range.start);
+            let resolved = resolve_definition(uri, document, db, position);
+            match resolved {
+                Some(ref r) if equiv_keys.contains(&definition_key(r)) => {}
+                _ => continue,
             }
 
             let occurrence_key = (uri.to_string(), byte_range.clone());
@@ -260,18 +267,6 @@ pub fn find_references(
     }
 
     results
-}
-
-// `targets` are `definition_key`s; an occurrence counts only if it semantically resolves to one.
-pub(super) fn occurrence_resolves_to(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    byte_offset: usize,
-    targets: &[(String, std::ops::Range<usize>)],
-) -> bool {
-    resolve_definition_at_byte(uri, document, db, byte_offset)
-        .is_some_and(|resolved| targets.contains(&definition_key(&resolved)))
 }
 
 fn collect_ident_occurrences(
