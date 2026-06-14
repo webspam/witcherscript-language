@@ -107,7 +107,7 @@ fn array_method_container_name_becomes_generic_instance() {
         .expect("PushBack resolves");
 
     assert_eq!(def.symbol.container_name.as_deref(), Some("array<int>"));
-    let hover = hover_text(&def, &db);
+    let hover = hover_text(&def, &db, false);
     assert!(
         hover.contains("array<int>.PushBack"),
         "hover should show generic instance: {hover}"

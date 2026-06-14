@@ -38,7 +38,7 @@ pub(crate) fn completion_item(
     });
     let (detail, snippet_params) = if is_callable {
         let params = db.display_parameters_of(definition);
-        let detail = render_signature(&params, symbol.type_annotation.as_ref());
+        let detail = render_signature(&params, symbol.type_annotation.as_ref(), ": ");
         // Optional parameters stay out of snippet slots (AGENTS.md key invariant #5).
         let snippet_params: Vec<String> = params
             .into_iter()

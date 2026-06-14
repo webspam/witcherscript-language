@@ -168,6 +168,7 @@ impl Backend {
                             detail: Some(render_signature(
                                 &db.display_parameters_of(def),
                                 def.symbol.type_annotation.as_ref(),
+                                ": ",
                             )),
                             insert_text: Some(insert_text),
                             insert_text_format: Some(InsertTextFormat::SNIPPET),
@@ -377,9 +378,10 @@ impl Backend {
             &data.name,
             data.container.as_deref(),
         ) {
+            let compact_colon = self.config.load().formatter_compact_colon;
             item.documentation = Some(Documentation::MarkupContent(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: hover_markdown(&def, &db),
+                value: hover_markdown(&def, &db, compact_colon),
             }));
         } else {
             // Stale data after edits is expected; the item just ships without documentation.

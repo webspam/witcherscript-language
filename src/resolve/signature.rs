@@ -197,11 +197,10 @@ pub fn render_parameters(params: &[Symbol], colon: &str) -> String {
     out
 }
 
-/// Single renderer so hover and completion detail stay identical.
-pub fn render_signature(params: &[Symbol], return_type: Option<&Type>) -> String {
-    let mut out = render_parameters(params, ": ");
+pub fn render_signature(params: &[Symbol], return_type: Option<&Type>, colon: &str) -> String {
+    let mut out = render_parameters(params, colon);
     if let Some(ret) = return_type {
-        out.push_str(": ");
+        out.push_str(colon);
         out.push_str(&ret.to_string());
     }
     out
@@ -225,8 +224,9 @@ fn declaration_keywords(symbol: &Symbol) -> String {
     out
 }
 
-pub fn hover_text(definition: &Definition, db: &SymbolDb) -> String {
+pub fn hover_text(definition: &Definition, db: &SymbolDb, compact_colon: bool) -> String {
     let symbol = &definition.symbol;
+    let colon = if compact_colon { ": " } else { " : " };
     let mut lines = Vec::new();
 
     if !symbol.annotations.is_empty() {
@@ -247,6 +247,7 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb) -> String {
             let params_and_return = render_signature(
                 &db.display_parameters_of(definition),
                 symbol.type_annotation.as_ref(),
+                colon,
             );
             let class_prefix = symbol
                 .container_name
@@ -266,7 +267,7 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb) -> String {
             match &symbol.type_annotation {
                 Some(type_annotation) => {
                     lines.push(format!(
-                        "(field) {keywords}{} : {type_annotation}",
+                        "(field) {keywords}{}{colon}{type_annotation}",
                         symbol.name
                     ));
                 }
@@ -291,11 +292,12 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb) -> String {
                 let sig = render_signature(
                     &db.display_parameters_of(definition),
                     symbol.type_annotation.as_ref(),
+                    colon,
                 );
                 let keywords = declaration_keywords(symbol);
                 lines.push(format!("{keywords}{label} {}{sig}", symbol.name));
             } else if let Some(type_annotation) = &symbol.type_annotation {
-                lines.push(format!("{label} {} : {type_annotation}", symbol.name));
+                lines.push(format!("{label} {}{colon}{type_annotation}", symbol.name));
             } else {
                 lines.push(format!("{label} {}", symbol.name));
             }

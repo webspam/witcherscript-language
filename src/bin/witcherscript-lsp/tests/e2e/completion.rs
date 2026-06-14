@@ -123,7 +123,7 @@ async fn resolve_fills_documentation_without_touching_eager_fields() {
         );
     };
     assert!(
-        markup.value.contains("(method) CExample.DoThing(): void"),
+        markup.value.contains("(method) CExample.DoThing() : void"),
         "documentation must carry the signature, got {:?}",
         markup.value
     );

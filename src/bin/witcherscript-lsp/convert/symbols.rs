@@ -67,8 +67,15 @@ fn lsp_symbol_kind(kind: SymbolKind) -> lsp_types::SymbolKind {
     }
 }
 
-pub(crate) fn hover_markdown(definition: &Definition, db: &SymbolDb) -> String {
-    let mut markdown = format!("```witcherscript\n{}\n```", hover_text(definition, db));
+pub(crate) fn hover_markdown(
+    definition: &Definition,
+    db: &SymbolDb,
+    compact_colon: bool,
+) -> String {
+    let mut markdown = format!(
+        "```witcherscript\n{}\n```",
+        hover_text(definition, db, compact_colon)
+    );
     write!(
         markdown,
         "\n\nDefined in {}",

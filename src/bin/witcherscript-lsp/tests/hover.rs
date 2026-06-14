@@ -6,12 +6,16 @@ use witcherscript_language::test_support::TestDb;
 use crate::convert::hover_markdown;
 
 fn markdown_at_cursor(fixture: &str) -> String {
+    markdown_at_cursor_with(fixture, false)
+}
+
+fn markdown_at_cursor_with(fixture: &str, compact_colon: bool) -> String {
     let t = TestDb::new(fixture);
     let (uri, pos) = t.cursor();
     let db = t.db();
     let def =
         resolve_definition(&uri, t.doc_for(&uri), &db, pos).expect("symbol must resolve at cursor");
-    hover_markdown(&def, &db)
+    hover_markdown(&def, &db, compact_colon)
 }
 
 #[test]
@@ -39,7 +43,7 @@ fn formats_annotated_function_with_annotation_first() {
     expect![[r"
         ```witcherscript
         @wrapMethod(CR4Player)
-        function OnSpawned(spawnData: SEntitySpawnData)
+        function OnSpawned(spawnData : SEntitySpawnData)
         ```
 
         Defined in [fov.ws:2](file:///fov.ws#L2)"]]
@@ -69,7 +73,7 @@ fn formats_method_with_owning_class_prefix() {
     );
     expect![[r"
         ```witcherscript
-        (method) CExample.DoThing(x: int): bool
+        (method) CExample.DoThing(x : int) : bool
         ```
 
         Defined in [example.ws:2](file:///example.ws#L2)"]]
@@ -81,7 +85,7 @@ fn formats_class_hover_with_extends_on_single_line() {
     let t = TestDb::new("class Y {}\nclass $0X extends Y {}\n");
     let (uri, pos) = t.cursor();
     let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("class must resolve");
-    let text = witcherscript_language::resolve::hover_text(&def, &t.db());
+    let text = witcherscript_language::resolve::hover_text(&def, &t.db(), false);
     expect!["class X extends Y"].assert_eq(&text);
 }
 
@@ -96,11 +100,27 @@ fn inherited_method_hover_includes_defining_class_and_return_type() {
     let (uri, pos) = t.cursor();
     let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
         .expect("inherited method must resolve");
-    let text = witcherscript_language::resolve::hover_text(&def, &t.db());
+    let text = witcherscript_language::resolve::hover_text(&def, &t.db(), false);
     assert!(text.starts_with("(method) "), "got {text:?}");
     assert!(text.contains("B."), "got {text:?}");
     assert!(text.contains("Inherited"), "got {text:?}");
     assert!(text.contains("int"), "got {text:?}");
+}
+
+#[test]
+fn field_hover_uses_compact_colon_when_enabled() {
+    let actual = markdown_at_cursor_with(
+        "//- /example.ws\n\
+         class CExample {\n var $0count : int;\n}\n",
+        true,
+    );
+    expect![[r"
+        ```witcherscript
+        (field) count: int
+        ```
+
+        Defined in [example.ws:2](file:///example.ws#L2)"]]
+    .assert_eq(&actual);
 }
 
 #[test]
