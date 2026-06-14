@@ -15,7 +15,7 @@ fn parses_globals_section() {
         "se_test1.ini",
         "[globals]\ntheGame=CR4Game\nthePlayer=CR4Player\n",
     );
-    let env = parse_script_environment(&path).unwrap();
+    let env = parse_script_environment(&path);
     assert_eq!(env.find("theGame").unwrap().type_name, "CR4Game");
     assert_eq!(env.find("thePlayer").unwrap().type_name, "CR4Player");
 }
@@ -26,7 +26,7 @@ fn skips_other_sections_and_comments() {
         "se_test2.ini",
         "[other]\nfoo=Bar\n[globals]\n; skip\ntheGame=CR4Game\n[more]\nbaz=Qux\n",
     );
-    let env = parse_script_environment(&path).unwrap();
+    let env = parse_script_environment(&path);
     assert!(env.find("theGame").is_some());
     assert!(env.find("foo").is_none());
     assert!(env.find("baz").is_none());
@@ -35,7 +35,7 @@ fn skips_other_sections_and_comments() {
 #[test]
 fn symbol_has_correct_position() {
     let path = write_temp("se_test3.ini", "[globals]\ntheGame=CR4Game\n");
-    let env = parse_script_environment(&path).unwrap();
+    let env = parse_script_environment(&path);
     let sym = &env.find("theGame").unwrap().symbol;
     assert_eq!(sym.selection_range.start.line, 1);
     assert_eq!(sym.selection_range.start.character, 0);
@@ -50,7 +50,7 @@ fn symbol_has_correct_position() {
 #[test]
 fn camera_injected_when_absent_from_ini() {
     let path = write_temp("se_camera1.ini", "[globals]\ntheGame=CR4Game\n");
-    let env = parse_script_environment(&path).unwrap();
+    let env = parse_script_environment(&path);
     let camera = env.find("theCamera").expect("theCamera injected");
     assert_eq!(camera.type_name, "CCameraDirector");
     assert_eq!(
@@ -69,7 +69,7 @@ fn camera_override_respects_ini_state(
     #[case] expected: &str,
 ) {
     let path = write_temp(file, &format!("[globals]\ntheCamera={ini_type}\n"));
-    let env = parse_script_environment(&path).unwrap();
+    let env = parse_script_environment(&path);
     let camera = env.find("theCamera").unwrap();
     assert_eq!(camera.type_name, expected);
     assert_eq!(
@@ -82,10 +82,24 @@ fn camera_override_respects_ini_state(
 #[test]
 fn telemetry_is_appended_even_without_ini_entry() {
     let path = write_temp("se_telemetry1.ini", "[globals]\ntheGame=CR4Game\n");
-    let env = parse_script_environment(&path).unwrap();
+    let env = parse_script_environment(&path);
     let tel = env.find("theTelemetry").expect("theTelemetry injected");
     assert_eq!(tel.type_name, "CR4TelemetryScriptProxy");
     assert_eq!(tel.symbol.kind, SymbolKind::Variable);
+}
+
+#[test]
+fn falls_back_to_defaults_when_file_unreadable() {
+    let path = std::env::temp_dir().join("se_missing_redscripts.ini");
+    let _ = std::fs::remove_file(&path);
+    let env = parse_script_environment(&path);
+
+    assert_eq!(env.find("theGame").unwrap().type_name, "CR4Game");
+    assert_eq!(env.find("theServer").unwrap().type_name, "CServerInterface");
+    assert_eq!(env.find("theInput").unwrap().type_name, "CInputManager");
+    // engine overrides still apply over the fallback
+    assert_eq!(env.find("theCamera").unwrap().type_name, "CCameraDirector");
+    assert!(env.find("theTelemetry").is_some(), "theTelemetry injected");
 }
 
 #[test]
@@ -94,7 +108,7 @@ fn telemetry_ini_entry_is_not_overwritten() {
         "se_telemetry2.ini",
         "[globals]\ntheTelemetry=SomeOtherTelemetry\n",
     );
-    let env = parse_script_environment(&path).unwrap();
+    let env = parse_script_environment(&path);
     let matches: Vec<_> = env
         .globals
         .iter()
