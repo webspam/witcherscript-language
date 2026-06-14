@@ -92,13 +92,7 @@ fn variable_decl_at<'t>(
 fn decl_head_name(root: Node<'_>, byte_offset: usize) -> Option<Node<'_>> {
     let decl = nodes_at_offset(root, byte_offset)
         .into_iter()
-        .find_map(|node| {
-            if node.kind() == kinds::LOCAL_VAR_DECL_STMT {
-                Some(node)
-            } else {
-                find_ancestor_of_kind(node, &[kinds::LOCAL_VAR_DECL_STMT])
-            }
-        })?;
+        .find_map(|node| find_ancestor_of_kind(node, &[kinds::LOCAL_VAR_DECL_STMT]))?;
     let name = single_name(decl)?;
     (decl.start_byte()..=name.end_byte())
         .contains(&byte_offset)
@@ -283,11 +277,7 @@ fn inline_single_read(occurrence: Node, plan: &InlinePlan) -> Option<Inlining> {
 fn decl_stmt_for<'tree>(root: Node<'tree>, def: &Definition) -> Option<Node<'tree>> {
     let range = &def.symbol.byte_range;
     let node = root.descendant_for_byte_range(range.start, range.end)?;
-    if node.kind() == kinds::LOCAL_VAR_DECL_STMT {
-        Some(node)
-    } else {
-        find_ancestor_of_kind(node, &[kinds::LOCAL_VAR_DECL_STMT])
-    }
+    find_ancestor_of_kind(node, &[kinds::LOCAL_VAR_DECL_STMT])
 }
 
 fn name_nodes(decl: Node) -> Vec<Node> {
