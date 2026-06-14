@@ -32,11 +32,11 @@ impl Backend {
                 break 'body Ok(None);
             };
 
-            let compact_colon = self.config.load().formatter_compact_colon;
+            let colon = self.config.load().colon_spacing();
             Ok(Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
-                    value: hover_markdown(&definition, &db, compact_colon),
+                    value: hover_markdown(&definition, &db, colon),
                 }),
                 range: Some(lsp_range(definition.symbol.selection_range)),
             }))

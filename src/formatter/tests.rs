@@ -12,7 +12,7 @@ mod structures;
 mod switch;
 mod switch_action;
 
-use super::{AnnotationPlacement, FormatOptions};
+use super::{AnnotationPlacement, ColonSpacing, FormatOptions};
 
 fn fmt_options(source: &str, options: FormatOptions) -> String {
     let doc = parse_document(source).expect("should parse");
@@ -27,7 +27,7 @@ pub(super) fn fmt_compact_colon(source: &str) -> String {
     fmt_options(
         source,
         FormatOptions {
-            compact_colon: true,
+            colon: ColonSpacing::Compact,
             ..Default::default()
         },
     )

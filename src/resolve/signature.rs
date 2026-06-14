@@ -3,6 +3,7 @@ use tree_sitter::Node;
 use crate::cst::grammar::callee_ident;
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
+use crate::formatter::ColonSpacing;
 use crate::line_index::SourcePosition;
 use crate::symbols::{Symbol, SymbolKind};
 use crate::types::Type;
@@ -32,7 +33,7 @@ pub fn signature_help(
     document: &ParsedDocument,
     db: &SymbolDb,
     position: SourcePosition,
-    compact_colon: bool,
+    colon: ColonSpacing,
 ) -> Option<SignatureHelpInfo> {
     let byte_offset = document
         .line_index
@@ -51,7 +52,7 @@ pub fn signature_help(
     }
 
     let params = db.display_parameters_of(&definition);
-    let colon = if compact_colon { ": " } else { " : " };
+    let sep = colon.separator();
 
     let mut label = String::new();
     label.push_str(&definition.symbol.name);
@@ -62,7 +63,7 @@ pub fn signature_help(
             label.push_str(", ");
         }
         let start = label.encode_utf16().count();
-        push_parameter(&mut label, param, colon);
+        push_parameter(&mut label, param, sep);
         let end = label.encode_utf16().count();
         parameters.push((start, end));
     }
@@ -70,7 +71,7 @@ pub fn signature_help(
     if let Some(ret) = &definition.symbol.type_annotation
         && *ret != Type::Void
     {
-        label.push_str(colon);
+        label.push_str(sep);
         label.push_str(&ret.to_string());
     }
 
@@ -184,23 +185,27 @@ fn push_parameter(label: &mut String, param: &Symbol, colon: &str) {
     }
 }
 
-/// `colon` varies by context: `": "` for compact hover, `" : "` for inserted code.
-pub fn render_parameters(params: &[Symbol], colon: &str) -> String {
+pub fn render_parameters(params: &[Symbol], colon: ColonSpacing) -> String {
+    let sep = colon.separator();
     let mut out = String::from("(");
     for (i, param) in params.iter().enumerate() {
         if i > 0 {
             out.push_str(", ");
         }
-        push_parameter(&mut out, param, colon);
+        push_parameter(&mut out, param, sep);
     }
     out.push(')');
     out
 }
 
-pub fn render_signature(params: &[Symbol], return_type: Option<&Type>, colon: &str) -> String {
+pub fn render_signature(
+    params: &[Symbol],
+    return_type: Option<&Type>,
+    colon: ColonSpacing,
+) -> String {
     let mut out = render_parameters(params, colon);
     if let Some(ret) = return_type {
-        out.push_str(colon);
+        out.push_str(colon.separator());
         out.push_str(&ret.to_string());
     }
     out
@@ -224,9 +229,9 @@ fn declaration_keywords(symbol: &Symbol) -> String {
     out
 }
 
-pub fn hover_text(definition: &Definition, db: &SymbolDb, compact_colon: bool) -> String {
+pub fn hover_text(definition: &Definition, db: &SymbolDb, colon: ColonSpacing) -> String {
     let symbol = &definition.symbol;
-    let colon = if compact_colon { ": " } else { " : " };
+    let sep = colon.separator();
     let mut lines = Vec::new();
 
     if !symbol.annotations.is_empty() {
@@ -267,7 +272,7 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb, compact_colon: bool) -
             match &symbol.type_annotation {
                 Some(type_annotation) => {
                     lines.push(format!(
-                        "(field) {keywords}{}{colon}{type_annotation}",
+                        "(field) {keywords}{}{sep}{type_annotation}",
                         symbol.name
                     ));
                 }
@@ -297,7 +302,7 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb, compact_colon: bool) -
                 let keywords = declaration_keywords(symbol);
                 lines.push(format!("{keywords}{label} {}{sig}", symbol.name));
             } else if let Some(type_annotation) = &symbol.type_annotation {
-                lines.push(format!("{label} {}{colon}{type_annotation}", symbol.name));
+                lines.push(format!("{label} {}{sep}{type_annotation}", symbol.name));
             } else {
                 lines.push(format!("{label} {}", symbol.name));
             }

@@ -2,7 +2,7 @@ use expect_test::expect;
 use rstest::rstest;
 
 use super::super::{Extraction, extract_variable};
-use crate::formatter::FormatOptions;
+use crate::formatter::{ColonSpacing, FormatOptions};
 use crate::test_support::{TestDb, script_env};
 
 fn run(src: &str, needle: &str, options: FormatOptions) -> (String, Option<Extraction>) {
@@ -247,7 +247,7 @@ fn indent_follows_tab_indented_source() {
 fn compact_colon_option_changes_spacing() {
     let src = "function Use(x : int) {}\nfunction F() {\n    Use(1 + 2);\n}\n";
     let options = FormatOptions {
-        compact_colon: true,
+        colon: ColonSpacing::Compact,
         ..FormatOptions::default()
     };
     expect![[r"

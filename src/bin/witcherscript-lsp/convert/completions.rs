@@ -3,6 +3,7 @@ use lsp_types::{
     ParameterInformation, ParameterLabel, Range, SignatureHelp, SignatureInformation, TextEdit,
     Url,
 };
+use witcherscript_language::formatter::ColonSpacing;
 use witcherscript_language::resolve::{
     Definition, SignatureHelpInfo, SymbolDb, render_parameters, render_signature,
 };
@@ -38,7 +39,11 @@ pub(crate) fn completion_item(
     });
     let (detail, snippet_params) = if is_callable {
         let params = db.display_parameters_of(definition);
-        let detail = render_signature(&params, symbol.type_annotation.as_ref(), ": ");
+        let detail = render_signature(
+            &params,
+            symbol.type_annotation.as_ref(),
+            ColonSpacing::Compact,
+        );
         // Optional parameters stay out of snippet slots (AGENTS.md key invariant #5).
         let snippet_params: Vec<String> = params
             .into_iter()
@@ -122,7 +127,7 @@ fn wire_u32(n: usize) -> u32 {
 }
 
 fn method_signature(name: &str, params: &[Symbol]) -> String {
-    format!("{name}{}", render_parameters(params, " : "))
+    format!("{name}{}", render_parameters(params, ColonSpacing::Spaced))
 }
 
 pub(crate) fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String {

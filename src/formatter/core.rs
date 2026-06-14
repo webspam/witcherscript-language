@@ -2,7 +2,7 @@ use tree_sitter::Node;
 
 use crate::cst::kinds;
 
-use super::{Formatter, child_nodes, is_expr_node};
+use super::{ColonSpacing, Formatter, child_nodes, is_expr_node};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CommentPlacement {
@@ -280,7 +280,7 @@ impl<'a> Formatter<'a> {
                 | kinds::FUNC_PARAM_GROUP
                 | kinds::EVENT_DECL
                 | kinds::FUNC_DECL
-                | kinds::AUTOBIND_DECL => return !self.compact_colon,
+                | kinds::AUTOBIND_DECL => return self.colon == ColonSpacing::Spaced,
                 _ => {}
             }
         }

@@ -259,12 +259,12 @@ fn split_braceless(
 }
 
 fn declaration_statement(name: &str, ty: &Type, expr: &str, options: FormatOptions) -> String {
-    let colon = if options.compact_colon { ": " } else { " : " };
+    let colon = options.colon.separator();
     format!("var {name}{colon}{ty} = {expr};")
 }
 
 fn uninitialised_declaration(name: &str, ty: &Type, options: FormatOptions) -> String {
-    let colon = if options.compact_colon { ": " } else { " : " };
+    let colon = options.colon.separator();
     format!("var {name}{colon}{ty};")
 }
 

@@ -30,7 +30,7 @@ impl Backend {
             tab_size,
             use_tabs,
             line_limit: cfg.formatter_line_limit,
-            compact_colon: cfg.formatter_compact_colon,
+            colon: cfg.colon_spacing(),
             align_member_colons: cfg.formatter_align_member_colons,
             annotation_placement: cfg.formatter_annotation_placement,
             default_placement: cfg.formatter_default_placement,

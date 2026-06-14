@@ -1,6 +1,7 @@
 use std::fmt::Write;
 
 use lsp_types::{DocumentSymbol, Location, OneOf, Url, WorkspaceSymbol};
+use witcherscript_language::formatter::ColonSpacing;
 use witcherscript_language::resolve::{Definition, SymbolDb, hover_text};
 use witcherscript_language::symbols::{DocumentSymbols, SymbolId, SymbolKind};
 
@@ -70,11 +71,11 @@ fn lsp_symbol_kind(kind: SymbolKind) -> lsp_types::SymbolKind {
 pub(crate) fn hover_markdown(
     definition: &Definition,
     db: &SymbolDb,
-    compact_colon: bool,
+    colon: ColonSpacing,
 ) -> String {
     let mut markdown = format!(
         "```witcherscript\n{}\n```",
-        hover_text(definition, db, compact_colon)
+        hover_text(definition, db, colon)
     );
     write!(
         markdown,

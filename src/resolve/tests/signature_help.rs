@@ -1,14 +1,15 @@
 use super::super::{SignatureHelpInfo, signature_help};
+use crate::formatter::ColonSpacing;
 use crate::test_support::TestDb;
 
 fn help(fixture: &str) -> Option<SignatureHelpInfo> {
-    help_with_colon(fixture, false)
+    help_with_colon(fixture, ColonSpacing::Spaced)
 }
 
-fn help_with_colon(fixture: &str, compact_colon: bool) -> Option<SignatureHelpInfo> {
+fn help_with_colon(fixture: &str, colon: ColonSpacing) -> Option<SignatureHelpInfo> {
     let t = TestDb::new(fixture);
     let (uri, pos) = t.cursor();
-    signature_help(&uri, t.doc_for(&uri), &t.db(), pos, compact_colon)
+    signature_help(&uri, t.doc_for(&uri), &t.db(), pos, colon)
 }
 
 #[test]
@@ -162,7 +163,7 @@ fn array_method_substitutes_placeholder_in_signature() {
     ))
     .with_builtins_index();
     let (uri, pos) = t.cursor();
-    let info = signature_help(&uri, t.doc_for(&uri), &t.db(), pos, false)
+    let info = signature_help(&uri, t.doc_for(&uri), &t.db(), pos, ColonSpacing::Spaced)
         .expect("signature help on array method");
 
     assert_eq!(info.label, "PushBack(value : int)");
@@ -219,7 +220,7 @@ fn compact_colon_setting_drops_spaces_around_colon() {
             "  Find($0);\n",
             "}\n",
         ),
-        true,
+        ColonSpacing::Compact,
     )
     .expect("signature help with compact colon");
 

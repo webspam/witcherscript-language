@@ -1,6 +1,7 @@
 use rstest::rstest;
 
 use super::super::{hover_text, resolve_all_definitions, resolve_definition};
+use crate::formatter::ColonSpacing;
 use crate::symbols::SymbolKind;
 use crate::test_support::TestDb;
 
@@ -332,7 +333,7 @@ fn wrapped_method_macro_resolves_to_wrapped_method() {
     assert_eq!(def.symbol.kind, SymbolKind::Method);
     assert_eq!(def.symbol.container_name.as_deref(), Some("CPlayer"));
     assert!(
-        hover_text(&def, &t.db(), false).contains("(method) CPlayer.OnSpawned"),
+        hover_text(&def, &t.db(), ColonSpacing::Spaced).contains("(method) CPlayer.OnSpawned"),
         "hover should describe the wrapped method"
     );
 
@@ -482,31 +483,55 @@ fn hover_shows_declaration_modifiers(#[case] source: &str, #[case] expected: &st
     let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
         .expect("declaration name should resolve to its own symbol");
     assert_eq!(
-        hover_text(&def, &t.db(), false),
+        hover_text(&def, &t.db(), ColonSpacing::Spaced),
         expected,
         "hover signature should mirror the declared modifiers"
     );
 }
 
 #[rstest]
-#[case::field_spaced(false, "class C {\n  var $0hp : int;\n}\n", "(field) hp : int")]
-#[case::field_compact(true, "class C {\n  var $0hp : int;\n}\n", "(field) hp: int")]
-#[case::var_spaced(false, "function F() {\n  var $0x : int;\n}\n", "var x : int")]
-#[case::var_compact(true, "function F() {\n  var $0x : int;\n}\n", "var x: int")]
-#[case::param_spaced(false, "function F($0p : int) {}\n", "(parameter) p : int")]
-#[case::param_compact(true, "function F($0p : int) {}\n", "(parameter) p: int")]
+#[case::field_spaced(
+    ColonSpacing::Spaced,
+    "class C {\n  var $0hp : int;\n}\n",
+    "(field) hp : int"
+)]
+#[case::field_compact(
+    ColonSpacing::Compact,
+    "class C {\n  var $0hp : int;\n}\n",
+    "(field) hp: int"
+)]
+#[case::var_spaced(
+    ColonSpacing::Spaced,
+    "function F() {\n  var $0x : int;\n}\n",
+    "var x : int"
+)]
+#[case::var_compact(
+    ColonSpacing::Compact,
+    "function F() {\n  var $0x : int;\n}\n",
+    "var x: int"
+)]
+#[case::param_spaced(
+    ColonSpacing::Spaced,
+    "function F($0p : int) {}\n",
+    "(parameter) p : int"
+)]
+#[case::param_compact(
+    ColonSpacing::Compact,
+    "function F($0p : int) {}\n",
+    "(parameter) p: int"
+)]
 #[case::method_spaced(
-    false,
+    ColonSpacing::Spaced,
     "class C {\n  function $0F(a : int) : bool {}\n}\n",
     "(method) C.F(a : int) : bool"
 )]
 #[case::method_compact(
-    true,
+    ColonSpacing::Compact,
     "class C {\n  function $0F(a : int) : bool {}\n}\n",
     "(method) C.F(a: int): bool"
 )]
 fn hover_colon_follows_compact_setting(
-    #[case] compact_colon: bool,
+    #[case] colon: ColonSpacing,
     #[case] source: &str,
     #[case] expected: &str,
 ) {
@@ -515,7 +540,7 @@ fn hover_colon_follows_compact_setting(
     let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
         .expect("declaration name should resolve to its own symbol");
     assert_eq!(
-        hover_text(&def, &t.db(), compact_colon),
+        hover_text(&def, &t.db(), colon),
         expected,
         "hover colon spacing should follow the compact_colon setting"
     );

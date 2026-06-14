@@ -8,7 +8,7 @@ use tracing::{info, trace, warn};
 
 use crate::backend::Backend;
 use crate::logging::{DEFAULT_LOG_LEVEL, level_from_str, level_to_u8};
-use witcherscript_language::formatter::AnnotationPlacement;
+use witcherscript_language::formatter::{AnnotationPlacement, ColonSpacing};
 
 fn parse_path_array(value: Option<Value>) -> Vec<PathBuf> {
     let Some(Value::Array(arr)) = value else {
@@ -86,6 +86,16 @@ impl Default for Config {
             files_exclude: Vec::new(),
             additional_script_dirs: Vec::new(),
             legacy_script_dirs: Vec::new(),
+        }
+    }
+}
+
+impl Config {
+    pub(crate) fn colon_spacing(&self) -> ColonSpacing {
+        if self.formatter_compact_colon {
+            ColonSpacing::Compact
+        } else {
+            ColonSpacing::Spaced
         }
     }
 }

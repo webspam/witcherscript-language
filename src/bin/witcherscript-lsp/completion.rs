@@ -7,6 +7,7 @@ use lsp_types::{
 };
 use tracing::{debug, trace};
 use witcherscript_language::files::canonical_uri;
+use witcherscript_language::formatter::ColonSpacing;
 use witcherscript_language::resolve::{
     BUILTIN_TYPE_COMPLETIONS, Definition, OverrideBody, SymbolDb, annotation_arg_completions,
     annotation_name_completions, class_body_keyword_completions, class_header_keyword_completions,
@@ -168,7 +169,7 @@ impl Backend {
                             detail: Some(render_signature(
                                 &db.display_parameters_of(def),
                                 def.symbol.type_annotation.as_ref(),
-                                ": ",
+                                ColonSpacing::Compact,
                             )),
                             insert_text: Some(insert_text),
                             insert_text_format: Some(InsertTextFormat::SNIPPET),
@@ -378,10 +379,10 @@ impl Backend {
             &data.name,
             data.container.as_deref(),
         ) {
-            let compact_colon = self.config.load().formatter_compact_colon;
+            let colon = self.config.load().colon_spacing();
             item.documentation = Some(Documentation::MarkupContent(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: hover_markdown(&def, &db, compact_colon),
+                value: hover_markdown(&def, &db, colon),
             }));
         } else {
             // Stale data after edits is expected; the item just ships without documentation.

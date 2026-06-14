@@ -1,21 +1,22 @@
 use expect_test::expect;
 
+use witcherscript_language::formatter::ColonSpacing;
 use witcherscript_language::resolve::resolve_definition;
 use witcherscript_language::test_support::TestDb;
 
 use crate::convert::hover_markdown;
 
 fn markdown_at_cursor(fixture: &str) -> String {
-    markdown_at_cursor_with(fixture, false)
+    markdown_at_cursor_with(fixture, ColonSpacing::Spaced)
 }
 
-fn markdown_at_cursor_with(fixture: &str, compact_colon: bool) -> String {
+fn markdown_at_cursor_with(fixture: &str, colon: ColonSpacing) -> String {
     let t = TestDb::new(fixture);
     let (uri, pos) = t.cursor();
     let db = t.db();
     let def =
         resolve_definition(&uri, t.doc_for(&uri), &db, pos).expect("symbol must resolve at cursor");
-    hover_markdown(&def, &db, compact_colon)
+    hover_markdown(&def, &db, colon)
 }
 
 #[test]
@@ -85,7 +86,7 @@ fn formats_class_hover_with_extends_on_single_line() {
     let t = TestDb::new("class Y {}\nclass $0X extends Y {}\n");
     let (uri, pos) = t.cursor();
     let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("class must resolve");
-    let text = witcherscript_language::resolve::hover_text(&def, &t.db(), false);
+    let text = witcherscript_language::resolve::hover_text(&def, &t.db(), ColonSpacing::Spaced);
     expect!["class X extends Y"].assert_eq(&text);
 }
 
@@ -100,7 +101,7 @@ fn inherited_method_hover_includes_defining_class_and_return_type() {
     let (uri, pos) = t.cursor();
     let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
         .expect("inherited method must resolve");
-    let text = witcherscript_language::resolve::hover_text(&def, &t.db(), false);
+    let text = witcherscript_language::resolve::hover_text(&def, &t.db(), ColonSpacing::Spaced);
     assert!(text.starts_with("(method) "), "got {text:?}");
     assert!(text.contains("B."), "got {text:?}");
     assert!(text.contains("Inherited"), "got {text:?}");
@@ -112,7 +113,7 @@ fn field_hover_uses_compact_colon_when_enabled() {
     let actual = markdown_at_cursor_with(
         "//- /example.ws\n\
          class CExample {\n var $0count : int;\n}\n",
-        true,
+        ColonSpacing::Compact,
     );
     expect![[r"
         ```witcherscript

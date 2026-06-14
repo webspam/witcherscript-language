@@ -56,12 +56,28 @@ impl std::fmt::Display for AnnotationPlacement {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ColonSpacing {
+    #[default]
+    Spaced,
+    Compact,
+}
+
+impl ColonSpacing {
+    pub fn separator(self) -> &'static str {
+        match self {
+            Self::Spaced => " : ",
+            Self::Compact => ": ",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct FormatOptions {
     pub tab_size: u32,
     pub use_tabs: bool,
     pub line_limit: u32,
-    pub compact_colon: bool,
+    pub colon: ColonSpacing,
     pub align_member_colons: bool,
     pub annotation_placement: AnnotationPlacement,
     pub default_placement: AnnotationPlacement,
@@ -73,7 +89,7 @@ impl Default for FormatOptions {
             tab_size: 4,
             use_tabs: false,
             line_limit: 100,
-            compact_colon: false,
+            colon: ColonSpacing::Spaced,
             align_member_colons: false,
             annotation_placement: AnnotationPlacement::default(),
             default_placement: AnnotationPlacement::default(),
@@ -89,7 +105,7 @@ fn render_expr(node: Node, source: &str) -> String {
         out: String::new(),
         suppress_next_indent: false,
         line_limit: usize::MAX,
-        compact_colon: false,
+        colon: ColonSpacing::Spaced,
         align_member_colons: false,
         annotation_placement: AnnotationPlacement::Preserve,
         default_placement: AnnotationPlacement::Preserve,
@@ -251,7 +267,7 @@ pub fn format_document(root: Node, source: &str, options: FormatOptions) -> Stri
         out: String::with_capacity(source.len()),
         suppress_next_indent: false,
         line_limit: options.line_limit as usize,
-        compact_colon: options.compact_colon,
+        colon: options.colon,
         align_member_colons: options.align_member_colons,
         annotation_placement: options.annotation_placement,
         default_placement: options.default_placement,
@@ -277,7 +293,7 @@ struct Formatter<'a> {
     out: String,
     suppress_next_indent: bool,
     line_limit: usize,
-    compact_colon: bool,
+    colon: ColonSpacing,
     align_member_colons: bool,
     annotation_placement: AnnotationPlacement,
     default_placement: AnnotationPlacement,
