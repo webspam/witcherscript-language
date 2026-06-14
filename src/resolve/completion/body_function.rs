@@ -72,6 +72,7 @@ pub struct StatementCompletions {
     pub needs_globals: bool,
     pub has_this: bool,
     pub has_super: bool,
+    pub has_parent: bool,
     pub in_switch: bool,
     pub in_loop: bool,
 }
@@ -89,6 +90,7 @@ pub fn statement_completions(
         needs_globals: false,
         has_this: false,
         has_super: false,
+        has_parent: false,
         in_switch: false,
         in_loop: false,
     })
@@ -105,6 +107,8 @@ fn statement_completions_inner(
         "var",
         "this",
         "super",
+        "parent",
+        "virtual_parent",
         "if",
         "else",
         "do",
@@ -143,6 +147,7 @@ fn statement_completions_inner(
         needs_globals: base.needs_globals,
         has_this: base.has_this,
         has_super: base.has_super,
+        has_parent: base.has_parent,
         in_switch,
         in_loop,
     })
@@ -154,6 +159,7 @@ pub struct ExpressionCompletions {
     pub needs_globals: bool,
     pub has_this: bool,
     pub has_super: bool,
+    pub has_parent: bool,
 }
 
 pub fn expression_completions(
@@ -222,6 +228,7 @@ fn expression_completions_inner(
         needs_globals: base.needs_globals,
         has_this: base.has_this,
         has_super: base.has_super,
+        has_parent: base.has_parent,
     })
 }
 
@@ -231,6 +238,7 @@ struct FunctionBodyContext {
     needs_globals: bool,
     has_this: bool,
     has_super: bool,
+    has_parent: bool,
 }
 
 fn function_body_completions<'a>(
@@ -302,6 +310,11 @@ fn function_body_completions<'a>(
         .as_ref()
         .and_then(|t| t.base_class.as_deref())
         .is_some();
+    // States expose `parent`/`virtual_parent`, both resolving to the owner class.
+    let has_parent = current_type
+        .as_ref()
+        .and_then(|t| t.owner_class.as_deref())
+        .is_some();
 
     let writing_keyword = nodes
         .last()
@@ -316,6 +329,7 @@ fn function_body_completions<'a>(
             needs_globals,
             has_this,
             has_super,
+            has_parent,
         },
     ))
 }

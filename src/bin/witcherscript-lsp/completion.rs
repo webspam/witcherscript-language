@@ -267,6 +267,10 @@ impl Backend {
                 if stmt.has_super {
                     items.push(this_super_item("super"));
                 }
+                if stmt.has_parent {
+                    items.push(this_super_item("parent"));
+                    items.push(this_super_item("virtual_parent"));
+                }
                 items.push(keyword_snippet_item("var", "var ${1:name} : ${2:Type};"));
                 items.push(keyword_snippet_item("if", "if (${1:condition})"));
                 items.push(keyword_snippet_item("else", "else"));
@@ -321,6 +325,10 @@ impl Backend {
                 }
                 if expr.has_super {
                     items.push(this_super_item("super"));
+                }
+                if expr.has_parent {
+                    items.push(this_super_item("parent"));
+                    items.push(this_super_item("virtual_parent"));
                 }
                 items.push(keyword_snippet_item("true", "true"));
                 items.push(keyword_snippet_item("false", "false"));

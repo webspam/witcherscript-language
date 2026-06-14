@@ -159,6 +159,7 @@ pub struct StatementCompletions {
     pub globals: Vec<Definition>,   // all top-level callables (excluding exec/quest)
     pub has_this: bool,
     pub has_super: bool,
+    pub has_parent: bool,           // state body: offers parent/virtual_parent
     pub in_switch: bool,            // cursor is inside a switch block
     pub in_loop: bool,              // cursor is inside a for/while/do-while loop
 }
