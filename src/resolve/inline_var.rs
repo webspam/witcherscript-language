@@ -145,7 +145,7 @@ fn plan_inline(
         .iter()
         .copied()
         .find(|n| n.byte_range() == def.symbol.selection_byte_range)?;
-    let reads = read_occurrences(uri, document, db, def, &write_ranges);
+    let reads = find_reads(uri, document, db, def, &write_ranges);
 
     // A list shares one initializer, so it cannot be the value for just one of the names.
     let initializer = (decl_names.len() == 1)
@@ -190,7 +190,7 @@ fn plan_inline(
 }
 
 // Writes must not be substituted with the value, so drop occurrences that land on a mutation site.
-fn read_occurrences(
+fn find_reads(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
