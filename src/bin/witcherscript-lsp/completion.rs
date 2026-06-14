@@ -39,8 +39,9 @@ fn sorted_completion_item(
     origin: &Url,
     def: &Definition,
     tier: u8,
+    colon: ColonSpacing,
 ) -> CompletionItem {
-    let mut item = completion_item(def, db, origin);
+    let mut item = completion_item(def, db, origin, colon);
     item.sort_text = Some(format!("{}_{}", tier, def.symbol.name));
     item
 }
@@ -79,6 +80,7 @@ impl Backend {
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
             let db = handles.db();
             let canonical = canonical_uri(&uri);
+            let colon = self.config.load().colon_spacing();
 
             let pos = source_position(position);
 
@@ -102,7 +104,7 @@ impl Backend {
             let member_items: Vec<CompletionItem> =
                 completion_members(&canonical, document, &db, pos)
                     .iter()
-                    .map(|(tier, def)| sorted_completion_item(&db, &uri, def, *tier))
+                    .map(|(tier, def)| sorted_completion_item(&db, &uri, def, *tier, colon))
                     .collect();
             trace!(
                 op = "completion",
@@ -126,7 +128,7 @@ impl Backend {
             if !default_or_hint.is_empty() {
                 let items: Vec<CompletionItem> = default_or_hint
                     .iter()
-                    .map(|def| sorted_completion_item(&db, &uri, def, 0))
+                    .map(|def| sorted_completion_item(&db, &uri, def, 0, colon))
                     .collect();
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }
@@ -151,8 +153,8 @@ impl Backend {
                     .iter()
                     .map(|def| {
                         let snippet = match ov.body {
-                            OverrideBody::Wrap => wrap_method_snippet(def, &db),
-                            OverrideBody::Replace => replace_method_snippet(def, &db),
+                            OverrideBody::Wrap => wrap_method_snippet(def, &db, colon),
+                            OverrideBody::Replace => replace_method_snippet(def, &db, colon),
                         };
                         let insert_text = if ov.needs_function_keyword {
                             format!("function {snippet}")
@@ -169,7 +171,7 @@ impl Backend {
                             detail: Some(render_signature(
                                 &db.display_parameters_of(def),
                                 def.symbol.type_annotation.as_ref(),
-                                ColonSpacing::Compact,
+                                colon,
                             )),
                             insert_text: Some(insert_text),
                             insert_text_format: Some(InsertTextFormat::SNIPPET),
@@ -245,7 +247,7 @@ impl Backend {
             if !new_lifetime.is_empty() {
                 let items: Vec<CompletionItem> = new_lifetime
                     .iter()
-                    .map(|def| sorted_completion_item(&db, &uri, def, 0))
+                    .map(|def| sorted_completion_item(&db, &uri, def, 0, colon))
                     .collect();
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }
@@ -295,13 +297,13 @@ impl Backend {
                     items.push(keyword_snippet_item("continue", "continue;"));
                 }
                 for def in &stmt.locals {
-                    items.push(sorted_completion_item(&db, &uri, def, 0));
+                    items.push(sorted_completion_item(&db, &uri, def, 0, colon));
                 }
                 for def in &stmt.members {
-                    items.push(sorted_completion_item(&db, &uri, def, 1));
+                    items.push(sorted_completion_item(&db, &uri, def, 1, colon));
                 }
                 for def in stmt_globals {
-                    items.push(sorted_completion_item(&db, &uri, def, 2));
+                    items.push(sorted_completion_item(&db, &uri, def, 2, colon));
                 }
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }
@@ -323,13 +325,13 @@ impl Backend {
                 items.push(keyword_snippet_item("true", "true"));
                 items.push(keyword_snippet_item("false", "false"));
                 for def in &expr.locals {
-                    items.push(sorted_completion_item(&db, &uri, def, 0));
+                    items.push(sorted_completion_item(&db, &uri, def, 0, colon));
                 }
                 for def in &expr.members {
-                    items.push(sorted_completion_item(&db, &uri, def, 0));
+                    items.push(sorted_completion_item(&db, &uri, def, 0, colon));
                 }
                 for def in expr_globals {
-                    items.push(sorted_completion_item(&db, &uri, def, 2));
+                    items.push(sorted_completion_item(&db, &uri, def, 2, colon));
                 }
                 break 'body Ok(Some(CompletionResponse::Array(items)));
             }

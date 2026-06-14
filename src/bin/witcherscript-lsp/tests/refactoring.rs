@@ -2,6 +2,7 @@ use rstest::rstest;
 use std::collections::HashMap;
 
 use witcherscript_language::document::parse_document;
+use witcherscript_language::formatter::ColonSpacing;
 use witcherscript_language::line_index::SourcePosition;
 use witcherscript_language::resolve::{
     SymbolDb, WorkspaceIndex, find_references, resolve_definition,
@@ -133,7 +134,7 @@ fn wrap_method_snippet_shapes(
         .into_iter()
         .find(|d| d.symbol.name == method_name)
         .unwrap_or_else(|| panic!("{method_name} should be a member of CPlayer"));
-    let snippet = wrap_method_snippet(&method, &t.db());
+    let snippet = wrap_method_snippet(&method, &t.db(), ColonSpacing::Spaced);
     assert_eq!(snippet, expected);
 }
 
@@ -148,7 +149,7 @@ fn replace_method_snippet_omits_wrapped_method() {
         .into_iter()
         .find(|d| d.symbol.name == "CanParry")
         .expect("CanParry should be a member of CPlayer");
-    let snippet = replace_method_snippet(&method, &t.db());
+    let snippet = replace_method_snippet(&method, &t.db(), ColonSpacing::Spaced);
     assert_eq!(
         snippet,
         "CanParry(damage : int, attacker : CObject) {\n\t$0\n}"
