@@ -71,8 +71,9 @@ pub fn inline_variable(
     let init = decl.child_by_field_name(fields::INIT_VALUE)?;
     let replacement = substituted_text(&document.source, init);
 
+    // Inclusive: a cursor at the name's end byte is on the declaration, not a use.
     let on_declaration = def.symbol.selection_byte_range.start <= byte_offset
-        && byte_offset < def.symbol.selection_byte_range.end;
+        && byte_offset <= def.symbol.selection_byte_range.end;
 
     if on_declaration {
         inline_all_usages(uri, document, db, &def, decl, &replacement)
