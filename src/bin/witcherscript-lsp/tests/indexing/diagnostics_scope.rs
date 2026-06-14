@@ -711,7 +711,7 @@ async fn local_only_edit_refreshes_cached_workspace_bundle() {
     let path = write_script(
         temp.path(),
         "Dup.ws",
-        "class C {\n  function f() {\n    var x : int;\n    var x : int;\n  }\n}\n",
+        "class C {\n  function f() {\n    var x : int;\n    var x : int;\n    x = 1;\n  }\n}\n",
     );
     let url = Url::from_file_path(&path).expect("path -> url");
 
@@ -727,7 +727,7 @@ async fn local_only_edit_refreshes_cached_workspace_bundle() {
     // Renaming the second local changes no externally-visible surface, so only generation keying invalidates.
     backend.update_open_document(
         url.clone(),
-        "class C {\n  function f() {\n    var x : int;\n    var y : int;\n  }\n}\n".to_string(),
+        "class C {\n  function f() {\n    var x : int;\n    var y : int;\n    x = 1;\n    y = 1;\n  }\n}\n".to_string(),
     );
 
     let report = workspace_report_for(&backend, &url).expect("file present after edit");

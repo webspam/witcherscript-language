@@ -33,6 +33,10 @@
 - `src/diagnostics/override_consistency.rs` - CST-walking rule (`OverrideConsistencyRule`);
   flags a method override that is inconsistent with the ancestor's class-body declaration.
   Emits `"override_weaker_access"` and `"override_param_count"`.
+- `src/diagnostics/unused_symbol.rs` - CST-walking rule (`UnusedSymbolRule`); flags a local,
+  parameter, or `private` field with no references (via `find_references`) at hint severity.
+  Emits `"unused_symbol"`; `convert/diagnostics.rs` attaches the LSP `Unnecessary` tag to that
+  kind so editors fade the range.
 - `src/diagnostics/wrapped_method.rs` - CST-walking rule (`WrappedMethodRule`) that
   implements `CstRule` and is registered in `collect_cst_diagnostics_for_document`.
   Checks every `@wrapMethod`-annotated function for a bare `wrappedMethod(...)` call:

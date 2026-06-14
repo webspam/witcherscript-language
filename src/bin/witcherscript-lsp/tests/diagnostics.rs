@@ -131,3 +131,34 @@ fn workspace_diagnostic_carries_related_information() {
     assert_eq!(related[0].message, "'Foo' also declared here");
     assert_eq!(related[0].location.range.start.character, 6);
 }
+
+#[test]
+fn unused_symbol_diagnostic_is_hinted_and_tagged_unnecessary() {
+    use witcherscript_language::diagnostics::{Severity, UNUSED_SYMBOL_KIND, WorkspaceDiagnostic};
+    use witcherscript_language::line_index::SourceRange;
+
+    let pos = SourcePosition {
+        line: 0,
+        character: 0,
+    };
+    let diagnostic = WorkspaceDiagnostic {
+        kind: UNUSED_SYMBOL_KIND.to_string(),
+        message: "Parameter 'foo' is never used".to_string(),
+        severity: Severity::Hint,
+        range: SourceRange {
+            start: pos,
+            end: pos,
+        },
+        related: vec![],
+        data: None,
+    };
+
+    let lsp = lsp_workspace_diagnostic(&diagnostic);
+
+    assert_eq!(lsp.severity, Some(lsp_types::DiagnosticSeverity::HINT));
+    assert_eq!(
+        lsp.tags,
+        Some(vec![lsp_types::DiagnosticTag::UNNECESSARY]),
+        "unused diagnostics must carry the Unnecessary tag so editors fade them",
+    );
+}

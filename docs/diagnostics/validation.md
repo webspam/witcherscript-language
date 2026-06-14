@@ -4,42 +4,43 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 
 ## Summary
 
-| # | Code | Severity | Description |
-| --- | --- | --- | --- |
-| 1 | `late_local_var_decl` | error | Local `var` declared after an executable statement |
-| 2 | `duplicate_symbol` | error | Two top-level declarations share a name |
-| 3 | `base_script_conflict` | error | Workspace file redeclares a base game script |
-| 4 | `duplicate_local` | error | Two parameters or locals in one function share a name |
-| 5 | `shadows_script_global` | warning | Name collides with a `redscripts.ini` global |
-| 6 | `shadows_class_field` | warning | Local `var` collides with a field on the enclosing type |
-| 7 | `unknown_method` | error | Method not declared on the receiver type |
-| 8 | `unknown_type` | error | Type-position identifier doesn't resolve |
-| 9 | `unknown_member` | error | Field not declared on the receiver type |
-| 10 | `unknown_function` | error | Bare function call doesn't resolve |
-| 11 | `unknown_identifier` | error | Bare identifier doesn't resolve |
-| 12 | `missing_wrapped_method` | error | `@wrapMethod` body has no `wrappedMethod(...)` call |
-| 13 | `duplicate_wrapped_method` | error | More than one `wrappedMethod(...)` call in a `@wrapMethod` body |
-| 14 | `ternary_cond_expr` | warning | `cond ? a : b` always evaluates to 0 / false / void |
-| 15 | `abstract_instantiation` | error | `new T` on an abstract class |
-| 16 | `super_field_access` | error | `super.x` used outside of a method call |
-| 17 | `private_member_access` | error | Private field or method accessed from outside its declaring class |
-| 18 | `type_used_as_value` | error | Type name (class, struct, state, enum) used in a value position |
-| 19 | `type_mismatch` | error | A value's type is not assignable to the target slot |
-| 20 | `string_as_name_default` | info | A `name`/`CName` field default uses a string literal where a name literal is intended |
-| 21 | `native_instantiation` | error | `new T` on a native engine type (`CBehTreeVal*`), which cannot be instantiated |
-| 22 | `native_default_coercion` | info | A native engine type (`CBehTreeVal*`) `default` uses a non-exact primitive (accepted, but coerced) |
-| 23 | `struct_property_access_modifier` | error | An accessibility modifier (`private`/`protected`/`public`) is applied to a struct property |
-| 24 | `state_owner_not_statemachine` | warning | `state X in Owner` where `Owner` is a class missing the `statemachine` keyword |
-| 25 | `state_owner_not_class` | error | `state X in Owner` where `Owner` resolves to something that is not a class (e.g. a struct or enum) |
-| 26 | `string_linefeed` | error | A string literal contains a linefeed |
-| 27 | `int_overflow` | error | An integer literal overflows a 32-bit int |
-| 28 | `event_return_not_void` | error | An event declares a return type other than `void` |
-| 29 | `event_bare_return` | error | A bare `return;` inside an event body |
-| 30 | `non_constant_default` | error | A `default` value is a call or `new` expression |
-| 31 | `annotation_targets_backing_class` | error | A modding annotation targets a state's backing class name instead of the short state name |
-| 32 | `duplicate_inherited_field` | error | A field redeclares a field inherited from an ancestor |
-| 33 | `override_weaker_access` | error | A method override has weaker access than the ancestor's method |
-| 34 | `override_param_count` | error | A method override declares a different parameter count than the ancestor's method |
+| #   | Code                               | Severity | Description                                                                                        |
+| --- | ---------------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| 1   | `late_local_var_decl`              | error    | Local `var` declared after an executable statement                                                 |
+| 2   | `duplicate_symbol`                 | error    | Two top-level declarations share a name                                                            |
+| 3   | `base_script_conflict`             | error    | Workspace file redeclares a base game script                                                       |
+| 4   | `duplicate_local`                  | error    | Two parameters or locals in one function share a name                                              |
+| 5   | `shadows_script_global`            | warning  | Name collides with a `redscripts.ini` global                                                       |
+| 6   | `shadows_class_field`              | warning  | Local `var` collides with a field on the enclosing type                                            |
+| 7   | `unknown_method`                   | error    | Method not declared on the receiver type                                                           |
+| 8   | `unknown_type`                     | error    | Type-position identifier doesn't resolve                                                           |
+| 9   | `unknown_member`                   | error    | Field not declared on the receiver type                                                            |
+| 10  | `unknown_function`                 | error    | Bare function call doesn't resolve                                                                 |
+| 11  | `unknown_identifier`               | error    | Bare identifier doesn't resolve                                                                    |
+| 12  | `missing_wrapped_method`           | error    | `@wrapMethod` body has no `wrappedMethod(...)` call                                                |
+| 13  | `duplicate_wrapped_method`         | error    | More than one `wrappedMethod(...)` call in a `@wrapMethod` body                                    |
+| 14  | `ternary_cond_expr`                | warning  | `cond ? a : b` always evaluates to 0 / false / void                                                |
+| 15  | `abstract_instantiation`           | error    | `new T` on an abstract class                                                                       |
+| 16  | `super_field_access`               | error    | `super.x` used outside of a method call                                                            |
+| 17  | `private_member_access`            | error    | Private field or method accessed from outside its declaring class                                  |
+| 18  | `type_used_as_value`               | error    | Type name (class, struct, state, enum) used in a value position                                    |
+| 19  | `type_mismatch`                    | error    | A value's type is not assignable to the target slot                                                |
+| 20  | `string_as_name_default`           | info     | A `name`/`CName` field default uses a string literal where a name literal is intended              |
+| 21  | `native_instantiation`             | error    | `new T` on a native engine type (`CBehTreeVal*`), which cannot be instantiated                     |
+| 22  | `native_default_coercion`          | info     | A native engine type (`CBehTreeVal*`) `default` uses a non-exact primitive (accepted, but coerced) |
+| 23  | `struct_property_access_modifier`  | error    | An accessibility modifier (`private`/`protected`/`public`) is applied to a struct property         |
+| 24  | `state_owner_not_statemachine`     | warning  | `state X in Owner` where `Owner` is a class missing the `statemachine` keyword                     |
+| 25  | `state_owner_not_class`            | error    | `state X in Owner` where `Owner` resolves to something that is not a class (e.g. a struct or enum) |
+| 26  | `string_linefeed`                  | error    | A string literal contains a linefeed                                                               |
+| 27  | `int_overflow`                     | error    | An integer literal overflows a 32-bit int                                                          |
+| 28  | `event_return_not_void`            | error    | An event declares a return type other than `void`                                                  |
+| 29  | `event_bare_return`                | error    | A bare `return;` inside an event body                                                              |
+| 30  | `non_constant_default`             | error    | A `default` value is a call or `new` expression                                                    |
+| 31  | `annotation_targets_backing_class` | error    | A modding annotation targets a state's backing class name instead of the short state name          |
+| 32  | `duplicate_inherited_field`        | error    | A field redeclares a field inherited from an ancestor                                              |
+| 33  | `override_weaker_access`           | error    | A method override has weaker access than the ancestor's method                                     |
+| 34  | `override_param_count`             | error    | A method override declares a different parameter count than the ancestor's method                  |
+| 35  | `unused_symbol`                    | hint     | An unused local variable, parameter, or private field; rendered faded by editors                   |
 
 ## Details
 
@@ -143,7 +144,7 @@ The compiler only resolves the `super.` qualifier for method dispatch. Inherited
 
 A bare identifier that resolves to a `class`, `struct`, `state`, or `enum` declaration but appears where a value is expected, e.g. `EnumGetMin(ESomeEnum)` or `var x : int; x = MyClass;`. Also fires when a type name is called like a function, e.g. `ESomeEnum()`, except struct constructor calls (`StructName(a, b, ...)`).
 
-Type-position uses (`extends T`, `: T` annotations, `new T in owner`, `(T) value` casts, `@addMethod(T)` annotations) are unaffected. Enum *members* used as values are also unaffected; only the enum's own name triggers the rule.
+Type-position uses (`extends T`, `: T` annotations, `new T in owner`, `(T) value` casts, `@addMethod(T)` annotations) are unaffected. Enum _members_ used as values are also unaffected; only the enum's own name triggers the rule.
 
 ### 19. Type mismatch
 
@@ -174,7 +175,7 @@ Sites where either the value's type or the target's type cannot be inferred with
 
 #### Engine `CBehTreeVal*` wrappers
 
-The native types `CBehTreeValBool`, `CBehTreeValInt`, `CBehTreeValFloat`, `CBehTreeValString`, and `CBehTreeValCName` receive a value only through a `default` initializer (or a native `out` parameter). A `default` accepts *any* primitive (the engine coerces it); the exact primitive - `bool`, `int`, `float` (also `int`), `string`, and `name` respectively - is silent, and anything else is `native_default_coercion` (info, never an error). Outside a `default` (e.g. `wrapper = value;`) they accept nothing, matching the compiler.
+The native types `CBehTreeValBool`, `CBehTreeValInt`, `CBehTreeValFloat`, `CBehTreeValString`, and `CBehTreeValCName` receive a value only through a `default` initializer (or a native `out` parameter). A `default` accepts _any_ primitive (the engine coerces it); the exact primitive - `bool`, `int`, `float` (also `int`), `string`, and `name` respectively - is silent, and anything else is `native_default_coercion` (info, never an error). Outside a `default` (e.g. `wrapper = value;`) they accept nothing, matching the compiler.
 
 These five are modelled as a distinct `NativeType` kind, not classes: they take no object-to-bool / to-string / `NULL` casts and cannot be `new`-instantiated (see `native_instantiation`).
 
@@ -241,3 +242,7 @@ A class or state method whose name matches a class-body method up the inheritanc
 ### 34. Override parameter count mismatch
 
 A class or state method whose name matches a class-body method up the inheritance chain but declares a different number of parameters. Mirrors the compiler error "Function 'X' takes N parameter(s) which is inconsistent with base function (M)". Optional parameters count; parameter types are not compared. Shares rule 33's scan and exemptions.
+
+### 35. Unused symbol
+
+An unused local variable, parameter, or `private` field. Emitted at hint severity with the LSP `Unnecessary` tag, so editors fade the declaration. An assignment counts as a use. `@addField` declarations are exempt.
