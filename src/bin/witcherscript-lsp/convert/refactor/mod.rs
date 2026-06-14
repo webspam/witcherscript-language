@@ -9,7 +9,7 @@ use tree_sitter::Node;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::formatter::FormatOptions;
 use witcherscript_language::line_index::LineIndex;
-use witcherscript_language::resolve::{Extraction, Inlining, SymbolDb};
+use witcherscript_language::resolve::{Extraction, Inlining, Splice, SymbolDb};
 
 use super::lsp_range;
 
@@ -44,17 +44,10 @@ fn extract_command(title: &str, uri: &Url, position: Position) -> Command {
     }
 }
 
-fn extraction_code_action(
-    ctx: &RefactorContext,
-    extraction: &Extraction,
-    title: &str,
-    command_title: &str,
-) -> CodeActionOrCommand {
+fn workspace_edit_from_splices(ctx: &RefactorContext, splices: &[Splice]) -> WorkspaceEdit {
     let source = &ctx.document.source;
     let line_index = &ctx.document.line_index;
-    let position = rename_position(source, extraction);
-    let edits = extraction
-        .edits
+    let edits = splices
         .iter()
         .map(|splice| TextEdit {
             range: lsp_range(line_index.byte_range_to_range(
@@ -67,13 +60,23 @@ fn extraction_code_action(
         .collect();
     let mut changes = HashMap::new();
     changes.insert(ctx.uri.clone(), edits);
+    WorkspaceEdit {
+        changes: Some(changes),
+        ..WorkspaceEdit::default()
+    }
+}
+
+fn extraction_code_action(
+    ctx: &RefactorContext,
+    extraction: &Extraction,
+    title: &str,
+    command_title: &str,
+) -> CodeActionOrCommand {
+    let position = rename_position(&ctx.document.source, extraction);
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
         kind: Some(CodeActionKind::REFACTOR_EXTRACT),
-        edit: Some(WorkspaceEdit {
-            changes: Some(changes),
-            ..WorkspaceEdit::default()
-        }),
+        edit: Some(workspace_edit_from_splices(ctx, &extraction.edits)),
         command: Some(extract_command(command_title, ctx.uri, position)),
         ..CodeAction::default()
     })
@@ -84,29 +87,10 @@ fn inline_code_action(
     inlining: &Inlining,
     title: &str,
 ) -> CodeActionOrCommand {
-    let source = &ctx.document.source;
-    let line_index = &ctx.document.line_index;
-    let edits = inlining
-        .edits
-        .iter()
-        .map(|splice| TextEdit {
-            range: lsp_range(line_index.byte_range_to_range(
-                source,
-                splice.range.start,
-                splice.range.end,
-            )),
-            new_text: splice.text.clone(),
-        })
-        .collect();
-    let mut changes = HashMap::new();
-    changes.insert(ctx.uri.clone(), edits);
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
         kind: Some(CodeActionKind::REFACTOR_INLINE),
-        edit: Some(WorkspaceEdit {
-            changes: Some(changes),
-            ..WorkspaceEdit::default()
-        }),
+        edit: Some(workspace_edit_from_splices(ctx, &inlining.edits)),
         ..CodeAction::default()
     })
 }
