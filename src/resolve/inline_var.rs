@@ -15,11 +15,11 @@ use super::extract_common::{Splice, WriteSite, out_args, write_site_node, write_
 use super::references::{collect_ident_occurrences, occurrence_resolves_to};
 use super::symbol_db::SymbolDb;
 
-/// Which uses an inline replaces.
+/// How many uses an inline replaced, distinguishing the offered action.
 pub enum InlineScope {
-    /// Cursor on the declaration: replace every read, then delete the declaration.
+    /// Every use of a variable read in more than one place.
     AllUsages,
-    /// Cursor on one use: replace just that occurrence.
+    /// A single use: the variable's only use, or one of several.
     SingleUsage,
 }
 
@@ -248,10 +248,12 @@ fn inline_all_reads(plan: &InlinePlan) -> Inlining {
         })
         .collect();
     edits.extend(plan.teardown.iter().cloned());
-    Inlining {
-        edits,
-        scope: InlineScope::AllUsages,
-    }
+    let scope = if plan.reads.len() > 1 {
+        InlineScope::AllUsages
+    } else {
+        InlineScope::SingleUsage
+    };
+    Inlining { edits, scope }
 }
 
 fn inline_single_read(
@@ -270,13 +272,13 @@ fn inline_single_read(
         text: plan.value.clone(),
     }];
     // Inlining the final read leaves the variable's binding dead.
-    let scope = if plan.reads.len() == 1 {
+    if plan.reads.len() == 1 {
         edits.extend(plan.teardown.iter().cloned());
-        InlineScope::AllUsages
-    } else {
-        InlineScope::SingleUsage
-    };
-    Some(Inlining { edits, scope })
+    }
+    Some(Inlining {
+        edits,
+        scope: InlineScope::SingleUsage,
+    })
 }
 
 fn decl_stmt_for<'tree>(root: Node<'tree>, def: &Definition) -> Option<Node<'tree>> {

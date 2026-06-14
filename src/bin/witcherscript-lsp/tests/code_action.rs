@@ -522,7 +522,7 @@ fn offers_inline_variable_on_declaration() {
 fn offers_inline_single_usage_on_a_use() {
     let src = "function F() {\n    var count : int = 5;\n    Foo(count);\n    Bar(count);\n}\n";
     let actions = refactor_actions(src, "count);");
-    assert_eq!(titles(&actions), vec!["Inline variable (this occurrence)"]);
+    assert_eq!(titles(&actions), vec!["Inline variable"]);
     let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
         panic!("expected a CodeAction, got {:?}", actions[0]);
     };
@@ -530,6 +530,13 @@ fn offers_inline_single_usage_on_a_use() {
     let edits = extract_workspace_edit(action);
     assert_eq!(edits.len(), 1, "only the single occurrence is replaced");
     assert_eq!(edits[0].new_text, "5");
+}
+
+#[test]
+fn inline_on_declaration_with_many_uses_says_all() {
+    let src = "function F() {\n    var count : int = 5;\n    Foo(count);\n    Bar(count);\n}\n";
+    let actions = refactor_actions(src, "count : int");
+    assert_eq!(titles(&actions), vec!["Inline variable (all)"]);
 }
 
 #[test]

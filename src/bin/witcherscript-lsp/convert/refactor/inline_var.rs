@@ -12,8 +12,8 @@ impl Refactoring for InlineVariableRefactoring {
             return Vec::new();
         };
         let title = match inlining.scope {
-            InlineScope::AllUsages => "Inline variable",
-            InlineScope::SingleUsage => "Inline variable (this occurrence)",
+            InlineScope::AllUsages => "Inline variable (all)",
+            InlineScope::SingleUsage => "Inline variable",
         };
         vec![inline_code_action(ctx, &inlining, title)]
     }
