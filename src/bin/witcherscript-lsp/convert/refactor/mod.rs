@@ -9,7 +9,7 @@ use tree_sitter::Node;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::formatter::FormatOptions;
 use witcherscript_language::line_index::LineIndex;
-use witcherscript_language::resolve::{Extraction, SymbolDb};
+use witcherscript_language::resolve::{Extraction, Inlining, SymbolDb};
 
 use super::lsp_range;
 
@@ -17,6 +17,7 @@ mod extract_func;
 mod extract_method;
 mod extract_var;
 mod if_stmt;
+mod inline_var;
 mod switch;
 
 // A bare rename races VS Code's cursor placement, so a custom command repositions before renaming.
@@ -78,6 +79,38 @@ fn extraction_code_action(
     })
 }
 
+fn inline_code_action(
+    ctx: &RefactorContext,
+    inlining: &Inlining,
+    title: &str,
+) -> CodeActionOrCommand {
+    let source = &ctx.document.source;
+    let line_index = &ctx.document.line_index;
+    let edits = inlining
+        .edits
+        .iter()
+        .map(|splice| TextEdit {
+            range: lsp_range(line_index.byte_range_to_range(
+                source,
+                splice.range.start,
+                splice.range.end,
+            )),
+            new_text: splice.text.clone(),
+        })
+        .collect();
+    let mut changes = HashMap::new();
+    changes.insert(ctx.uri.clone(), edits);
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: title.to_string(),
+        kind: Some(CodeActionKind::REFACTOR_INLINE),
+        edit: Some(WorkspaceEdit {
+            changes: Some(changes),
+            ..WorkspaceEdit::default()
+        }),
+        ..CodeAction::default()
+    })
+}
+
 // Adding a construct means writing a `Refactoring` impl and listing it here.
 const REFACTORINGS: &[&dyn Refactoring] = &[
     &switch::SwitchLayoutRefactoring,
@@ -85,6 +118,7 @@ const REFACTORINGS: &[&dyn Refactoring] = &[
     &extract_var::ExtractVariableRefactoring,
     &extract_method::ExtractMethodRefactoring,
     &extract_func::ExtractFunctionRefactoring,
+    &inline_var::InlineVariableRefactoring,
 ];
 
 // A cursor-driven "rewrite this construct" code action. Each impl locates its own target node

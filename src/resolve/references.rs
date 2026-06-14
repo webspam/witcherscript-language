@@ -269,7 +269,7 @@ pub fn find_references(
     results
 }
 
-fn collect_ident_occurrences(
+pub(super) fn collect_ident_occurrences(
     node: Node<'_>,
     source: &[u8],
     name: &str,
