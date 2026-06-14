@@ -15,22 +15,20 @@ use super::extract_common::{Splice, WriteSite, out_args, write_site_node, write_
 use super::references::{collect_ident_occurrences, occurrence_resolves_to};
 use super::symbol_db::SymbolDb;
 
-/// How many uses an inline replaced, distinguishing the offered action.
+/// How many uses an inline replaced, distinguishing the offered action
 pub enum InlineScope {
-    /// Every use of a variable read in more than one place.
     AllUsages,
-    /// A single use: the variable's only use, or one of several.
     SingleUsage,
 }
 
 pub struct Inlining {
-    /// Non-overlapping edits against the original source.
+    /// Non-overlapping edits against the original source
     pub edits: Vec<Splice>,
     pub scope: InlineScope,
 }
 
-// Initializer forms that never need wrapping when substituted; everything else is parenthesised
-// so surrounding operator precedence cannot change the substituted value.
+// Forms safe to substitute as-is. Everything else is wrapped in parentheses so the operators
+// around the substitution cannot change its value.
 const ATOMIC_INIT_KINDS: &[&str] = &[
     kinds::IDENT,
     kinds::LITERAL_INT,
@@ -59,7 +57,7 @@ pub fn inline_variable(
 ) -> Option<Inlining> {
     let root = document.tree.root_node();
 
-    // On the `var` keyword there is no identifier; a declaration head still inlines all usages.
+    // The `var` keyword has no identifier to resolve, so inline through the declaration head.
     let Some(cursor_ident) = identifier_at(root, byte_offset) else {
         let name = decl_head_name(root, byte_offset)?;
         let (def, decl) = variable_decl_at(uri, document, db, root, name.start_byte())?;
@@ -70,7 +68,6 @@ pub fn inline_variable(
     let (def, decl) = variable_decl_at(uri, document, db, root, byte_offset)?;
     let plan = plan_inline(uri, document, db, root, &def, decl)?;
 
-    // Inclusive: a cursor at the name's end byte is on the declaration, not a use.
     let on_declaration = def.symbol.selection_byte_range.start <= byte_offset
         && byte_offset <= def.symbol.selection_byte_range.end;
 
@@ -96,7 +93,6 @@ fn variable_decl_at<'t>(
     Some((def, decl))
 }
 
-// The `var` keyword through the declared name; a cursor here targets the declaration, not a use.
 fn decl_head_name(root: Node<'_>, byte_offset: usize) -> Option<Node<'_>> {
     let decl = nodes_at_offset(root, byte_offset)
         .into_iter()
@@ -114,11 +110,10 @@ fn decl_head_name(root: Node<'_>, byte_offset: usize) -> Option<Node<'_>> {
 }
 
 struct InlinePlan {
-    /// Substitution text for each read, parenthesised where precedence needs it.
+    /// Substitution text for each read, parenthesised where precedence needs it
     value: String,
     reads: Vec<Range<usize>>,
-    /// Edits removing the variable's binding once every read is inlined: its declaration (or just
-    /// this name from a multi-name list), plus a defining assignment when separate.
+    /// Splices that delete the declaration and any assignment that set the variable.
     teardown: Vec<Splice>,
 }
 
@@ -151,20 +146,18 @@ fn plan_inline(
         .find(|n| n.byte_range() == def.symbol.selection_byte_range)?;
     let reads = read_occurrences(uri, document, db, def, decl, &scope);
 
-    // A shared initializer belongs to a lone name only; a list assigns each variable separately.
+    // A list shares one initializer, so it cannot be the value for just one of the names.
     let initializer = (decl_names.len() == 1)
         .then(|| decl.child_by_field_name(fields::INIT_VALUE))
         .flatten();
 
     let mut defining_assignment = None;
     let value_node = if let Some(init) = initializer {
-        // Initializer holds the value; inlinable only when nothing else mutates the variable.
         if !mutations.is_empty() {
             return None;
         }
         init
     } else {
-        // Otherwise the value must come from exactly one direct `=` assignment of this variable.
         if mutations.len() != 1 {
             return None;
         }
@@ -226,7 +219,7 @@ fn read_occurrences(
             if occurrence_is_write(uri, document, db, ident) {
                 return false;
             }
-            // The same name can reach an unrelated field via `obj.name`; keep only true references.
+            // A matching name could be an unrelated field like `obj.name`, not this variable.
             occurrence_resolves_to(uri, document, db, occ.start, std::slice::from_ref(&key))
         })
         .collect()
@@ -263,7 +256,6 @@ fn inline_single_read(
     occurrence: Node,
     plan: &InlinePlan,
 ) -> Option<Inlining> {
-    // A write target is an lvalue; replacing it with a value expression would not parse.
     if occurrence_is_write(uri, document, db, occurrence) {
         return None;
     }
@@ -271,7 +263,6 @@ fn inline_single_read(
         range: occurrence.byte_range(),
         text: plan.value.clone(),
     }];
-    // Inlining the final read leaves the variable's binding dead.
     if plan.reads.len() == 1 {
         edits.extend(plan.teardown.iter().cloned());
     }
@@ -305,7 +296,6 @@ fn single_name(decl: Node) -> Option<Node> {
     }
 }
 
-// Whole statement for a lone name, else just this name spliced out of the `var a, b` list.
 fn remove_binding(source: &str, decl: Node, target: Node, names: &[Node]) -> Splice {
     match names {
         [_] => delete_statement(source, decl),
@@ -351,7 +341,6 @@ fn occurrence_is_write(uri: &str, document: &ParsedDocument, db: &SymbolDb, iden
         .any(|arg| write_target(*arg).map(|n| n.id()) == Some(ident.id()))
 }
 
-// Delete a statement with its line when it stands alone, so no blank line remains.
 fn delete_statement(source: &str, stmt: Node) -> Splice {
     let bytes = source.as_bytes();
     let mut start = stmt.start_byte();
@@ -372,7 +361,7 @@ fn delete_statement(source: &str, stmt: Node) -> Splice {
             end += 1;
         }
     } else {
-        // Something precedes the statement on its line; keep that code and its indentation.
+        // Other code shares the statement's line, so keep that code and its indentation.
         start = stmt.start_byte();
     }
 
