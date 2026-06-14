@@ -141,15 +141,19 @@ fn plan_inline(
         .collect();
 
     let decl_names = name_nodes(decl);
-    let target = decl_names
+    let target_index = decl_names
         .iter()
-        .copied()
-        .find(|n| n.byte_range() == def.symbol.selection_byte_range)?;
+        .position(|n| n.byte_range() == def.symbol.selection_byte_range)?;
     let reads = find_reads(uri, document, db, def, &write_ranges);
 
     let source = value_source(decl, &decl_names, &mutations, &reads)?;
 
-    let mut teardown = vec![remove_binding(&document.source, decl, target, &decl_names)];
+    let mut teardown = vec![remove_binding(
+        &document.source,
+        decl,
+        target_index,
+        &decl_names,
+    )];
     if let Some(assign_stmt) = source.defining_assignment {
         teardown.push(delete_statement(&document.source, assign_stmt));
     }
@@ -300,18 +304,15 @@ fn single_name(decl: Node) -> Option<Node> {
     }
 }
 
-fn remove_binding(source: &str, decl: Node, target: Node, names: &[Node]) -> Splice {
+fn remove_binding(source: &str, decl: Node, target_index: usize, names: &[Node]) -> Splice {
     match names {
         [_] => delete_statement(source, decl),
-        _ => remove_name_from_list(target, names),
+        _ => remove_name_from_list(target_index, names),
     }
 }
 
-fn remove_name_from_list(target: Node, names: &[Node]) -> Splice {
-    let index = names
-        .iter()
-        .position(|n| n.id() == target.id())
-        .unwrap_or(0);
+fn remove_name_from_list(index: usize, names: &[Node]) -> Splice {
+    let target = names[index];
     // Drop the comma that joins this name to the rest: the trailing one for the first, else the leading.
     let range = if index == 0 {
         target.start_byte()..names[1].start_byte()
