@@ -116,20 +116,26 @@ fn render_expr(node: Node, source: &str) -> String {
     .render_node(node)
 }
 
-pub(super) struct BoolPart {
+pub(super) struct ChainPart {
     pub fragment: String,
     pub op: Option<&'static str>,
     // The author put a newline between this operand and the next one in the source.
     pub break_after: bool,
+    // The operator sits on a line after its left operand (leading style), not at its end.
+    pub op_leads: bool,
 }
 
-fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<BoolPart>) {
+fn collect_chain_parts(node: Node, source: &str, parts: &mut Vec<ChainPart>) {
     if node.kind() == kinds::BINARY_OP_EXPR
         && let Some(op_node) = node.child_by_field_name(fields::OP)
     {
         let op_str: Option<&'static str> = match op_node.kind() {
             kinds::BINARY_OP_OR => Some("||"),
             kinds::BINARY_OP_AND => Some("&&"),
+            kinds::BINARY_OP_SUM => Some("+"),
+            kinds::BINARY_OP_DIFF => Some("-"),
+            kinds::BINARY_OP_MULT => Some("*"),
+            kinds::BINARY_OP_DIV => Some("/"),
             _ => None,
         };
         if let Some(op) = op_str
@@ -138,31 +144,45 @@ fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<BoolPart>) {
                 node.child_by_field_name(fields::RIGHT),
             )
         {
-            collect_bool_parts(left, source, parts);
+            collect_chain_parts(left, source, parts);
             if let Some(last) = parts.last_mut() {
                 last.op = Some(op);
                 last.break_after = right.start_position().row > left.end_position().row;
+                last.op_leads = op_node.start_position().row > left.end_position().row;
             }
-            collect_bool_parts(right, source, parts);
+            collect_chain_parts(right, source, parts);
             return;
         }
     }
-    parts.push(BoolPart {
+    parts.push(ChainPart {
         fragment: render_expr(node, source),
         op: None,
         break_after: false,
+        op_leads: false,
     });
 }
 
-pub(super) fn split_binary_condition(node: Node, source: &str) -> Vec<BoolPart> {
+pub(super) fn split_binary_chain(node: Node, source: &str) -> Vec<ChainPart> {
     let mut parts = Vec::new();
-    collect_bool_parts(node, source, &mut parts);
+    collect_chain_parts(node, source, &mut parts);
     parts
 }
 
-pub(super) fn chain_fully_broken(parts: &[BoolPart]) -> bool {
+pub(super) fn chain_fully_broken(parts: &[ChainPart]) -> bool {
     // The last operand has no successor, so break_after is only meaningful on the rest.
     parts.len() > 1 && parts[..parts.len() - 1].iter().all(|p| p.break_after)
+}
+
+pub(super) fn chain_has_break(parts: &[ChainPart]) -> bool {
+    parts.iter().any(|p| p.break_after)
+}
+
+// The first break sets the whole chain's operator placement; later splits follow it.
+pub(super) fn chain_operator_leads(parts: &[ChainPart]) -> bool {
+    parts
+        .iter()
+        .find(|p| p.break_after)
+        .is_some_and(|p| p.op_leads)
 }
 
 pub(super) fn try_split_call_args(node: Node, source: &str) -> Option<(String, Vec<String>)> {
@@ -235,6 +255,12 @@ pub(super) fn is_expr_node(kind: &str) -> bool {
             | kinds::LITERAL_STRING
             | kinds::LITERAL_NAME
     )
+}
+
+pub(super) fn comment_in_range(comments: &[Node], lo: usize, hi: usize) -> bool {
+    comments
+        .iter()
+        .any(|c| c.start_byte() >= lo && c.start_byte() < hi)
 }
 
 fn collect_comments(root: Node) -> Vec<Node> {

@@ -9,8 +9,8 @@ pub(in crate::formatter) use if_stmt::{block_single_stmt, body_expandable, chain
 pub(in crate::formatter) use switch::{SwitchArm, collect_switch_arms};
 
 use super::{
-    BoolPart, Formatter, chain_fully_broken, child_nodes, named_child_nodes,
-    split_binary_condition, try_split_call_args,
+    ChainPart, Formatter, chain_fully_broken, chain_has_break, chain_operator_leads, child_nodes,
+    named_child_nodes, split_binary_chain, try_split_call_args,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,7 +155,7 @@ impl Formatter<'_> {
         let Some(c) = cond else {
             return false;
         };
-        let parts = split_binary_condition(c, self.source);
+        let parts = split_binary_chain(c, self.source);
         if parts.len() <= 1 {
             return false;
         }
@@ -168,7 +168,7 @@ impl Formatter<'_> {
         false
     }
 
-    fn emit_condition_split(&mut self, keyword_open: &str, parts: &[BoolPart]) {
+    fn emit_condition_split(&mut self, keyword_open: &str, parts: &[ChainPart]) {
         self.emit_indent();
         self.emit(keyword_open);
         self.nl();
@@ -195,26 +195,48 @@ impl Formatter<'_> {
         if parent_kind == kinds::BINARY_OP_EXPR {
             return false;
         }
-        let parts = split_binary_condition(node, self.source);
-        if !chain_fully_broken(&parts) {
+        // Re-rendered operand fragments drop comments; defer to the child walk that keeps them.
+        if self.has_interior_comment(node) {
             return false;
         }
+        let parts = split_binary_chain(node, self.source);
+        if !chain_has_break(&parts) {
+            return false;
+        }
+        let leads = chain_operator_leads(&parts);
+        self.emit(&parts[0].fragment);
         self.level += 1;
-        for (i, part) in parts.iter().enumerate() {
-            if i > 0 {
-                self.emit_indent();
-            }
-            self.emit(&part.fragment);
-            if let Some(op) = part.op {
-                self.emit(" ");
-                self.emit(op);
-            }
-            if i + 1 < parts.len() {
-                self.nl();
-            }
+        for window in parts.windows(2) {
+            let op = window[0]
+                .op
+                .expect("non-final chain part carries its operator");
+            self.emit_chain_link(op, window[0].break_after, leads, &window[1].fragment);
         }
         self.level -= 1;
         true
+    }
+
+    fn emit_chain_link(&mut self, op: &str, break_after: bool, leads: bool, fragment: &str) {
+        if !break_after {
+            self.emit(" ");
+            self.emit(op);
+            self.emit(" ");
+            self.emit(fragment);
+            return;
+        }
+        if leads {
+            self.nl();
+            self.emit_indent();
+            self.emit(op);
+            self.emit(" ");
+            self.emit(fragment);
+        } else {
+            self.emit(" ");
+            self.emit(op);
+            self.nl();
+            self.emit_indent();
+            self.emit(fragment);
+        }
     }
 
     fn emit_stmt_body(&mut self, body: Option<Node>, layout: BodyLayout) {

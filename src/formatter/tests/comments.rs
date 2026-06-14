@@ -158,6 +158,15 @@ fn comments_around_return_type_keep_source_order() {
         }
     "]]
 )]
+#[case::line_comment_inside_chain_keeps_comment(
+    "function f() {\n    var y : bool = a // c\n        && b;\n}",
+    expect![[r"
+        function f() {
+            var y : bool = a // c
+                && b;
+        }
+    "]]
+)]
 #[case::trailing_line_comment_after_statement_stays_and_terminates(
     "function f() {\n    doSomething(); // explain\n    other();\n}",
     expect![[r"
