@@ -12,7 +12,7 @@ use crate::symbols::SymbolKind;
 use super::definition::callee_params;
 use super::symbol_db::SymbolDb;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Splice {
     /// Byte range in the original source this edit replaces; an empty range is a pure insertion.
     pub range: Range<usize>,

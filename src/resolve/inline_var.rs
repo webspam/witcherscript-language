@@ -64,7 +64,7 @@ pub fn inline_variable(
         let name = decl_head_name(root, byte_offset)?;
         let (def, decl) = variable_decl_at(uri, document, db, root, name.start_byte())?;
         let plan = plan_inline(uri, document, db, root, &def, decl)?;
-        return Some(inline_all_reads(&document.source, &plan));
+        return Some(inline_all_reads(&plan));
     };
 
     let (def, decl) = variable_decl_at(uri, document, db, root, byte_offset)?;
@@ -75,9 +75,9 @@ pub fn inline_variable(
         && byte_offset <= def.symbol.selection_byte_range.end;
 
     if on_declaration {
-        Some(inline_all_reads(&document.source, &plan))
+        Some(inline_all_reads(&plan))
     } else {
-        inline_single_read(uri, document, db, cursor_ident, &plan, &document.source)
+        inline_single_read(uri, document, db, cursor_ident, &plan)
     }
 }
 
@@ -93,8 +93,6 @@ fn variable_decl_at<'t>(
         return None;
     }
     let decl = decl_stmt_for(root, &def)?;
-    // A multi-name `var a, b` declaration has no single statement to delete cleanly.
-    single_name(decl)?;
     Some((def, decl))
 }
 
@@ -115,22 +113,23 @@ fn decl_head_name(root: Node<'_>, byte_offset: usize) -> Option<Node<'_>> {
         .then_some(name)
 }
 
-struct InlinePlan<'t> {
+struct InlinePlan {
     /// Substitution text for each read, parenthesised where precedence needs it.
     value: String,
     reads: Vec<Range<usize>>,
-    /// Statements that die once every read is inlined: the declaration, plus a defining assignment if separate.
-    dead_stmts: Vec<Node<'t>>,
+    /// Edits removing the variable's binding once every read is inlined: its declaration (or just
+    /// this name from a multi-name list), plus a defining assignment when separate.
+    teardown: Vec<Splice>,
 }
 
-fn plan_inline<'t>(
+fn plan_inline(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
-    root: Node<'t>,
+    root: Node<'_>,
     def: &Definition,
-    decl: Node<'t>,
-) -> Option<InlinePlan<'t>> {
+    decl: Node<'_>,
+) -> Option<InlinePlan> {
     let container = def.symbol.container?;
     let scope = document.symbols.by_id(container)?.byte_range.clone();
     let scope_node = root.descendant_for_byte_range(scope.start, scope.end)?;
@@ -145,46 +144,54 @@ fn plan_inline<'t>(
         })
         .collect();
 
-    let (value_node, dead_stmts) = if let Some(init) = decl.child_by_field_name(fields::INIT_VALUE)
-    {
+    let decl_names = name_nodes(decl);
+    let target = decl_names
+        .iter()
+        .copied()
+        .find(|n| n.byte_range() == def.symbol.selection_byte_range)?;
+    let reads = read_occurrences(uri, document, db, def, decl, &scope);
+
+    // A shared initializer belongs to a lone name only; a list assigns each variable separately.
+    let initializer = (decl_names.len() == 1)
+        .then(|| decl.child_by_field_name(fields::INIT_VALUE))
+        .flatten();
+
+    let mut defining_assignment = None;
+    let value_node = if let Some(init) = initializer {
         // Initializer holds the value; inlinable only when nothing else mutates the variable.
         if !mutations.is_empty() {
             return None;
         }
-        (init, vec![decl])
+        init
     } else {
-        // No initializer: the value must come from exactly one direct `=` assignment.
+        // Otherwise the value must come from exactly one direct `=` assignment of this variable.
         if mutations.len() != 1 {
             return None;
         }
-        let WriteSite::AssignTarget(target) = mutations[0] else {
+        let WriteSite::AssignTarget(assign_target) = mutations[0] else {
             return None;
         };
-        let assign = direct_assign_expr(*target)?;
+        let assign = direct_assign_expr(*assign_target)?;
         let assign_stmt = find_ancestor_of_kind(assign, &[kinds::EXPR_STMT])?;
-        // An unconditional sibling of the declaration dominates every later read.
-        if assign_stmt.parent()?.id() != decl.parent()?.id() {
+        // An unconditional sibling of the declaration that precedes every read dominates them all.
+        if assign_stmt.parent()?.id() != decl.parent()?.id()
+            || reads.iter().any(|r| r.start < assign_stmt.end_byte())
+        {
             return None;
         }
-        (
-            assign.child_by_field_name(fields::RIGHT)?,
-            vec![decl, assign_stmt],
-        )
+        defining_assignment = Some(assign_stmt);
+        assign.child_by_field_name(fields::RIGHT)?
     };
 
-    let reads = read_occurrences(uri, document, db, def, decl, &scope);
-
-    // A defining assignment separate from the declaration must precede every read it feeds.
-    if let [_, assign_stmt] = dead_stmts.as_slice()
-        && reads.iter().any(|r| r.start < assign_stmt.end_byte())
-    {
-        return None;
+    let mut teardown = vec![remove_binding(&document.source, decl, target, &decl_names)];
+    if let Some(assign_stmt) = defining_assignment {
+        teardown.push(delete_statement(&document.source, assign_stmt));
     }
 
     Some(InlinePlan {
         value: substituted_text(&document.source, value_node),
         reads,
-        dead_stmts,
+        teardown,
     })
 }
 
@@ -231,7 +238,7 @@ fn direct_assign_expr(target: Node<'_>) -> Option<Node<'_>> {
     (op.kind() == kinds::ASSIGN_OP_DIRECT).then_some(assign)
 }
 
-fn inline_all_reads(source: &str, plan: &InlinePlan) -> Inlining {
+fn inline_all_reads(plan: &InlinePlan) -> Inlining {
     let mut edits: Vec<Splice> = plan
         .reads
         .iter()
@@ -240,9 +247,7 @@ fn inline_all_reads(source: &str, plan: &InlinePlan) -> Inlining {
             text: plan.value.clone(),
         })
         .collect();
-    for stmt in &plan.dead_stmts {
-        edits.push(delete_statement(source, *stmt));
-    }
+    edits.extend(plan.teardown.iter().cloned());
     Inlining {
         edits,
         scope: InlineScope::AllUsages,
@@ -255,7 +260,6 @@ fn inline_single_read(
     db: &SymbolDb,
     occurrence: Node,
     plan: &InlinePlan,
-    source: &str,
 ) -> Option<Inlining> {
     // A write target is an lvalue; replacing it with a value expression would not parse.
     if occurrence_is_write(uri, document, db, occurrence) {
@@ -265,11 +269,9 @@ fn inline_single_read(
         range: occurrence.byte_range(),
         text: plan.value.clone(),
     }];
-    // Inlining the final read leaves the declaration (and any defining assignment) dead.
+    // Inlining the final read leaves the variable's binding dead.
     let scope = if plan.reads.len() == 1 {
-        for stmt in &plan.dead_stmts {
-            edits.push(delete_statement(source, *stmt));
-        }
+        edits.extend(plan.teardown.iter().cloned());
         InlineScope::AllUsages
     } else {
         InlineScope::SingleUsage
@@ -287,13 +289,43 @@ fn decl_stmt_for<'tree>(root: Node<'tree>, def: &Definition) -> Option<Node<'tre
     }
 }
 
-fn single_name(decl: Node) -> Option<Node> {
+fn name_nodes(decl: Node) -> Vec<Node> {
     let mut cursor = decl.walk();
-    let mut names = decl
-        .children_by_field_name(fields::NAMES, &mut cursor)
-        .filter(|n| n.kind() == kinds::IDENT);
-    let only = names.next()?;
-    names.next().is_none().then_some(only)
+    decl.children_by_field_name(fields::NAMES, &mut cursor)
+        .filter(|n| n.kind() == kinds::IDENT)
+        .collect()
+}
+
+fn single_name(decl: Node) -> Option<Node> {
+    match name_nodes(decl).as_slice() {
+        [only] => Some(*only),
+        _ => None,
+    }
+}
+
+// Whole statement for a lone name, else just this name spliced out of the `var a, b` list.
+fn remove_binding(source: &str, decl: Node, target: Node, names: &[Node]) -> Splice {
+    match names {
+        [_] => delete_statement(source, decl),
+        _ => remove_name_from_list(target, names),
+    }
+}
+
+fn remove_name_from_list(target: Node, names: &[Node]) -> Splice {
+    let index = names
+        .iter()
+        .position(|n| n.id() == target.id())
+        .unwrap_or(0);
+    // Drop the comma that joins this name to the rest: the trailing one for the first, else the leading.
+    let range = if index == 0 {
+        target.start_byte()..names[1].start_byte()
+    } else {
+        names[index - 1].end_byte()..target.end_byte()
+    };
+    Splice {
+        range,
+        text: String::new(),
+    }
 }
 
 fn substituted_text(source: &str, init: Node) -> String {

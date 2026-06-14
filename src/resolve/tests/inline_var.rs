@@ -79,6 +79,16 @@ fn inlined(src: &str) -> Option<String> {
     "function f() {\n    var $0sum : int;\n    sum = a + b;\n    return sum * 2;\n}\n",
     "function f() {\n    return (a + b) * 2;\n}\n"
 )]
+#[case::multi_name_inline_first(
+    "multi-name list, inline the first name",
+    "function f() {\n    var marker, line : string;\n    marker = \"x\";\n    line = \"y\";\n    Foo($0marker);\n    Bar(line);\n}\n",
+    "function f() {\n    var line : string;\n    line = \"y\";\n    Foo(\"x\");\n    Bar(line);\n}\n"
+)]
+#[case::multi_name_inline_last(
+    "multi-name list, inline a later name",
+    "function f() {\n    var marker, line : string;\n    marker = \"x\";\n    line = \"y\";\n    Foo(marker);\n    Bar($0line);\n}\n",
+    "function f() {\n    var marker : string;\n    marker = \"x\";\n    Foo(marker);\n    Bar(\"y\");\n}\n"
+)]
 fn inlines(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     let got = inlined(src).unwrap_or_else(|| panic!("case {label}: expected an inlining"));
     assert_eq!(got, expected, "case {label}: inlined output mismatch");
