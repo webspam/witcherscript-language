@@ -12,7 +12,7 @@ use super::Definition;
 use super::ast::{identifier_at, nodes_at_offset};
 use super::definition::{definition_key, resolve_definition_at_byte};
 use super::extract_common::{Splice, WriteSite, out_args, write_site_node, write_sites};
-use super::references::{find_references, occurrence_resolves_to};
+use super::references::find_references;
 use super::symbol_db::SymbolDb;
 
 /// How many uses an inline replaced, distinguishing the offered action
@@ -135,7 +135,8 @@ fn plan_inline(
         .iter()
         .filter(|w| {
             let probe = write_site_node(w).start_byte();
-            occurrence_resolves_to(uri, document, db, probe, std::slice::from_ref(&key))
+            resolve_definition_at_byte(uri, document, db, probe)
+                .is_some_and(|d| definition_key(&d) == key)
         })
         .collect();
 
