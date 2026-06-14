@@ -147,46 +147,69 @@ fn plan_inline(
         .find(|n| n.byte_range() == def.symbol.selection_byte_range)?;
     let reads = find_reads(uri, document, db, def, &write_ranges);
 
-    // A list shares one initializer, so it cannot be the value for just one of the names.
-    let initializer = (decl_names.len() == 1)
-        .then(|| decl.child_by_field_name(fields::INIT_VALUE))
-        .flatten();
-
-    let mut defining_assignment = None;
-    let value_node = if let Some(init) = initializer {
-        if !mutations.is_empty() {
-            return None;
-        }
-        init
-    } else {
-        if mutations.len() != 1 {
-            return None;
-        }
-        let WriteSite::AssignTarget(assign_target) = mutations[0] else {
-            return None;
-        };
-        let assign = direct_assign_expr(*assign_target)?;
-        let assign_stmt = find_ancestor_of_kind(assign, &[kinds::EXPR_STMT])?;
-        // An unconditional sibling of the declaration that precedes every read dominates them all.
-        if assign_stmt.parent()?.id() != decl.parent()?.id()
-            || reads.iter().any(|r| r.start < assign_stmt.end_byte())
-        {
-            return None;
-        }
-        defining_assignment = Some(assign_stmt);
-        assign.child_by_field_name(fields::RIGHT)?
-    };
+    let source = value_source(decl, &decl_names, &mutations, &reads)?;
 
     let mut teardown = vec![remove_binding(&document.source, decl, target, &decl_names)];
-    if let Some(assign_stmt) = defining_assignment {
+    if let Some(assign_stmt) = source.defining_assignment {
         teardown.push(delete_statement(&document.source, assign_stmt));
     }
 
     Some(InlinePlan {
-        value: substituted_text(&document.source, value_node),
+        value: substituted_text(&document.source, source.value_node),
         reads,
         teardown,
     })
+}
+
+struct ValueSource<'tree> {
+    value_node: Node<'tree>,
+    /// The assignment that set the value, deleted alongside the declaration.
+    defining_assignment: Option<Node<'tree>>,
+}
+
+// `None` when the variable is not safely inlinable: reassigned after its initializer, or set by no
+// single assignment that reaches every read.
+fn value_source<'tree>(
+    decl: Node<'tree>,
+    decl_names: &[Node<'tree>],
+    mutations: &[&WriteSite<'tree>],
+    reads: &[Range<usize>],
+) -> Option<ValueSource<'tree>> {
+    // A list shares one initializer, so it cannot be the value for just one of the names.
+    let initializer = (decl_names.len() == 1)
+        .then(|| decl.child_by_field_name(fields::INIT_VALUE))
+        .flatten();
+    if let Some(init) = initializer {
+        return mutations.is_empty().then_some(ValueSource {
+            value_node: init,
+            defining_assignment: None,
+        });
+    }
+
+    if mutations.len() != 1 {
+        return None;
+    }
+    let WriteSite::AssignTarget(assign_target) = mutations[0] else {
+        return None;
+    };
+    let assign = direct_assign_expr(*assign_target)?;
+    let assign_stmt = find_ancestor_of_kind(assign, &[kinds::EXPR_STMT])?;
+    if !assignment_reaches_reads(assign_stmt, decl, reads) {
+        return None;
+    }
+    Some(ValueSource {
+        value_node: assign.child_by_field_name(fields::RIGHT)?,
+        defining_assignment: Some(assign_stmt),
+    })
+}
+
+// An unconditional sibling of the declaration that precedes every read reaches them all.
+fn assignment_reaches_reads(assign_stmt: Node, decl: Node, reads: &[Range<usize>]) -> bool {
+    let (Some(assign_parent), Some(decl_parent)) = (assign_stmt.parent(), decl.parent()) else {
+        return false;
+    };
+    assign_parent.id() == decl_parent.id()
+        && reads.iter().all(|r| r.start >= assign_stmt.end_byte())
 }
 
 // Writes must not be substituted with the value, so drop occurrences that land on a mutation site.
