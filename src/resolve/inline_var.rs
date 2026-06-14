@@ -313,7 +313,7 @@ fn remove_binding(source: &str, decl: Node, target_index: usize, names: &[Node])
 
 fn remove_name_from_list(index: usize, names: &[Node]) -> Splice {
     let target = names[index];
-    // Drop the comma that joins this name to the rest: the trailing one for the first, else the leading.
+    // Account for the comma we need to remove
     let range = if index == 0 {
         target.start_byte()..names[1].start_byte()
     } else {
