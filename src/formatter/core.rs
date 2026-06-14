@@ -2,7 +2,7 @@ use tree_sitter::Node;
 
 use crate::cst::kinds;
 
-use super::{ColonSpacing, Formatter, child_nodes, is_expr_node};
+use super::{ColonSpacing, Formatter, child_nodes, comment_in_range, is_expr_node};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CommentPlacement {
@@ -79,7 +79,7 @@ impl<'a> Formatter<'a> {
     }
 
     pub(super) fn has_interior_comment(&self, node: Node) -> bool {
-        super::comment_in_range(&self.comments, node.start_byte(), node.end_byte())
+        comment_in_range(&self.comments, node.start_byte(), node.end_byte())
     }
 
     pub(super) fn flush_before_close(&mut self, close: Option<Node>) {
