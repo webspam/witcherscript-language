@@ -9,8 +9,8 @@ pub(in crate::formatter) use if_stmt::{block_single_stmt, body_expandable, chain
 pub(in crate::formatter) use switch::{SwitchArm, collect_switch_arms};
 
 use super::{
-    BoolPart, Formatter, chain_fully_broken, chain_has_break, chain_operator_leads, child_nodes,
-    named_child_nodes, split_binary_condition, try_split_call_args,
+    ChainPart, Formatter, chain_fully_broken, chain_has_break, chain_operator_leads, child_nodes,
+    named_child_nodes, split_binary_chain, try_split_call_args,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,7 +155,7 @@ impl Formatter<'_> {
         let Some(c) = cond else {
             return false;
         };
-        let parts = split_binary_condition(c, self.source);
+        let parts = split_binary_chain(c, self.source);
         if parts.len() <= 1 {
             return false;
         }
@@ -168,7 +168,7 @@ impl Formatter<'_> {
         false
     }
 
-    fn emit_condition_split(&mut self, keyword_open: &str, parts: &[BoolPart]) {
+    fn emit_condition_split(&mut self, keyword_open: &str, parts: &[ChainPart]) {
         self.emit_indent();
         self.emit(keyword_open);
         self.nl();
@@ -199,7 +199,7 @@ impl Formatter<'_> {
         if self.has_interior_comment(node) {
             return false;
         }
-        let parts = split_binary_condition(node, self.source);
+        let parts = split_binary_chain(node, self.source);
         if !chain_has_break(&parts) {
             return false;
         }
