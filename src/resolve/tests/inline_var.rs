@@ -123,6 +123,10 @@ fn inlines(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     "more than one assignment",
     "function f() {\n    var x : int;\n    x = 1;\n    x = 2;\n    return $0x;\n}\n"
 )]
+#[case::no_usages(
+    "declaration with no usages",
+    "function f() {\n    var $0x : int = 1;\n}\n"
+)]
 fn refuses(#[case] label: &str, #[case] src: &str) {
     assert!(
         inlined(src).is_none(),

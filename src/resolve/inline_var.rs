@@ -137,7 +137,11 @@ fn plan_inline(
     let target_index = decl_names
         .iter()
         .position(|n| n.byte_range() == def.symbol.selection_byte_range)?;
+
     let reads = find_reads(uri, document, db, def, &write_ranges);
+    if reads.is_empty() {
+        return None;
+    }
 
     let source = value_source(decl, &decl_names, &mutations, &reads)?;
 
