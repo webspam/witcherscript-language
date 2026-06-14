@@ -130,6 +130,18 @@ fn statement_completions_this_super_flags(
 }
 
 #[rstest]
+#[case::state_method_has_parent(
+    "statemachine class Owner {}\nstate S in Owner {\n  function Test() {\n    $0\n  }\n}\n",
+    true
+)]
+#[case::class_method_no_parent("class CExample {\n  function Test() {\n    $0\n  }\n}\n", false)]
+#[case::free_function_no_parent("function Test() {\n  $0\n}\n", false)]
+fn statement_completions_parent_flag(#[case] fixture: &str, #[case] expected_parent: bool) {
+    let (_t, r) = run_at_cursor(fixture);
+    assert_eq!(r.has_parent, expected_parent, "has_parent");
+}
+
+#[rstest]
 #[case::outside_any_callable("class CExample {}\n$0\n")]
 #[case::after_dot_in_class_method(
     "class CExample {\n  var mField : int;\n  function Test() {\n    var local : CExample;\n    local.$0\n  }\n}\n"
