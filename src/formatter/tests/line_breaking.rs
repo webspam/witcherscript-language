@@ -135,8 +135,8 @@ fn class_method_params_wrapped_when_body_has_error() {
     "function F() : bool {\n    return StrFindFirst(entity.ToString(), \"candle\") != -1\n        && StrFindFirst(entity.ToString(), \"candle_holder\") == -1;\n}",
     expect![[r#"
         function F() : bool {
-            return StrFindFirst(entity.ToString(), "candle") != -1 &&
-                StrFindFirst(entity.ToString(), "candle_holder") == -1;
+            return StrFindFirst(entity.ToString(), "candle") != -1
+                && StrFindFirst(entity.ToString(), "candle_holder") == -1;
         }
     "#]]
 )]
@@ -148,11 +148,12 @@ fn class_method_params_wrapped_when_body_has_error() {
         }
     "]]
 )]
-#[case::partial_author_break_collapses(
+#[case::partial_author_break_preserved(
     "function F() : bool { return aaaa && bbbb\n        && cccc; }",
     expect![[r"
         function F() : bool {
-            return aaaa && bbbb && cccc;
+            return aaaa && bbbb
+                && cccc;
         }
     "]]
 )]
@@ -160,8 +161,8 @@ fn class_method_params_wrapped_when_body_has_error() {
     "function F() { x = longConditionAlpha\n        && longConditionBeta; }",
     expect![[r"
         function F() {
-            x = longConditionAlpha &&
-                longConditionBeta;
+            x = longConditionAlpha
+                && longConditionBeta;
         }
     "]]
 )]
@@ -169,8 +170,8 @@ fn class_method_params_wrapped_when_body_has_error() {
     "function F() { var y : bool = condAlpha\n        && condBeta; }",
     expect![[r"
         function F() {
-            var y : bool = condAlpha &&
-                condBeta;
+            var y : bool = condAlpha
+                && condBeta;
         }
     "]]
 )]
@@ -204,4 +205,54 @@ fn default_limit_line_breaking(#[case] input: &str, #[case] expected: Expect) {
     let output = fmt(input);
     expected.assert_eq(&output);
     assert_eq!(output, fmt(&output), "line breaking should be idempotent");
+}
+
+#[rstest]
+#[case::leading_input_stays_leading(
+    "function F() { x = aaaa\n    && bbbb\n    && cccc; }",
+    expect![[r"
+        function F() {
+            x = aaaa
+                && bbbb
+                && cccc;
+        }
+    "]]
+)]
+#[case::trailing_input_stays_trailing(
+    "function F() { x = aaaa &&\n    bbbb &&\n    cccc; }",
+    expect![[r"
+        function F() {
+            x = aaaa &&
+                bbbb &&
+                cccc;
+        }
+    "]]
+)]
+#[case::operator_alone_on_line_is_leading(
+    "function F() { x = aaaa\n    &&\n    bbbb; }",
+    expect![[r"
+        function F() {
+            x = aaaa
+                && bbbb;
+        }
+    "]]
+)]
+#[case::first_break_sets_placement_for_whole_chain(
+    "function F() { x = aaaa &&\n    bbbb\n    && cccc; }",
+    expect![[r"
+        function F() {
+            x = aaaa &&
+                bbbb &&
+                cccc;
+        }
+    "]]
+)]
+fn chain_operator_placement_follows_author(#[case] input: &str, #[case] expected: Expect) {
+    let output = fmt(input);
+    expected.assert_eq(&output);
+    assert_eq!(
+        output,
+        fmt(&output),
+        "operator placement should be idempotent"
+    );
 }

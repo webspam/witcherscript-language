@@ -121,6 +121,8 @@ pub(super) struct BoolPart {
     pub op: Option<&'static str>,
     // The author put a newline between this operand and the next one in the source.
     pub break_after: bool,
+    // The operator sits on a line after its left operand (leading style), not at its end.
+    pub op_leads: bool,
 }
 
 fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<BoolPart>) {
@@ -142,6 +144,7 @@ fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<BoolPart>) {
             if let Some(last) = parts.last_mut() {
                 last.op = Some(op);
                 last.break_after = right.start_position().row > left.end_position().row;
+                last.op_leads = op_node.start_position().row > left.end_position().row;
             }
             collect_bool_parts(right, source, parts);
             return;
@@ -151,6 +154,7 @@ fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<BoolPart>) {
         fragment: render_expr(node, source),
         op: None,
         break_after: false,
+        op_leads: false,
     });
 }
 
@@ -163,6 +167,18 @@ pub(super) fn split_binary_condition(node: Node, source: &str) -> Vec<BoolPart> 
 pub(super) fn chain_fully_broken(parts: &[BoolPart]) -> bool {
     // The last operand has no successor, so break_after is only meaningful on the rest.
     parts.len() > 1 && parts[..parts.len() - 1].iter().all(|p| p.break_after)
+}
+
+pub(super) fn chain_has_break(parts: &[BoolPart]) -> bool {
+    parts.iter().any(|p| p.break_after)
+}
+
+// The first break sets the whole chain's operator placement; later splits follow it.
+pub(super) fn chain_operator_leads(parts: &[BoolPart]) -> bool {
+    parts
+        .iter()
+        .find(|p| p.break_after)
+        .is_some_and(|p| p.op_leads)
 }
 
 pub(super) fn try_split_call_args(node: Node, source: &str) -> Option<(String, Vec<String>)> {

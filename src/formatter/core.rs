@@ -78,6 +78,12 @@ impl<'a> Formatter<'a> {
         comment_placement(prev, comment) == CommentPlacement::Trailing
     }
 
+    pub(super) fn has_interior_comment(&self, node: Node) -> bool {
+        self.comments
+            .iter()
+            .any(|c| c.start_byte() > node.start_byte() && c.start_byte() < node.end_byte())
+    }
+
     pub(super) fn flush_before_close(&mut self, close: Option<Node>) {
         if let Some(cl) = close {
             self.flush_comments_before(cl.start_byte());
