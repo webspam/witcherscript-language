@@ -24,13 +24,33 @@ fn primary_diags(t: &TestDb) -> Vec<WorkspaceDiagnostic> {
     "function G(a, bbb, c : int) { c = a; }\n//            ^^^ u\n",
     "Parameter 'bbb' is never used"
 )]
-#[case::local_var(
-    "function H() {\nvar x : int;\n//  ^^^^^^^ u\n}\n",
+#[case::local_single_no_init(
+    "function H() {\n  var x : int;\n//^^^^^^^^^^^^ u\n}\n",
     "Local variable 'x' is never used"
 )]
-#[case::private_field(
-    "class C {\nprivate var secret : int;\n//          ^^^^^^^^^^^^ u\n}\n",
-    "Field 'secret' is never used"
+#[case::local_single_with_init(
+    "function I() {\n  var x : int = 5;\n//^^^^^^^^^^^^ u\n}\n",
+    "Local variable 'x' is never used"
+)]
+#[case::local_list_all_no_init(
+    "function J() {\n  var a, b : int;\n//^^^^^^^^^^^^^^^ u\n}\n",
+    "Local variables 'a', 'b' are never used"
+)]
+#[case::local_list_all_with_init(
+    "function K() {\n  var a, b : int = 5;\n//^^^^^^^^^^^^^^^ u\n}\n",
+    "Local variables 'a', 'b' are never used"
+)]
+#[case::local_list_partial_dims_name_and_comma(
+    "function P() {\n  var a, bbb, c : int;\n//       ^^^^ u\n  a = c;\n}\n",
+    "Local variable 'bbb' is never used"
+)]
+#[case::private_field_whole_statement(
+    "class C {\n  private var t : int;\n//^^^^^^^^^^^^^^^^^^^^ u\n}\n",
+    "Field 't' is never used"
+)]
+#[case::field_default_is_not_a_reference(
+    "class C {\n  private var t : int;\n//^^^^^^^^^^^^^^^^^^^^ u\n  default t = 1;\n}\n",
+    "Field 't' is never used"
 )]
 fn dims_unused_binding(#[case] fixture: &str, #[case] expected_message: &str) {
     let t = TestDb::new(fixture);
@@ -60,6 +80,7 @@ fn dims_unused_binding(#[case] fixture: &str, #[case] expected_message: &str) {
 #[case::protected_field("class C { protected var p : int; }\n")]
 #[case::struct_field("struct S { var x : int; }\n")]
 #[case::add_field_injection("class C {}\n@addField(C) var injected : int;\n")]
+#[case::field_used_in_method("class C { private var f : int; function g() { f = 1; } }\n")]
 fn keeps_used_or_out_of_scope_bindings(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     assert!(
