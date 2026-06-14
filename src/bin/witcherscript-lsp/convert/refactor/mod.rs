@@ -14,6 +14,7 @@ use witcherscript_language::resolve::{Extraction, SymbolDb};
 use super::lsp_range;
 
 mod extract_func;
+mod extract_method;
 mod extract_var;
 mod if_stmt;
 mod switch;
@@ -82,6 +83,7 @@ const REFACTORINGS: &[&dyn Refactoring] = &[
     &switch::SwitchLayoutRefactoring,
     &if_stmt::IfLayoutRefactoring,
     &extract_var::ExtractVariableRefactoring,
+    &extract_method::ExtractMethodRefactoring,
     &extract_func::ExtractFunctionRefactoring,
 ];
 

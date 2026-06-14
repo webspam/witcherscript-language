@@ -130,3 +130,17 @@ fn member_access_through_synthetic_type_resolves() {
     assert_eq!(def.symbol.kind, SymbolKind::Method);
     assert_eq!(def.symbol.name, "Doze");
 }
+
+// OwnerPing lives only on the owner class, so this resolves only if virtualParent targets the
+// owner (not the state's base): https://github.com/webspam/witcherscript-language/issues/114
+#[test]
+fn virtual_parent_member_resolves_against_the_owner_class() {
+    let t = TestDb::new(
+        "class Owner {\n    function OwnerPing() : int { return 1; }\n}\nstate S in Owner {\n    function M() {\n        virtual_parent.$0OwnerPing();\n    }\n}\n",
+    );
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
+        .expect("virtualParent resolves a member of the owner class");
+    assert_eq!(def.symbol.kind, SymbolKind::Method);
+    assert_eq!(def.symbol.name, "OwnerPing");
+}

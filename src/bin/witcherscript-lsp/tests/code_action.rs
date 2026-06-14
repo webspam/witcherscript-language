@@ -396,6 +396,59 @@ fn no_extract_action_for_caret_only_request() {
     );
 }
 
+const CLASS_EXTRACT_SRC: &str = "class C {\n    var hp : int;\n    function M() {\n        var r : int;\n        r = hp + 2;\n    }\n}\n";
+
+#[test]
+fn expression_in_a_class_offers_method_between_variable_and_function() {
+    let actions = refactor_actions_for_selection(CLASS_EXTRACT_SRC, "hp + 2");
+    assert_eq!(
+        titles(&actions),
+        vec![
+            "Extract to variable",
+            "Extract to method",
+            "Extract to function"
+        ]
+    );
+}
+
+#[test]
+fn extract_method_inserts_a_private_sibling_method() {
+    let actions = refactor_actions_for_selection(CLASS_EXTRACT_SRC, "hp + 2");
+    let action = actions
+        .iter()
+        .find_map(|a| match a {
+            CodeActionOrCommand::CodeAction(action) if action.title == "Extract to method" => {
+                Some(action)
+            }
+            _ => None,
+        })
+        .expect("expression selection in a class offers extract to method");
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_EXTRACT));
+    let edits = extract_workspace_edit(action);
+    assert_eq!(edits.len(), 2, "one insert plus one replace");
+    assert_eq!(
+        edits[0].new_text,
+        "\n\n    private function NewMethod() : int {\n        return hp + 2;\n    }"
+    );
+    assert_eq!(edits[1].new_text, "NewMethod()");
+    let command = action
+        .command
+        .as_ref()
+        .expect("extract must trigger rename");
+    assert_eq!(command.title, "Rename extracted method");
+}
+
+#[test]
+fn statement_in_a_class_offers_method_and_function() {
+    let src =
+        "function Use(x : int) {}\nclass C {\n    function M() {\n        Use(1 + 2);\n    }\n}\n";
+    let actions = refactor_actions_for_selection(src, "Use(1 + 2);");
+    assert_eq!(
+        titles(&actions),
+        vec!["Extract to method", "Extract to function"]
+    );
+}
+
 // A write before the selection forces the split form: uninitialised decl at the top, assignment in place.
 const EXTRACT_SPLIT_SRC: &str =
     "function Use(x : int) {}\nfunction F() {\n    var a : int;\n    a = 2;\n    Use(a + 1);\n}\n";

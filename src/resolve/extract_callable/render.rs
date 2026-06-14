@@ -12,8 +12,6 @@ use super::captures::{
     BodyRewrite, CapturedLocal, Captures, PromotedField, Receiver, suffixed_unique,
 };
 
-const DEFAULT_FUNCTION_NAME: &str = "NewFunction";
-
 pub(super) struct Param {
     name: String,
     ty: Type,
@@ -22,6 +20,8 @@ pub(super) struct Param {
 
 pub(super) struct FunctionPlan {
     pub(super) name: String,
+    /// Access keyword to prefix (a method renders `private`); a global function has none.
+    pub(super) modifier: Option<&'static str>,
     pub(super) receiver: Option<Receiver>,
     pub(super) params: Vec<Param>,
     pub(super) return_type: Type,
@@ -154,8 +154,9 @@ pub(super) fn render_function(plan: &FunctionPlan, options: FormatOptions) -> St
         ty => format!("{colon}{ty}"),
     };
     let body = indent_block(&plan.body, &options);
+    let prefix = plan.modifier.map_or(String::new(), |m| format!("{m} "));
     format!(
-        "function {}({params}){return_clause} {{\n{body}\n}}",
+        "{prefix}function {}({params}){return_clause} {{\n{body}\n}}",
         plan.name
     )
 }
@@ -169,6 +170,7 @@ pub(super) fn unique_function_name(
     db: &SymbolDb,
     callable: &Symbol,
     type_context: Option<&TypeContext>,
+    base: &str,
 ) -> String {
     // A clash with anything the call-site lookup reaches first would bind the call elsewhere.
     let taken = |name: &str| {
@@ -184,5 +186,5 @@ pub(super) fn unique_function_name(
                     .is_some()
             })
     };
-    suffixed_unique(DEFAULT_FUNCTION_NAME, taken)
+    suffixed_unique(base, taken)
 }
