@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use lsp_types::Url;
+use tracing::debug;
 
 use crate::files::read_text_file;
 use crate::line_index::{SourcePosition, SourceRange};
@@ -54,10 +55,45 @@ impl ScriptEnvironment {
     }
 }
 
-pub fn parse_script_environment(ini_path: &Path) -> Option<ScriptEnvironment> {
-    let content = read_text_file(ini_path).ok()?;
-    let ini_uri = Url::from_file_path(ini_path).ok()?.to_string();
+// theCamera's CCamera is later upgraded to CCameraDirector by apply_engine_overrides.
+const FALLBACK_GLOBALS: &[(&str, &str)] = &[
+    ("theGame", "CR4Game"),
+    ("theServer", "CServerInterface"),
+    ("thePlayer", "CR4Player"),
+    ("theCamera", "CCamera"),
+    ("theUI", "CGuiWitcher"),
+    ("theSound", "CScriptSoundSystem"),
+    ("theDebug", "CDebugAttributesManager"),
+    ("theTimer", "CTimerScriptKeyword"),
+    ("theInput", "CInputManager"),
+];
 
+pub fn parse_script_environment(ini_path: &Path) -> ScriptEnvironment {
+    let ini_uri = Url::from_file_path(ini_path)
+        .map(|u| u.to_string())
+        .unwrap_or_default();
+
+    let mut globals = match read_text_file(ini_path) {
+        Ok(content) => parse_globals(&content, &ini_uri),
+        Err(err) => {
+            debug!(path = %ini_path.display(), %err, "redscripts.ini unreadable; using fallback globals");
+            fallback_globals(&ini_uri)
+        }
+    };
+
+    apply_engine_overrides(&mut globals, &ini_uri);
+
+    ScriptEnvironment::new(globals)
+}
+
+fn fallback_globals(ini_uri: &str) -> Vec<ScriptGlobal> {
+    FALLBACK_GLOBALS
+        .iter()
+        .map(|(name, type_name)| make_global(ini_uri, name, type_name))
+        .collect()
+}
+
+fn parse_globals(content: &str, ini_uri: &str) -> Vec<ScriptGlobal> {
     let line_starts: Vec<usize> = std::iter::once(0)
         .chain(
             content
@@ -101,14 +137,12 @@ pub fn parse_script_environment(ini_path: &Path) -> Option<ScriptEnvironment> {
         globals.push(ScriptGlobal {
             name: name.to_string(),
             type_name: type_name.to_string(),
-            ini_uri: ini_uri.clone(),
+            ini_uri: ini_uri.to_string(),
             symbol: global_symbol(name, type_name, range, byte_start..byte_end),
         });
     }
 
-    apply_engine_overrides(&mut globals, &ini_uri);
-
-    Some(ScriptEnvironment::new(globals))
+    globals
 }
 
 // Engine injects these globals at runtime; if customised, leave them
