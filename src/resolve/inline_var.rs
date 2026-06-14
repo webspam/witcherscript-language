@@ -12,7 +12,7 @@ use super::Definition;
 use super::ast::{identifier_at, nodes_at_offset};
 use super::definition::{definition_key, resolve_definition_at_byte};
 use super::extract_common::{Splice, WriteSite, out_args, write_site_node, write_sites};
-use super::references::{collect_ident_occurrences, occurrence_resolves_to};
+use super::references::{find_references, occurrence_resolves_to};
 use super::symbol_db::SymbolDb;
 
 /// How many uses an inline replaced, distinguishing the offered action
@@ -144,7 +144,7 @@ fn plan_inline(
         .iter()
         .copied()
         .find(|n| n.byte_range() == def.symbol.selection_byte_range)?;
-    let reads = read_occurrences(uri, document, db, def, decl, &scope);
+    let reads = read_occurrences(uri, document, db, def);
 
     // A list shares one initializer, so it cannot be the value for just one of the names.
     let initializer = (decl_names.len() == 1)
@@ -193,34 +193,19 @@ fn read_occurrences(
     document: &ParsedDocument,
     db: &SymbolDb,
     def: &Definition,
-    decl: Node<'_>,
-    scope: &Range<usize>,
 ) -> Vec<Range<usize>> {
     let root = document.tree.root_node();
-    let key = definition_key(def);
-    let mut occurrences = Vec::new();
-    collect_ident_occurrences(
-        root,
-        document.source.as_bytes(),
-        &def.symbol.name,
-        Some(scope),
-        &mut occurrences,
-    );
-    occurrences
+    find_references(def, document, &[(uri, document)], db, false)
         .into_iter()
-        .filter(|occ| {
-            // The declaration's own name (and its initializer) is not a use to replace.
-            if decl.start_byte() <= occ.start && occ.start < decl.end_byte() {
-                return false;
-            }
-            let Some(ident) = identifier_at(root, occ.start) else {
-                return false;
-            };
-            if occurrence_is_write(uri, document, db, ident) {
-                return false;
-            }
-            // A matching name could be an unrelated field like `obj.name`, not this variable.
-            occurrence_resolves_to(uri, document, db, occ.start, std::slice::from_ref(&key))
+        .filter_map(|(_, range)| {
+            let start = document
+                .line_index
+                .position_to_byte(&document.source, range.start)?;
+            let end = document
+                .line_index
+                .position_to_byte(&document.source, range.end)?;
+            let ident = identifier_at(root, start)?;
+            (!occurrence_is_write(uri, document, db, ident)).then_some(start..end)
         })
         .collect()
 }
