@@ -10,7 +10,7 @@ use super::Definition;
 use super::ast::identifier_at;
 use super::definition::{definition_key, resolve_definition_at_byte};
 use super::extract_common::{Splice, apply_splices, out_args};
-use super::references::collect_ident_occurrences;
+use super::references::{collect_ident_occurrences, occurrence_resolves_to};
 use super::symbol_db::SymbolDb;
 
 /// Which uses an inline replaces.
@@ -138,10 +138,7 @@ fn inline_all_usages(
             continue;
         };
         // The same name can reach an unrelated field via `obj.name`; inline only true references.
-        let Some(resolved) = resolve_definition_at_byte(uri, document, db, occ.start) else {
-            continue;
-        };
-        if definition_key(&resolved) != definition_key(def) {
+        if !occurrence_resolves_to(uri, document, db, occ.start, &[definition_key(def)]) {
             continue;
         }
         if occurrence_is_write(uri, document, db, ident) {
