@@ -3,6 +3,7 @@ use lsp_types::{
     ParameterInformation, ParameterLabel, Range, SignatureHelp, SignatureInformation, TextEdit,
     Url,
 };
+use witcherscript_language::formatter::ColonSpacing;
 use witcherscript_language::resolve::{
     Definition, SignatureHelpInfo, SymbolDb, render_parameters, render_signature,
 };
@@ -26,6 +27,7 @@ pub(crate) fn completion_item(
     definition: &Definition,
     db: &SymbolDb,
     origin: &Url,
+    colon: ColonSpacing,
 ) -> CompletionItem {
     let symbol = &definition.symbol;
     let is_callable = symbol.kind.is_callable();
@@ -38,7 +40,7 @@ pub(crate) fn completion_item(
     });
     let (detail, snippet_params) = if is_callable {
         let params = db.display_parameters_of(definition);
-        let detail = render_signature(&params, symbol.type_annotation.as_ref());
+        let detail = render_signature(&params, symbol.type_annotation.as_ref(), colon);
         // Optional parameters stay out of snippet slots (AGENTS.md key invariant #5).
         let snippet_params: Vec<String> = params
             .into_iter()
@@ -121,13 +123,17 @@ fn wire_u32(n: usize) -> u32 {
     n.try_into().unwrap_or(u32::MAX)
 }
 
-fn method_signature(name: &str, params: &[Symbol]) -> String {
-    format!("{name}{}", render_parameters(params, " : "))
+fn method_signature(name: &str, params: &[Symbol], colon: ColonSpacing) -> String {
+    format!("{name}{}", render_parameters(params, colon))
 }
 
-pub(crate) fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String {
+pub(crate) fn wrap_method_snippet(
+    method: &Definition,
+    db: &SymbolDb,
+    colon: ColonSpacing,
+) -> String {
     let params = db.full_parameters_of(&method.uri, method.symbol.id);
-    let signature = method_signature(&method.symbol.name, &params);
+    let signature = method_signature(&method.symbol.name, &params, colon);
     let call_args = params
         .iter()
         .map(|p| p.name.as_str())
@@ -147,11 +153,15 @@ pub(crate) fn wrap_method_snippet(method: &Definition, db: &SymbolDb) -> String 
     format!("{signature} {body}")
 }
 
-pub(crate) fn replace_method_snippet(method: &Definition, db: &SymbolDb) -> String {
+pub(crate) fn replace_method_snippet(
+    method: &Definition,
+    db: &SymbolDb,
+    colon: ColonSpacing,
+) -> String {
     let params = db.full_parameters_of(&method.uri, method.symbol.id);
     format!(
         "{} {{\n\t$0\n}}",
-        method_signature(&method.symbol.name, &params)
+        method_signature(&method.symbol.name, &params, colon)
     )
 }
 

@@ -193,13 +193,13 @@ For each candidate document, the `doc_idents` index is consulted first to skip d
 
 Formats a symbol as a multi-line string for LSP hover:
 
-Callable parameter lists come from `render_signature(db.display_parameters_of(..), return_type)`.
+Callable parameter lists come from `render_signature(db.display_parameters_of(..), return_type, colon)`.
 
 | Kind | Format |
 |------|--------|
-| `Method` | `(method) ClassName.name(params): ReturnType` |
+| `Method` | `(method) ClassName.name(params) : ReturnType` |
 | `Field` | `(field) <declaration as written>` (falls back to `(field) name : Type`) |
-| `Function` | `function name(params): ReturnType` |
+| `Function` | `function name(params) : ReturnType` |
 | `Class`/`Struct`/`State` | `class Name` + `extends Base` on next line |
 | `Enum` | `enum Name` |
 | `EnumMember` | `enum member Name` |

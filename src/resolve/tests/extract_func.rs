@@ -2,7 +2,7 @@ use expect_test::expect;
 use rstest::rstest;
 
 use super::super::{Extraction, extract_function};
-use crate::formatter::FormatOptions;
+use crate::formatter::{ColonSpacing, FormatOptions};
 use crate::test_support::{TestDb, script_env};
 
 fn run(src: &str, needle: &str, options: FormatOptions) -> (String, Option<Extraction>) {
@@ -334,7 +334,7 @@ fn array_method_call_makes_array_an_out_parameter() {
 fn compact_colon_option_applies_to_signature() {
     let src = "function F() {\n    var a : int;\n    var r : int;\n    r = a + 1;\n}\n";
     let options = FormatOptions {
-        compact_colon: true,
+        colon: ColonSpacing::Compact,
         ..FormatOptions::default()
     };
     expect![[r"

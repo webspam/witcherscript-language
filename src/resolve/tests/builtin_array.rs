@@ -1,5 +1,6 @@
 use super::super::{completion_members, hover_text, resolve_definition};
 use crate::builtins::BUILTIN_ARRAY_URI;
+use crate::formatter::ColonSpacing;
 use crate::symbols::AccessLevel;
 use crate::test_support::TestDb;
 use crate::types::{Type, parse_generic_type};
@@ -107,7 +108,7 @@ fn array_method_container_name_becomes_generic_instance() {
         .expect("PushBack resolves");
 
     assert_eq!(def.symbol.container_name.as_deref(), Some("array<int>"));
-    let hover = hover_text(&def, &db);
+    let hover = hover_text(&def, &db, ColonSpacing::Spaced);
     assert!(
         hover.contains("array<int>.PushBack"),
         "hover should show generic instance: {hover}"

@@ -98,8 +98,7 @@ impl Formatter<'_> {
                 past_colon = true;
             }
             if past_colon && child.kind() == kinds::TYPE_ANNOT {
-                let colon = if self.compact_colon { ": " } else { " : " };
-                return format!("{}{}", colon, self.text(child));
+                return format!("{}{}", self.colon.separator(), self.text(child));
             }
         }
         String::new()

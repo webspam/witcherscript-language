@@ -1,3 +1,4 @@
+use witcherscript_language::formatter::ColonSpacing;
 use witcherscript_language::test_support::TestDb;
 
 use crate::convert::completion_item;
@@ -53,7 +54,7 @@ fn completion_item_method_has_method_kind() {
     assert!(!members.is_empty(), "should have completion members");
     let (_, def) = &members[0];
     let origin: lsp_types::Url = uri.parse().expect("test uri parses");
-    let item = completion_item(def, &t.db(), &origin);
+    let item = completion_item(def, &t.db(), &origin, ColonSpacing::Spaced);
     assert_eq!(item.label, "DoThing");
     assert_eq!(item.kind, Some(CompletionItemKind::METHOD));
     assert_eq!(item.insert_text.as_deref(), Some("DoThing()"));
@@ -86,7 +87,7 @@ fn completion_item_snippet_includes_param_placeholders() {
         .find(|(_, d)| d.symbol.name == "Find")
         .expect("Find should appear in completions");
     let origin: lsp_types::Url = uri.parse().expect("test uri parses");
-    let item = completion_item(find_def, &db, &origin);
+    let item = completion_item(find_def, &db, &origin, ColonSpacing::Spaced);
 
     assert_eq!(item.kind, Some(CompletionItemKind::METHOD));
     assert_eq!(item.insert_text_format, Some(InsertTextFormat::SNIPPET));
@@ -123,7 +124,7 @@ fn completion_item_snippet_excludes_optional_params() {
         .find(|(_, d)| d.symbol.name == "Find")
         .expect("Find should appear in completions");
     let origin: lsp_types::Url = uri.parse().expect("test uri parses");
-    let item = completion_item(find_def, &db, &origin);
+    let item = completion_item(find_def, &db, &origin, ColonSpacing::Spaced);
 
     assert_eq!(
         item.insert_text.as_deref(),
@@ -132,7 +133,7 @@ fn completion_item_snippet_excludes_optional_params() {
     );
     assert_eq!(
         item.detail.as_deref(),
-        Some("(findName: string, optional range: float): int"),
+        Some("(findName : string, optional range : float) : int"),
         "detail must render the full parameter list"
     );
 }
@@ -156,7 +157,7 @@ fn completion_item_defers_documentation_to_resolve() {
     assert!(!members.is_empty(), "should have completion members");
     let (_, def) = &members[0];
     let origin: lsp_types::Url = uri.parse().expect("test uri parses");
-    let item = completion_item(def, &t.db(), &origin);
+    let item = completion_item(def, &t.db(), &origin, ColonSpacing::Spaced);
     assert!(
         item.documentation.is_none(),
         "documentation must defer to completionItem/resolve"

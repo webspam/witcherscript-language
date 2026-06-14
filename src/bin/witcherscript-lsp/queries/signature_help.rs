@@ -26,14 +26,14 @@ impl Backend {
             let document = document_arc.as_ref();
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
             let db = handles.db();
-            let compact_colon = self.config.load().formatter_compact_colon;
+            let colon = self.config.load().colon_spacing();
 
             Ok(signature_help(
                 &canonical_uri(&uri),
                 document,
                 &db,
                 source_position(position),
-                compact_colon,
+                colon,
             )
             .map(signature_help_response))
         };

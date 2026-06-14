@@ -97,7 +97,12 @@ pub(super) fn statement_body(
     let base = line_indent(source, range.start);
     let mut lines: Vec<String> = Vec::new();
     if let Some(r) = returned {
-        lines.push(format!("var {}{}{};", r.name, colon_for(options), r.ty));
+        lines.push(format!(
+            "var {}{}{};",
+            r.name,
+            options.colon.separator(),
+            r.ty
+        ));
     }
     for (i, line) in moved.lines().enumerate() {
         match i {
@@ -136,7 +141,7 @@ pub(super) fn call_expression(plan: &FunctionPlan) -> String {
 }
 
 pub(super) fn render_function(plan: &FunctionPlan, options: FormatOptions) -> String {
-    let colon = colon_for(options);
+    let colon = options.colon.separator();
     let mut params = Vec::new();
     if let Some(receiver) = &plan.receiver {
         params.push(format!(
@@ -159,10 +164,6 @@ pub(super) fn render_function(plan: &FunctionPlan, options: FormatOptions) -> St
         "{prefix}function {}({params}){return_clause} {{\n{body}\n}}",
         plan.name
     )
-}
-
-fn colon_for(options: FormatOptions) -> &'static str {
-    if options.compact_colon { ": " } else { " : " }
 }
 
 pub(super) fn unique_function_name(
