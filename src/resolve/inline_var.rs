@@ -9,7 +9,7 @@ use crate::symbols::SymbolKind;
 use super::Definition;
 use super::ast::identifier_at;
 use super::definition::{definition_key, resolve_definition_at_byte};
-use super::extract_common::{Splice, apply_splices, out_args};
+use super::extract_common::{Splice, out_args};
 use super::references::{collect_ident_occurrences, occurrence_resolves_to};
 use super::symbol_db::SymbolDb;
 
@@ -25,12 +25,6 @@ pub struct Inlining {
     /// Non-overlapping edits against the original source.
     pub edits: Vec<Splice>,
     pub scope: InlineScope,
-}
-
-impl Inlining {
-    pub fn apply(&self, source: &str) -> String {
-        apply_splices(source, &self.edits)
-    }
 }
 
 // Initializer forms that never need wrapping when substituted; everything else is parenthesised

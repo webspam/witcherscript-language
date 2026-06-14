@@ -1,5 +1,6 @@
 use rstest::rstest;
 
+use crate::resolve::extract_common::apply_splices;
 use crate::resolve::inline_variable;
 use crate::test_support::TestDb;
 
@@ -9,7 +10,7 @@ fn inlined(src: &str) -> Option<String> {
     let doc = t.doc_for(&uri);
     let byte = doc.line_index.position_to_byte(&doc.source, pos)?;
     let inlining = inline_variable(&uri, doc, &t.db(), byte)?;
-    Some(inlining.apply(&doc.source))
+    Some(apply_splices(&doc.source, &inlining.edits))
 }
 
 #[rstest]
