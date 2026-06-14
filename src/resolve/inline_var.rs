@@ -3,7 +3,6 @@ use std::ops::Range;
 use tree_sitter::Node;
 
 use crate::cst::ancestors::find_ancestor_of_kind;
-use crate::cst::grammar::{is_assignment_target, write_target};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::symbols::SymbolKind;
@@ -11,7 +10,7 @@ use crate::symbols::SymbolKind;
 use super::Definition;
 use super::ast::{identifier_at, nodes_at_offset};
 use super::definition::{definition_key, resolve_definition_at_byte};
-use super::extract_common::{Splice, WriteSite, out_args, write_site_node, write_sites};
+use super::extract_common::{Splice, WriteSite, write_site_node, write_sites};
 use super::references::find_references;
 use super::symbol_db::SymbolDb;
 
@@ -56,25 +55,22 @@ pub fn inline_variable(
     byte_offset: usize,
 ) -> Option<Inlining> {
     let root = document.tree.root_node();
+    let cursor_ident = identifier_at(root, byte_offset);
 
-    // The `var` keyword has no identifier to resolve, so inline through the declaration head.
-    let Some(cursor_ident) = identifier_at(root, byte_offset) else {
-        let name = decl_head_name(root, byte_offset)?;
-        let (def, decl) = variable_decl_at(uri, document, db, root, name.start_byte())?;
-        let plan = plan_inline(uri, document, db, root, &def, decl)?;
-        return Some(inline_all_reads(&plan));
+    // The `var` keyword has no identifier to resolve, so anchor on the declaration head instead.
+    let anchor = match cursor_ident {
+        Some(_) => byte_offset,
+        None => decl_head_name(root, byte_offset)?.start_byte(),
     };
-
-    let (def, decl) = variable_decl_at(uri, document, db, root, byte_offset)?;
+    let (def, decl) = variable_decl_at(uri, document, db, root, anchor)?;
     let plan = plan_inline(uri, document, db, root, &def, decl)?;
 
     let on_declaration = def.symbol.selection_byte_range.start <= byte_offset
         && byte_offset <= def.symbol.selection_byte_range.end;
 
-    if on_declaration {
-        Some(inline_all_reads(&plan))
-    } else {
-        inline_single_read(uri, document, db, cursor_ident, &plan)
+    match cursor_ident {
+        Some(ident) if !on_declaration => inline_single_read(ident, &plan),
+        _ => Some(inline_all_reads(&plan)),
     }
 }
 
@@ -139,13 +135,17 @@ fn plan_inline(
                 .is_some_and(|d| definition_key(&d) == key)
         })
         .collect();
+    let write_ranges: Vec<Range<usize>> = mutations
+        .iter()
+        .map(|w| write_site_node(w).byte_range())
+        .collect();
 
     let decl_names = name_nodes(decl);
     let target = decl_names
         .iter()
         .copied()
         .find(|n| n.byte_range() == def.symbol.selection_byte_range)?;
-    let reads = read_occurrences(uri, document, db, def);
+    let reads = read_occurrences(uri, document, db, def, &write_ranges);
 
     // A list shares one initializer, so it cannot be the value for just one of the names.
     let initializer = (decl_names.len() == 1)
@@ -189,13 +189,14 @@ fn plan_inline(
     })
 }
 
+// Writes must not be substituted with the value, so drop occurrences that land on a mutation site.
 fn read_occurrences(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
     def: &Definition,
+    write_ranges: &[Range<usize>],
 ) -> Vec<Range<usize>> {
-    let root = document.tree.root_node();
     find_references(def, document, &[(uri, document)], db, false)
         .into_iter()
         .filter_map(|(_, range)| {
@@ -205,8 +206,7 @@ fn read_occurrences(
             let end = document
                 .line_index
                 .position_to_byte(&document.source, range.end)?;
-            let ident = identifier_at(root, start)?;
-            (!occurrence_is_write(uri, document, db, ident)).then_some(start..end)
+            (!write_ranges.contains(&(start..end))).then_some(start..end)
         })
         .collect()
 }
@@ -235,18 +235,13 @@ fn inline_all_reads(plan: &InlinePlan) -> Inlining {
     Inlining { edits, scope }
 }
 
-fn inline_single_read(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    occurrence: Node,
-    plan: &InlinePlan,
-) -> Option<Inlining> {
-    if occurrence_is_write(uri, document, db, occurrence) {
+fn inline_single_read(occurrence: Node, plan: &InlinePlan) -> Option<Inlining> {
+    let range = occurrence.byte_range();
+    if !plan.reads.contains(&range) {
         return None;
     }
     let mut edits = vec![Splice {
-        range: occurrence.byte_range(),
+        range,
         text: plan.value.clone(),
     }];
     if plan.reads.len() == 1 {
@@ -313,18 +308,6 @@ fn substituted_text(source: &str, init: Node) -> String {
     } else {
         format!("({text})")
     }
-}
-
-fn occurrence_is_write(uri: &str, document: &ParsedDocument, db: &SymbolDb, ident: Node) -> bool {
-    if is_assignment_target(ident) {
-        return true;
-    }
-    let Some(call) = find_ancestor_of_kind(ident, &[kinds::FUNC_CALL_EXPR]) else {
-        return false;
-    };
-    out_args(uri, document, db, call)
-        .iter()
-        .any(|arg| write_target(*arg).map(|n| n.id()) == Some(ident.id()))
 }
 
 fn delete_statement(source: &str, stmt: Node) -> Splice {
