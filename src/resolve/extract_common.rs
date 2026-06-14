@@ -12,7 +12,7 @@ use crate::symbols::SymbolKind;
 use super::definition::callee_params;
 use super::symbol_db::SymbolDb;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Splice {
     /// Byte range in the original source this edit replaces; an empty range is a pure insertion.
     pub range: Range<usize>,
@@ -275,6 +275,15 @@ pub(super) fn write_sites<'tree>(
         }
     }
     writes
+}
+
+pub(super) fn write_site_node<'tree>(site: &WriteSite<'tree>) -> Node<'tree> {
+    match site {
+        WriteSite::AssignTarget(n)
+        | WriteSite::AssignBase(n)
+        | WriteSite::OutArg(n)
+        | WriteSite::ReceiverBase(n) => *n,
+    }
 }
 
 fn lvalue_base_ident(expr: Node) -> Option<Node> {

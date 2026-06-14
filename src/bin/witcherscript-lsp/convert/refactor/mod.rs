@@ -9,7 +9,7 @@ use tree_sitter::Node;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::formatter::FormatOptions;
 use witcherscript_language::line_index::LineIndex;
-use witcherscript_language::resolve::{Extraction, SymbolDb};
+use witcherscript_language::resolve::{Extraction, Inlining, Splice, SymbolDb};
 
 use super::lsp_range;
 
@@ -17,6 +17,7 @@ mod extract_func;
 mod extract_method;
 mod extract_var;
 mod if_stmt;
+mod inline_var;
 mod switch;
 
 // A bare rename races VS Code's cursor placement, so a custom command repositions before renaming.
@@ -43,17 +44,10 @@ fn extract_command(title: &str, uri: &Url, position: Position) -> Command {
     }
 }
 
-fn extraction_code_action(
-    ctx: &RefactorContext,
-    extraction: &Extraction,
-    title: &str,
-    command_title: &str,
-) -> CodeActionOrCommand {
+fn workspace_edit_from_splices(ctx: &RefactorContext, splices: &[Splice]) -> WorkspaceEdit {
     let source = &ctx.document.source;
     let line_index = &ctx.document.line_index;
-    let position = rename_position(source, extraction);
-    let edits = extraction
-        .edits
+    let edits = splices
         .iter()
         .map(|splice| TextEdit {
             range: lsp_range(line_index.byte_range_to_range(
@@ -66,14 +60,37 @@ fn extraction_code_action(
         .collect();
     let mut changes = HashMap::new();
     changes.insert(ctx.uri.clone(), edits);
+    WorkspaceEdit {
+        changes: Some(changes),
+        ..WorkspaceEdit::default()
+    }
+}
+
+fn extraction_code_action(
+    ctx: &RefactorContext,
+    extraction: &Extraction,
+    title: &str,
+    command_title: &str,
+) -> CodeActionOrCommand {
+    let position = rename_position(&ctx.document.source, extraction);
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
         kind: Some(CodeActionKind::REFACTOR_EXTRACT),
-        edit: Some(WorkspaceEdit {
-            changes: Some(changes),
-            ..WorkspaceEdit::default()
-        }),
+        edit: Some(workspace_edit_from_splices(ctx, &extraction.edits)),
         command: Some(extract_command(command_title, ctx.uri, position)),
+        ..CodeAction::default()
+    })
+}
+
+fn inline_code_action(
+    ctx: &RefactorContext,
+    inlining: &Inlining,
+    title: &str,
+) -> CodeActionOrCommand {
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: title.to_string(),
+        kind: Some(CodeActionKind::REFACTOR_INLINE),
+        edit: Some(workspace_edit_from_splices(ctx, &inlining.edits)),
         ..CodeAction::default()
     })
 }
@@ -85,6 +102,7 @@ const REFACTORINGS: &[&dyn Refactoring] = &[
     &extract_var::ExtractVariableRefactoring,
     &extract_method::ExtractMethodRefactoring,
     &extract_func::ExtractFunctionRefactoring,
+    &inline_var::InlineVariableRefactoring,
 ];
 
 // A cursor-driven "rewrite this construct" code action. Each impl locates its own target node

@@ -258,6 +258,7 @@ impl Backend {
                         code_action_kinds: Some(vec![
                             CodeActionKind::QUICKFIX,
                             CodeActionKind::REFACTOR_EXTRACT,
+                            CodeActionKind::REFACTOR_INLINE,
                             CodeActionKind::REFACTOR_REWRITE,
                         ]),
                         work_done_progress_options: WorkDoneProgressOptions::default(),

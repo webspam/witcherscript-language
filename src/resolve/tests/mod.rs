@@ -27,6 +27,7 @@ mod index;
 mod inference;
 mod inheritance;
 mod inlay_hints;
+mod inline_var;
 mod overrides;
 mod parameters;
 mod references;

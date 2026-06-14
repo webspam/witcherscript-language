@@ -456,9 +456,14 @@ const EXTRACT_SPLIT_SRC: &str =
 #[test]
 fn split_extract_emits_decl_assignment_and_replacement() {
     let actions = refactor_actions_for_selection(EXTRACT_SPLIT_SRC, "a + 1");
+    // `a` is a single-assignment local, so inlining it is also offered here.
     assert_eq!(
         titles(&actions),
-        vec!["Extract to variable", "Extract to function"]
+        vec![
+            "Extract to variable",
+            "Extract to function",
+            "Inline variable"
+        ]
     );
     let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
         panic!("expected a CodeAction, got {:?}", actions[0]);
@@ -487,4 +492,67 @@ fn split_extract_places_rename_on_the_use_site() {
     let args = command.arguments.as_ref().unwrap();
     // After the split's two inserts, the original `a + 1` is the new `x` in `Use(x)`.
     assert_eq!(args[1], json!({ "line": 6, "character": 8 }));
+}
+
+const INLINE_SRC: &str = "function F() {\n    var count : int = 5;\n    Foo(count);\n}\n";
+
+#[test]
+fn offers_inline_variable_on_declaration() {
+    let actions = refactor_actions(INLINE_SRC, "count : int");
+    assert_eq!(titles(&actions), vec!["Inline variable"]);
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_INLINE));
+    let edits = extract_workspace_edit(action);
+    assert_eq!(
+        edits.len(),
+        2,
+        "one replacement plus the declaration deletion"
+    );
+    let texts: Vec<&str> = edits.iter().map(|e| e.new_text.as_str()).collect();
+    assert!(
+        texts.contains(&"5"),
+        "the use is replaced by the initializer"
+    );
+    assert!(texts.contains(&""), "the declaration is deleted");
+}
+
+#[test]
+fn offers_inline_single_usage_on_a_use() {
+    let src = "function F() {\n    var count : int = 5;\n    Foo(count);\n    Bar(count);\n}\n";
+    let actions = refactor_actions(src, "count);");
+    assert_eq!(titles(&actions), vec!["Inline variable"]);
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_INLINE));
+    let edits = extract_workspace_edit(action);
+    assert_eq!(edits.len(), 1, "only the single occurrence is replaced");
+    assert_eq!(edits[0].new_text, "5");
+}
+
+#[test]
+fn inline_on_declaration_with_many_uses_says_all() {
+    let src = "function F() {\n    var count : int = 5;\n    Foo(count);\n    Bar(count);\n}\n";
+    let actions = refactor_actions(src, "count : int");
+    assert_eq!(titles(&actions), vec!["Inline variable (all)"]);
+}
+
+#[test]
+fn inlining_the_last_use_deletes_the_declaration() {
+    let actions = refactor_actions(INLINE_SRC, "count);");
+    assert_eq!(titles(&actions), vec!["Inline variable"]);
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    let edits = extract_workspace_edit(action);
+    assert_eq!(
+        edits.len(),
+        2,
+        "the last use is replaced and the now-dead declaration removed"
+    );
+    let texts: Vec<&str> = edits.iter().map(|e| e.new_text.as_str()).collect();
+    assert!(texts.contains(&"5"), "the use is replaced by the value");
+    assert!(texts.contains(&""), "the declaration is deleted");
 }
