@@ -256,3 +256,73 @@ fn chain_operator_placement_follows_author(#[case] input: &str, #[case] expected
         "operator placement should be idempotent"
     );
 }
+
+#[rstest]
+#[case::concat_leading_operators_partial_break(
+    "function F() { s = \"<a>\"\n        + Foo() + \": \"\n        + Bar(id)\n        + \"</a>\"; }",
+    expect![[r#"
+        function F() {
+            s = "<a>"
+                + Foo() + ": "
+                + Bar(id)
+                + "</a>";
+        }
+    "#]]
+)]
+#[case::concat_trailing_operators(
+    "function F() { s = \"<a>\" +\n    Foo() +\n    Bar(); }",
+    expect![[r#"
+        function F() {
+            s = "<a>" +
+                Foo() +
+                Bar();
+        }
+    "#]]
+)]
+#[case::subtraction_operator_on_own_line(
+    "function F() { n = aaaa\n    -\n    bbbb; }",
+    expect![[r"
+        function F() {
+            n = aaaa
+                - bbbb;
+        }
+    "]]
+)]
+#[case::multiplication_irregular_spacing_normalized(
+    "function F() { n = aaaa *\n          bbbb *\n   cccc; }",
+    expect![[r"
+        function F() {
+            n = aaaa *
+                bbbb *
+                cccc;
+        }
+    "]]
+)]
+#[case::division_leading_operators(
+    "function F() { n = aaaa\n    / bbbb\n    / cccc; }",
+    expect![[r"
+        function F() {
+            n = aaaa
+                / bbbb
+                / cccc;
+        }
+    "]]
+)]
+#[case::mixed_precedence_keeps_tighter_operands_together(
+    "function F() { n = a\n    + b * c; }",
+    expect![[r"
+        function F() {
+            n = a
+                + b * c;
+        }
+    "]]
+)]
+fn arithmetic_chain_line_breaking(#[case] input: &str, #[case] expected: Expect) {
+    let output = fmt(input);
+    expected.assert_eq(&output);
+    assert_eq!(
+        output,
+        fmt(&output),
+        "arithmetic wrapping should be idempotent"
+    );
+}

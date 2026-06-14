@@ -132,6 +132,10 @@ fn collect_bool_parts(node: Node, source: &str, parts: &mut Vec<BoolPart>) {
         let op_str: Option<&'static str> = match op_node.kind() {
             kinds::BINARY_OP_OR => Some("||"),
             kinds::BINARY_OP_AND => Some("&&"),
+            kinds::BINARY_OP_SUM => Some("+"),
+            kinds::BINARY_OP_DIFF => Some("-"),
+            kinds::BINARY_OP_MULT => Some("*"),
+            kinds::BINARY_OP_DIV => Some("/"),
             _ => None,
         };
         if let Some(op) = op_str
