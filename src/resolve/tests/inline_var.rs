@@ -24,6 +24,16 @@ fn inlined(src: &str) -> Option<String> {
     "function f() {\n    var count$0 : int = 5;\n    Foo(count);\n    Bar(count);\n}\n",
     "function f() {\n    Foo(5);\n    Bar(5);\n}\n"
 )]
+#[case::all_usages_from_var_keyword(
+    "all usages from var keyword",
+    "function f() {\n    va$0r count : int = 5;\n    Foo(count);\n    Bar(count);\n}\n",
+    "function f() {\n    Foo(5);\n    Bar(5);\n}\n"
+)]
+#[case::all_usages_before_var_keyword(
+    "all usages before var keyword",
+    "function f() {\n    $0var count : int = 5;\n    Foo(count);\n    Bar(count);\n}\n",
+    "function f() {\n    Foo(5);\n    Bar(5);\n}\n"
+)]
 #[case::single_usage_from_use(
     "single usage from use",
     "function f() {\n    var count : int = 5;\n    Foo($0count);\n    Bar(count);\n}\n",

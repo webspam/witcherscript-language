@@ -7,7 +7,7 @@ use crate::document::ParsedDocument;
 use crate::symbols::SymbolKind;
 
 use super::Definition;
-use super::ast::identifier_at;
+use super::ast::{identifier_at, nodes_at_offset};
 use super::definition::{definition_key, resolve_definition_at_byte};
 use super::extract_common::{Splice, out_args};
 use super::references::{collect_ident_occurrences, occurrence_resolves_to};
@@ -56,30 +56,86 @@ pub fn inline_variable(
     byte_offset: usize,
 ) -> Option<Inlining> {
     let root = document.tree.root_node();
-    let cursor_ident = identifier_at(root, byte_offset)?;
-    let def = resolve_definition_at_byte(uri, document, db, byte_offset)?;
+
+    // On the `var` keyword there is no identifier; a declaration head still inlines all usages.
+    let Some(cursor_ident) = identifier_at(root, byte_offset) else {
+        let name = decl_head_name(root, byte_offset)?;
+        let target = inline_target_at(uri, document, db, root, name.start_byte())?;
+        return inline_all_usages(
+            uri,
+            document,
+            db,
+            &target.def,
+            target.decl,
+            &target.replacement,
+        );
+    };
+
+    let target = inline_target_at(uri, document, db, root, byte_offset)?;
+
+    // Inclusive: a cursor at the name's end byte is on the declaration, not a use.
+    let on_declaration = target.def.symbol.selection_byte_range.start <= byte_offset
+        && byte_offset <= target.def.symbol.selection_byte_range.end;
+
+    if on_declaration {
+        inline_all_usages(
+            uri,
+            document,
+            db,
+            &target.def,
+            target.decl,
+            &target.replacement,
+        )
+    } else {
+        inline_single_usage(uri, document, db, cursor_ident, target.replacement)
+    }
+}
+
+struct InlineTarget<'t> {
+    def: Definition,
+    decl: Node<'t>,
+    replacement: String,
+}
+
+fn inline_target_at<'t>(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    root: Node<'t>,
+    anchor_byte: usize,
+) -> Option<InlineTarget<'t>> {
+    let def = resolve_definition_at_byte(uri, document, db, anchor_byte)?;
     if def.symbol.kind != SymbolKind::Variable || def.uri.as_str() != uri {
         return None;
     }
-
     let decl = decl_stmt_for(root, &def)?;
-    if name_count(decl) != 1 {
-        // A multi-name `var a, b` declaration has no single statement to delete cleanly.
-        return None;
-    }
+    // A multi-name `var a, b` declaration has no single statement to delete cleanly.
+    single_name(decl)?;
     // An uninitialised local has no value to substitute.
     let init = decl.child_by_field_name(fields::INIT_VALUE)?;
     let replacement = substituted_text(&document.source, init);
+    Some(InlineTarget {
+        def,
+        decl,
+        replacement,
+    })
+}
 
-    // Inclusive: a cursor at the name's end byte is on the declaration, not a use.
-    let on_declaration = def.symbol.selection_byte_range.start <= byte_offset
-        && byte_offset <= def.symbol.selection_byte_range.end;
-
-    if on_declaration {
-        inline_all_usages(uri, document, db, &def, decl, &replacement)
-    } else {
-        inline_single_usage(uri, document, db, cursor_ident, replacement)
-    }
+// The `var` keyword through the declared name; a cursor here targets the declaration, not a use.
+fn decl_head_name(root: Node<'_>, byte_offset: usize) -> Option<Node<'_>> {
+    let decl = nodes_at_offset(root, byte_offset)
+        .into_iter()
+        .find_map(|node| {
+            if node.kind() == kinds::LOCAL_VAR_DECL_STMT {
+                Some(node)
+            } else {
+                find_ancestor_of_kind(node, &[kinds::LOCAL_VAR_DECL_STMT])
+            }
+        })?;
+    let name = single_name(decl)?;
+    (decl.start_byte()..=name.end_byte())
+        .contains(&byte_offset)
+        .then_some(name)
 }
 
 fn inline_single_usage(
@@ -163,11 +219,13 @@ fn decl_stmt_for<'tree>(root: Node<'tree>, def: &Definition) -> Option<Node<'tre
     }
 }
 
-fn name_count(decl: Node) -> usize {
+fn single_name(decl: Node) -> Option<Node> {
     let mut cursor = decl.walk();
-    decl.children_by_field_name(fields::NAMES, &mut cursor)
-        .filter(|n| n.kind() == kinds::IDENT)
-        .count()
+    let mut names = decl
+        .children_by_field_name(fields::NAMES, &mut cursor)
+        .filter(|n| n.kind() == kinds::IDENT);
+    let only = names.next()?;
+    names.next().is_none().then_some(only)
 }
 
 fn substituted_text(source: &str, init: Node) -> String {
