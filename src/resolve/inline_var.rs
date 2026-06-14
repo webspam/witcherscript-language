@@ -138,9 +138,11 @@ fn inline_all_usages(
             continue;
         };
         // The same name can reach an unrelated field via `obj.name`; inline only true references.
-        match resolve_definition_at_byte(uri, document, db, occ.start) {
-            Some(ref r) if definition_key(r) == definition_key(def) => {}
-            _ => continue,
+        let Some(resolved) = resolve_definition_at_byte(uri, document, db, occ.start) else {
+            continue;
+        };
+        if definition_key(&resolved) != definition_key(def) {
+            continue;
         }
         if occurrence_is_write(uri, document, db, ident) {
             // A reassigned variable's initializer is not its value at every use.
