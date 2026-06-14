@@ -274,7 +274,7 @@ pub(super) fn occurrence_resolves_to(
         .is_some_and(|resolved| targets.contains(&definition_key(&resolved)))
 }
 
-pub(super) fn collect_ident_occurrences(
+fn collect_ident_occurrences(
     node: Node<'_>,
     source: &[u8],
     name: &str,
