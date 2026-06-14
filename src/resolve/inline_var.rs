@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use tree_sitter::Node;
 
 use crate::cst::ancestors::find_ancestor_of_kind;
@@ -9,7 +11,7 @@ use crate::symbols::SymbolKind;
 use super::Definition;
 use super::ast::{identifier_at, nodes_at_offset};
 use super::definition::{definition_key, resolve_definition_at_byte};
-use super::extract_common::{Splice, out_args};
+use super::extract_common::{Splice, WriteSite, out_args, write_site_node, write_sites};
 use super::references::{collect_ident_occurrences, occurrence_resolves_to};
 use super::symbol_db::SymbolDb;
 
@@ -60,50 +62,32 @@ pub fn inline_variable(
     // On the `var` keyword there is no identifier; a declaration head still inlines all usages.
     let Some(cursor_ident) = identifier_at(root, byte_offset) else {
         let name = decl_head_name(root, byte_offset)?;
-        let target = inline_target_at(uri, document, db, root, name.start_byte())?;
-        return inline_all_usages(
-            uri,
-            document,
-            db,
-            &target.def,
-            target.decl,
-            &target.replacement,
-        );
+        let (def, decl) = variable_decl_at(uri, document, db, root, name.start_byte())?;
+        let plan = plan_inline(uri, document, db, root, &def, decl)?;
+        return Some(inline_all_reads(&document.source, &plan));
     };
 
-    let target = inline_target_at(uri, document, db, root, byte_offset)?;
+    let (def, decl) = variable_decl_at(uri, document, db, root, byte_offset)?;
+    let plan = plan_inline(uri, document, db, root, &def, decl)?;
 
     // Inclusive: a cursor at the name's end byte is on the declaration, not a use.
-    let on_declaration = target.def.symbol.selection_byte_range.start <= byte_offset
-        && byte_offset <= target.def.symbol.selection_byte_range.end;
+    let on_declaration = def.symbol.selection_byte_range.start <= byte_offset
+        && byte_offset <= def.symbol.selection_byte_range.end;
 
     if on_declaration {
-        inline_all_usages(
-            uri,
-            document,
-            db,
-            &target.def,
-            target.decl,
-            &target.replacement,
-        )
+        Some(inline_all_reads(&document.source, &plan))
     } else {
-        inline_single_usage(uri, document, db, cursor_ident, target.replacement)
+        inline_single_read(uri, document, db, cursor_ident, &plan, &document.source)
     }
 }
 
-struct InlineTarget<'t> {
-    def: Definition,
-    decl: Node<'t>,
-    replacement: String,
-}
-
-fn inline_target_at<'t>(
+fn variable_decl_at<'t>(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
     root: Node<'t>,
     anchor_byte: usize,
-) -> Option<InlineTarget<'t>> {
+) -> Option<(Definition, Node<'t>)> {
     let def = resolve_definition_at_byte(uri, document, db, anchor_byte)?;
     if def.symbol.kind != SymbolKind::Variable || def.uri.as_str() != uri {
         return None;
@@ -111,14 +95,7 @@ fn inline_target_at<'t>(
     let decl = decl_stmt_for(root, &def)?;
     // A multi-name `var a, b` declaration has no single statement to delete cleanly.
     single_name(decl)?;
-    // An uninitialised local has no value to substitute.
-    let init = decl.child_by_field_name(fields::INIT_VALUE)?;
-    let replacement = substituted_text(&document.source, init);
-    Some(InlineTarget {
-        def,
-        decl,
-        replacement,
-    })
+    Some((def, decl))
 }
 
 // The `var` keyword through the declared name; a cursor here targets the declaration, not a use.
@@ -138,75 +115,166 @@ fn decl_head_name(root: Node<'_>, byte_offset: usize) -> Option<Node<'_>> {
         .then_some(name)
 }
 
-fn inline_single_usage(
+struct InlinePlan<'t> {
+    /// Substitution text for each read, parenthesised where precedence needs it.
+    value: String,
+    reads: Vec<Range<usize>>,
+    /// Statements that die once every read is inlined: the declaration, plus a defining assignment if separate.
+    dead_stmts: Vec<Node<'t>>,
+}
+
+fn plan_inline<'t>(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
-    occurrence: Node,
-    replacement: String,
-) -> Option<Inlining> {
-    // A write target is an lvalue; replacing it with a value expression would not parse.
-    if occurrence_is_write(uri, document, db, occurrence) {
+    root: Node<'t>,
+    def: &Definition,
+    decl: Node<'t>,
+) -> Option<InlinePlan<'t>> {
+    let container = def.symbol.container?;
+    let scope = document.symbols.by_id(container)?.byte_range.clone();
+    let scope_node = root.descendant_for_byte_range(scope.start, scope.end)?;
+    let key = definition_key(def);
+
+    let all_writes = write_sites(uri, document, db, &[scope_node]);
+    let mutations: Vec<&WriteSite> = all_writes
+        .iter()
+        .filter(|w| {
+            let probe = write_site_node(w).start_byte();
+            occurrence_resolves_to(uri, document, db, probe, std::slice::from_ref(&key))
+        })
+        .collect();
+
+    let (value_node, dead_stmts) = if let Some(init) = decl.child_by_field_name(fields::INIT_VALUE)
+    {
+        // Initializer holds the value; inlinable only when nothing else mutates the variable.
+        if !mutations.is_empty() {
+            return None;
+        }
+        (init, vec![decl])
+    } else {
+        // No initializer: the value must come from exactly one direct `=` assignment.
+        if mutations.len() != 1 {
+            return None;
+        }
+        let WriteSite::AssignTarget(target) = mutations[0] else {
+            return None;
+        };
+        let assign = direct_assign_expr(*target)?;
+        let assign_stmt = find_ancestor_of_kind(assign, &[kinds::EXPR_STMT])?;
+        // An unconditional sibling of the declaration dominates every later read.
+        if assign_stmt.parent()?.id() != decl.parent()?.id() {
+            return None;
+        }
+        (
+            assign.child_by_field_name(fields::RIGHT)?,
+            vec![decl, assign_stmt],
+        )
+    };
+
+    let reads = read_occurrences(uri, document, db, def, decl, &scope);
+
+    // A defining assignment separate from the declaration must precede every read it feeds.
+    if let [_, assign_stmt] = dead_stmts.as_slice()
+        && reads.iter().any(|r| r.start < assign_stmt.end_byte())
+    {
         return None;
     }
-    Some(Inlining {
-        edits: vec![Splice {
-            range: occurrence.byte_range(),
-            text: replacement,
-        }],
-        scope: InlineScope::SingleUsage,
+
+    Some(InlinePlan {
+        value: substituted_text(&document.source, value_node),
+        reads,
+        dead_stmts,
     })
 }
 
-fn inline_all_usages(
+fn read_occurrences(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
     def: &Definition,
-    decl: Node,
-    replacement: &str,
-) -> Option<Inlining> {
-    let container = def.symbol.container?;
-    let scope = document.symbols.by_id(container)?.byte_range.clone();
+    decl: Node<'_>,
+    scope: &Range<usize>,
+) -> Vec<Range<usize>> {
     let root = document.tree.root_node();
-
+    let key = definition_key(def);
     let mut occurrences = Vec::new();
     collect_ident_occurrences(
         root,
         document.source.as_bytes(),
         &def.symbol.name,
-        Some(&scope),
+        Some(scope),
         &mut occurrences,
     );
+    occurrences
+        .into_iter()
+        .filter(|occ| {
+            // The declaration's own name (and its initializer) is not a use to replace.
+            if decl.start_byte() <= occ.start && occ.start < decl.end_byte() {
+                return false;
+            }
+            let Some(ident) = identifier_at(root, occ.start) else {
+                return false;
+            };
+            if occurrence_is_write(uri, document, db, ident) {
+                return false;
+            }
+            // The same name can reach an unrelated field via `obj.name`; keep only true references.
+            occurrence_resolves_to(uri, document, db, occ.start, std::slice::from_ref(&key))
+        })
+        .collect()
+}
 
-    let mut edits = Vec::new();
-    for occ in occurrences {
-        // The declaration (its name and initializer) is removed wholesale, not rewritten.
-        if decl.start_byte() <= occ.start && occ.start < decl.end_byte() {
-            continue;
-        }
-        let Some(ident) = identifier_at(root, occ.start) else {
-            continue;
-        };
-        // The same name can reach an unrelated field via `obj.name`; inline only true references.
-        if !occurrence_resolves_to(uri, document, db, occ.start, &[definition_key(def)]) {
-            continue;
-        }
-        if occurrence_is_write(uri, document, db, ident) {
-            // A reassigned variable's initializer is not its value at every use.
-            return None;
-        }
-        edits.push(Splice {
-            range: occ,
-            text: replacement.to_string(),
-        });
+fn direct_assign_expr(target: Node<'_>) -> Option<Node<'_>> {
+    let assign = find_ancestor_of_kind(target, &[kinds::ASSIGN_OP_EXPR])?;
+    let op = assign.child_by_field_name(fields::OP)?;
+    (op.kind() == kinds::ASSIGN_OP_DIRECT).then_some(assign)
+}
+
+fn inline_all_reads(source: &str, plan: &InlinePlan) -> Inlining {
+    let mut edits: Vec<Splice> = plan
+        .reads
+        .iter()
+        .map(|range| Splice {
+            range: range.clone(),
+            text: plan.value.clone(),
+        })
+        .collect();
+    for stmt in &plan.dead_stmts {
+        edits.push(delete_statement(source, *stmt));
     }
-
-    edits.push(delete_statement(&document.source, decl));
-    Some(Inlining {
+    Inlining {
         edits,
         scope: InlineScope::AllUsages,
-    })
+    }
+}
+
+fn inline_single_read(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    occurrence: Node,
+    plan: &InlinePlan,
+    source: &str,
+) -> Option<Inlining> {
+    // A write target is an lvalue; replacing it with a value expression would not parse.
+    if occurrence_is_write(uri, document, db, occurrence) {
+        return None;
+    }
+    let mut edits = vec![Splice {
+        range: occurrence.byte_range(),
+        text: plan.value.clone(),
+    }];
+    // Inlining the final read leaves the declaration (and any defining assignment) dead.
+    let scope = if plan.reads.len() == 1 {
+        for stmt in &plan.dead_stmts {
+            edits.push(delete_statement(source, *stmt));
+        }
+        InlineScope::AllUsages
+    } else {
+        InlineScope::SingleUsage
+    };
+    Some(Inlining { edits, scope })
 }
 
 fn decl_stmt_for<'tree>(root: Node<'tree>, def: &Definition) -> Option<Node<'tree>> {
@@ -249,16 +317,16 @@ fn occurrence_is_write(uri: &str, document: &ParsedDocument, db: &SymbolDb, iden
         .any(|arg| write_target(*arg).map(|n| n.id()) == Some(ident.id()))
 }
 
-// Delete the declaration along with its line when it occupies one on its own, so no blank line remains.
-fn delete_statement(source: &str, decl: Node) -> Splice {
+// Delete a statement with its line when it stands alone, so no blank line remains.
+fn delete_statement(source: &str, stmt: Node) -> Splice {
     let bytes = source.as_bytes();
-    let mut start = decl.start_byte();
+    let mut start = stmt.start_byte();
     while start > 0 && matches!(bytes[start - 1], b' ' | b'\t') {
         start -= 1;
     }
     let at_line_start = start == 0 || bytes[start - 1] == b'\n';
 
-    let mut end = decl.end_byte();
+    let mut end = stmt.end_byte();
     while end < bytes.len() && matches!(bytes[end], b' ' | b'\t') {
         end += 1;
     }
@@ -270,8 +338,8 @@ fn delete_statement(source: &str, decl: Node) -> Splice {
             end += 1;
         }
     } else {
-        // Something precedes the declaration on its line; keep that code and its indentation.
-        start = decl.start_byte();
+        // Something precedes the statement on its line; keep that code and its indentation.
+        start = stmt.start_byte();
     }
 
     Splice {

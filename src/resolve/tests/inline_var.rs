@@ -49,6 +49,36 @@ fn inlined(src: &str) -> Option<String> {
     "class C {\n    var count : int;\n    function f() {\n        var $0count : int = 5;\n        Foo(count);\n        Foo(this.count);\n    }\n}\n",
     "class C {\n    var count : int;\n    function f() {\n        Foo(5);\n        Foo(this.count);\n    }\n}\n"
 )]
+#[case::last_use_deletes_declaration(
+    "last use deletes declaration",
+    "function f() {\n    var count : int = 5;\n    return $0count;\n}\n",
+    "function f() {\n    return 5;\n}\n"
+)]
+#[case::assign_later_from_use(
+    "assign later, inline from use",
+    "function f() {\n    var x : int;\n    x = 13;\n    return $0x;\n}\n",
+    "function f() {\n    return 13;\n}\n"
+)]
+#[case::assign_later_from_declaration(
+    "assign later, inline from declaration",
+    "function f() {\n    var $0x : int;\n    x = 13;\n    return x;\n}\n",
+    "function f() {\n    return 13;\n}\n"
+)]
+#[case::assign_later_all_usages(
+    "assign later, multiple usages",
+    "function f() {\n    var $0x : int;\n    x = 13;\n    Foo(x);\n    Bar(x);\n}\n",
+    "function f() {\n    Foo(13);\n    Bar(13);\n}\n"
+)]
+#[case::assign_later_single_usage_keeps_rest(
+    "assign later, one of several usages",
+    "function f() {\n    var x : int;\n    x = 13;\n    Foo($0x);\n    Bar(x);\n}\n",
+    "function f() {\n    var x : int;\n    x = 13;\n    Foo(13);\n    Bar(x);\n}\n"
+)]
+#[case::wraps_compound_assignment(
+    "assign later, compound value wrapped",
+    "function f() {\n    var $0sum : int;\n    sum = a + b;\n    return sum * 2;\n}\n",
+    "function f() {\n    return (a + b) * 2;\n}\n"
+)]
 fn inlines(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     let got = inlined(src).unwrap_or_else(|| panic!("case {label}: expected an inlining"));
     assert_eq!(got, expected, "case {label}: inlined output mismatch");
@@ -70,6 +100,18 @@ fn inlines(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
 #[case::single_usage_on_write_target(
     "single usage on write target",
     "function f() {\n    var x : int = 5;\n    $0x = 10;\n    Foo(x);\n}\n"
+)]
+#[case::read_before_assignment(
+    "read precedes the only assignment",
+    "function f() {\n    var x : int;\n    Foo($0x);\n    x = 13;\n}\n"
+)]
+#[case::conditional_assignment(
+    "assignment is not an unconditional sibling",
+    "function f() {\n    var x : int;\n    if (c) { x = 13; }\n    return $0x;\n}\n"
+)]
+#[case::two_assignments(
+    "more than one assignment",
+    "function f() {\n    var x : int;\n    x = 1;\n    x = 2;\n    return $0x;\n}\n"
 )]
 fn refuses(#[case] label: &str, #[case] src: &str) {
     assert!(

@@ -277,6 +277,15 @@ pub(super) fn write_sites<'tree>(
     writes
 }
 
+pub(super) fn write_site_node<'tree>(site: &WriteSite<'tree>) -> Node<'tree> {
+    match site {
+        WriteSite::AssignTarget(n)
+        | WriteSite::AssignBase(n)
+        | WriteSite::OutArg(n)
+        | WriteSite::ReceiverBase(n) => *n,
+    }
+}
+
 fn lvalue_base_ident(expr: Node) -> Option<Node> {
     match expr.kind() {
         kinds::IDENT => Some(expr),
