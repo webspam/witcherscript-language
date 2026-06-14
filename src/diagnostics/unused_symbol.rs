@@ -3,6 +3,7 @@ use std::ops::Range;
 
 use tree_sitter::Node;
 
+use crate::cst::literals::is_constant_literal;
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::resolve::{Definition, SymbolDb, find_references};
@@ -126,10 +127,13 @@ fn emit_var_decl_dims<'tree>(
     let (singular, plural) = var_decl_nouns(node.kind());
 
     if unused.len() == names.len() {
-        // Whole declaration is dead: fade the statement, but stop at `=` so the initialiser stays bright.
+        let literal_init = node
+            .child_by_field_name(fields::INIT_VALUE)
+            .is_some_and(is_constant_literal);
+        // The whole declaration is dead; a computed initialiser stays bright, a literal one fades too.
         let end = match assignment_token(node) {
-            Some(eq) => eq.start_byte(),
-            None => node.end_byte(),
+            Some(eq) if !literal_init => eq.start_byte(),
+            _ => node.end_byte(),
         };
         let message = if let [(_, name)] = unused {
             format!("{singular} '{name}' is never used")

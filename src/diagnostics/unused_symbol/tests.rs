@@ -28,16 +28,24 @@ fn primary_diags(t: &TestDb) -> Vec<WorkspaceDiagnostic> {
     "function H() {\n  var x : int;\n//^^^^^^^^^^^^ u\n}\n",
     "Local variable 'x' is never used"
 )]
-#[case::local_single_with_init(
-    "function I() {\n  var x : int = 5;\n//^^^^^^^^^^^^ u\n}\n",
+#[case::local_single_constant_init_fades_value(
+    "function I() {\n  var x : int = 5;\n//^^^^^^^^^^^^^^^^ u\n}\n",
+    "Local variable 'x' is never used"
+)]
+#[case::local_single_computed_init_stays_bright(
+    "function M() {\n  var s : string = \"a\" + \"b\";\n//^^^^^^^^^^^^^^^ u\n}\n",
+    "Local variable 's' is never used"
+)]
+#[case::local_single_reference_init_stays_bright(
+    "function L(p : int) {\n  var x : int = p;\n//^^^^^^^^^^^^ u\n}\n",
     "Local variable 'x' is never used"
 )]
 #[case::local_list_all_no_init(
     "function J() {\n  var a, b : int;\n//^^^^^^^^^^^^^^^ u\n}\n",
     "Local variables 'a', 'b' are never used"
 )]
-#[case::local_list_all_with_init(
-    "function K() {\n  var a, b : int = 5;\n//^^^^^^^^^^^^^^^ u\n}\n",
+#[case::local_list_all_constant_init(
+    "function K() {\n  var a, b : int = 5;\n//^^^^^^^^^^^^^^^^^^^ u\n}\n",
     "Local variables 'a', 'b' are never used"
 )]
 #[case::local_list_partial_dims_name_and_comma(
