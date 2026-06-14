@@ -3,7 +3,7 @@ use tree_sitter::Node;
 use crate::cst::{fields, kinds};
 
 use super::super::action::LayoutCtx;
-use super::super::{Formatter, SwitchToggle, child_nodes};
+use super::super::{Formatter, SwitchToggle, child_nodes, comment_in_range};
 
 // Spaces between aligned switch-arm columns (label -> statement -> break).
 const SWITCH_CELL_GAP: usize = 2;
@@ -247,22 +247,17 @@ impl Formatter<'_> {
 
     fn comment_between_arms(&self, a: &SwitchArm, b: &SwitchArm) -> bool {
         match (arm_end_byte(a), arm_start_byte(b)) {
-            (Some(e), Some(s)) => self
-                .comments
-                .iter()
-                .any(|c| c.start_byte() >= e && c.start_byte() < s),
+            (Some(e), Some(s)) => comment_in_range(&self.comments, e, s),
             _ => false,
         }
     }
 }
 
 fn arm_has_interior_comment(arm: &SwitchArm, comments: &[Node]) -> bool {
-    let (Some(start), Some(end)) = (arm_start_byte(arm), arm_end_byte(arm)) else {
-        return false;
-    };
-    comments
-        .iter()
-        .any(|c| c.start_byte() >= start && c.start_byte() < end)
+    match (arm_start_byte(arm), arm_end_byte(arm)) {
+        (Some(start), Some(end)) => comment_in_range(comments, start, end),
+        _ => false,
+    }
 }
 
 fn arm_structurally_inline(arm: &SwitchArm, comments: &[Node]) -> bool {

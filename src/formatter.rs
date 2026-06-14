@@ -257,6 +257,12 @@ pub(super) fn is_expr_node(kind: &str) -> bool {
     )
 }
 
+pub(super) fn comment_in_range(comments: &[Node], lo: usize, hi: usize) -> bool {
+    comments
+        .iter()
+        .any(|c| c.start_byte() >= lo && c.start_byte() < hi)
+}
+
 fn collect_comments(root: Node) -> Vec<Node> {
     let mut comments = Vec::new();
     let mut cursor = root.walk();

@@ -79,9 +79,7 @@ impl<'a> Formatter<'a> {
     }
 
     pub(super) fn has_interior_comment(&self, node: Node) -> bool {
-        self.comments
-            .iter()
-            .any(|c| c.start_byte() > node.start_byte() && c.start_byte() < node.end_byte())
+        super::comment_in_range(&self.comments, node.start_byte(), node.end_byte())
     }
 
     pub(super) fn flush_before_close(&mut self, close: Option<Node>) {
