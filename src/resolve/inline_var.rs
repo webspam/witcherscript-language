@@ -14,7 +14,6 @@ use super::extract_common::{Splice, WriteSite, write_site_node, write_sites};
 use super::references::find_references;
 use super::symbol_db::SymbolDb;
 
-/// How many uses an inline replaced, distinguishing the offered action
 pub enum InlineScope {
     AllUsages,
     SingleUsage,
