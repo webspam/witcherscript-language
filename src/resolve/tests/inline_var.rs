@@ -89,6 +89,31 @@ fn inlined(src: &str) -> Option<String> {
     "function f() {\n    var marker, line : string;\n    marker = \"x\";\n    line = \"y\";\n    Foo(marker);\n    Bar($0line);\n}\n",
     "function f() {\n    var marker : string;\n    marker = \"x\";\n    Foo(marker);\n    Bar(\"y\");\n}\n"
 )]
+#[case::reassigned_after_init(
+    "reassignment overwrites the initializer",
+    "function f() {\n    var $0x : int = 5;\n    x = 10;\n    Foo(x);\n}\n",
+    "function f() {\n    Foo(10);\n}\n"
+)]
+#[case::last_of_two_assignments(
+    "the last assignment reaches the read",
+    "function f() {\n    var x : int;\n    x = 1;\n    x = 2;\n    return $0x;\n}\n",
+    "function f() {\n    return 2;\n}\n"
+)]
+#[case::dead_initializer_overwritten(
+    "dead initializer overwritten before any read",
+    "function f() {\n    var $0rah : int = 0;\n    rah = 14;\n    if (true) {\n        return rah;\n    }\n}\n",
+    "function f() {\n    if (true) {\n        return 14;\n    }\n}\n"
+)]
+#[case::do_while_def_reaches_after(
+    "assignment in a do-while body reaches a read after the loop",
+    "function f() {\n    var x : int;\n    do {\n        x = 5;\n    } while (c);\n    return $0x;\n}\n",
+    "function f() {\n    do {\n    } while (c);\n    return 5;\n}\n"
+)]
+#[case::switch_single_def_dominates(
+    "a single definition reaches a read inside a switch case",
+    "function f() {\n    var x : int = 9;\n    switch (s) {\n    case 1:\n        Foo($0x);\n        break;\n    }\n}\n",
+    "function f() {\n    switch (s) {\n    case 1:\n        Foo(9);\n        break;\n    }\n}\n"
+)]
 fn inlines(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     let got = inlined(src).unwrap_or_else(|| panic!("case {label}: expected an inlining"));
     assert_eq!(got, expected, "case {label}: inlined output mismatch");
@@ -103,10 +128,6 @@ fn inlines(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     "multi-name declaration",
     "function f() {\n    var $0a, b : int = 0;\n    Foo(a);\n}\n"
 )]
-#[case::reassigned_variable(
-    "reassigned variable",
-    "function f() {\n    var $0x : int = 5;\n    x = 10;\n    Foo(x);\n}\n"
-)]
 #[case::single_usage_on_write_target(
     "single usage on write target",
     "function f() {\n    var x : int = 5;\n    $0x = 10;\n    Foo(x);\n}\n"
@@ -116,12 +137,40 @@ fn inlines(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     "function f() {\n    var x : int;\n    Foo($0x);\n    x = 13;\n}\n"
 )]
 #[case::conditional_assignment(
-    "assignment is not an unconditional sibling",
+    "read reached by a conditional assignment and the bare declaration",
     "function f() {\n    var x : int;\n    if (c) { x = 13; }\n    return $0x;\n}\n"
 )]
-#[case::two_assignments(
-    "more than one assignment",
-    "function f() {\n    var x : int;\n    x = 1;\n    x = 2;\n    return $0x;\n}\n"
+#[case::two_distinct_defs_reach_read(
+    "two different assignments reach the read",
+    "function f() {\n    var x : int;\n    if (c) { x = 1; } else { x = 2; }\n    return $0x;\n}\n"
+)]
+#[case::operand_clobbered(
+    "an operand of the value is reassigned before the read",
+    "function f() {\n    var a : int = 1;\n    var x : int = 0;\n    x = a;\n    a = 99;\n    return $0x;\n}\n"
+)]
+#[case::self_referential_def(
+    "the value reads the variable being inlined",
+    "function f() {\n    var x : int = 0;\n    x = x + 1;\n    return $0x;\n}\n"
+)]
+#[case::side_effecting_dead_store(
+    "a dead store with a side effect cannot be dropped",
+    "function f() {\n    var x : int = 0;\n    x = Compute();\n    x = 14;\n    return $0x;\n}\n"
+)]
+#[case::loop_back_edge_two_defs(
+    "a read inside a loop is reached by two iterations' definitions",
+    "function f() {\n    var x : int = 0;\n    while (c) {\n        Foo($0x);\n        x = 1;\n    }\n}\n"
+)]
+#[case::out_arg_unknown_value(
+    "an out-argument gives the variable an unknown value",
+    "function GetThing(out v : int) {}\nfunction f() {\n    var x : int;\n    GetThing(out x);\n    return $0x;\n}\n"
+)]
+#[case::compound_assignment_value(
+    "a compound assignment depends on the prior value",
+    "function f() {\n    var x : int = 1;\n    x += 2;\n    return $0x;\n}\n"
+)]
+#[case::switch_fallthrough_two_defs(
+    "fallthrough makes two definitions reach the read",
+    "function f() {\n    var x : int = 0;\n    switch (s) {\n    case 1:\n        x = 1;\n    case 2:\n        Foo($0x);\n        break;\n    }\n}\n"
 )]
 #[case::no_usages(
     "declaration with no usages",

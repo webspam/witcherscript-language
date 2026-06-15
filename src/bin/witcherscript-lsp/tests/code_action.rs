@@ -533,6 +533,33 @@ fn offers_inline_single_usage_on_a_use() {
 }
 
 #[test]
+fn offers_inline_for_dead_initializer() {
+    let src = "function F() {\n    var rah : int = 0;\n    rah = 14;\n    if (true) {\n        return rah;\n    }\n}\n";
+    let actions = refactor_actions(src, "rah : int");
+    assert_eq!(titles(&actions), vec!["Inline variable"]);
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_INLINE));
+    let edits = extract_workspace_edit(action);
+    assert_eq!(
+        edits.len(),
+        3,
+        "the read is replaced and both the declaration and the reassignment are removed"
+    );
+    let texts: Vec<&str> = edits.iter().map(|e| e.new_text.as_str()).collect();
+    assert!(
+        texts.contains(&"14"),
+        "the read takes the reaching assignment's value"
+    );
+    assert_eq!(
+        texts.iter().filter(|t| t.is_empty()).count(),
+        2,
+        "the declaration and the dead initializer's reassignment are both deleted"
+    );
+}
+
+#[test]
 fn inline_on_declaration_with_many_uses_says_all() {
     let src = "function F() {\n    var count : int = 5;\n    Foo(count);\n    Bar(count);\n}\n";
     let actions = refactor_actions(src, "count : int");

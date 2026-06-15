@@ -16,6 +16,7 @@ mod inlay_hints;
 mod inline_var;
 mod name_context;
 mod overrides;
+mod reaching_defs;
 mod references;
 mod shadowed_base;
 mod signature;

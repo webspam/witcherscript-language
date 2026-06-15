@@ -1,8 +1,10 @@
+use std::collections::HashSet;
 use std::ops::Range;
 
 use tree_sitter::Node;
 
-use crate::cst::ancestors::find_ancestor_of_kind;
+use crate::cst::ancestors::{enclosing_callable_block, find_ancestor_of_kind};
+use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::symbols::SymbolKind;
@@ -11,8 +13,12 @@ use super::Definition;
 use super::ast::{identifier_at, nodes_at_offset};
 use super::definition::{definition_key, resolve_definition_at_byte};
 use super::extract_common::{Splice, WriteSite, write_site_node, write_sites};
+use super::reaching_defs::{Def, reaching_defs};
 use super::references::find_references;
 use super::symbol_db::SymbolDb;
+
+// Statements whose removal would drop an observable effect.
+const SIDE_EFFECT_KINDS: &[&str] = &[kinds::FUNC_CALL_EXPR, kinds::NEW_EXPR];
 
 pub enum InlineScope {
     AllUsages,
@@ -69,7 +75,7 @@ pub fn inline_variable(
 
     match cursor_ident {
         Some(ident) if !on_declaration => inline_single_read(ident, &plan),
-        _ => Some(inline_all_reads(&plan)),
+        _ => inline_all_reads(&plan),
     }
 }
 
@@ -99,11 +105,14 @@ fn decl_head_name(root: Node<'_>, byte_offset: usize) -> Option<Node<'_>> {
 }
 
 struct InlinePlan {
-    /// Substitution text for each read, parenthesised where precedence needs it
-    value: String,
-    reads: Vec<Range<usize>>,
-    /// Splices that delete the declaration and any assignment that set the variable.
+    /// Substitution text per read range, parenthesised where precedence needs it. Only reads with a
+    /// single reaching definition whose value is stable to move appear here.
+    eligible: Vec<(Range<usize>, String)>,
+    total_reads: usize,
+    /// Splices that delete the declaration and every assignment to the variable.
     teardown: Vec<Splice>,
+    /// Whether teardown can run without dropping a side effect or leaving an undeletable assignment.
+    teardown_safe: bool,
 }
 
 fn plan_inline(
@@ -117,6 +126,7 @@ fn plan_inline(
     let container = def.symbol.container?;
     let scope = document.symbols.by_id(container)?.byte_range.clone();
     let scope_node = root.descendant_for_byte_range(scope.start, scope.end)?;
+    let body = enclosing_callable_block(decl)?;
     let key = definition_key(def);
 
     let all_writes = write_sites(uri, document, db, &[scope_node]);
@@ -143,74 +153,103 @@ fn plan_inline(
         return None;
     }
 
-    let source = value_source(decl, &decl_names, &mutations, &reads)?;
+    let rd = reaching_defs(body, decl, decl_names.len(), &mutations, &reads);
+    let assigned_keys = assigned_local_keys(uri, document, db, &all_writes);
 
-    let mut teardown = vec![remove_binding(
-        &document.source,
-        decl,
-        target_index,
-        &decl_names,
-    )];
-    if let Some(assign_stmt) = source.defining_assignment {
-        teardown.push(delete_statement(&document.source, assign_stmt));
+    let mut eligible = Vec::new();
+    let mut used = HashSet::new();
+    for (range, sole) in &rd.per_read {
+        let Some(idx) = sole else { continue };
+        let Some(value) = rd.all_defs[*idx].value else {
+            continue;
+        };
+        if !operands_stable(value, uri, document, db, &assigned_keys) {
+            continue;
+        }
+        eligible.push((range.clone(), substituted_text(&document.source, value)));
+        used.insert(*idx);
     }
 
     Some(InlinePlan {
-        value: substituted_text(&document.source, source.value_node),
-        reads,
-        teardown,
+        teardown: build_teardown(
+            &document.source,
+            decl,
+            target_index,
+            &decl_names,
+            &rd.all_defs,
+        ),
+        teardown_safe: teardown_is_safe(&rd.all_defs, decl, &used),
+        eligible,
+        total_reads: reads.len(),
     })
 }
 
-struct ValueSource<'tree> {
-    value_node: Node<'tree>,
-    /// The assignment that set the value, deleted alongside the declaration.
-    defining_assignment: Option<Node<'tree>>,
+// Keys of every local/parameter assigned anywhere in the function. Substituting a value expression
+// is only sound when none of its operands can change between the definition and the read.
+fn assigned_local_keys(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    all_writes: &[WriteSite<'_>],
+) -> HashSet<(String, Range<usize>)> {
+    all_writes
+        .iter()
+        .filter_map(|w| {
+            resolve_definition_at_byte(uri, document, db, write_site_node(w).start_byte())
+        })
+        .map(|d| definition_key(&d))
+        .collect()
 }
 
-// `None` when the variable is not safely inlinable: reassigned after its initializer, or set by no
-// single assignment that reaches every read.
-fn value_source<'tree>(
-    decl: Node<'tree>,
-    decl_names: &[Node<'tree>],
-    mutations: &[&WriteSite<'tree>],
-    reads: &[Range<usize>],
-) -> Option<ValueSource<'tree>> {
-    // A list shares one initializer, so it cannot be the value for just one of the names.
-    let initializer = (decl_names.len() == 1)
-        .then(|| decl.child_by_field_name(fields::INIT_VALUE))
-        .flatten();
-    if let Some(init) = initializer {
-        return mutations.is_empty().then_some(ValueSource {
-            value_node: init,
-            defining_assignment: None,
-        });
-    }
-
-    if mutations.len() != 1 {
-        return None;
-    }
-    let WriteSite::AssignTarget(assign_target) = mutations[0] else {
-        return None;
-    };
-    let assign = direct_assign_expr(*assign_target)?;
-    let assign_stmt = find_ancestor_of_kind(assign, &[kinds::EXPR_STMT])?;
-    if !assignment_reaches_reads(assign_stmt, decl, reads) {
-        return None;
-    }
-    Some(ValueSource {
-        value_node: assign.child_by_field_name(fields::RIGHT)?,
-        defining_assignment: Some(assign_stmt),
+fn operands_stable(
+    value: Node<'_>,
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    assigned_keys: &HashSet<(String, Range<usize>)>,
+) -> bool {
+    let mut idents = Vec::new();
+    collect_descendants_of_kind(value, &[kinds::IDENT], &mut idents);
+    idents.iter().all(|ident| {
+        let Some(d) = resolve_definition_at_byte(uri, document, db, ident.start_byte()) else {
+            return true;
+        };
+        !(matches!(d.symbol.kind, SymbolKind::Variable | SymbolKind::Parameter)
+            && assigned_keys.contains(&definition_key(&d)))
     })
 }
 
-// An unconditional sibling of the declaration that precedes every read reaches them all.
-fn assignment_reaches_reads(assign_stmt: Node, decl: Node, reads: &[Range<usize>]) -> bool {
-    let (Some(assign_parent), Some(decl_parent)) = (assign_stmt.parent(), decl.parent()) else {
-        return false;
-    };
-    assign_parent.id() == decl_parent.id()
-        && reads.iter().all(|r| r.start >= assign_stmt.end_byte())
+// Teardown deletes every definition; preserving one is unsafe when removing it would drop a side
+// effect that was not relocated into a read, or when it has no deletable statement.
+fn teardown_is_safe(all_defs: &[Def<'_>], decl: Node<'_>, used: &HashSet<usize>) -> bool {
+    all_defs.iter().enumerate().all(|(i, def)| {
+        let node = if def.is_decl { Some(decl) } else { def.stmt };
+        match node {
+            None => false,
+            Some(node) => used.contains(&i) || !has_descendant_of_kind(node, SIDE_EFFECT_KINDS),
+        }
+    })
+}
+
+fn build_teardown(
+    source: &str,
+    decl: Node<'_>,
+    target_index: usize,
+    decl_names: &[Node<'_>],
+    all_defs: &[Def<'_>],
+) -> Vec<Splice> {
+    let mut teardown = vec![remove_binding(source, decl, target_index, decl_names)];
+    let mut seen = HashSet::from([decl.id()]);
+    for stmt in all_defs
+        .iter()
+        .filter(|d| !d.is_decl)
+        .filter_map(|d| d.stmt)
+    {
+        if seen.insert(stmt.id()) {
+            teardown.push(delete_statement(source, stmt));
+        }
+    }
+    teardown
 }
 
 // Writes must not be substituted with the value, so drop occurrences that land on a mutation site.
@@ -235,40 +274,38 @@ fn find_reads(
         .collect()
 }
 
-fn direct_assign_expr(target: Node<'_>) -> Option<Node<'_>> {
-    let assign = find_ancestor_of_kind(target, &[kinds::ASSIGN_OP_EXPR])?;
-    let op = assign.child_by_field_name(fields::OP)?;
-    (op.kind() == kinds::ASSIGN_OP_DIRECT).then_some(assign)
-}
-
-fn inline_all_reads(plan: &InlinePlan) -> Inlining {
+fn inline_all_reads(plan: &InlinePlan) -> Option<Inlining> {
+    if plan.eligible.len() != plan.total_reads || !plan.teardown_safe {
+        return None;
+    }
     let mut edits: Vec<Splice> = plan
-        .reads
+        .eligible
         .iter()
-        .map(|range| Splice {
+        .map(|(range, text)| Splice {
             range: range.clone(),
-            text: plan.value.clone(),
+            text: text.clone(),
         })
         .collect();
     edits.extend(plan.teardown.iter().cloned());
-    let scope = if plan.reads.len() > 1 {
+    let scope = if plan.total_reads > 1 {
         InlineScope::AllUsages
     } else {
         InlineScope::SingleUsage
     };
-    Inlining { edits, scope }
+    Some(Inlining { edits, scope })
 }
 
 fn inline_single_read(occurrence: Node, plan: &InlinePlan) -> Option<Inlining> {
     let range = occurrence.byte_range();
-    if !plan.reads.contains(&range) {
-        return None;
-    }
+    let (_, text) = plan.eligible.iter().find(|(r, _)| *r == range)?;
     let mut edits = vec![Splice {
         range,
-        text: plan.value.clone(),
+        text: text.clone(),
     }];
-    if plan.reads.len() == 1 {
+    if plan.total_reads == 1 {
+        if !plan.teardown_safe {
+            return None;
+        }
         edits.extend(plan.teardown.iter().cloned());
     }
     Some(Inlining {
