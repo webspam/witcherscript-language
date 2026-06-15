@@ -2,7 +2,6 @@ mod captures;
 mod render;
 mod statements;
 
-use std::collections::HashSet;
 use std::ops::Range;
 
 use tree_sitter::Node;
@@ -11,10 +10,11 @@ use crate::cst::ancestors::{enclosing_callable_block, find_ancestor_of_kind, nod
 use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::formatter::{FormatOptions, indent_block};
-use crate::symbols::{Symbol, SymbolId, SymbolKind};
+use crate::symbols::{Symbol, SymbolKind};
 use crate::types::Type;
 
 use super::Definition;
+use super::body_model::BodyModel;
 use super::definition::resolve_definition_at_byte;
 use super::extract_common::{
     CALLABLE_KINDS, Extraction, SelectionKind, Splice, applied_offset, classify_selection,
@@ -28,7 +28,7 @@ use render::{
     FunctionPlan, assemble_params, call_expression, moved_text, render_function, statement_body,
     unique_function_name,
 };
-use statements::{has_escaping_control_flow, live_after, statement_run};
+use statements::{has_escaping_control_flow, statement_run};
 
 struct ResolveCtx<'a> {
     uri: &'a str,
@@ -150,11 +150,12 @@ fn extract_expression(
         return None;
     }
     let type_context = enclosing_type_context(ctx.document, ctx.db, selection.start);
+    let model = BodyModel::enclosing(ctx.uri, ctx.document, ctx.db, selection.start)?;
     let captures = collect_captures(
         ctx,
+        &model,
         &[node],
         &selection,
-        None,
         callable,
         type_context.as_ref(),
         destination,
@@ -163,8 +164,10 @@ fn extract_expression(
         "return {};",
         moved_text(&ctx.document.source, &selection, &captures)
     );
-    let (value_locals, out_locals): (Vec<_>, Vec<_>) =
-        captures.locals.iter().partition(|l| !l.is_written());
+    let (value_locals, out_locals): (Vec<_>, Vec<_>) = captures
+        .locals
+        .iter()
+        .partition(|l| !model.is_written_in(l.local, &selection));
     let plan = FunctionPlan {
         name: unique_function_name(
             ctx.document,
@@ -204,7 +207,7 @@ fn extract_statements(
         return None;
     }
     let first = *stmts.first()?;
-    let callable_block = enclosing_callable_block(first)?;
+    let model = BodyModel::enclosing(ctx.uri, ctx.document, ctx.db, range.start)?;
     let callable = ctx
         .document
         .symbols
@@ -215,23 +218,19 @@ fn extract_statements(
     let type_context = enclosing_type_context(ctx.document, ctx.db, range.start);
     let captures = collect_captures(
         ctx,
+        &model,
         &stmts,
         &range,
-        Some(run_block),
         callable,
         type_context.as_ref(),
         destination,
     )?;
 
-    let mut tracked: HashSet<SymbolId> = captures
-        .locals
+    if captures
+        .internals
         .iter()
-        .filter(|l| l.is_written())
-        .map(|l| l.id)
-        .collect();
-    tracked.extend(captures.internals.iter().map(|i| i.id));
-    let live = live_after(ctx, callable_block, first, &range, &tracked);
-    if captures.internals.iter().any(|i| live.contains(&i.id)) {
+        .any(|i| model.live_after(i.local, &range))
+    {
         // A local declared in the selection but used after it cannot move wholesale.
         return None;
     }
@@ -240,11 +239,23 @@ fn extract_statements(
         .locals
         .iter()
         .enumerate()
-        .filter(|(_, l)| l.is_written() && (l.always_live || live.contains(&l.id)))
+        .filter(|(_, l)| {
+            model.is_written_in(l.local, &range)
+                && (l.always_live || model.live_after(l.local, &range))
+        })
         .map(|(i, _)| i)
         .collect();
+    let run_block_range = run_block.byte_range();
     let returned = match outputs.as_slice() {
-        [only] if captures.locals[*only].entry_value_unread() => Some(*only),
+        [only]
+            if model.entry_value_unread_in(
+                captures.locals[*only].local,
+                &range,
+                &run_block_range,
+            ) =>
+        {
+            Some(*only)
+        }
         _ => None,
     };
     let mut value_locals = Vec::new();

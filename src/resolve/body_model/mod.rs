@@ -11,16 +11,19 @@ use std::ops::Range;
 
 use tree_sitter::Node;
 
-use crate::cst::ancestors::find_ancestor_of_kind;
+use crate::cst::ancestors::{find_ancestor_of_kind, node_and_ancestors};
 use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
 use crate::cst::grammar::write_target;
 use crate::cst::nav::first_named_child;
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::symbols::{SymbolId, SymbolKind};
+use crate::types::Type;
 
 use super::definition::{definition_key, resolve_definition_at_byte};
-use super::extract_common::{CALLABLE_KINDS, WriteSite, write_site_node, write_sites};
+use super::extract_common::{
+    CALLABLE_KINDS, WriteSite, is_value_type, write_site_node, write_sites,
+};
 use super::name_context::{NameContext, classify_ident_context};
 use super::reaching_defs::reaching_defs;
 use super::symbol_db::SymbolDb;
@@ -291,6 +294,57 @@ impl<'a> BodyModel<'a> {
             .is_some_and(|n| has_descendant_of_kind(n, SIDE_EFFECT_KINDS))
     }
 
+    pub(crate) fn local_for(&self, id: SymbolId) -> Option<LocalId> {
+        self.locals
+            .iter()
+            .find(|e| e.id == id)
+            .map(|e| LocalId(e.id))
+    }
+
+    pub(crate) fn is_written_in(&self, local: LocalId, span: &Range<usize>) -> bool {
+        let key = self.local_key(local);
+        self.written_in(&key, self.local_is_value_type(local), span)
+    }
+
+    pub(crate) fn field_written_in(&self, key: &DefKey, ty: &Type, span: &Range<usize>) -> bool {
+        self.written_in(key, is_value_type(ty, self.db), span)
+    }
+
+    /// Whether an unconditional whole-value write overwrites `local`'s entry value before any read in `span`.
+    pub(crate) fn entry_value_unread_in(
+        &self,
+        local: LocalId,
+        span: &Range<usize>,
+        run_block: &Range<usize>,
+    ) -> bool {
+        let key = self.local_key(local);
+        let kill = self
+            .writes
+            .sites
+            .iter()
+            .filter(|(k, _)| *k == key)
+            .filter_map(|(_, site)| self.unconditional_whole_write_end(site, span, run_block))
+            .min();
+        let Some(kill) = kill else { return false };
+        self.reads(local)
+            .iter()
+            .filter(|r| span.start <= r.start && r.end <= span.end)
+            .all(|r| r.start >= kill)
+    }
+
+    pub(crate) fn live_after(&self, local: LocalId, selection: &Range<usize>) -> bool {
+        let windows = self.after_windows(selection);
+        let hits = |pos: usize| windows.iter().any(|w| w.contains(&pos));
+        let read = self.reads(local).iter().any(|r| hits(r.start));
+        let key = self.local_key(local);
+        let written = self
+            .writes
+            .positions
+            .get(&key)
+            .is_some_and(|ps| ps.iter().any(|&p| hits(p)));
+        read || written
+    }
+
     /// Whether an operand the value at `value` reads (local, parameter, or field) is reassigned in `window`.
     pub(crate) fn operand_reassigned_in(
         &self,
@@ -342,6 +396,63 @@ impl<'a> BodyModel<'a> {
                 .then(|| (definition_key(&d), d.symbol.kind))
             })
             .collect()
+    }
+
+    fn written_in(&self, key: &DefKey, value_type: bool, span: &Range<usize>) -> bool {
+        self.writes.sites.iter().any(|(k, site)| {
+            k == key && span_contains(span, write_site_node(site)) && is_write(site, value_type)
+        })
+    }
+
+    fn unconditional_whole_write_end(
+        &self,
+        site: &WriteSite,
+        span: &Range<usize>,
+        run_block: &Range<usize>,
+    ) -> Option<usize> {
+        let WriteSite::AssignTarget(node) = site else {
+            return None;
+        };
+        if !span_contains(span, *node) || !is_whole_value_write(*node) {
+            return None;
+        }
+        let stmt = find_ancestor_of_kind(*node, &[kinds::EXPR_STMT])?;
+        let parent = stmt.parent()?;
+        (parent.start_byte() == run_block.start && parent.end_byte() == run_block.end)
+            .then(|| stmt.end_byte())
+    }
+
+    fn after_windows(&self, selection: &Range<usize>) -> Vec<Range<usize>> {
+        let after = selection.end..self.body.end_byte();
+        let mut windows = vec![after];
+        // The loop's next iteration runs pre-selection code after the selection, so a read there sees the new value.
+        if let Some(loop_node) = self.enclosing_loop(selection) {
+            windows.push(loop_node.start_byte()..selection.start);
+        }
+        windows
+    }
+
+    fn enclosing_loop(&self, selection: &Range<usize>) -> Option<Node<'a>> {
+        let probe = self
+            .body
+            .named_descendant_for_byte_range(selection.start, selection.start)?;
+        node_and_ancestors(probe)
+            .take_while(|n| n.id() != self.body.id())
+            .filter(|n| {
+                matches!(
+                    n.kind(),
+                    kinds::FOR_STMT | kinds::WHILE_STMT | kinds::DO_WHILE_STMT
+                )
+            })
+            .last()
+    }
+
+    fn local_is_value_type(&self, local: LocalId) -> bool {
+        self.document
+            .symbols
+            .by_id(local.0)
+            .and_then(|s| s.type_annotation.as_ref())
+            .is_some_and(|ty| is_value_type(ty, self.db))
     }
 
     fn decl_node(&self, local: LocalId) -> Option<Node<'a>> {
@@ -440,6 +551,17 @@ fn unwrap_nested(expr: Node) -> Node {
     match expr.kind() {
         kinds::NESTED_EXPR => first_named_child(expr).map_or(expr, unwrap_nested),
         _ => expr,
+    }
+}
+
+fn span_contains(span: &Range<usize>, node: Node) -> bool {
+    span.start <= node.start_byte() && node.end_byte() <= span.end
+}
+
+fn is_write(site: &WriteSite, value_type: bool) -> bool {
+    match site {
+        WriteSite::AssignTarget(_) | WriteSite::OutArg(_) => true,
+        WriteSite::AssignBase(_) | WriteSite::ReceiverBase(_) => value_type,
     }
 }
 

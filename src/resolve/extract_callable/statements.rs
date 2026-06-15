@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::ops::Range;
 
 use tree_sitter::Node;
@@ -6,9 +5,6 @@ use tree_sitter::Node;
 use crate::cst::ancestors::node_and_ancestors;
 use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
 use crate::cst::kinds;
-use crate::symbols::SymbolId;
-
-use super::ResolveCtx;
 
 const LOOP_KINDS: &[&str] = &[kinds::FOR_STMT, kinds::WHILE_STMT, kinds::DO_WHILE_STMT];
 
@@ -82,38 +78,4 @@ fn jump_target_inside(jump: Node, range: &Range<usize>) -> bool {
             LOOP_KINDS.contains(&n.kind())
                 || (jump.kind() == kinds::BREAK_STMT && n.kind() == kinds::SWITCH_STMT)
         })
-}
-
-pub(super) fn live_after(
-    ctx: &ResolveCtx,
-    callable_block: Node,
-    first_stmt: Node,
-    range: &Range<usize>,
-    tracked: &HashSet<SymbolId>,
-) -> HashSet<SymbolId> {
-    if tracked.is_empty() {
-        return HashSet::new();
-    }
-    let mut windows = Vec::with_capacity(2);
-    windows.push(range.end..callable_block.end_byte());
-    // A loop around the selection re-runs code that sits textually before it.
-    if let Some(loop_node) = enclosing_loop(first_stmt, callable_block) {
-        windows.push(loop_node.start_byte()..range.start);
-    }
-    let mut idents = Vec::new();
-    collect_descendants_of_kind(callable_block, &[kinds::IDENT], &mut idents);
-    idents
-        .iter()
-        .filter(|ident| windows.iter().any(|w| w.contains(&ident.start_byte())))
-        .filter_map(|ident| ctx.resolve_at(ident.start_byte()))
-        .filter(|def| def.uri == ctx.uri && tracked.contains(&def.symbol.id))
-        .map(|def| def.symbol.id)
-        .collect()
-}
-
-fn enclosing_loop<'tree>(node: Node<'tree>, stop: Node) -> Option<Node<'tree>> {
-    node_and_ancestors(node)
-        .take_while(|n| n.id() != stop.id())
-        .filter(|n| LOOP_KINDS.contains(&n.kind()))
-        .last()
 }

@@ -3,18 +3,17 @@ use std::ops::Range;
 
 use tree_sitter::Node;
 
-use crate::cst::ancestors::find_ancestor_of_kind;
 use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
-use crate::cst::grammar::{member_access_member, write_target};
+use crate::cst::grammar::member_access_member;
+use crate::cst::kinds;
 use crate::cst::nav::first_named_child;
-use crate::cst::{fields, kinds};
 use crate::strings::receiver_name;
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
 
 use super::super::Definition;
+use super::super::body_model::{BodyModel, LocalId};
 use super::super::definition::definition_key;
-use super::super::extract_common::{WriteSite, write_sites};
 use super::super::inference::TypeContext;
 use super::super::symbol_db::SymbolDb;
 use super::{Destination, ResolveCtx};
@@ -55,41 +54,25 @@ pub(super) struct PromotedField {
 }
 
 pub(super) struct CapturedLocal {
-    pub(super) id: SymbolId,
+    id: SymbolId,
+    pub(super) local: LocalId,
     pub(super) name: String,
     pub(super) ty: Type,
     /// An `out` parameter of the enclosing callable: the caller observes every write.
     pub(super) always_live: bool,
-    reads: Vec<usize>,
-    writes: Vec<usize>,
-    /// Statement ends of whole-value writes that run unconditionally within the selection.
-    dominating_write_ends: Vec<usize>,
 }
 
 pub(super) struct InternalLocal {
-    pub(super) id: SymbolId,
+    id: SymbolId,
+    pub(super) local: LocalId,
     name: String,
-}
-
-impl CapturedLocal {
-    pub(super) fn is_written(&self) -> bool {
-        !self.writes.is_empty()
-    }
-
-    // The entry value cannot reach a read once an unconditional whole-value write precedes them all.
-    pub(super) fn entry_value_unread(&self) -> bool {
-        match self.dominating_write_ends.iter().min() {
-            Some(&kill) => self.reads.iter().all(|&read| read >= kill),
-            None => false,
-        }
-    }
 }
 
 pub(super) fn collect_captures(
     ctx: &ResolveCtx,
+    model: &BodyModel,
     roots: &[Node],
     range: &Range<usize>,
-    run_block: Option<Node>,
     callable: &Symbol,
     type_context: Option<&TypeContext>,
     destination: Destination,
@@ -157,32 +140,26 @@ pub(super) fn collect_captures(
                     if internals.iter().all(|i| i.id != definition.symbol.id) {
                         internals.push(InternalLocal {
                             id: definition.symbol.id,
+                            local: model.local_for(definition.symbol.id)?,
                             name: definition.symbol.name.clone(),
                         });
                     }
                     continue;
                 }
-                let position = locals.iter().position(|l| l.id == definition.symbol.id);
-                let index = if let Some(index) = position {
-                    index
-                } else {
+                if !locals.iter().any(|l| l.id == definition.symbol.id) {
                     let ty = definition.symbol.type_annotation.clone()?;
                     if matches!(ty, Type::Unknown | Type::Null | Type::Void) {
                         return None;
                     }
                     locals.push(CapturedLocal {
                         id: definition.symbol.id,
+                        local: model.local_for(definition.symbol.id)?,
                         name: definition.symbol.name.clone(),
                         ty,
                         always_live: definition.symbol.kind == SymbolKind::Parameter
                             && definition.symbol.specifiers.is_out(),
-                        reads: Vec::new(),
-                        writes: Vec::new(),
-                        dominating_write_ends: Vec::new(),
                     });
-                    locals.len() - 1
-                };
-                record_occurrence(&mut locals[index], reference, run_block);
+                }
             }
             SymbolKind::Field | SymbolKind::Method | SymbolKind::Event => {
                 // A sibling method reaches every member of the enclosing type directly.
@@ -204,8 +181,6 @@ pub(super) fn collect_captures(
             _ => {}
         }
     }
-    record_indirect_writes(ctx, roots, &mut locals);
-
     let mut taken: HashSet<String> = locals
         .iter()
         .map(|l| l.name.clone())
@@ -218,7 +193,7 @@ pub(super) fn collect_captures(
         taken.insert(name.clone());
         field.name = name;
     }
-    detect_promoted_writes(ctx, roots, &mut promoted);
+    detect_promoted_writes(model, range, &mut promoted);
 
     let needs_receiver = rewrites
         .iter()
@@ -287,39 +262,9 @@ fn promote_field(promoted: &mut Vec<PromotedField>, definition: &Definition) -> 
     Some(promoted.len() - 1)
 }
 
-fn detect_promoted_writes(ctx: &ResolveCtx, roots: &[Node], promoted: &mut [PromotedField]) {
-    if promoted.is_empty() {
-        return;
-    }
-    for write in write_sites(ctx.uri, ctx.document, ctx.db, roots) {
-        match write {
-            WriteSite::AssignTarget(node) | WriteSite::OutArg(node) => {
-                mark_field_written(ctx, node, promoted, false);
-            }
-            WriteSite::AssignBase(node) | WriteSite::ReceiverBase(node) => {
-                mark_field_written(ctx, node, promoted, true);
-            }
-        }
-    }
-}
-
-fn mark_field_written(
-    ctx: &ResolveCtx,
-    ident: Node,
-    promoted: &mut [PromotedField],
-    value_type_only: bool,
-) {
-    let Some(definition) = ctx.resolve_at(ident.start_byte()) else {
-        return;
-    };
-    if definition.symbol.kind != SymbolKind::Field {
-        return;
-    }
-    let key = definition_key(&definition);
-    if let Some(field) = promoted.iter_mut().find(|p| p.key == key)
-        && (!value_type_only || is_value_type(&field.ty, ctx.db))
-    {
-        field.is_written = true;
+fn detect_promoted_writes(model: &BodyModel, range: &Range<usize>, promoted: &mut [PromotedField]) {
+    for field in promoted {
+        field.is_written = model.field_written_in(&field.key, &field.ty, range);
     }
 }
 
@@ -330,121 +275,6 @@ fn is_member_slot(ident: Node) -> bool {
             kinds::MEMBER_ACCESS_EXPR | kinds::INCOMPLETE_MEMBER_ACCESS_EXPR
         ) && member_access_member(parent).is_some_and(|member| member.id() == ident.id())
     })
-}
-
-fn record_occurrence(local: &mut CapturedLocal, ident: Node, run_block: Option<Node>) {
-    let byte = ident.start_byte();
-    match assignment_write(ident) {
-        Some(AssignmentWrite::Whole(assign)) => {
-            local.writes.push(byte);
-            if let Some(end) = unconditional_statement_end(assign, run_block) {
-                local.dominating_write_ends.push(end);
-            }
-        }
-        Some(AssignmentWrite::Partial) => {
-            local.reads.push(byte);
-            local.writes.push(byte);
-        }
-        None => local.reads.push(byte),
-    }
-}
-
-enum AssignmentWrite<'tree> {
-    /// `x = ...`: replaces the whole value without reading it.
-    Whole(Node<'tree>),
-    /// Compound op or element/member path: the previous value flows into the result.
-    Partial,
-}
-
-fn assignment_write(ident: Node) -> Option<AssignmentWrite> {
-    let assign = find_ancestor_of_kind(ident, &[kinds::ASSIGN_OP_EXPR])?;
-    let left = assign.child_by_field_name(fields::LEFT)?;
-    if write_target(left).map(|n| n.id()) != Some(ident.id()) {
-        return None;
-    }
-    let direct = assign
-        .child_by_field_name(fields::OP)
-        .is_some_and(|op| op.kind() == kinds::ASSIGN_OP_DIRECT);
-    if direct && unwrap_nested(left).id() == ident.id() {
-        Some(AssignmentWrite::Whole(assign))
-    } else {
-        Some(AssignmentWrite::Partial)
-    }
-}
-
-fn unwrap_nested(expr: Node) -> Node {
-    match expr.kind() {
-        kinds::NESTED_EXPR => first_named_child(expr).map_or(expr, unwrap_nested),
-        _ => expr,
-    }
-}
-
-// Only a direct statement of the extracted run is guaranteed to execute; nested writes are conditional.
-fn unconditional_statement_end(assign: Node, run_block: Option<Node>) -> Option<usize> {
-    let block = run_block?;
-    let stmt = assign.parent().filter(|p| p.kind() == kinds::EXPR_STMT)?;
-    (stmt.parent()?.id() == block.id()).then(|| stmt.end_byte())
-}
-
-fn record_indirect_writes(ctx: &ResolveCtx, roots: &[Node], locals: &mut [CapturedLocal]) {
-    for write in write_sites(ctx.uri, ctx.document, ctx.db, roots) {
-        match write {
-            // The direct assignment target's read/write is recorded from the reference itself.
-            WriteSite::AssignTarget(_) => {}
-            WriteSite::OutArg(node) => record_write(ctx, node, locals),
-            // A path base or method receiver mutates a value type in place, not a shared handle.
-            WriteSite::AssignBase(node) | WriteSite::ReceiverBase(node) => {
-                record_value_type_write(ctx, node, locals);
-            }
-        }
-    }
-}
-
-fn captured_local_mut<'a>(
-    ctx: &ResolveCtx,
-    ident: Node,
-    locals: &'a mut [CapturedLocal],
-) -> Option<&'a mut CapturedLocal> {
-    let definition = ctx.resolve_at(ident.start_byte())?;
-    if definition.uri != ctx.uri {
-        return None;
-    }
-    locals.iter_mut().find(|l| l.id == definition.symbol.id)
-}
-
-// Indirect writes go through a reference, so the prior value counts as read too.
-fn record_write(ctx: &ResolveCtx, ident: Node, locals: &mut [CapturedLocal]) {
-    if let Some(local) = captured_local_mut(ctx, ident, locals) {
-        local.reads.push(ident.start_byte());
-        local.writes.push(ident.start_byte());
-    }
-}
-
-fn record_value_type_write(ctx: &ResolveCtx, ident: Node, locals: &mut [CapturedLocal]) {
-    let Some(definition) = ctx.resolve_at(ident.start_byte()) else {
-        return;
-    };
-    if definition.uri != ctx.uri {
-        return;
-    }
-    let Some(local) = locals.iter_mut().find(|l| l.id == definition.symbol.id) else {
-        return;
-    };
-    if is_value_type(&local.ty, ctx.db) {
-        local.reads.push(ident.start_byte());
-        local.writes.push(ident.start_byte());
-    }
-}
-
-// Arrays and structs copy on assignment and into parameters; classes are shared handles.
-fn is_value_type(ty: &Type, db: &SymbolDb) -> bool {
-    match ty {
-        Type::Array(_) => true,
-        Type::Named(name) => db
-            .find_top_level(name)
-            .is_some_and(|d| d.symbol.kind == SymbolKind::Struct),
-        Type::Null | Type::Unknown | Type::Void | Type::Primitive(_) => false,
-    }
 }
 
 fn build_receiver(

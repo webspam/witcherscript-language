@@ -8,6 +8,7 @@ use crate::cst::nav::first_named_child;
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::symbols::SymbolKind;
+use crate::types::Type;
 
 use super::definition::callee_params;
 use super::symbol_db::SymbolDb;
@@ -340,6 +341,17 @@ fn method_call_receiver_base(call: Node) -> Option<Node> {
         return None;
     }
     lvalue_base_ident(first_named_child(callee)?)
+}
+
+// Arrays and structs copy on assignment and into parameters; classes are shared handles.
+pub(super) fn is_value_type(ty: &Type, db: &SymbolDb) -> bool {
+    match ty {
+        Type::Array(_) => true,
+        Type::Named(name) => db
+            .find_top_level(name)
+            .is_some_and(|d| d.symbol.kind == SymbolKind::Struct),
+        Type::Null | Type::Unknown | Type::Void | Type::Primitive(_) => false,
+    }
 }
 
 pub(super) fn out_args<'tree>(
