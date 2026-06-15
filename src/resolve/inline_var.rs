@@ -1,25 +1,19 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::ops::Range;
 
 use tree_sitter::Node;
 
-use crate::cst::ancestors::{enclosing_callable_block, find_ancestor_of_kind};
-use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
+use crate::cst::ancestors::find_ancestor_of_kind;
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::symbols::SymbolKind;
 
 use super::Definition;
 use super::ast::{identifier_at, nodes_at_offset};
-use super::definition::{definition_key, resolve_definition_at_byte};
-use super::extract_common::{Splice, WriteSite, delete_statement, write_site_node, write_sites};
-use super::name_context::{NameContext, classify_ident_context};
-use super::reaching_defs::{LocalDefinition, reaching_defs};
-use super::references::find_references;
+use super::body_model::{BodyModel, ReachDef, Stability};
+use super::definition::resolve_definition_at_byte;
+use super::extract_common::{Splice, delete_statement};
 use super::symbol_db::SymbolDb;
-
-// Statements whose removal would drop an observable effect.
-const SIDE_EFFECT_KINDS: &[&str] = &[kinds::FUNC_CALL_EXPR, kinds::NEW_EXPR];
 
 pub enum InlineScope {
     AllUsages,
@@ -40,28 +34,6 @@ pub struct Inlining {
     pub confidence: InlineConfidence,
 }
 
-// Forms safe to substitute as-is. Everything else is wrapped in parentheses so the operators
-// around the substitution cannot change its value.
-const ATOMIC_INIT_KINDS: &[&str] = &[
-    kinds::IDENT,
-    kinds::LITERAL_INT,
-    kinds::LITERAL_HEX,
-    kinds::LITERAL_FLOAT,
-    kinds::LITERAL_BOOL,
-    kinds::LITERAL_STRING,
-    kinds::LITERAL_NAME,
-    kinds::LITERAL_NULL,
-    kinds::FUNC_CALL_EXPR,
-    kinds::MEMBER_ACCESS_EXPR,
-    kinds::ARRAY_EXPR,
-    kinds::NESTED_EXPR,
-    kinds::NEW_EXPR,
-    kinds::THIS_EXPR,
-    kinds::PARENT_EXPR,
-    kinds::SUPER_EXPR,
-    kinds::VIRTUAL_PARENT_EXPR,
-];
-
 pub fn inline_variable(
     uri: &str,
     document: &ParsedDocument,
@@ -77,7 +49,7 @@ pub fn inline_variable(
         None => decl_head_name(root, byte_offset)?.start_byte(),
     };
     let (def, decl) = variable_decl_at(uri, document, db, root, anchor)?;
-    let plan = plan_inline(uri, document, db, root, &def, decl)?;
+    let plan = plan_inline(uri, document, db, &def, decl)?;
 
     let on_declaration = def.symbol.selection_byte_range.start <= byte_offset
         && byte_offset <= def.symbol.selection_byte_range.end;
@@ -137,182 +109,78 @@ fn plan_inline(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
-    root: Node<'_>,
     def: &Definition,
     decl: Node<'_>,
 ) -> Option<InlinePlan> {
-    let container = def.symbol.container?;
-    let scope = document.symbols.by_id(container)?.byte_range.clone();
-    let scope_node = root.descendant_for_byte_range(scope.start, scope.end)?;
-    let body = enclosing_callable_block(decl)?;
-    let key = definition_key(def);
-
-    let all_writes = write_sites(uri, document, db, &[scope_node]);
-    let ResolvedWrites {
-        mutations,
-        positions: write_positions,
-    } = resolve_writes(uri, document, db, &all_writes, &key);
-    let write_ranges: Vec<Range<usize>> = mutations
-        .iter()
-        .map(|w| write_site_node(w).byte_range())
-        .collect();
+    let anchor = def.symbol.selection_byte_range.start;
+    let model = BodyModel::enclosing(uri, document, db, anchor)?;
+    let target = model.local_declared_at(anchor)?;
 
     let decl_names = name_nodes(decl);
     let target_index = decl_names
         .iter()
         .position(|n| n.byte_range() == def.symbol.selection_byte_range)?;
 
-    let reads = find_reads(uri, document, db, def, &write_ranges);
-    if reads.is_empty() {
+    let reaching = model.reaching(target);
+    if reaching.per_read().is_empty() {
         return None;
     }
-
-    let rd = reaching_defs(body, decl, decl_names.len(), &mutations, &reads);
+    let defs = reaching.defs();
 
     let mut eligible = Vec::new();
     let mut used = HashSet::new();
-    for (range, sole) in &rd.per_read {
+    for (range, sole) in reaching.per_read() {
         let Some(idx) = sole else { continue };
-        let def = &rd.all_defs[*idx];
-        let Some(value) = def.value else {
+        let Some(value) = defs[*idx].value() else {
             continue;
         };
-        let captured_at = def.stmt.unwrap_or(decl).start_byte();
-        let verified = match check_operands(
-            value,
-            uri,
-            document,
-            db,
-            &write_positions,
-            captured_at,
-            &key,
-        ) {
+        let captured_at = defs[*idx].stmt().map_or(decl.start_byte(), |s| s.start);
+        let verified = match model.value_stability(&value, captured_at, target) {
             // Inlining would reference the variable the teardown removes.
-            OperandCheck::ReferencesTarget => continue,
-            OperandCheck::MayChange => false,
-            OperandCheck::Stable => true,
+            Stability::ReferencesTarget => continue,
+            Stability::MayChange => false,
+            Stability::Stable => true,
         };
-        let read_node = root.descendant_for_byte_range(range.start, range.end);
         eligible.push(EligibleRead {
             range: range.clone(),
-            text: substituted_text(&document.source, value, read_node),
+            text: substituted_text(&document.source, &value, range, &model),
             verified,
         });
         used.insert(*idx);
     }
 
     Some(InlinePlan {
-        teardown: build_teardown(
-            &document.source,
-            decl,
-            target_index,
-            &decl_names,
-            &rd.all_defs,
-        ),
-        teardown_possible: teardown_possible(&rd.all_defs),
-        teardown_clean: teardown_clean(&rd.all_defs, decl, &used),
+        teardown: build_teardown(&document.source, decl, target_index, &decl_names, defs),
+        teardown_possible: teardown_possible(defs),
+        teardown_clean: teardown_clean(defs, decl, &used, &model),
         eligible,
-        total_reads: reads.len(),
+        total_reads: reaching.per_read().len(),
     })
 }
 
-struct ResolvedWrites<'a, 't> {
-    mutations: Vec<&'a WriteSite<'t>>,
-    /// Assignment start bytes per local/parameter, keyed by its definition.
-    positions: HashMap<(String, Range<usize>), Vec<usize>>,
+fn teardown_possible(defs: &[ReachDef]) -> bool {
+    defs.iter()
+        .filter(|d| !d.is_decl())
+        .all(|d| d.stmt().is_some())
 }
 
-fn resolve_writes<'a, 't>(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    all_writes: &'a [WriteSite<'t>],
-    target: &(String, Range<usize>),
-) -> ResolvedWrites<'a, 't> {
-    let mut mutations = Vec::new();
-    let mut positions: HashMap<(String, Range<usize>), Vec<usize>> = HashMap::new();
-    for write in all_writes {
-        let node = write_site_node(write);
-        let Some(d) = resolve_definition_at_byte(uri, document, db, node.start_byte()) else {
-            continue;
-        };
-        let key = definition_key(&d);
-        if key == *target {
-            mutations.push(write);
-        }
-        positions.entry(key).or_default().push(node.start_byte());
-    }
-    ResolvedWrites {
-        mutations,
-        positions,
-    }
-}
-
-enum OperandCheck {
-    Stable,
-    MayChange,
-    ReferencesTarget,
-}
-
-fn check_operands(
-    value: Node<'_>,
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    write_positions: &HashMap<(String, Range<usize>), Vec<usize>>,
-    captured_at: usize,
-    target: &(String, Range<usize>),
-) -> OperandCheck {
-    let mut idents = Vec::new();
-    collect_descendants_of_kind(value, &[kinds::IDENT], &mut idents);
-    let source = document.source.as_bytes();
-    let mut stable = true;
-    for ident in idents {
-        // Callee names, member names, and type names do not carry a value whose stability matters.
-        if classify_ident_context(ident, source) != Some(NameContext::Value) {
-            continue;
-        }
-        let Some(d) = resolve_definition_at_byte(uri, document, db, ident.start_byte()) else {
-            // An unresolved value reference cannot be checked, so the value is not verifiable.
-            stable = false;
-            continue;
-        };
-        if !matches!(d.symbol.kind, SymbolKind::Variable | SymbolKind::Parameter) {
-            continue;
-        }
-        let key = definition_key(&d);
-        if key == *target {
-            return OperandCheck::ReferencesTarget;
-        }
-        // Only writes at or after the defining statement can change an operand before the read.
-        if let Some(positions) = write_positions.get(&key)
-            && positions.iter().any(|&p| p >= captured_at)
-        {
-            stable = false;
-        }
-    }
-    if stable {
-        OperandCheck::Stable
-    } else {
-        OperandCheck::MayChange
-    }
-}
-
-fn teardown_possible(all_defs: &[LocalDefinition<'_>]) -> bool {
-    all_defs
-        .iter()
-        .filter(|d| !d.is_decl)
-        .all(|d| d.stmt.is_some())
-}
-
-fn teardown_clean(all_defs: &[LocalDefinition<'_>], decl: Node<'_>, used: &HashSet<usize>) -> bool {
-    all_defs.iter().enumerate().all(|(i, def)| {
+fn teardown_clean(
+    defs: &[ReachDef],
+    decl: Node<'_>,
+    used: &HashSet<usize>,
+    model: &BodyModel,
+) -> bool {
+    defs.iter().enumerate().all(|(i, def)| {
         // A used store's value moved into a read, so dropping its statement keeps the effect.
         if used.contains(&i) {
             return true;
         }
-        let node = if def.is_decl { Some(decl) } else { def.stmt };
-        node.is_none_or(|n| !has_descendant_of_kind(n, SIDE_EFFECT_KINDS))
+        let stmt = if def.is_decl() {
+            Some(decl.byte_range())
+        } else {
+            def.stmt()
+        };
+        stmt.is_none_or(|s| !model.has_observable_effect(&s))
     })
 }
 
@@ -321,42 +189,20 @@ fn build_teardown(
     decl: Node<'_>,
     target_index: usize,
     decl_names: &[Node<'_>],
-    all_defs: &[LocalDefinition<'_>],
+    defs: &[ReachDef],
 ) -> Vec<Splice> {
     let mut teardown = vec![remove_binding(source, decl, target_index, decl_names)];
-    let mut seen = HashSet::from([decl.id()]);
-    for stmt in all_defs
+    let mut seen = HashSet::from([decl.byte_range()]);
+    for stmt in defs
         .iter()
-        .filter(|d| !d.is_decl)
-        .filter_map(|d| d.stmt)
+        .filter(|d| !d.is_decl())
+        .filter_map(ReachDef::stmt)
     {
-        if seen.insert(stmt.id()) {
+        if seen.insert(stmt.clone()) {
             teardown.push(delete_statement(source, stmt));
         }
     }
     teardown
-}
-
-// Writes must not be substituted with the value, so drop occurrences that land on a mutation site.
-fn find_reads(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    def: &Definition,
-    write_ranges: &[Range<usize>],
-) -> Vec<Range<usize>> {
-    find_references(def, document, &[(uri, document)], db, false)
-        .into_iter()
-        .filter_map(|(_, range)| {
-            let start = document
-                .line_index
-                .position_to_byte(&document.source, range.start)?;
-            let end = document
-                .line_index
-                .position_to_byte(&document.source, range.end)?;
-            (!write_ranges.contains(&(start..end))).then_some(start..end)
-        })
-        .collect()
 }
 
 fn confidence(verified: bool) -> InlineConfidence {
@@ -437,7 +283,7 @@ fn single_name(decl: Node) -> Option<Node> {
 
 fn remove_binding(source: &str, decl: Node, target_index: usize, names: &[Node]) -> Splice {
     match names {
-        [_] => delete_statement(source, decl),
+        [_] => delete_statement(source, decl.byte_range()),
         _ => remove_name_from_list(target_index, names),
     }
 }
@@ -456,30 +302,16 @@ fn remove_name_from_list(index: usize, names: &[Node]) -> Splice {
     }
 }
 
-fn substituted_text(source: &str, value: Node, read: Option<Node>) -> String {
-    let text = &source[value.byte_range()];
-    if ATOMIC_INIT_KINDS.contains(&value.kind()) || !context_binds_tighter(read) {
-        text.to_string()
-    } else {
+fn substituted_text(
+    source: &str,
+    value: &Range<usize>,
+    read: &Range<usize>,
+    model: &BodyModel,
+) -> String {
+    let text = &source[value.clone()];
+    if model.needs_parentheses(value, read) {
         format!("({text})")
+    } else {
+        text.to_string()
     }
-}
-
-fn context_binds_tighter(read: Option<Node>) -> bool {
-    let Some(parent) = read.and_then(|r| r.parent()) else {
-        return false;
-    };
-    // In these positions the value is a whole operand, so no outer operator can capture part of it.
-    !matches!(
-        parent.kind(),
-        kinds::RETURN_STMT
-            | kinds::EXPR_STMT
-            | kinds::FUNC_CALL_ARGS
-            | kinds::NESTED_EXPR
-            | kinds::LOCAL_VAR_DECL_STMT
-            | kinds::ASSIGN_OP_EXPR
-            | kinds::SWITCH_CASE_LABEL
-            | kinds::DELETE_STMT
-            | kinds::SEQUENCE_EXPRESSION
-    )
 }

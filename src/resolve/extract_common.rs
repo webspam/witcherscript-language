@@ -45,15 +45,15 @@ pub(super) fn apply_splices(text: &str, splices: &[Splice]) -> String {
     applied
 }
 
-pub(super) fn delete_statement(source: &str, stmt: Node) -> Splice {
+pub(super) fn delete_statement(source: &str, stmt: Range<usize>) -> Splice {
     let bytes = source.as_bytes();
-    let mut start = stmt.start_byte();
+    let mut start = stmt.start;
     while start > 0 && matches!(bytes[start - 1], b' ' | b'\t') {
         start -= 1;
     }
     let at_line_start = start == 0 || bytes[start - 1] == b'\n';
 
-    let mut end = stmt.end_byte();
+    let mut end = stmt.end;
     while end < bytes.len() && matches!(bytes[end], b' ' | b'\t') {
         end += 1;
     }
@@ -66,7 +66,7 @@ pub(super) fn delete_statement(source: &str, stmt: Node) -> Splice {
         }
     } else {
         // Other code shares the statement's line, so keep that code and its indentation.
-        start = stmt.start_byte();
+        start = stmt.start;
     }
 
     Splice {

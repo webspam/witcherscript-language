@@ -7,8 +7,9 @@ fn read_texts(src: &str) -> Vec<String> {
     let t = TestDb::new(src);
     let (uri, pos) = t.cursor();
     let doc = t.doc_for(&uri);
+    let db = t.db();
     let byte = doc.line_index.position_to_byte(&doc.source, pos).unwrap();
-    let model = BodyModel::enclosing(doc, byte).unwrap();
+    let model = BodyModel::enclosing(&uri, doc, &db, byte).unwrap();
     let local = model.local_declared_at(byte).unwrap();
     model
         .reads(local)
@@ -59,8 +60,9 @@ fn reads_bucket_by_resolved_local_not_text() {
     let t = TestDb::new(src);
     let (uri, pos) = t.cursor();
     let doc = t.doc_for(&uri);
+    let db = t.db();
     let cursor = doc.line_index.position_to_byte(&doc.source, pos).unwrap();
-    let model = BodyModel::enclosing(doc, cursor).unwrap();
+    let model = BodyModel::enclosing(&uri, doc, &db, cursor).unwrap();
 
     let outer = model.local_declared_at(cursor).unwrap();
     let inner_decl = doc.source.match_indices("tmp").nth(2).unwrap().0;
