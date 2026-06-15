@@ -45,6 +45,36 @@ pub(super) fn apply_splices(text: &str, splices: &[Splice]) -> String {
     applied
 }
 
+pub(super) fn delete_statement(source: &str, stmt: Node) -> Splice {
+    let bytes = source.as_bytes();
+    let mut start = stmt.start_byte();
+    while start > 0 && matches!(bytes[start - 1], b' ' | b'\t') {
+        start -= 1;
+    }
+    let at_line_start = start == 0 || bytes[start - 1] == b'\n';
+
+    let mut end = stmt.end_byte();
+    while end < bytes.len() && matches!(bytes[end], b' ' | b'\t') {
+        end += 1;
+    }
+    if at_line_start {
+        if end < bytes.len() && bytes[end] == b'\r' {
+            end += 1;
+        }
+        if end < bytes.len() && bytes[end] == b'\n' {
+            end += 1;
+        }
+    } else {
+        // Other code shares the statement's line, so keep that code and its indentation.
+        start = stmt.start_byte();
+    }
+
+    Splice {
+        range: start..end,
+        text: String::new(),
+    }
+}
+
 // Where `original` lands after the edits apply: shift it past every edit that ends at or before it.
 pub(super) fn applied_offset(edits: &[Splice], original: usize) -> usize {
     edits

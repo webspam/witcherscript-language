@@ -12,7 +12,7 @@ use crate::symbols::SymbolKind;
 use super::Definition;
 use super::ast::{identifier_at, nodes_at_offset};
 use super::definition::{definition_key, resolve_definition_at_byte};
-use super::extract_common::{Splice, WriteSite, write_site_node, write_sites};
+use super::extract_common::{Splice, WriteSite, delete_statement, write_site_node, write_sites};
 use super::name_context::{NameContext, classify_ident_context};
 use super::reaching_defs::{LocalDefinition, reaching_defs};
 use super::references::find_references;
@@ -482,34 +482,4 @@ fn context_binds_tighter(read: Option<Node>) -> bool {
             | kinds::DELETE_STMT
             | kinds::SEQUENCE_EXPRESSION
     )
-}
-
-fn delete_statement(source: &str, stmt: Node) -> Splice {
-    let bytes = source.as_bytes();
-    let mut start = stmt.start_byte();
-    while start > 0 && matches!(bytes[start - 1], b' ' | b'\t') {
-        start -= 1;
-    }
-    let at_line_start = start == 0 || bytes[start - 1] == b'\n';
-
-    let mut end = stmt.end_byte();
-    while end < bytes.len() && matches!(bytes[end], b' ' | b'\t') {
-        end += 1;
-    }
-    if at_line_start {
-        if end < bytes.len() && bytes[end] == b'\r' {
-            end += 1;
-        }
-        if end < bytes.len() && bytes[end] == b'\n' {
-            end += 1;
-        }
-    } else {
-        // Other code shares the statement's line, so keep that code and its indentation.
-        start = stmt.start_byte();
-    }
-
-    Splice {
-        range: start..end,
-        text: String::new(),
-    }
 }
