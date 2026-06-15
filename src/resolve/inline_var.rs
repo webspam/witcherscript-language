@@ -1,8 +1,10 @@
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use tree_sitter::Node;
 
-use crate::cst::ancestors::find_ancestor_of_kind;
+use crate::cst::ancestors::{enclosing_callable_block, find_ancestor_of_kind};
+use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::symbols::SymbolKind;
@@ -11,18 +13,31 @@ use super::Definition;
 use super::ast::{identifier_at, nodes_at_offset};
 use super::definition::{definition_key, resolve_definition_at_byte};
 use super::extract_common::{Splice, WriteSite, write_site_node, write_sites};
+use super::name_context::{NameContext, classify_ident_context};
+use super::reaching_defs::{LocalDefinition, reaching_defs};
 use super::references::find_references;
 use super::symbol_db::SymbolDb;
+
+// Statements whose removal would drop an observable effect.
+const SIDE_EFFECT_KINDS: &[&str] = &[kinds::FUNC_CALL_EXPR, kinds::NEW_EXPR];
 
 pub enum InlineScope {
     AllUsages,
     SingleUsage,
 }
 
+pub enum InlineConfidence {
+    /// A single definition reaches each read and nothing the value depends on changes before it
+    Verified,
+    /// We cannot verify with certainty that there will be no runtime changes from inlining
+    Unverified,
+}
+
 pub struct Inlining {
     /// Non-overlapping edits against the original source
     pub edits: Vec<Splice>,
     pub scope: InlineScope,
+    pub confidence: InlineConfidence,
 }
 
 // Forms safe to substitute as-is. Everything else is wrapped in parentheses so the operators
@@ -69,7 +84,7 @@ pub fn inline_variable(
 
     match cursor_ident {
         Some(ident) if !on_declaration => inline_single_read(ident, &plan),
-        _ => Some(inline_all_reads(&plan)),
+        _ => inline_all_reads(&plan),
     }
 }
 
@@ -98,12 +113,24 @@ fn decl_head_name(root: Node<'_>, byte_offset: usize) -> Option<Node<'_>> {
         .then_some(name)
 }
 
+struct EligibleRead {
+    range: Range<usize>,
+    /// Substitution text, parenthesised where precedence needs it.
+    text: String,
+    /// The value is proven stable to move to this read.
+    verified: bool,
+}
+
 struct InlinePlan {
-    /// Substitution text for each read, parenthesised where precedence needs it
-    value: String,
-    reads: Vec<Range<usize>>,
-    /// Splices that delete the declaration and any assignment that set the variable.
+    /// Reads with a single reaching definition that has a value not referencing the variable itself.
+    eligible: Vec<EligibleRead>,
+    total_reads: usize,
+    /// Splices that delete the declaration and every assignment to the variable.
     teardown: Vec<Splice>,
+    /// Teardown can produce a valid edit: every assignment has a deletable statement.
+    teardown_possible: bool,
+    /// Teardown drops no observable side effect.
+    teardown_clean: bool,
 }
 
 fn plan_inline(
@@ -117,17 +144,14 @@ fn plan_inline(
     let container = def.symbol.container?;
     let scope = document.symbols.by_id(container)?.byte_range.clone();
     let scope_node = root.descendant_for_byte_range(scope.start, scope.end)?;
+    let body = enclosing_callable_block(decl)?;
     let key = definition_key(def);
 
     let all_writes = write_sites(uri, document, db, &[scope_node]);
-    let mutations: Vec<&WriteSite> = all_writes
-        .iter()
-        .filter(|w| {
-            let probe = write_site_node(w).start_byte();
-            resolve_definition_at_byte(uri, document, db, probe)
-                .is_some_and(|d| definition_key(&d) == key)
-        })
-        .collect();
+    let ResolvedWrites {
+        mutations,
+        positions: write_positions,
+    } = resolve_writes(uri, document, db, &all_writes, &key);
     let write_ranges: Vec<Range<usize>> = mutations
         .iter()
         .map(|w| write_site_node(w).byte_range())
@@ -143,74 +167,174 @@ fn plan_inline(
         return None;
     }
 
-    let source = value_source(decl, &decl_names, &mutations, &reads)?;
+    let rd = reaching_defs(body, decl, decl_names.len(), &mutations, &reads);
 
-    let mut teardown = vec![remove_binding(
-        &document.source,
-        decl,
-        target_index,
-        &decl_names,
-    )];
-    if let Some(assign_stmt) = source.defining_assignment {
-        teardown.push(delete_statement(&document.source, assign_stmt));
+    let mut eligible = Vec::new();
+    let mut used = HashSet::new();
+    for (range, sole) in &rd.per_read {
+        let Some(idx) = sole else { continue };
+        let def = &rd.all_defs[*idx];
+        let Some(value) = def.value else {
+            continue;
+        };
+        let captured_at = def.stmt.unwrap_or(decl).start_byte();
+        let verified = match check_operands(
+            value,
+            uri,
+            document,
+            db,
+            &write_positions,
+            captured_at,
+            &key,
+        ) {
+            // Inlining would reference the variable the teardown removes.
+            OperandCheck::ReferencesTarget => continue,
+            OperandCheck::MayChange => false,
+            OperandCheck::Stable => true,
+        };
+        let read_node = root.descendant_for_byte_range(range.start, range.end);
+        eligible.push(EligibleRead {
+            range: range.clone(),
+            text: substituted_text(&document.source, value, read_node),
+            verified,
+        });
+        used.insert(*idx);
     }
 
     Some(InlinePlan {
-        value: substituted_text(&document.source, source.value_node),
-        reads,
-        teardown,
+        teardown: build_teardown(
+            &document.source,
+            decl,
+            target_index,
+            &decl_names,
+            &rd.all_defs,
+        ),
+        teardown_possible: teardown_possible(&rd.all_defs),
+        teardown_clean: teardown_clean(&rd.all_defs, decl, &used),
+        eligible,
+        total_reads: reads.len(),
     })
 }
 
-struct ValueSource<'tree> {
-    value_node: Node<'tree>,
-    /// The assignment that set the value, deleted alongside the declaration.
-    defining_assignment: Option<Node<'tree>>,
+struct ResolvedWrites<'a, 't> {
+    mutations: Vec<&'a WriteSite<'t>>,
+    /// Assignment start bytes per local/parameter, keyed by its definition.
+    positions: HashMap<(String, Range<usize>), Vec<usize>>,
 }
 
-// `None` when the variable is not safely inlinable: reassigned after its initializer, or set by no
-// single assignment that reaches every read.
-fn value_source<'tree>(
-    decl: Node<'tree>,
-    decl_names: &[Node<'tree>],
-    mutations: &[&WriteSite<'tree>],
-    reads: &[Range<usize>],
-) -> Option<ValueSource<'tree>> {
-    // A list shares one initializer, so it cannot be the value for just one of the names.
-    let initializer = (decl_names.len() == 1)
-        .then(|| decl.child_by_field_name(fields::INIT_VALUE))
-        .flatten();
-    if let Some(init) = initializer {
-        return mutations.is_empty().then_some(ValueSource {
-            value_node: init,
-            defining_assignment: None,
-        });
+fn resolve_writes<'a, 't>(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    all_writes: &'a [WriteSite<'t>],
+    target: &(String, Range<usize>),
+) -> ResolvedWrites<'a, 't> {
+    let mut mutations = Vec::new();
+    let mut positions: HashMap<(String, Range<usize>), Vec<usize>> = HashMap::new();
+    for write in all_writes {
+        let node = write_site_node(write);
+        let Some(d) = resolve_definition_at_byte(uri, document, db, node.start_byte()) else {
+            continue;
+        };
+        let key = definition_key(&d);
+        if key == *target {
+            mutations.push(write);
+        }
+        positions.entry(key).or_default().push(node.start_byte());
     }
+    ResolvedWrites {
+        mutations,
+        positions,
+    }
+}
 
-    if mutations.len() != 1 {
-        return None;
+enum OperandCheck {
+    Stable,
+    MayChange,
+    ReferencesTarget,
+}
+
+fn check_operands(
+    value: Node<'_>,
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    write_positions: &HashMap<(String, Range<usize>), Vec<usize>>,
+    captured_at: usize,
+    target: &(String, Range<usize>),
+) -> OperandCheck {
+    let mut idents = Vec::new();
+    collect_descendants_of_kind(value, &[kinds::IDENT], &mut idents);
+    let source = document.source.as_bytes();
+    let mut stable = true;
+    for ident in idents {
+        // Callee names, member names, and type names do not carry a value whose stability matters.
+        if classify_ident_context(ident, source) != Some(NameContext::Value) {
+            continue;
+        }
+        let Some(d) = resolve_definition_at_byte(uri, document, db, ident.start_byte()) else {
+            // An unresolved value reference cannot be checked, so the value is not verifiable.
+            stable = false;
+            continue;
+        };
+        if !matches!(d.symbol.kind, SymbolKind::Variable | SymbolKind::Parameter) {
+            continue;
+        }
+        let key = definition_key(&d);
+        if key == *target {
+            return OperandCheck::ReferencesTarget;
+        }
+        // Only writes at or after the defining statement can change an operand before the read.
+        if let Some(positions) = write_positions.get(&key)
+            && positions.iter().any(|&p| p >= captured_at)
+        {
+            stable = false;
+        }
     }
-    let WriteSite::AssignTarget(assign_target) = mutations[0] else {
-        return None;
-    };
-    let assign = direct_assign_expr(*assign_target)?;
-    let assign_stmt = find_ancestor_of_kind(assign, &[kinds::EXPR_STMT])?;
-    if !assignment_reaches_reads(assign_stmt, decl, reads) {
-        return None;
+    if stable {
+        OperandCheck::Stable
+    } else {
+        OperandCheck::MayChange
     }
-    Some(ValueSource {
-        value_node: assign.child_by_field_name(fields::RIGHT)?,
-        defining_assignment: Some(assign_stmt),
+}
+
+fn teardown_possible(all_defs: &[LocalDefinition<'_>]) -> bool {
+    all_defs
+        .iter()
+        .filter(|d| !d.is_decl)
+        .all(|d| d.stmt.is_some())
+}
+
+fn teardown_clean(all_defs: &[LocalDefinition<'_>], decl: Node<'_>, used: &HashSet<usize>) -> bool {
+    all_defs.iter().enumerate().all(|(i, def)| {
+        // A used store's value moved into a read, so dropping its statement keeps the effect.
+        if used.contains(&i) {
+            return true;
+        }
+        let node = if def.is_decl { Some(decl) } else { def.stmt };
+        node.is_none_or(|n| !has_descendant_of_kind(n, SIDE_EFFECT_KINDS))
     })
 }
 
-// An unconditional sibling of the declaration that precedes every read reaches them all.
-fn assignment_reaches_reads(assign_stmt: Node, decl: Node, reads: &[Range<usize>]) -> bool {
-    let (Some(assign_parent), Some(decl_parent)) = (assign_stmt.parent(), decl.parent()) else {
-        return false;
-    };
-    assign_parent.id() == decl_parent.id()
-        && reads.iter().all(|r| r.start >= assign_stmt.end_byte())
+fn build_teardown(
+    source: &str,
+    decl: Node<'_>,
+    target_index: usize,
+    decl_names: &[Node<'_>],
+    all_defs: &[LocalDefinition<'_>],
+) -> Vec<Splice> {
+    let mut teardown = vec![remove_binding(source, decl, target_index, decl_names)];
+    let mut seen = HashSet::from([decl.id()]);
+    for stmt in all_defs
+        .iter()
+        .filter(|d| !d.is_decl)
+        .filter_map(|d| d.stmt)
+    {
+        if seen.insert(stmt.id()) {
+            teardown.push(delete_statement(source, stmt));
+        }
+    }
+    teardown
 }
 
 // Writes must not be substituted with the value, so drop occurrences that land on a mutation site.
@@ -235,45 +359,59 @@ fn find_reads(
         .collect()
 }
 
-fn direct_assign_expr(target: Node<'_>) -> Option<Node<'_>> {
-    let assign = find_ancestor_of_kind(target, &[kinds::ASSIGN_OP_EXPR])?;
-    let op = assign.child_by_field_name(fields::OP)?;
-    (op.kind() == kinds::ASSIGN_OP_DIRECT).then_some(assign)
+fn confidence(verified: bool) -> InlineConfidence {
+    if verified {
+        InlineConfidence::Verified
+    } else {
+        InlineConfidence::Unverified
+    }
 }
 
-fn inline_all_reads(plan: &InlinePlan) -> Inlining {
+fn inline_all_reads(plan: &InlinePlan) -> Option<Inlining> {
+    if plan.eligible.len() != plan.total_reads || !plan.teardown_possible {
+        return None;
+    }
     let mut edits: Vec<Splice> = plan
-        .reads
+        .eligible
         .iter()
-        .map(|range| Splice {
-            range: range.clone(),
-            text: plan.value.clone(),
+        .map(|read| Splice {
+            range: read.range.clone(),
+            text: read.text.clone(),
         })
         .collect();
     edits.extend(plan.teardown.iter().cloned());
-    let scope = if plan.reads.len() > 1 {
+    let scope = if plan.total_reads > 1 {
         InlineScope::AllUsages
     } else {
         InlineScope::SingleUsage
     };
-    Inlining { edits, scope }
+    let verified = plan.teardown_clean && plan.eligible.iter().all(|read| read.verified);
+    Some(Inlining {
+        edits,
+        scope,
+        confidence: confidence(verified),
+    })
 }
 
 fn inline_single_read(occurrence: Node, plan: &InlinePlan) -> Option<Inlining> {
     let range = occurrence.byte_range();
-    if !plan.reads.contains(&range) {
-        return None;
-    }
+    let read = plan.eligible.iter().find(|read| read.range == range)?;
     let mut edits = vec![Splice {
         range,
-        text: plan.value.clone(),
+        text: read.text.clone(),
     }];
-    if plan.reads.len() == 1 {
+    let mut verified = read.verified;
+    if plan.total_reads == 1 {
+        if !plan.teardown_possible {
+            return None;
+        }
         edits.extend(plan.teardown.iter().cloned());
+        verified = verified && plan.teardown_clean;
     }
     Some(Inlining {
         edits,
         scope: InlineScope::SingleUsage,
+        confidence: confidence(verified),
     })
 }
 
@@ -318,13 +456,32 @@ fn remove_name_from_list(index: usize, names: &[Node]) -> Splice {
     }
 }
 
-fn substituted_text(source: &str, init: Node) -> String {
-    let text = &source[init.byte_range()];
-    if ATOMIC_INIT_KINDS.contains(&init.kind()) {
+fn substituted_text(source: &str, value: Node, read: Option<Node>) -> String {
+    let text = &source[value.byte_range()];
+    if ATOMIC_INIT_KINDS.contains(&value.kind()) || !context_binds_tighter(read) {
         text.to_string()
     } else {
         format!("({text})")
     }
+}
+
+fn context_binds_tighter(read: Option<Node>) -> bool {
+    let Some(parent) = read.and_then(|r| r.parent()) else {
+        return false;
+    };
+    // In these positions the value is a whole operand, so no outer operator can capture part of it.
+    !matches!(
+        parent.kind(),
+        kinds::RETURN_STMT
+            | kinds::EXPR_STMT
+            | kinds::FUNC_CALL_ARGS
+            | kinds::NESTED_EXPR
+            | kinds::LOCAL_VAR_DECL_STMT
+            | kinds::ASSIGN_OP_EXPR
+            | kinds::SWITCH_CASE_LABEL
+            | kinds::DELETE_STMT
+            | kinds::SEQUENCE_EXPRESSION
+    )
 }
 
 fn delete_statement(source: &str, stmt: Node) -> Splice {
