@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use tree_sitter::Node;
@@ -154,16 +154,18 @@ fn plan_inline(
     }
 
     let rd = reaching_defs(body, decl, decl_names.len(), &mutations, &reads);
-    let assigned_keys = assigned_local_keys(uri, document, db, &all_writes);
+    let write_positions = assigned_local_positions(uri, document, db, &all_writes);
 
     let mut eligible = Vec::new();
     let mut used = HashSet::new();
     for (range, sole) in &rd.per_read {
         let Some(idx) = sole else { continue };
-        let Some(value) = rd.all_defs[*idx].value else {
+        let def = &rd.all_defs[*idx];
+        let Some(value) = def.value else {
             continue;
         };
-        if !operands_stable(value, uri, document, db, &assigned_keys) {
+        let captured_at = def.stmt.unwrap_or(decl).start_byte();
+        if !operands_stable(value, uri, document, db, &write_positions, captured_at) {
             continue;
         }
         eligible.push((range.clone(), substituted_text(&document.source, value)));
@@ -184,29 +186,35 @@ fn plan_inline(
     })
 }
 
-// Keys of every local/parameter assigned anywhere in the function. Substituting a value expression
-// is only sound when none of its operands can change between the definition and the read.
-fn assigned_local_keys(
+// Assignment start bytes per local/parameter, keyed by its definition.
+fn assigned_local_positions(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
     all_writes: &[WriteSite<'_>],
-) -> HashSet<(String, Range<usize>)> {
-    all_writes
-        .iter()
-        .filter_map(|w| {
-            resolve_definition_at_byte(uri, document, db, write_site_node(w).start_byte())
-        })
-        .map(|d| definition_key(&d))
-        .collect()
+) -> HashMap<(String, Range<usize>), Vec<usize>> {
+    let mut positions: HashMap<(String, Range<usize>), Vec<usize>> = HashMap::new();
+    for write in all_writes {
+        let node = write_site_node(write);
+        if let Some(d) = resolve_definition_at_byte(uri, document, db, node.start_byte()) {
+            positions
+                .entry(definition_key(&d))
+                .or_default()
+                .push(node.start_byte());
+        }
+    }
+    positions
 }
 
+// A write before `captured_at` already shaped the value; only writes at or after it can change an
+// operand before the read, so they block the substitution.
 fn operands_stable(
     value: Node<'_>,
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
-    assigned_keys: &HashSet<(String, Range<usize>)>,
+    write_positions: &HashMap<(String, Range<usize>), Vec<usize>>,
+    captured_at: usize,
 ) -> bool {
     let mut idents = Vec::new();
     collect_descendants_of_kind(value, &[kinds::IDENT], &mut idents);
@@ -214,8 +222,13 @@ fn operands_stable(
         let Some(d) = resolve_definition_at_byte(uri, document, db, ident.start_byte()) else {
             return true;
         };
-        !(matches!(d.symbol.kind, SymbolKind::Variable | SymbolKind::Parameter)
-            && assigned_keys.contains(&definition_key(&d)))
+        if !matches!(d.symbol.kind, SymbolKind::Variable | SymbolKind::Parameter) {
+            return true;
+        }
+        match write_positions.get(&definition_key(&d)) {
+            None => true,
+            Some(positions) => positions.iter().all(|&p| p < captured_at),
+        }
     })
 }
 

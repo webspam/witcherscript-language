@@ -114,6 +114,11 @@ fn inlined(src: &str) -> Option<String> {
     "function f() {\n    var x : int = 9;\n    switch (s) {\n    case 1:\n        Foo($0x);\n        break;\n    }\n}\n",
     "function f() {\n    switch (s) {\n    case 1:\n        Foo(9);\n        break;\n    }\n}\n"
 )]
+#[case::operand_mutated_before_def(
+    "a receiver mutation before the definition does not block the operand",
+    "function f(target : CObj) {\n    var kind : name;\n    target.Prepare();\n    kind = GetKind(target);\n    if (!Check($0kind)) return false;\n}\n",
+    "function f(target : CObj) {\n    target.Prepare();\n    if (!Check(GetKind(target))) return false;\n}\n"
+)]
 fn inlines(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     let got = inlined(src).unwrap_or_else(|| panic!("case {label}: expected an inlining"));
     assert_eq!(got, expected, "case {label}: inlined output mismatch");
