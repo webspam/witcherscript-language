@@ -104,17 +104,16 @@ fn emit_param_dims<'tree>(
         .child_by_field_name(fields::PARAM_TYPE)
         .map(|t| t.end_byte());
     for (ident, name) in unused {
-        let end = if single {
-            type_end.unwrap_or_else(|| ident.end_byte())
+        // A lone param fades whole, specifiers included; a grouped one shares them, so only the name fades.
+        let (start, end) = if single {
+            (
+                node.start_byte(),
+                type_end.unwrap_or_else(|| ident.end_byte()),
+            )
         } else {
-            ident.end_byte()
+            (ident.start_byte(), ident.end_byte())
         };
-        push_dim(
-            ctx,
-            ident.start_byte(),
-            end,
-            format!("Parameter '{name}' is never used"),
-        );
+        push_dim(ctx, start, end, format!("Parameter '{name}' is never used"));
     }
 }
 

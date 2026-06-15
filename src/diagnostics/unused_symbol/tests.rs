@@ -16,8 +16,8 @@ fn primary_diags(t: &TestDb) -> Vec<WorkspaceDiagnostic> {
     "function F(foo : int) {}\n//         ^^^^^^^^^ u\n",
     "Parameter 'foo' is never used"
 )]
-#[case::out_param_skips_specifiers(
-    "function F(out foo : int) {}\n//             ^^^^^^^^^ u\n",
+#[case::single_param_fades_specifiers(
+    "function F(optional out foo : int) {}\n//         ^^^^^^^^^^^^^^^^^^^^^^ u\n",
     "Parameter 'foo' is never used"
 )]
 #[case::grouped_param_dims_ident_only(
