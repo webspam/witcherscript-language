@@ -56,7 +56,7 @@ pub use extract_var::extract_variable;
 pub(crate) use inference::infer_type;
 pub(crate) use inference::infer_type_memo;
 pub use inlay_hints::{InlayHintInfo, inlay_hints};
-pub use inline_var::{InlineScope, Inlining, inline_variable};
+pub use inline_var::{InlineConfidence, InlineScope, Inlining, inline_variable};
 pub use name_context::{NameContext, classify_ident_context};
 pub use overrides::{OverriddenSymbol, overridden_top_level};
 pub use references::find_references;

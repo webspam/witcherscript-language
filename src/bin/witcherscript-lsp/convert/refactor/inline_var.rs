@@ -1,5 +1,5 @@
 use lsp_types::CodeActionOrCommand;
-use witcherscript_language::resolve::{InlineScope, inline_variable};
+use witcherscript_language::resolve::{InlineConfidence, InlineScope, inline_variable};
 
 use super::{RefactorContext, Refactoring, inline_code_action};
 
@@ -11,9 +11,15 @@ impl Refactoring for InlineVariableRefactoring {
         else {
             return Vec::new();
         };
-        let title = match inlining.scope {
-            InlineScope::AllUsages => "Inline variable (all)",
-            InlineScope::SingleUsage => "Inline variable",
+        let title = match (&inlining.scope, &inlining.confidence) {
+            (InlineScope::AllUsages, InlineConfidence::Verified) => "Inline variable (all)",
+            (InlineScope::AllUsages, InlineConfidence::Unverified) => {
+                "Inline variable (all, unverified)"
+            }
+            (InlineScope::SingleUsage, InlineConfidence::Verified) => "Inline variable",
+            (InlineScope::SingleUsage, InlineConfidence::Unverified) => {
+                "Inline variable (unverified)"
+            }
         };
         vec![inline_code_action(ctx, &inlining, title)]
     }

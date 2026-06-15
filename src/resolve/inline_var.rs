@@ -25,10 +25,18 @@ pub enum InlineScope {
     SingleUsage,
 }
 
+pub enum InlineConfidence {
+    /// A single definition reaches each read and nothing the value depends on changes before it
+    Verified,
+    /// We cannot verify with certainty that there will be no runtime changes from inlining
+    Unverified,
+}
+
 pub struct Inlining {
     /// Non-overlapping edits against the original source
     pub edits: Vec<Splice>,
     pub scope: InlineScope,
+    pub confidence: InlineConfidence,
 }
 
 // Forms safe to substitute as-is. Everything else is wrapped in parentheses so the operators
@@ -104,15 +112,24 @@ fn decl_head_name(root: Node<'_>, byte_offset: usize) -> Option<Node<'_>> {
         .then_some(name)
 }
 
+struct EligibleRead {
+    range: Range<usize>,
+    /// Substitution text, parenthesised where precedence needs it.
+    text: String,
+    /// The value is proven stable to move to this read.
+    verified: bool,
+}
+
 struct InlinePlan {
-    /// Substitution text per read range, parenthesised where precedence needs it. Only reads with a
-    /// single reaching definition whose value is stable to move appear here.
-    eligible: Vec<(Range<usize>, String)>,
+    /// Reads with a single reaching definition that has a value not referencing the variable itself.
+    eligible: Vec<EligibleRead>,
     total_reads: usize,
     /// Splices that delete the declaration and every assignment to the variable.
     teardown: Vec<Splice>,
-    /// Whether teardown can run without dropping a side effect or leaving an undeletable assignment.
-    teardown_safe: bool,
+    /// Teardown can produce a valid edit: every assignment has a deletable statement.
+    teardown_possible: bool,
+    /// Teardown drops no observable side effect.
+    teardown_clean: bool,
 }
 
 fn plan_inline(
@@ -165,10 +182,25 @@ fn plan_inline(
             continue;
         };
         let captured_at = def.stmt.unwrap_or(decl).start_byte();
-        if !operands_stable(value, uri, document, db, &write_positions, captured_at) {
-            continue;
-        }
-        eligible.push((range.clone(), substituted_text(&document.source, value)));
+        let verified = match check_operands(
+            value,
+            uri,
+            document,
+            db,
+            &write_positions,
+            captured_at,
+            &key,
+        ) {
+            // Inlining would reference the variable the teardown removes.
+            OperandCheck::ReferencesTarget => continue,
+            OperandCheck::MayChange => false,
+            OperandCheck::Stable => true,
+        };
+        eligible.push(EligibleRead {
+            range: range.clone(),
+            text: substituted_text(&document.source, value),
+            verified,
+        });
         used.insert(*idx);
     }
 
@@ -180,7 +212,8 @@ fn plan_inline(
             &decl_names,
             &rd.all_defs,
         ),
-        teardown_safe: teardown_is_safe(&rd.all_defs, decl, &used),
+        teardown_possible: teardown_possible(&rd.all_defs),
+        teardown_clean: teardown_clean(&rd.all_defs, decl, &used),
         eligible,
         total_reads: reads.len(),
     })
@@ -206,41 +239,64 @@ fn assigned_local_positions(
     positions
 }
 
-// A write before `captured_at` already shaped the value; only writes at or after it can change an
-// operand before the read, so they block the substitution.
-fn operands_stable(
+enum OperandCheck {
+    Stable,
+    MayChange,
+    ReferencesTarget,
+}
+
+fn check_operands(
     value: Node<'_>,
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
     write_positions: &HashMap<(String, Range<usize>), Vec<usize>>,
     captured_at: usize,
-) -> bool {
+    target: &(String, Range<usize>),
+) -> OperandCheck {
     let mut idents = Vec::new();
     collect_descendants_of_kind(value, &[kinds::IDENT], &mut idents);
-    idents.iter().all(|ident| {
+    let mut stable = true;
+    for ident in idents {
         let Some(d) = resolve_definition_at_byte(uri, document, db, ident.start_byte()) else {
-            return true;
+            continue;
         };
         if !matches!(d.symbol.kind, SymbolKind::Variable | SymbolKind::Parameter) {
-            return true;
+            continue;
         }
-        match write_positions.get(&definition_key(&d)) {
-            None => true,
-            Some(positions) => positions.iter().all(|&p| p < captured_at),
+        let key = definition_key(&d);
+        if key == *target {
+            return OperandCheck::ReferencesTarget;
         }
-    })
+        // Only writes at or after the defining statement can change an operand before the read.
+        if let Some(positions) = write_positions.get(&key)
+            && positions.iter().any(|&p| p >= captured_at)
+        {
+            stable = false;
+        }
+    }
+    if stable {
+        OperandCheck::Stable
+    } else {
+        OperandCheck::MayChange
+    }
 }
 
-// Teardown deletes every definition; preserving one is unsafe when removing it would drop a side
-// effect that was not relocated into a read, or when it has no deletable statement.
-fn teardown_is_safe(all_defs: &[Def<'_>], decl: Node<'_>, used: &HashSet<usize>) -> bool {
+fn teardown_possible(all_defs: &[Def<'_>]) -> bool {
+    all_defs
+        .iter()
+        .filter(|d| !d.is_decl)
+        .all(|d| d.stmt.is_some())
+}
+
+fn teardown_clean(all_defs: &[Def<'_>], decl: Node<'_>, used: &HashSet<usize>) -> bool {
     all_defs.iter().enumerate().all(|(i, def)| {
-        let node = if def.is_decl { Some(decl) } else { def.stmt };
-        match node {
-            None => false,
-            Some(node) => used.contains(&i) || !has_descendant_of_kind(node, SIDE_EFFECT_KINDS),
+        // A used store's value moved into a read, so dropping its statement keeps the effect.
+        if used.contains(&i) {
+            return true;
         }
+        let node = if def.is_decl { Some(decl) } else { def.stmt };
+        node.is_none_or(|n| !has_descendant_of_kind(n, SIDE_EFFECT_KINDS))
     })
 }
 
@@ -287,16 +343,24 @@ fn find_reads(
         .collect()
 }
 
+fn confidence(verified: bool) -> InlineConfidence {
+    if verified {
+        InlineConfidence::Verified
+    } else {
+        InlineConfidence::Unverified
+    }
+}
+
 fn inline_all_reads(plan: &InlinePlan) -> Option<Inlining> {
-    if plan.eligible.len() != plan.total_reads || !plan.teardown_safe {
+    if plan.eligible.len() != plan.total_reads || !plan.teardown_possible {
         return None;
     }
     let mut edits: Vec<Splice> = plan
         .eligible
         .iter()
-        .map(|(range, text)| Splice {
-            range: range.clone(),
-            text: text.clone(),
+        .map(|read| Splice {
+            range: read.range.clone(),
+            text: read.text.clone(),
         })
         .collect();
     edits.extend(plan.teardown.iter().cloned());
@@ -305,25 +369,33 @@ fn inline_all_reads(plan: &InlinePlan) -> Option<Inlining> {
     } else {
         InlineScope::SingleUsage
     };
-    Some(Inlining { edits, scope })
+    let verified = plan.teardown_clean && plan.eligible.iter().all(|read| read.verified);
+    Some(Inlining {
+        edits,
+        scope,
+        confidence: confidence(verified),
+    })
 }
 
 fn inline_single_read(occurrence: Node, plan: &InlinePlan) -> Option<Inlining> {
     let range = occurrence.byte_range();
-    let (_, text) = plan.eligible.iter().find(|(r, _)| *r == range)?;
+    let read = plan.eligible.iter().find(|read| read.range == range)?;
     let mut edits = vec![Splice {
         range,
-        text: text.clone(),
+        text: read.text.clone(),
     }];
+    let mut verified = read.verified;
     if plan.total_reads == 1 {
-        if !plan.teardown_safe {
+        if !plan.teardown_possible {
             return None;
         }
         edits.extend(plan.teardown.iter().cloned());
+        verified = verified && plan.teardown_clean;
     }
     Some(Inlining {
         edits,
         scope: InlineScope::SingleUsage,
+        confidence: confidence(verified),
     })
 }
 

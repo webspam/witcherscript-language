@@ -1,16 +1,21 @@
 use rstest::rstest;
 
 use crate::resolve::extract_common::apply_splices;
-use crate::resolve::inline_variable;
+use crate::resolve::{InlineConfidence, inline_variable};
 use crate::test_support::TestDb;
 
-fn inlined(src: &str) -> Option<String> {
+fn inline_outcome(src: &str) -> Option<(String, bool)> {
     let t = TestDb::new(src);
     let (uri, pos) = t.cursor();
     let doc = t.doc_for(&uri);
     let byte = doc.line_index.position_to_byte(&doc.source, pos)?;
     let inlining = inline_variable(&uri, doc, &t.db(), byte)?;
-    Some(apply_splices(&doc.source, &inlining.edits))
+    let verified = matches!(inlining.confidence, InlineConfidence::Verified);
+    Some((apply_splices(&doc.source, &inlining.edits), verified))
+}
+
+fn inlined(src: &str) -> Option<String> {
+    inline_outcome(src).map(|(text, _)| text)
 }
 
 #[rstest]
@@ -120,8 +125,10 @@ fn inlined(src: &str) -> Option<String> {
     "function f(target : CObj) {\n    target.Prepare();\n    if (!Check(GetKind(target))) return false;\n}\n"
 )]
 fn inlines(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
-    let got = inlined(src).unwrap_or_else(|| panic!("case {label}: expected an inlining"));
+    let (got, verified) =
+        inline_outcome(src).unwrap_or_else(|| panic!("case {label}: expected an inlining"));
     assert_eq!(got, expected, "case {label}: inlined output mismatch");
+    assert!(verified, "case {label}: expected a verified inline");
 }
 
 #[rstest]
@@ -149,17 +156,9 @@ fn inlines(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     "two different assignments reach the read",
     "function f() {\n    var x : int;\n    if (c) { x = 1; } else { x = 2; }\n    return $0x;\n}\n"
 )]
-#[case::operand_clobbered(
-    "an operand of the value is reassigned before the read",
-    "function f() {\n    var a : int = 1;\n    var x : int = 0;\n    x = a;\n    a = 99;\n    return $0x;\n}\n"
-)]
 #[case::self_referential_def(
     "the value reads the variable being inlined",
     "function f() {\n    var x : int = 0;\n    x = x + 1;\n    return $0x;\n}\n"
-)]
-#[case::side_effecting_dead_store(
-    "a dead store with a side effect cannot be dropped",
-    "function f() {\n    var x : int = 0;\n    x = Compute();\n    x = 14;\n    return $0x;\n}\n"
 )]
 #[case::loop_back_edge_two_defs(
     "a read inside a loop is reached by two iterations' definitions",
@@ -186,4 +185,22 @@ fn refuses(#[case] label: &str, #[case] src: &str) {
         inlined(src).is_none(),
         "case {label}: expected no inlining offered"
     );
+}
+
+#[rstest]
+#[case::operand_clobbered(
+    "an operand of the value is reassigned before the read",
+    "function f() {\n    var a : int = 1;\n    var x : int = 0;\n    x = a;\n    a = 99;\n    return $0x;\n}\n",
+    "function f() {\n    var a : int = 1;\n    a = 99;\n    return a;\n}\n"
+)]
+#[case::side_effecting_dead_store(
+    "dropping a dead store removes its call",
+    "function f() {\n    var x : int = 0;\n    x = Compute();\n    x = 14;\n    return $0x;\n}\n",
+    "function f() {\n    return 14;\n}\n"
+)]
+fn offers_flagged(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
+    let (got, verified) =
+        inline_outcome(src).unwrap_or_else(|| panic!("case {label}: expected a flagged inlining"));
+    assert_eq!(got, expected, "case {label}: inlined output mismatch");
+    assert!(!verified, "case {label}: expected an unverified inline");
 }
