@@ -148,14 +148,10 @@ fn plan_inline(
     let key = definition_key(def);
 
     let all_writes = write_sites(uri, document, db, &[scope_node]);
-    let mutations: Vec<&WriteSite> = all_writes
-        .iter()
-        .filter(|w| {
-            let probe = write_site_node(w).start_byte();
-            resolve_definition_at_byte(uri, document, db, probe)
-                .is_some_and(|d| definition_key(&d) == key)
-        })
-        .collect();
+    let ResolvedWrites {
+        mutations,
+        positions: write_positions,
+    } = resolve_writes(uri, document, db, &all_writes, &key);
     let write_ranges: Vec<Range<usize>> = mutations
         .iter()
         .map(|w| write_site_node(w).byte_range())
@@ -172,7 +168,6 @@ fn plan_inline(
     }
 
     let rd = reaching_defs(body, decl, decl_names.len(), &mutations, &reads);
-    let write_positions = assigned_local_positions(uri, document, db, &all_writes);
 
     let mut eligible = Vec::new();
     let mut used = HashSet::new();
@@ -221,24 +216,36 @@ fn plan_inline(
     })
 }
 
-// Assignment start bytes per local/parameter, keyed by its definition.
-fn assigned_local_positions(
+struct ResolvedWrites<'a, 't> {
+    mutations: Vec<&'a WriteSite<'t>>,
+    /// Assignment start bytes per local/parameter, keyed by its definition.
+    positions: HashMap<(String, Range<usize>), Vec<usize>>,
+}
+
+fn resolve_writes<'a, 't>(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
-    all_writes: &[WriteSite<'_>],
-) -> HashMap<(String, Range<usize>), Vec<usize>> {
+    all_writes: &'a [WriteSite<'t>],
+    target: &(String, Range<usize>),
+) -> ResolvedWrites<'a, 't> {
+    let mut mutations = Vec::new();
     let mut positions: HashMap<(String, Range<usize>), Vec<usize>> = HashMap::new();
     for write in all_writes {
         let node = write_site_node(write);
-        if let Some(d) = resolve_definition_at_byte(uri, document, db, node.start_byte()) {
-            positions
-                .entry(definition_key(&d))
-                .or_default()
-                .push(node.start_byte());
+        let Some(d) = resolve_definition_at_byte(uri, document, db, node.start_byte()) else {
+            continue;
+        };
+        let key = definition_key(&d);
+        if key == *target {
+            mutations.push(write);
         }
+        positions.entry(key).or_default().push(node.start_byte());
     }
-    positions
+    ResolvedWrites {
+        mutations,
+        positions,
+    }
 }
 
 enum OperandCheck {
