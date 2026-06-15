@@ -25,7 +25,7 @@ use super::name_context::{NameContext, classify_ident_context};
 use super::reaching_defs::reaching_defs;
 use super::symbol_db::SymbolDb;
 
-/// Identity of a local or parameter, as used for cross-occurrence matching: `(uri, decl range)`.
+/// Identity of a local, parameter, or field for cross-occurrence matching: `(uri, decl range)`.
 type DefKey = (String, Range<usize>);
 
 const SIDE_EFFECT_KINDS: &[&str] = &[kinds::FUNC_CALL_EXPR, kinds::NEW_EXPR];
@@ -289,6 +289,59 @@ impl<'a> BodyModel<'a> {
     pub(crate) fn has_observable_effect(&self, span: &Range<usize>) -> bool {
         self.node_at(span)
             .is_some_and(|n| has_descendant_of_kind(n, SIDE_EFFECT_KINDS))
+    }
+
+    /// Whether an operand the value at `value` reads (local, parameter, or field) is reassigned in `window`.
+    pub(crate) fn operand_reassigned_in(
+        &self,
+        value: &Range<usize>,
+        window: &Range<usize>,
+    ) -> bool {
+        let operands: Vec<DefKey> = self
+            .referenced_defs(value)
+            .into_iter()
+            .map(|(key, _)| key)
+            .collect();
+        if operands.is_empty() {
+            return false;
+        }
+        self.writes.sites.iter().any(|(key, site)| {
+            matches!(site, WriteSite::AssignTarget(_) | WriteSite::OutArg(_))
+                && operands.contains(key)
+                && window.contains(&write_site_node(site).start_byte())
+        })
+    }
+
+    /// Whether the value at `value` reads a field.
+    pub(crate) fn references_field(&self, value: &Range<usize>) -> bool {
+        self.referenced_defs(value)
+            .iter()
+            .any(|(_, kind)| *kind == SymbolKind::Field)
+    }
+
+    /// Locals, parameters, and fields the value at `value` references, by definition key and kind.
+    fn referenced_defs(&self, value: &Range<usize>) -> Vec<(DefKey, SymbolKind)> {
+        let Some(node) = self.node_at(value) else {
+            return Vec::new();
+        };
+        let mut idents = Vec::new();
+        collect_descendants_of_kind(node, &[kinds::IDENT], &mut idents);
+        idents
+            .iter()
+            .filter_map(|ident| {
+                let d = resolve_definition_at_byte(
+                    self.uri,
+                    self.document,
+                    self.db,
+                    ident.start_byte(),
+                )?;
+                matches!(
+                    d.symbol.kind,
+                    SymbolKind::Variable | SymbolKind::Parameter | SymbolKind::Field
+                )
+                .then(|| (definition_key(&d), d.symbol.kind))
+            })
+            .collect()
     }
 
     fn decl_node(&self, local: LocalId) -> Option<Node<'a>> {
