@@ -225,11 +225,14 @@ impl<'t> Analyzer<'_, 't> {
     }
 
     fn gen_in(&self, region: Node, state: Mask) -> Mask {
-        let mut owned: Vec<usize> = (0..self.defs.len())
+        // Only the latest definition in the region reaches afterward; earlier ones are overwritten.
+        match (0..self.defs.len())
             .filter(|&i| within(self.defs[i].owner, region))
-            .collect();
-        owned.sort_by_key(|&i| self.defs[i].owner.start_byte());
-        owned.into_iter().fold(state, |_, i| 1u128 << i)
+            .max_by_key(|&i| self.defs[i].owner.start_byte())
+        {
+            Some(i) => 1u128 << i,
+            None => state,
+        }
     }
 
     fn eval_if(&mut self, stmt: Node<'t>, state: Mask, rec: bool) -> Flow {
