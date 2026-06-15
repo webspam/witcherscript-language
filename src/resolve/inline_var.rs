@@ -14,7 +14,7 @@ use super::ast::{identifier_at, nodes_at_offset};
 use super::definition::{definition_key, resolve_definition_at_byte};
 use super::extract_common::{Splice, WriteSite, write_site_node, write_sites};
 use super::name_context::{NameContext, classify_ident_context};
-use super::reaching_defs::{Def, reaching_defs};
+use super::reaching_defs::{LocalDefinition, reaching_defs};
 use super::references::find_references;
 use super::symbol_db::SymbolDb;
 
@@ -291,14 +291,14 @@ fn check_operands(
     }
 }
 
-fn teardown_possible(all_defs: &[Def<'_>]) -> bool {
+fn teardown_possible(all_defs: &[LocalDefinition<'_>]) -> bool {
     all_defs
         .iter()
         .filter(|d| !d.is_decl)
         .all(|d| d.stmt.is_some())
 }
 
-fn teardown_clean(all_defs: &[Def<'_>], decl: Node<'_>, used: &HashSet<usize>) -> bool {
+fn teardown_clean(all_defs: &[LocalDefinition<'_>], decl: Node<'_>, used: &HashSet<usize>) -> bool {
     all_defs.iter().enumerate().all(|(i, def)| {
         // A used store's value moved into a read, so dropping its statement keeps the effect.
         if used.contains(&i) {
@@ -314,7 +314,7 @@ fn build_teardown(
     decl: Node<'_>,
     target_index: usize,
     decl_names: &[Node<'_>],
-    all_defs: &[Def<'_>],
+    all_defs: &[LocalDefinition<'_>],
 ) -> Vec<Splice> {
     let mut teardown = vec![remove_binding(source, decl, target_index, decl_names)];
     let mut seen = HashSet::from([decl.id()]);

@@ -14,12 +14,11 @@ use crate::cst::{fields, kinds};
 
 use super::extract_common::{WriteSite, write_site_node};
 
-/// A bitset over `Def` indices; the 128 cap is arbitrary.
+/// A bitset over `LocalDefinition` indices; the 128 cap is arbitrary.
 type Mask = u128;
 const MAX_DEFS: usize = 128;
 
-/// A definition of the target local.
-pub(super) struct Def<'t> {
+pub(super) struct LocalDefinition<'t> {
     /// The expression to substitute at a read, or `None` when there is no substitutable value.
     pub(super) value: Option<Node<'t>>,
     /// The statement that teardown deletes.
@@ -33,7 +32,7 @@ pub(super) struct ReachingDefs<'t> {
     /// Per read: its byte range and the index of the unique definition that reaches it, or `None`
     /// when zero or more than one definition reaches it.
     pub(super) per_read: Vec<(Range<usize>, Option<usize>)>,
-    pub(super) all_defs: Vec<Def<'t>>,
+    pub(super) all_defs: Vec<LocalDefinition<'t>>,
 }
 
 pub(super) fn reaching_defs<'t>(
@@ -64,12 +63,16 @@ pub(super) fn reaching_defs<'t>(
     ReachingDefs { per_read, all_defs }
 }
 
-fn build_defs<'t>(decl: Node<'t>, names_len: usize, mutations: &[&WriteSite<'t>]) -> Vec<Def<'t>> {
+fn build_defs<'t>(
+    decl: Node<'t>,
+    names_len: usize,
+    mutations: &[&WriteSite<'t>],
+) -> Vec<LocalDefinition<'t>> {
     // A multi-name list shares one initialiser, so it is not the value of any single name.
     let decl_value = (names_len == 1)
         .then(|| decl.child_by_field_name(fields::INIT_VALUE))
         .flatten();
-    let mut defs = vec![Def {
+    let mut defs = vec![LocalDefinition {
         value: decl_value,
         stmt: None,
         is_decl: true,
@@ -82,7 +85,7 @@ fn build_defs<'t>(decl: Node<'t>, names_len: usize, mutations: &[&WriteSite<'t>]
             WriteSite::AssignTarget(_) => direct_assign_value(node),
             WriteSite::AssignBase(_) | WriteSite::OutArg(_) | WriteSite::ReceiverBase(_) => None,
         };
-        defs.push(Def {
+        defs.push(LocalDefinition {
             value,
             stmt: find_ancestor_of_kind(node, &[kinds::EXPR_STMT]),
             is_decl: false,
@@ -110,7 +113,7 @@ fn sole_def(mask: Mask) -> Option<usize> {
 }
 
 struct Analyzer<'a, 't> {
-    defs: &'a [Def<'t>],
+    defs: &'a [LocalDefinition<'t>],
     reads: &'a [Range<usize>],
     out: Vec<Mask>,
 }
