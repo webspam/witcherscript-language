@@ -53,7 +53,7 @@ pub(super) fn reaching_defs<'t>(
         reads,
         out: vec![0; reads.len()],
     };
-    analyzer.eval_block(&named_child_nodes(body), 0, true);
+    analyzer.eval_block(&named_child_nodes(body), 0, Pass::Record);
 
     let per_read = reads
         .iter()
@@ -112,6 +112,12 @@ fn sole_def(mask: Mask) -> Option<usize> {
     (mask.count_ones() == 1).then(|| mask.trailing_zeros() as usize)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pass {
+    Learn,
+    Record,
+}
+
 struct Analyzer<'a, 't> {
     defs: &'a [LocalDefinition<'t>],
     reads: &'a [Range<usize>],
@@ -146,11 +152,11 @@ fn union(a: Option<Mask>, b: Option<Mask>) -> Option<Mask> {
 }
 
 impl<'t> Analyzer<'_, 't> {
-    fn eval_block(&mut self, stmts: &[Node<'t>], state: Mask, rec: bool) -> Flow {
+    fn eval_block(&mut self, stmts: &[Node<'t>], state: Mask, pass: Pass) -> Flow {
         let mut flow = Flow::pass(state);
         for stmt in stmts {
             let Some(cur) = flow.normal else { break };
-            let next = self.eval_stmt(*stmt, cur, rec);
+            let next = self.eval_stmt(*stmt, cur, pass);
             flow = Flow {
                 normal: next.normal,
                 breaks: union(flow.breaks, next.breaks),
@@ -161,14 +167,14 @@ impl<'t> Analyzer<'_, 't> {
         flow
     }
 
-    fn eval_stmt(&mut self, stmt: Node<'t>, state: Mask, rec: bool) -> Flow {
+    fn eval_stmt(&mut self, stmt: Node<'t>, state: Mask, pass: Pass) -> Flow {
         match stmt.kind() {
-            kinds::FUNC_BLOCK => self.eval_block(&named_child_nodes(stmt), state, rec),
+            kinds::FUNC_BLOCK => self.eval_block(&named_child_nodes(stmt), state, pass),
             kinds::LOCAL_VAR_DECL_STMT | kinds::EXPR_STMT | kinds::DELETE_STMT => {
-                Flow::pass(self.eval_leaf(stmt, state, rec))
+                Flow::pass(self.eval_leaf(stmt, state, pass))
             }
             kinds::RETURN_STMT => {
-                let end = self.eval_leaf(stmt, state, rec);
+                let end = self.eval_leaf(stmt, state, pass);
                 Flow {
                     normal: None,
                     breaks: None,
@@ -188,28 +194,28 @@ impl<'t> Analyzer<'_, 't> {
                 continues: Some(state),
                 returns: None,
             },
-            kinds::IF_STMT => self.eval_if(stmt, state, rec),
-            kinds::WHILE_STMT => self.eval_while(stmt, state, rec),
-            kinds::DO_WHILE_STMT => self.eval_do_while(stmt, state, rec),
-            kinds::FOR_STMT => self.eval_for(stmt, state, rec),
-            kinds::SWITCH_STMT => self.eval_switch(stmt, state, rec),
+            kinds::IF_STMT => self.eval_if(stmt, state, pass),
+            kinds::WHILE_STMT => self.eval_while(stmt, state, pass),
+            kinds::DO_WHILE_STMT => self.eval_do_while(stmt, state, pass),
+            kinds::FOR_STMT => self.eval_for(stmt, state, pass),
+            kinds::SWITCH_STMT => self.eval_switch(stmt, state, pass),
             kinds::NOP => Flow::pass(state),
             // An unmodelled statement: poison its reads so none resolves to one reaching definition.
             _ => {
-                self.poison(stmt, rec);
+                self.poison(stmt, pass);
                 Flow::pass(state)
             }
         }
     }
 
-    fn eval_leaf(&mut self, node: Node<'t>, state: Mask, rec: bool) -> Mask {
+    fn eval_leaf(&mut self, node: Node<'t>, state: Mask, pass: Pass) -> Mask {
         // A read here (an assignment's RHS) runs before this def lands, so record on the incoming state.
-        self.record(node, state, rec);
+        self.record(node, state, pass);
         self.gen_in(node, state)
     }
 
-    fn record(&mut self, region: Node, state: Mask, rec: bool) {
-        if !rec {
+    fn record(&mut self, region: Node, state: Mask, pass: Pass) {
+        if pass == Pass::Learn {
             return;
         }
         let (start, end) = (region.start_byte(), region.end_byte());
@@ -220,8 +226,8 @@ impl<'t> Analyzer<'_, 't> {
         }
     }
 
-    fn poison(&mut self, region: Node, rec: bool) {
-        self.record(region, Mask::MAX, rec);
+    fn poison(&mut self, region: Node, pass: Pass) {
+        self.record(region, Mask::MAX, pass);
     }
 
     fn gen_in(&self, region: Node, state: Mask) -> Mask {
@@ -235,17 +241,17 @@ impl<'t> Analyzer<'_, 't> {
         }
     }
 
-    fn eval_if(&mut self, stmt: Node<'t>, state: Mask, rec: bool) -> Flow {
+    fn eval_if(&mut self, stmt: Node<'t>, state: Mask, pass: Pass) -> Flow {
         if let Some(cond) = stmt.child_by_field_name(fields::COND) {
-            self.record(cond, state, rec);
+            self.record(cond, state, pass);
         }
         let then_flow = match stmt.child_by_field_name(fields::BODY) {
-            Some(body) => self.eval_stmt(body, state, rec),
+            Some(body) => self.eval_stmt(body, state, pass),
             None => Flow::pass(state),
         };
         // An `else if` is just another `if_stmt` in the `else` field, handled by recursion.
         let else_flow = match stmt.child_by_field_name(fields::ELSE) {
-            Some(other) => self.eval_stmt(other, state, rec),
+            Some(other) => self.eval_stmt(other, state, pass),
             None => Flow::pass(state),
         };
         Flow {
@@ -256,15 +262,15 @@ impl<'t> Analyzer<'_, 't> {
         }
     }
 
-    fn eval_while(&mut self, stmt: Node<'t>, state: Mask, rec: bool) -> Flow {
+    fn eval_while(&mut self, stmt: Node<'t>, state: Mask, pass: Pass) -> Flow {
         let body = stmt.child_by_field_name(fields::BODY);
         // Pass 1 (no recording) learns the definitions the body carries back to the loop header.
-        let body1 = self.eval_body(body, state, false);
+        let body1 = self.eval_body(body, state, Pass::Learn);
         let header = union(Some(state), union(body1.normal, body1.continues)).unwrap_or(state);
         if let Some(cond) = stmt.child_by_field_name(fields::COND) {
-            self.record(cond, header, rec);
+            self.record(cond, header, pass);
         }
-        let body2 = self.eval_body(body, header, rec);
+        let body2 = self.eval_body(body, header, pass);
         Flow {
             // The loop exits when the condition is false (header state) or via `break`.
             normal: union(Some(header), body2.breaks),
@@ -274,15 +280,15 @@ impl<'t> Analyzer<'_, 't> {
         }
     }
 
-    fn eval_do_while(&mut self, stmt: Node<'t>, state: Mask, rec: bool) -> Flow {
+    fn eval_do_while(&mut self, stmt: Node<'t>, state: Mask, pass: Pass) -> Flow {
         let body = stmt.child_by_field_name(fields::BODY);
-        let body1 = self.eval_body(body, state, false);
+        let body1 = self.eval_body(body, state, Pass::Learn);
         // The body runs at least once, so the entry merges the first run (state) with the back-edge.
         let entry = union(Some(state), union(body1.normal, body1.continues)).unwrap_or(state);
-        let body2 = self.eval_body(body, entry, rec);
+        let body2 = self.eval_body(body, entry, pass);
         if let Some(cond) = stmt.child_by_field_name(fields::COND) {
             let at_cond = union(body2.normal, body2.continues).unwrap_or(entry);
-            self.record(cond, at_cond, rec);
+            self.record(cond, at_cond, pass);
         }
         Flow {
             normal: union(body2.normal, body2.breaks),
@@ -292,13 +298,13 @@ impl<'t> Analyzer<'_, 't> {
         }
     }
 
-    fn eval_for(&mut self, stmt: Node<'t>, state: Mask, rec: bool) -> Flow {
+    fn eval_for(&mut self, stmt: Node<'t>, state: Mask, pass: Pass) -> Flow {
         let body = stmt.child_by_field_name(fields::BODY);
         let mut entry = state;
         if let Some(init) = stmt.child_by_field_name(fields::INIT) {
-            entry = self.eval_leaf(init, entry, rec);
+            entry = self.eval_leaf(init, entry, pass);
         }
-        let body1 = self.eval_body(body, entry, false);
+        let body1 = self.eval_body(body, entry, Pass::Learn);
         let after_body1 = union(body1.normal, body1.continues).unwrap_or(entry);
         let after_iter1 = match stmt.child_by_field_name(fields::ITER) {
             Some(iter) => self.gen_in(iter, after_body1),
@@ -306,12 +312,12 @@ impl<'t> Analyzer<'_, 't> {
         };
         let header = union(Some(entry), Some(after_iter1)).unwrap_or(entry);
         if let Some(cond) = stmt.child_by_field_name(fields::COND) {
-            self.record(cond, header, rec);
+            self.record(cond, header, pass);
         }
-        let body2 = self.eval_body(body, header, rec);
+        let body2 = self.eval_body(body, header, pass);
         if let Some(iter) = stmt.child_by_field_name(fields::ITER) {
             let after_body2 = union(body2.normal, body2.continues).unwrap_or(header);
-            self.record(iter, after_body2, rec);
+            self.record(iter, after_body2, pass);
         }
         Flow {
             normal: union(Some(header), body2.breaks),
@@ -321,9 +327,9 @@ impl<'t> Analyzer<'_, 't> {
         }
     }
 
-    fn eval_switch(&mut self, stmt: Node<'t>, state: Mask, rec: bool) -> Flow {
+    fn eval_switch(&mut self, stmt: Node<'t>, state: Mask, pass: Pass) -> Flow {
         if let Some(cond) = stmt.child_by_field_name(fields::COND) {
-            self.record(cond, state, rec);
+            self.record(cond, state, pass);
         }
         let Some(block) = stmt.child_by_field_name(fields::BODY) else {
             return Flow::pass(state);
@@ -342,7 +348,7 @@ impl<'t> Analyzer<'_, 't> {
                     // Every label is reachable both by falling through and from the switch head.
                     cur = union(cur, Some(entry));
                     if let Some(value) = section.child_by_field_name(fields::VALUE) {
-                        self.record(value, entry, rec);
+                        self.record(value, entry, pass);
                     }
                 }
                 kinds::SWITCH_DEFAULT_LABEL => {
@@ -350,7 +356,7 @@ impl<'t> Analyzer<'_, 't> {
                     cur = union(cur, Some(entry));
                 }
                 _ => {
-                    let flow = self.eval_stmt(section, cur.unwrap_or(entry), rec);
+                    let flow = self.eval_stmt(section, cur.unwrap_or(entry), pass);
                     breaks = union(breaks, flow.breaks);
                     continues = union(continues, flow.continues);
                     returns = union(returns, flow.returns);
@@ -373,9 +379,9 @@ impl<'t> Analyzer<'_, 't> {
         }
     }
 
-    fn eval_body(&mut self, body: Option<Node<'t>>, state: Mask, rec: bool) -> Flow {
+    fn eval_body(&mut self, body: Option<Node<'t>>, state: Mask, pass: Pass) -> Flow {
         match body {
-            Some(node) => self.eval_stmt(node, state, rec),
+            Some(node) => self.eval_stmt(node, state, pass),
             None => Flow::pass(state),
         }
     }
