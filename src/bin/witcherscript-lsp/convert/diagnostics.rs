@@ -2,10 +2,10 @@ use std::path::{Path, PathBuf};
 
 use lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, Command, Diagnostic,
-    DiagnosticRelatedInformation, DiagnosticSeverity, Location, NumberOrString, Url,
+    DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, NumberOrString, Url,
 };
 use witcherscript_language::diagnostics::{
-    BASE_SCRIPT_CONFLICT_KIND, Severity, WorkspaceDiagnostic,
+    BASE_SCRIPT_CONFLICT_KIND, Severity, UNUSED_SYMBOL_KIND, WorkspaceDiagnostic,
 };
 use witcherscript_language::document::ParsedDocument;
 
@@ -56,7 +56,10 @@ pub(crate) fn lsp_workspace_diagnostic(diagnostic: &WorkspaceDiagnostic) -> Diag
             Severity::Error => DiagnosticSeverity::ERROR,
             Severity::Warning => DiagnosticSeverity::WARNING,
             Severity::Info => DiagnosticSeverity::INFORMATION,
+            Severity::Hint => DiagnosticSeverity::HINT,
         }),
+        // The Unnecessary tag is what makes editors render the range as faded.
+        tags: (diagnostic.kind == UNUSED_SYMBOL_KIND).then(|| vec![DiagnosticTag::UNNECESSARY]),
         code: Some(lsp_types::NumberOrString::String(diagnostic.kind.clone())),
         source: Some("witcherscript".to_string()),
         message: diagnostic.message.clone(),

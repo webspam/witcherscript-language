@@ -20,6 +20,7 @@ mod super_field_access;
 mod type_mismatch;
 mod unknown_method;
 mod unknown_symbol;
+mod unused_symbol;
 mod wrapped_method;
 
 pub use abstract_instantiation::collect_abstract_instantiation_diagnostics;
@@ -43,6 +44,7 @@ pub use super_field_access::collect_super_field_access_diagnostics;
 pub use type_mismatch::collect_type_mismatch_diagnostics;
 pub use unknown_method::collect_unknown_method_diagnostics;
 pub use unknown_symbol::collect_unknown_symbol_diagnostics;
+pub use unused_symbol::{KIND as UNUSED_SYMBOL_KIND, collect_unused_symbol_diagnostics};
 pub use wrapped_method::collect_wrapped_method_diagnostics;
 
 use crate::cst::ancestors::find_ancestor_of_kind;
@@ -59,6 +61,7 @@ use super_field_access::SuperFieldAccessRule;
 use type_mismatch::TypeMismatchRule;
 use unknown_method::UnknownMethodRule;
 use unknown_symbol::run_unknown_symbol_parallel;
+use unused_symbol::UnusedSymbolRule;
 use wrapped_method::WrappedMethodRule;
 
 pub fn collect_cst_diagnostics_for_document(
@@ -75,6 +78,7 @@ pub fn collect_cst_diagnostics_for_document(
     let annotation_state_target_rule = AnnotationStateTargetRule;
     let inherited_field_rule = InheritedFieldRule;
     let override_consistency_rule = OverrideConsistencyRule;
+    let unused_symbol_rule = UnusedSymbolRule;
     let rules: Vec<&dyn CstRule> = vec![
         &method_rule,
         &wrapped_rule,
@@ -85,6 +89,7 @@ pub fn collect_cst_diagnostics_for_document(
         &annotation_state_target_rule,
         &inherited_field_rule,
         &override_consistency_rule,
+        &unused_symbol_rule,
     ];
     let mut diagnostics = run_rules_on_document(uri, document, db, &rules);
 
@@ -114,6 +119,7 @@ pub enum Severity {
     Error,
     Warning,
     Info,
+    Hint,
 }
 
 #[derive(Debug, Clone)]

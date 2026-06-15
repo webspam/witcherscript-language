@@ -55,7 +55,6 @@ Exception: `let _ = write!(s, ...)` where `s` is a `String` or `Vec<u8>`. `fmt::
 - Newtypes (`C-NEWTYPE`) for distinct domains: a `SymbolId` is not a `u32`, a `FilePath` is not a `String`. The wrapper costs nothing at runtime and prevents whole categories of mix-ups.
 - No `bool` parameters where an enum conveys intent (`C-CUSTOM-TYPE`). `fn open(path, ReadOnly)` reads at the call site; `fn open(path, true)` does not.
 - No bare `Option<bool>` for tri-state; define a three-variant enum.
-- `#[non_exhaustive]` on public enums you may extend, so downstream `match`es do not break on a new variant.
 - `Box<dyn Any>` is a code smell. Use it only with a written justification.
 
 ## Ownership and borrowing
