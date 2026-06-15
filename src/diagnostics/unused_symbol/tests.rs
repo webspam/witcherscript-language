@@ -24,6 +24,10 @@ fn primary_diags(t: &TestDb) -> Vec<WorkspaceDiagnostic> {
     "function G(a, bbb, c : int) { c = a; }\n//            ^^^ u\n",
     "Parameter 'bbb' is never used"
 )]
+#[case::all_grouped_params_fade_whole_group(
+    "function G(a, b : int) {}\n//         ^^^^^^^^^^ u\n",
+    "Parameters 'a', 'b' are never used"
+)]
 #[case::local_single_no_init(
     "function H() {\n  var x : int;\n//^^^^^^^^^^^^ u\n}\n",
     "Local variable 'x' is never used"

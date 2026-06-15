@@ -99,21 +99,26 @@ fn emit_param_dims<'tree>(
     unused: &[(Node<'tree>, String)],
     ctx: &mut CstRuleCtx<'_, 'tree>,
 ) {
-    let single = names.len() == 1;
-    let type_end = node
-        .child_by_field_name(fields::PARAM_TYPE)
-        .map(|t| t.end_byte());
-    for (ident, name) in unused {
-        // A lone param fades whole, specifiers included; a grouped one shares them, so only the name fades.
-        let (start, end) = if single {
-            (
-                node.start_byte(),
-                type_end.unwrap_or_else(|| ident.end_byte()),
-            )
+    // Whole group dead: fade specifiers, names, `:`, and type together. A lone param is this case too.
+    if unused.len() == names.len() {
+        let message = if let [(_, name)] = unused {
+            format!("Parameter '{name}' is never used")
         } else {
-            (ident.start_byte(), ident.end_byte())
+            let list: Vec<String> = unused.iter().map(|(_, n)| format!("'{n}'")).collect();
+            format!("Parameters {} are never used", list.join(", "))
         };
-        push_dim(ctx, start, end, format!("Parameter '{name}' is never used"));
+        push_dim(ctx, node.start_byte(), node.end_byte(), message);
+        return;
+    }
+
+    // Only some names dead; the group shares specifiers and type, so each fades on its own.
+    for (ident, name) in unused {
+        push_dim(
+            ctx,
+            ident.start_byte(),
+            ident.end_byte(),
+            format!("Parameter '{name}' is never used"),
+        );
     }
 }
 
