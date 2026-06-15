@@ -14,12 +14,10 @@ impl Refactoring for InlineVariableRefactoring {
         let title = match (&inlining.scope, &inlining.confidence) {
             (InlineScope::AllUsages, InlineConfidence::Verified) => "Inline variable (all)",
             (InlineScope::AllUsages, InlineConfidence::Unverified) => {
-                "Inline variable (all, unverified)"
+                "Inline variable (all, unsafe)"
             }
             (InlineScope::SingleUsage, InlineConfidence::Verified) => "Inline variable",
-            (InlineScope::SingleUsage, InlineConfidence::Unverified) => {
-                "Inline variable (unverified)"
-            }
+            (InlineScope::SingleUsage, InlineConfidence::Unverified) => "Inline variable (unsafe)",
         };
         vec![inline_code_action(ctx, &inlining, title)]
     }

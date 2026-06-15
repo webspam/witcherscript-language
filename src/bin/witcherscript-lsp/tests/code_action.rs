@@ -563,7 +563,7 @@ fn offers_inline_for_dead_initializer() {
 fn flags_inline_when_value_is_unverified() {
     let src = "function F() {\n    var a : int = 1;\n    var x : int = 0;\n    x = a;\n    a = 99;\n    return x;\n}\n";
     let actions = refactor_actions(src, "x;");
-    assert_eq!(titles(&actions), vec!["Inline variable (unverified)"]);
+    assert_eq!(titles(&actions), vec!["Inline variable (unsafe)"]);
     let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
         panic!("expected a CodeAction, got {:?}", actions[0]);
     };
