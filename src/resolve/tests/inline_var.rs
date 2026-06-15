@@ -46,8 +46,8 @@ fn inlined(src: &str) -> Option<String> {
 )]
 #[case::wraps_compound_initializer(
     "wraps compound initializer",
-    "function f() {\n    var $0sum : int = a + b;\n    return sum * 2;\n}\n",
-    "function f() {\n    return (a + b) * 2;\n}\n"
+    "function f(a : int, b : int) {\n    var $0sum : int = a + b;\n    return sum * 2;\n}\n",
+    "function f(a : int, b : int) {\n    return (a + b) * 2;\n}\n"
 )]
 #[case::field_with_same_name_untouched(
     "field with same name untouched",
@@ -81,8 +81,8 @@ fn inlined(src: &str) -> Option<String> {
 )]
 #[case::wraps_compound_assignment(
     "assign later, compound value wrapped",
-    "function f() {\n    var $0sum : int;\n    sum = a + b;\n    return sum * 2;\n}\n",
-    "function f() {\n    return (a + b) * 2;\n}\n"
+    "function f(a : int, b : int) {\n    var $0sum : int;\n    sum = a + b;\n    return sum * 2;\n}\n",
+    "function f(a : int, b : int) {\n    return (a + b) * 2;\n}\n"
 )]
 #[case::multi_name_inline_first(
     "multi-name list, inline the first name",
@@ -197,6 +197,11 @@ fn refuses(#[case] label: &str, #[case] src: &str) {
     "dropping a dead store removes its call",
     "function f() {\n    var x : int = 0;\n    x = Compute();\n    x = 14;\n    return $0x;\n}\n",
     "function f() {\n    return 14;\n}\n"
+)]
+#[case::unresolved_receiver(
+    "the value calls a method on an unresolved receiver",
+    "function f(groupId : int) {\n    var idx : int;\n    idx = config.GetGroupIdx(groupId);\n    return $0idx;\n}\n",
+    "function f(groupId : int) {\n    return config.GetGroupIdx(groupId);\n}\n"
 )]
 fn offers_flagged(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     let (got, verified) =

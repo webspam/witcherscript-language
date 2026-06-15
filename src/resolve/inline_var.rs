@@ -13,6 +13,7 @@ use super::Definition;
 use super::ast::{identifier_at, nodes_at_offset};
 use super::definition::{definition_key, resolve_definition_at_byte};
 use super::extract_common::{Splice, WriteSite, write_site_node, write_sites};
+use super::name_context::{NameContext, classify_ident_context};
 use super::reaching_defs::{Def, reaching_defs};
 use super::references::find_references;
 use super::symbol_db::SymbolDb;
@@ -256,9 +257,16 @@ fn check_operands(
 ) -> OperandCheck {
     let mut idents = Vec::new();
     collect_descendants_of_kind(value, &[kinds::IDENT], &mut idents);
+    let source = document.source.as_bytes();
     let mut stable = true;
     for ident in idents {
+        // Callee names, member names, and type names do not carry a value whose stability matters.
+        if classify_ident_context(ident, source) != Some(NameContext::Value) {
+            continue;
+        }
         let Some(d) = resolve_definition_at_byte(uri, document, db, ident.start_byte()) else {
+            // An unresolved value reference cannot be checked, so the value is not verifiable.
+            stable = false;
             continue;
         };
         if !matches!(d.symbol.kind, SymbolKind::Variable | SymbolKind::Parameter) {
