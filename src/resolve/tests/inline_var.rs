@@ -49,6 +49,16 @@ fn inlined(src: &str) -> Option<String> {
     "function f(a : int, b : int) {\n    var $0sum : int = a + b;\n    return sum * 2;\n}\n",
     "function f(a : int, b : int) {\n    return (a + b) * 2;\n}\n"
 )]
+#[case::no_parens_as_return_value(
+    "a compound value is bare when it is the whole return value",
+    "function f(a : int, b : int) {\n    var $0sum : int = a + b;\n    return sum;\n}\n",
+    "function f(a : int, b : int) {\n    return a + b;\n}\n"
+)]
+#[case::no_parens_as_argument(
+    "a compound value is bare when it is a whole argument",
+    "function f(a : int, b : int) {\n    var $0sum : int = a + b;\n    Foo(sum);\n}\n",
+    "function f(a : int, b : int) {\n    Foo(a + b);\n}\n"
+)]
 #[case::field_with_same_name_untouched(
     "field with same name untouched",
     "class C {\n    var count : int;\n    function f() {\n        var $0count : int = 5;\n        Foo(count);\n        Foo(this.count);\n    }\n}\n",

@@ -197,9 +197,10 @@ fn plan_inline(
             OperandCheck::MayChange => false,
             OperandCheck::Stable => true,
         };
+        let read_node = root.descendant_for_byte_range(range.start, range.end);
         eligible.push(EligibleRead {
             range: range.clone(),
-            text: substituted_text(&document.source, value),
+            text: substituted_text(&document.source, value, read_node),
             verified,
         });
         used.insert(*idx);
@@ -448,13 +449,32 @@ fn remove_name_from_list(index: usize, names: &[Node]) -> Splice {
     }
 }
 
-fn substituted_text(source: &str, init: Node) -> String {
-    let text = &source[init.byte_range()];
-    if ATOMIC_INIT_KINDS.contains(&init.kind()) {
+fn substituted_text(source: &str, value: Node, read: Option<Node>) -> String {
+    let text = &source[value.byte_range()];
+    if ATOMIC_INIT_KINDS.contains(&value.kind()) || !context_binds_tighter(read) {
         text.to_string()
     } else {
         format!("({text})")
     }
+}
+
+fn context_binds_tighter(read: Option<Node>) -> bool {
+    let Some(parent) = read.and_then(|r| r.parent()) else {
+        return false;
+    };
+    // In these positions the value is a whole operand, so no outer operator can capture part of it.
+    !matches!(
+        parent.kind(),
+        kinds::RETURN_STMT
+            | kinds::EXPR_STMT
+            | kinds::FUNC_CALL_ARGS
+            | kinds::NESTED_EXPR
+            | kinds::LOCAL_VAR_DECL_STMT
+            | kinds::ASSIGN_OP_EXPR
+            | kinds::SWITCH_CASE_LABEL
+            | kinds::DELETE_STMT
+            | kinds::SEQUENCE_EXPRESSION
+    )
 }
 
 fn delete_statement(source: &str, stmt: Node) -> Splice {
