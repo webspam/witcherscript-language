@@ -14,7 +14,7 @@ use tree_sitter::Node;
 use crate::cst::ancestors::{find_ancestor_of_kind, node_and_ancestors};
 use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
 use crate::cst::grammar::write_target;
-use crate::cst::nav::first_named_child;
+use crate::cst::nav::{decl_name_idents, first_named_child, named_child_nodes};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::symbols::{SymbolId, SymbolKind};
@@ -67,6 +67,12 @@ pub(crate) enum Stability {
     ReferencesTarget,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum WriteKinds {
+    Reassignment,
+    AnyWrite,
+}
+
 /// One definition of a local: the value it stores (if substitutable) and the statement that sets it.
 pub(crate) struct ReachDef {
     value: Option<Range<usize>>,
@@ -101,6 +107,16 @@ impl Reaching {
     pub(crate) fn defs(&self) -> &[ReachDef] {
         &self.defs
     }
+}
+
+pub(crate) struct JoinTarget {
+    pub(crate) value: Range<usize>,
+    pub(crate) stmt: Range<usize>,
+    pub(crate) insert_at: usize,
+}
+
+pub(crate) struct SplitTarget {
+    pub(crate) insert_at: usize,
 }
 
 struct LocalEntry {
@@ -208,7 +224,7 @@ impl<'a> BodyModel<'a> {
             .cloned()
             .collect();
 
-        let names_len = name_count(decl);
+        let names_len = decl_name_idents(decl).len();
         let rd = reaching_defs(self.body, decl, names_len, &mutations, &reads);
         let defs = rd
             .all_defs
@@ -223,6 +239,119 @@ impl<'a> BodyModel<'a> {
             per_read: rd.per_read,
             defs,
         }
+    }
+
+    pub(crate) fn joinable_assignment(&self, local: LocalId) -> Option<JoinTarget> {
+        let decl = self.decl_node(local)?;
+        if decl_name_idents(decl).len() != 1
+            || decl.child_by_field_name(fields::INIT_VALUE).is_some()
+        {
+            return None;
+        }
+
+        let reaching = self.reaching(local);
+        let first = reaching
+            .defs()
+            .iter()
+            .filter(|d| !d.is_decl())
+            .min_by_key(|d| d.stmt().map_or(usize::MAX, |s| s.start))?;
+        // A compound assignment like `x += 1` has no standalone value to lift into the declaration.
+        let value = first.value()?;
+        let stmt = first.stmt()?;
+
+        // The declaration and assignment must live in the same block, so nothing branches between them.
+        let block = self.node_at(&stmt)?.parent()?;
+        if block.kind() != kinds::FUNC_BLOCK || decl.parent().map(|p| p.id()) != Some(block.id()) {
+            return None;
+        }
+        if stmt.start <= decl.end_byte() {
+            return None;
+        }
+        let window = decl.end_byte()..stmt.start;
+
+        // A read before the assignment currently sees the default value, so joining would change it.
+        if self.reads(local).iter().any(|r| window.contains(&r.start)) {
+            return None;
+        }
+        if !self.value_hoistable(&value, &window, local, block) {
+            return None;
+        }
+        let insert_at = decl.child_by_field_name(fields::VAR_TYPE)?.end_byte();
+        Some(JoinTarget {
+            value,
+            stmt,
+            insert_at,
+        })
+    }
+
+    pub(crate) fn splittable_declaration(&self, local: LocalId) -> Option<SplitTarget> {
+        let decl = self.decl_node(local)?;
+        let block = decl.parent().filter(|p| p.kind() == kinds::FUNC_BLOCK)?;
+        if decl_name_idents(decl).len() != 1 {
+            return None;
+        }
+        let value = decl.child_by_field_name(fields::INIT_VALUE)?.byte_range();
+
+        // The assignment is a statement, so it must follow every leading declaration.
+        let run_end = declaration_run_end(block).unwrap_or(decl.end_byte());
+        let insert_at = run_end.max(decl.end_byte());
+
+        let window = decl.end_byte()..insert_at;
+        if !self.value_hoistable(&value, &window, local, block) {
+            return None;
+        }
+        Some(SplitTarget { insert_at })
+    }
+
+    /// Whether the value at `value` yields the same result at both ends of `window`.
+    fn value_hoistable(
+        &self,
+        value: &Range<usize>,
+        window: &Range<usize>,
+        target: LocalId,
+        block: Node<'a>,
+    ) -> bool {
+        let operands: Vec<DefKey> = self
+            .referenced_defs(value)
+            .into_iter()
+            .map(|(key, _)| key)
+            .collect();
+        if operands.contains(&self.local_key(target)) {
+            return false;
+        }
+        // An operand declared between the two is not yet in scope back at the declaration.
+        if operands
+            .iter()
+            .any(|k| k.0 == self.uri && window.contains(&k.1.start))
+        {
+            return false;
+        }
+        if self.operand_written_in(value, window, WriteKinds::AnyWrite) {
+            return false;
+        }
+        if self.has_observable_effect(value) {
+            // A value with side effects can only move up when nothing runs between the two.
+            return !self.has_statement_between(window, block);
+        }
+        // A call between the two could change one of the operands the value reads.
+        !self.window_has_effect(window, block) || operands.is_empty()
+    }
+
+    fn statements_between(&self, window: &Range<usize>, block: Node<'a>) -> Vec<Node<'a>> {
+        named_child_nodes(block)
+            .into_iter()
+            .filter(|n| window.start <= n.start_byte() && n.end_byte() <= window.end)
+            .collect()
+    }
+
+    fn has_statement_between(&self, window: &Range<usize>, block: Node<'a>) -> bool {
+        !self.statements_between(window, block).is_empty()
+    }
+
+    fn window_has_effect(&self, window: &Range<usize>, block: Node<'a>) -> bool {
+        self.statements_between(window, block)
+            .into_iter()
+            .any(|n| has_descendant_of_kind(n, SIDE_EFFECT_KINDS))
     }
 
     /// Whether the value at `value` still holds the same result when evaluated at the read site,
@@ -350,24 +479,25 @@ impl<'a> BodyModel<'a> {
         read || written
     }
 
-    /// Whether an operand the value at `value` reads (local, parameter, or field) is reassigned in `window`.
-    pub(crate) fn operand_reassigned_in(
+    pub(crate) fn operand_written_in(
         &self,
         value: &Range<usize>,
         window: &Range<usize>,
+        kinds: WriteKinds,
     ) -> bool {
         let operands: Vec<DefKey> = self
             .referenced_defs(value)
             .into_iter()
             .map(|(key, _)| key)
             .collect();
-        if operands.is_empty() {
-            return false;
-        }
         self.writes.sites.iter().any(|(key, site)| {
-            matches!(site, WriteSite::AssignTarget(_) | WriteSite::OutArg(_))
-                && operands.contains(key)
-                && window.contains(&write_site_node(site).start_byte())
+            let counts = match kinds {
+                WriteKinds::Reassignment => {
+                    matches!(site, WriteSite::AssignTarget(_) | WriteSite::OutArg(_))
+                }
+                WriteKinds::AnyWrite => true,
+            };
+            counts && operands.contains(key) && window.contains(&write_site_node(site).start_byte())
         })
     }
 
@@ -535,6 +665,18 @@ fn collect_writes<'a>(
     WriteIndex { sites, positions }
 }
 
+fn declaration_run_end(block: Node) -> Option<usize> {
+    let mut end = None;
+    for child in named_child_nodes(block) {
+        match child.kind() {
+            kinds::LOCAL_VAR_DECL_STMT => end = Some(child.end_byte()),
+            kinds::COMMENT => {}
+            _ => break,
+        }
+    }
+    end
+}
+
 // `x = ...` where `x` is the entire left-hand side: the prior value is overwritten, not read.
 fn is_whole_value_write(ident: Node) -> bool {
     let Some(assign) = find_ancestor_of_kind(ident, &[kinds::ASSIGN_OP_EXPR]) else {
@@ -568,13 +710,6 @@ fn is_write(site: &WriteSite, value_type: bool) -> bool {
         WriteSite::AssignTarget(_) | WriteSite::OutArg(_) => true,
         WriteSite::AssignBase(_) | WriteSite::ReceiverBase(_) => value_type,
     }
-}
-
-fn name_count(decl: Node) -> usize {
-    let mut cursor = decl.walk();
-    decl.children_by_field_name(fields::NAMES, &mut cursor)
-        .filter(|n| n.kind() == kinds::IDENT)
-        .count()
 }
 
 // In these positions the value is a whole operand, so no outer operator can capture part of it.
