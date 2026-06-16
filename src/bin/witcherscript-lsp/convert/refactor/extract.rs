@@ -3,7 +3,7 @@ use std::ops::Range;
 use lsp_types::{CodeActionKind, CodeActionOrCommand};
 use witcherscript_language::formatter::FormatOptions;
 use witcherscript_language::resolve::{
-    BodyModel, Extraction, extract_function, extract_method, extract_variable,
+    BodyModel, Confidence, Extraction, extract_function, extract_method, extract_variable,
 };
 
 use super::{RefactorContext, Refactoring, RenameAfter, refactor_action};
@@ -25,11 +25,15 @@ fn extract_action(
     let Some(extraction) = extract(model, ctx.selection.clone(), ctx.options) else {
         return Vec::new();
     };
+    let title = match extraction.plan.confidence {
+        Confidence::Verified => title.to_string(),
+        Confidence::Unverified => format!("{title} (unsafe)"),
+    };
     vec![refactor_action(
         ctx,
         &extraction.plan,
         CodeActionKind::REFACTOR_EXTRACT,
-        title,
+        &title,
         Some(RenameAfter {
             cursor: extraction.cursor,
             command_title: rename_title,

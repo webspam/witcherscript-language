@@ -36,6 +36,13 @@ pub struct Extraction {
     pub cursor: usize,
 }
 
+impl Extraction {
+    pub(super) fn with_confidence(mut self, confidence: Confidence) -> Self {
+        self.plan.confidence = confidence;
+        self
+    }
+}
+
 // Splice rightmost-first so each replace_range leaves earlier byte offsets untouched.
 pub(super) fn apply_splices(text: &str, splices: &[Splice]) -> String {
     let mut ordered: Vec<&Splice> = splices.iter().collect();

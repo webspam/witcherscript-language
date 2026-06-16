@@ -88,18 +88,20 @@ pub fn extract_variable(
 
     match decl_site(source, block, &selection, options)? {
         DeclSite::AboveLeadingDecl { at, indent } => {
-            if cannot_hoist_initializer(at..hoist_end) {
-                return None;
-            }
+            // The new decl must carry the initializer here, so an unsafe hoist is offered, not refused.
+            let confidence = confidence(!cannot_hoist_initializer(at..hoist_end));
             let stmt = declaration_statement(&name, &ty, expr, options);
-            Some(insert_and_replace(
-                at,
-                format!("{stmt}\n{indent}"),
-                selection,
-                name.clone(),
-                0,
-                name,
-            ))
+            Some(
+                insert_and_replace(
+                    at,
+                    format!("{stmt}\n{indent}"),
+                    selection,
+                    name.clone(),
+                    0,
+                    name,
+                )
+                .with_confidence(confidence),
+            )
         }
         DeclSite::TopOfBlock { at, indent } => {
             if !cannot_hoist_initializer(at..hoist_end) {
@@ -116,19 +118,18 @@ pub fn extract_variable(
             // Hoisting the whole decl would skip a write; split it so the computation stays in place.
             let slot = assign_slot(node)?;
             let statement = slot.statement();
-            if model.operand_written_in(
+            // A write between the statement and the selection means even the split reorders the value.
+            let confidence = confidence(!model.operand_written_in(
                 &value,
                 &(statement.start_byte()..selection.start),
                 WriteKinds::Reassignment,
-            ) {
-                return None;
-            }
+            ));
             let decl = format!(
                 "\n{indent}{}",
                 uninitialised_declaration(&name, &ty, options)
             );
-            match slot {
-                AssignSlot::BeforeStatement(statement) => Some(split_before(
+            let extraction = match slot {
+                AssignSlot::BeforeStatement(statement) => split_before(
                     at,
                     decl,
                     statement.start_byte(),
@@ -136,19 +137,13 @@ pub fn extract_variable(
                     name,
                     expr,
                     selection,
-                )),
+                ),
                 AssignSlot::WrapBraceless(statement) => {
                     match pre_chain_head(model, statement, node) {
-                        Some(head) => Some(split_before(
-                            at,
-                            decl,
-                            head.start_byte(),
-                            source,
-                            name,
-                            expr,
-                            selection,
-                        )),
-                        None => Some(split_braceless(
+                        Some(head) => {
+                            split_before(at, decl, head.start_byte(), source, name, expr, selection)
+                        }
+                        None => split_braceless(
                             Splice {
                                 range: at..at,
                                 text: decl,
@@ -159,11 +154,20 @@ pub fn extract_variable(
                             options,
                             selection,
                             name,
-                        )),
+                        ),
                     }
                 }
-            }
+            };
+            Some(extraction.with_confidence(confidence))
         }
+    }
+}
+
+fn confidence(verified: bool) -> Confidence {
+    if verified {
+        Confidence::Verified
+    } else {
+        Confidence::Unverified
     }
 }
 

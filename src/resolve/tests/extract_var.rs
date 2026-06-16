@@ -1,7 +1,7 @@
 use expect_test::expect;
 use rstest::rstest;
 
-use super::super::{BodyModel, Extraction, extract_variable};
+use super::super::{BodyModel, Confidence, Extraction, extract_variable};
 use crate::formatter::{ColonSpacing, FormatOptions};
 use crate::test_support::{TestDb, script_env};
 
@@ -37,6 +37,13 @@ fn applied(src: &str, needle: &str) -> String {
 
 fn refused(src: &str, needle: &str) -> bool {
     run(src, needle, FormatOptions::default()).1.is_none()
+}
+
+fn verified(src: &str, needle: &str) -> bool {
+    matches!(
+        extraction(src, needle).plan.confidence,
+        Confidence::Verified
+    )
 }
 
 #[rstest]
@@ -579,11 +586,29 @@ fn split_declares_at_callable_top_when_field_written_first() {
 }
 
 #[test]
-fn refuses_when_split_cannot_place_assignment() {
+fn offers_unsafe_split_when_out_arg_reorders_the_value() {
     let src = "function Fill(out target : int) : int { return 0; }\nfunction Use(x : int, y : int) {}\nfunction F() {\n    var a : int;\n    Use(Fill(a), a + 1);\n}\n";
     assert!(
-        refused(src, "a + 1"),
-        "\"a + 1\" has no safe in-place assignment slot and must not be offered"
+        !verified(src, "a + 1"),
+        "an out-arg write before \"a + 1\" reorders the split, so it is offered as unsafe"
+    );
+}
+
+#[test]
+fn offers_unsafe_hoist_above_leading_decl_when_a_call_precedes() {
+    let src = "function F() {\n    var b : int = Left() + Right();\n}\nfunction Left() : int { return 1; }\nfunction Right() : int { return 2; }\n";
+    assert!(
+        !verified(src, "Right()"),
+        "hoisting Right() above the decl reorders it before Left(), so it is offered as unsafe"
+    );
+}
+
+#[test]
+fn side_effect_free_extraction_is_verified() {
+    let src = "function F() {\n    var r : int;\n    r = 1 + 2;\n}\n";
+    assert!(
+        verified(src, "1 + 2"),
+        "a side-effect-free literal extraction is verified"
     );
 }
 
