@@ -67,6 +67,8 @@ fn check_func_decl<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) ->
         return None;
     }
 
+    check_modifiers(node, &symbol.name, ctx);
+
     let body = first_child_kind(node, kinds::FUNC_BLOCK)?;
 
     let mut calls: Vec<Node<'tree>> = Vec::new();
@@ -96,6 +98,28 @@ fn check_func_decl<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) ->
     }
 
     Some(())
+}
+
+// A wrapper inherits the wrapped method's signature, so the compiler rejects any modifier or flavour on it.
+fn check_modifiers<'tree>(node: Node<'tree>, func_name: &str, ctx: &mut CstRuleCtx<'_, 'tree>) {
+    let mut cursor = node.walk();
+    let modifiers: Vec<Node<'tree>> = node
+        .children(&mut cursor)
+        .filter(|child| matches!(child.kind(), kinds::SPECIFIER | kinds::FUNC_FLAVOUR))
+        .collect();
+    drop(cursor);
+
+    for modifier in modifiers {
+        let keyword = ctx.document.source[modifier.start_byte()..modifier.end_byte()].to_string();
+        push(
+            ctx,
+            modifier,
+            "wrapped_method_modifier",
+            format!(
+                "@wrapMethod function '{func_name}' cannot declare '{keyword}'; a wrapped method takes no modifiers or flavour keywords"
+            ),
+        );
+    }
 }
 
 fn collect_wrapped_method_calls<'tree>(
