@@ -32,7 +32,11 @@ use super::symbol_db::SymbolDb;
 /// Identity of a local, parameter, or field for cross-occurrence matching: `(uri, decl range)`.
 type DefKey = (String, Range<usize>);
 
-const SIDE_EFFECT_KINDS: &[&str] = &[kinds::FUNC_CALL_EXPR, kinds::NEW_EXPR];
+// A call is the only side effect; `new` is effect-free and an assignment is a tracked write.
+const SIDE_EFFECT_KINDS: &[&str] = &[kinds::FUNC_CALL_EXPR];
+
+// A call or `new` can differ each run, so moving one past other statements is not a free reorder.
+const CALL_OR_CONSTRUCT_KINDS: &[&str] = &[kinds::FUNC_CALL_EXPR, kinds::NEW_EXPR];
 
 // Forms that already bind tighter than any surrounding operator, so substituting them needs no parens.
 const ATOMIC_VALUE_KINDS: &[&str] = &[
@@ -446,8 +450,8 @@ impl<'a> BodyModel<'a> {
         if self.operand_written_in(value, window, WriteKinds::AnyWrite) {
             return false;
         }
-        if self.has_observable_effect(value) {
-            // A value with side effects can only move up when nothing runs between the two.
+        if self.value_calls_or_constructs(value) {
+            // A value that calls or constructs can differ when moved, so it can only move with nothing between.
             return !self.has_statement_between(window, block);
         }
         // A call between the two could change one of the operands the value reads.
@@ -555,6 +559,11 @@ impl<'a> BodyModel<'a> {
     pub(crate) fn has_observable_effect(&self, span: &Range<usize>) -> bool {
         self.node_at(span)
             .is_some_and(|n| has_descendant_of_kind(n, SIDE_EFFECT_KINDS))
+    }
+
+    fn value_calls_or_constructs(&self, span: &Range<usize>) -> bool {
+        self.node_at(span)
+            .is_some_and(|n| has_descendant_of_kind(n, CALL_OR_CONSTRUCT_KINDS))
     }
 
     pub(crate) fn local_for(&self, id: SymbolId) -> Option<LocalId> {

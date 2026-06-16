@@ -74,8 +74,7 @@ pub fn extract_variable(
     let expr = &source[selection.clone()];
 
     let value = selection.clone();
-    let reads_nonlocal =
-        has_descendant_of_kind(node, &[kinds::FUNC_CALL_EXPR]) || model.references_field(&value);
+    let reads_nonlocal = model.has_observable_effect(&value) || model.references_field(&value);
 
     // A frozen top-of-block value is stale once a read is written before the expression re-evaluates:
     // before it textually, or anywhere in an enclosing loop body (which re-runs the expression).
@@ -133,29 +132,31 @@ pub fn extract_variable(
                     expr,
                     selection,
                 )),
-                AssignSlot::WrapBraceless(statement) => match pre_chain_head(statement, node) {
-                    Some(head) => Some(split_before(
-                        at,
-                        decl,
-                        head.start_byte(),
-                        source,
-                        name,
-                        expr,
-                        selection,
-                    )),
-                    None => Some(split_braceless(
-                        Splice {
-                            range: at..at,
-                            text: decl,
-                        },
-                        statement,
-                        expr,
-                        source,
-                        options,
-                        selection,
-                        name,
-                    )),
-                },
+                AssignSlot::WrapBraceless(statement) => {
+                    match pre_chain_head(model, statement, node) {
+                        Some(head) => Some(split_before(
+                            at,
+                            decl,
+                            head.start_byte(),
+                            source,
+                            name,
+                            expr,
+                            selection,
+                        )),
+                        None => Some(split_braceless(
+                            Splice {
+                                range: at..at,
+                                text: decl,
+                            },
+                            statement,
+                            expr,
+                            source,
+                            options,
+                            selection,
+                            name,
+                        )),
+                    }
+                }
             }
         }
     }
@@ -372,19 +373,23 @@ fn assign_slot(node: Node) -> Option<AssignSlot> {
 
 // An else-if assignment can precede the chain's first `if` (no block needed) only if nothing reached
 // on the way - the extracted expression and every preceding condition - can mutate the reads.
-fn pre_chain_head<'tree>(statement: Node<'tree>, expr: Node) -> Option<Node<'tree>> {
+fn pre_chain_head<'tree>(
+    model: &BodyModel,
+    statement: Node<'tree>,
+    expr: Node,
+) -> Option<Node<'tree>> {
     let (head, preceding_conditions) = if_chain_above(statement)?;
     if head.parent()?.kind() != kinds::FUNC_BLOCK {
         return None;
     }
-    if has_side_effect(expr) || preceding_conditions.iter().any(|c| has_side_effect(*c)) {
+    let has_call_or_write = |n: Node| {
+        model.has_observable_effect(&n.byte_range())
+            || has_descendant_of_kind(n, &[kinds::ASSIGN_OP_EXPR])
+    };
+    if has_call_or_write(expr) || preceding_conditions.iter().any(|c| has_call_or_write(*c)) {
         return None;
     }
     Some(head)
-}
-
-fn has_side_effect(node: Node) -> bool {
-    has_descendant_of_kind(node, &[kinds::FUNC_CALL_EXPR, kinds::ASSIGN_OP_EXPR])
 }
 
 fn name_base(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> String {
