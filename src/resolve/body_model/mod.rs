@@ -450,8 +450,8 @@ impl<'a> BodyModel<'a> {
         if self.operand_written_in(value, window, WriteKinds::AnyWrite) {
             return false;
         }
-        if self.value_calls_or_constructs(value) {
-            // A value that calls or constructs can differ when moved, so it can only move with nothing between.
+        if self.has_observable_effect(value) {
+            // Moving a call past a statement reorders its effects, so allow it only with nothing between.
             return !self.has_statement_between(window, block);
         }
         // A call between the two could change one of the operands the value reads.

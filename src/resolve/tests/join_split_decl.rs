@@ -52,6 +52,11 @@ fn split(src: &str) -> Option<String> {
     "function f(a : int) {\n    var $0x : int;\n    var y : int;\n    x = a;\n    y = 2;\n}\n",
     "function f(a : int) {\n    var x : int = a;\n    var y : int;\n    y = 2;\n}\n"
 )]
+#[case::new_value_crosses_statement(
+    "a new constructs one object, so it may move past a statement",
+    "class C {\n    function f() {\n        var $0x : C;\n        Foo();\n        x = new C in this;\n    }\n}\n",
+    "class C {\n    function f() {\n        var x : C = new C in this;\n        Foo();\n    }\n}\n"
+)]
 fn joins(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     let got = joined(src).unwrap_or_else(|| panic!("case {label}: expected a join"));
     assert_eq!(got, expected, "case {label}: joined output mismatch");
