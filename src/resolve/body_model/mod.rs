@@ -124,6 +124,8 @@ pub(crate) struct Declaration {
     pub(crate) stmt: Range<usize>,
     pub(crate) names: Vec<Range<usize>>,
     pub(crate) target_index: usize,
+    pub(crate) var_type: Option<Range<usize>>,
+    pub(crate) init: Option<Range<usize>>,
 }
 
 struct LocalEntry {
@@ -236,7 +238,46 @@ impl<'a> BodyModel<'a> {
             stmt: decl.byte_range(),
             names,
             target_index,
+            var_type: decl
+                .child_by_field_name(fields::VAR_TYPE)
+                .map(|n| n.byte_range()),
+            init: decl
+                .child_by_field_name(fields::INIT_VALUE)
+                .map(|n| n.byte_range()),
         })
+    }
+
+    // Cursor anywhere in the declaration statement, not just the name (unlike local_declared_at).
+    pub(crate) fn local_at_declaration_stmt(&self, byte: usize) -> Option<LocalId> {
+        self.locals.iter().find_map(|e| {
+            let local = LocalId(e.id);
+            let decl = self.declaration(local)?;
+            (decl.stmt.start <= byte && byte <= decl.stmt.end).then_some(local)
+        })
+    }
+
+    /// The local assigned by the assignment statement covering `byte`, with that statement's range.
+    pub(crate) fn write_at(&self, byte: usize) -> Option<(LocalId, Range<usize>)> {
+        self.writes.sites.iter().find_map(|(key, site)| {
+            let WriteSite::AssignTarget(node) = site else {
+                return None;
+            };
+            let stmt = find_ancestor_of_kind(*node, &[kinds::EXPR_STMT])?.byte_range();
+            if byte < stmt.start || stmt.end < byte {
+                return None;
+            }
+            Some((self.local_for_key(key)?, stmt))
+        })
+    }
+
+    fn local_for_key(&self, key: &DefKey) -> Option<LocalId> {
+        if key.0 != self.uri {
+            return None;
+        }
+        self.locals
+            .iter()
+            .find(|e| e.selection == key.1)
+            .map(|e| LocalId(e.id))
     }
 
     fn local_reading(&self, byte: usize) -> Option<LocalId> {
