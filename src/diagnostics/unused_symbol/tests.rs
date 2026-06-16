@@ -93,6 +93,8 @@ fn dims_unused_binding(#[case] fixture: &str, #[case] expected_message: &str) {
 #[case::struct_field("struct S { var x : int; }\n")]
 #[case::add_field_injection("class C {}\n@addField(C) var injected : int;\n")]
 #[case::field_used_in_method("class C { private var f : int; function g() { f = 1; } }\n")]
+#[case::import_function_params("import function F(x : int, y : string) : void;\n")]
+#[case::bodyless_method("class C { import function M(a : int) : void; }\n")]
 fn keeps_used_or_out_of_scope_bindings(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     assert!(

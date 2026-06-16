@@ -87,10 +87,20 @@ fn check_unused<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     }
 
     if node.kind() == kinds::FUNC_PARAM_GROUP {
+        if is_bodyless_func(node) {
+            return;
+        }
         emit_param_dims(node, &names, &unused, ctx);
     } else {
         emit_var_decl_dims(node, &names, &unused, ctx);
     }
+}
+
+fn is_bodyless_func(param_group: Node<'_>) -> bool {
+    let func_decl = param_group.parent().and_then(|p| p.parent());
+    func_decl
+        .and_then(|f| f.child_by_field_name(fields::DEFINITION))
+        .is_some_and(|def| def.kind() == kinds::NOP)
 }
 
 fn emit_param_dims<'tree>(
