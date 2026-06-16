@@ -53,6 +53,39 @@ fn duplicate_calls_flagged() {
     );
 }
 
+#[rstest]
+#[case::access(
+    "class Foo {} \
+     @wrapMethod(Foo) public function W() { wrappedMethod(); }\n",
+    "public"
+)]
+#[case::flavour(
+    "class Foo {} \
+     @wrapMethod(Foo) exec function W() { wrappedMethod(); }\n",
+    "exec"
+)]
+fn modifier_flagged(#[case] fixture: &str, #[case] keyword: &str) {
+    let t = TestDb::new(fixture);
+    let result = collect_wrapped_method_diagnostics(&t.search_docs(), &t.db());
+    let diags = result.get(t.primary_uri()).unwrap();
+    assert_eq!(kinds(diags), vec!["wrapped_method_modifier"]);
+    assert!(diags[0].message.contains(keyword));
+}
+
+#[test]
+fn multiple_modifiers_each_flagged() {
+    let t = TestDb::new(
+        "class Foo {} \
+         @wrapMethod(Foo) protected latent function W() { wrappedMethod(); }\n",
+    );
+    let result = collect_wrapped_method_diagnostics(&t.search_docs(), &t.db());
+    let diags = result.get(t.primary_uri()).unwrap();
+    assert_eq!(
+        kinds(diags),
+        vec!["wrapped_method_modifier", "wrapped_method_modifier"]
+    );
+}
+
 #[test]
 fn member_access_does_not_count() {
     let t = TestDb::new(

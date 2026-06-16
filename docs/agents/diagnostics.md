@@ -37,11 +37,10 @@
   parameter, or `private` field with no references (via `find_references`) at hint severity.
   Emits `"unused_symbol"`; `convert/diagnostics.rs` attaches the LSP `Unnecessary` tag to that
   kind so editors fade the range.
-- `src/diagnostics/wrapped_method.rs` - CST-walking rule (`WrappedMethodRule`) that
-  implements `CstRule` and is registered in `collect_cst_diagnostics_for_document`.
-  Checks every `@wrapMethod`-annotated function for a bare `wrappedMethod(...)` call:
-  emits `"missing_wrapped_method"` if none is found, or `"duplicate_wrapped_method"`
-  for each call beyond the first.
+- `src/diagnostics/wrapped_method.rs` - CST-walking rule (`WrappedMethodRule`); flags
+  missing/duplicate `wrappedMethod()` calls and disallowed modifiers/flavour keywords on
+  `@wrapMethod` functions. Emits `"missing_wrapped_method"`, `"duplicate_wrapped_method"`,
+  `"wrapped_method_modifier"`.
 - `src/diagnostics/cst_walker.rs` - `CstRule` trait, `CstRuleCtx`, per-call `TypeMemo`,
   `run_rules_on_document`, `collect_nodes_with_error_subtree`, `run_parallel_pass`. Any
   new rule needing to walk a document's CST must use these primitives rather than walking

@@ -41,6 +41,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 33  | `override_weaker_access`           | error    | A method override has weaker access than the ancestor's method                                     |
 | 34  | `override_param_count`             | error    | A method override declares a different parameter count than the ancestor's method                  |
 | 35  | `unused_symbol`                    | hint     | An unused local variable, parameter, or private field; rendered faded by editors                   |
+| 36  | `wrapped_method_modifier`         | error    | A modifier or flavour keyword is applied to a `@wrapMethod` function                                |
 
 ## Details
 
@@ -246,3 +247,7 @@ A class or state method whose name matches a class-body method up the inheritanc
 ### 35. Unused symbol
 
 An unused local variable, parameter, or `private` field. Emitted at hint severity with the LSP `Unnecessary` tag, so editors fade the declaration. An assignment counts as a use. `@addField` declarations are exempt.
+
+### 36. Modifier on a wrapped method
+
+An access modifier (`public`/`protected`/`private`/`final`/...) or function flavour keyword (`exec`, `timer`, ...) on a `@wrapMethod`-annotated function. The wrapper inherits the wrapped method's signature, so the compiler rejects any added modifier or flavour. Each offending keyword is flagged separately.
