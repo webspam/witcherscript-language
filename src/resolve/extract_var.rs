@@ -358,7 +358,7 @@ impl<'tree> AssignSlot<'tree> {
     }
 }
 
-// Where the in-place split assignment lands. A braceless control-flow body interposes no func_block,
+// Where the in-place split assignment lands. A braceless control-flow body has no func_block,
 // so the statement's parent being a control-flow node identifies the braces-needed case.
 fn assign_slot(node: Node) -> Option<AssignSlot> {
     let statement = node_and_ancestors(node).find(|n| STATEMENT_KINDS.contains(&n.kind()))?;
