@@ -135,6 +135,8 @@ Use the builder pattern only when a type has many optional fields *and* construc
 
 ## General
 
-No premature abstractions. Three similar lines beats an abstraction that is not yet justified by its use.
-No backwards-compatibility shims, `_unused` renames, or `// removed` placeholder comments for deleted code; if it is gone, it is gone.
-Do not design for hypothetical future requirements unless explicitly instructed to.
+- No premature abstractions. Three similar lines beats an abstraction that is not yet justified by its use.
+  This does NOT mean "duplicate any private functions that are 3 lines or less".
+  Moving a helper to a shared file instead of copy/pasting it is common sense, not "an abstraction".
+- No backwards-compatibility shims, `_unused` renames, or `// removed` placeholder comments for deleted code; if it is gone, it is gone.
+- Do not design for hypothetical future requirements unless explicitly instructed to.
