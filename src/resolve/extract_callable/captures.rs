@@ -14,6 +14,7 @@ use crate::types::Type;
 use super::super::Definition;
 use super::super::body_model::{BodyModel, LocalId};
 use super::super::definition::definition_key;
+use super::super::extract_common::suffixed_unique;
 use super::super::inference::TypeContext;
 use super::super::symbol_db::SymbolDb;
 use super::{Destination, ResolveCtx};
@@ -300,18 +301,4 @@ fn build_receiver(
         type_name: type_context.name.clone(),
         param_name,
     })
-}
-
-pub(super) fn suffixed_unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
-    if !taken(base) {
-        return base.to_string();
-    }
-    let mut suffix = 1usize;
-    loop {
-        let candidate = format!("{base}{suffix}");
-        if !taken(&candidate) {
-            return candidate;
-        }
-        suffix += 1;
-    }
 }

@@ -18,7 +18,7 @@ use super::body_model::{BodyModel, WriteKinds};
 use super::definition::callee_params;
 use super::extract_common::{
     CALLABLE_KINDS, Extraction, SelectionKind, Splice, applied_offset, classify_selection,
-    insert_and_replace, is_call_callee, trim_selection,
+    insert_and_replace, is_call_callee, suffixed_unique, trim_selection,
 };
 use super::inference::infer_type;
 use super::symbol_db::SymbolDb;
@@ -429,22 +429,13 @@ fn unique_name(base: &str, document: &ParsedDocument, db: &SymbolDb, callable: &
         .and_then(|id| document.symbols.by_id(id))
         .filter(|c| c.kind.is_instantiable());
     // Mirror the shadowing diagnostics: the generated local must not shadow a class field or engine global.
-    let shadows = |name: &str| {
-        db.find_script_global(name).is_some()
+    let in_use = |name: &str| {
+        taken.contains(name)
+            || db.find_script_global(name).is_some()
             || class.is_some_and(|c| {
                 db.find_member(&c.name, name, AccessLevel::Private)
                     .is_some_and(|d| d.symbol.kind == SymbolKind::Field)
             })
     };
-    if !taken.contains(base) && !shadows(base) {
-        return base.to_string();
-    }
-    let mut suffix = 1usize;
-    loop {
-        let candidate = format!("{base}{suffix}");
-        if !taken.contains(candidate.as_str()) && !shadows(&candidate) {
-            return candidate;
-        }
-        suffix += 1;
-    }
+    suffixed_unique(base, in_use)
 }

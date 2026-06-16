@@ -123,6 +123,20 @@ pub(super) fn insert_and_replace(
     }
 }
 
+pub(super) fn suffixed_unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
+    if !taken(base) {
+        return base.to_string();
+    }
+    let mut suffix = 1usize;
+    loop {
+        let candidate = format!("{base}{suffix}");
+        if !taken(&candidate) {
+            return candidate;
+        }
+        suffix += 1;
+    }
+}
+
 const EXTRACTABLE_KINDS: &[&str] = &[
     kinds::BINARY_OP_EXPR,
     kinds::UNARY_OP_EXPR,
