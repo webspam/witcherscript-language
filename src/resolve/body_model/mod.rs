@@ -460,11 +460,11 @@ impl<'a> BodyModel<'a> {
                 Confidence::Verified
             });
         }
-        // A call between the two could change one of the operands the value reads.
+        // A call between the two could change an operand the value reads, so offer it as unverified.
         if !self.effect_in_window(value, window, SIDE_EFFECT_KINDS) || operands.is_empty() {
             Some(Confidence::Verified)
         } else {
-            None
+            Some(Confidence::Unverified)
         }
     }
 

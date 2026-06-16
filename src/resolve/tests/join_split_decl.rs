@@ -111,10 +111,6 @@ fn joins(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     "an operand is declared between the declaration and the assignment",
     "function f() {\n    var $0x : int;\n    var y : int = 5;\n    x = y;\n}\n"
 )]
-#[case::call_in_window_with_operand(
-    "a call in the window may mutate the value's operand",
-    "function f(a : int) {\n    var $0x : int;\n    Foo();\n    x = a;\n}\n"
-)]
 #[case::assignment_nested_in_if(
     "the assignment is conditional",
     "function f() {\n    var $0x : int;\n    if (c) { x = 1; }\n    return x;\n}\n"
@@ -183,6 +179,11 @@ fn split_refuses(#[case] label: &str, #[case] src: &str) {
     "joining a call value reorders its effects past a statement",
     "function f() {\n    var $0x : int;\n    Foo();\n    x = Bar();\n}\n",
     "function f() {\n    var x : int = Bar();\n    Foo();\n}\n"
+)]
+#[case::call_in_window_may_mutate_operand(
+    "a call in the window may mutate the value's operand",
+    "function f(a : int) {\n    var $0x : int;\n    Foo();\n    x = a;\n}\n",
+    "function f(a : int) {\n    var x : int = a;\n    Foo();\n}\n"
 )]
 fn join_offers_unsafe(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     let (got, verified) =
