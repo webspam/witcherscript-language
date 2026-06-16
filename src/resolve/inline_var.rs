@@ -35,12 +35,10 @@ pub struct Inlining {
     pub confidence: InlineConfidence,
 }
 
-pub fn inline_variable(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    byte_offset: usize,
-) -> Option<Inlining> {
+pub fn inline_variable(model: &BodyModel, byte_offset: usize) -> Option<Inlining> {
+    let uri = model.uri();
+    let document = model.document();
+    let db = model.db();
     let root = document.tree.root_node();
     let cursor_ident = identifier_at(root, byte_offset);
 
@@ -50,7 +48,7 @@ pub fn inline_variable(
         None => decl_head_name(root, byte_offset)?.start_byte(),
     };
     let (def, decl) = variable_decl_at(uri, document, db, root, anchor)?;
-    let plan = plan_inline(uri, document, db, &def, decl)?;
+    let plan = plan_inline(model, &def, decl)?;
 
     let on_declaration = def.symbol.selection_byte_range.start <= byte_offset
         && byte_offset <= def.symbol.selection_byte_range.end;
@@ -106,15 +104,9 @@ struct InlinePlan {
     teardown_clean: bool,
 }
 
-fn plan_inline(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    def: &Definition,
-    decl: Node<'_>,
-) -> Option<InlinePlan> {
+fn plan_inline(model: &BodyModel, def: &Definition, decl: Node<'_>) -> Option<InlinePlan> {
+    let document = model.document();
     let anchor = def.symbol.selection_byte_range.start;
-    let model = BodyModel::enclosing(uri, document, db, anchor)?;
     let target = model.local_declared_at(anchor)?;
 
     let decl_names = decl_name_idents(decl);
@@ -144,7 +136,7 @@ fn plan_inline(
         };
         eligible.push(EligibleRead {
             range: range.clone(),
-            text: substituted_text(&document.source, &value, range, &model),
+            text: substituted_text(&document.source, &value, range, model),
             verified,
         });
         used.insert(*idx);
@@ -153,7 +145,7 @@ fn plan_inline(
     Some(InlinePlan {
         teardown: build_teardown(&document.source, decl, target_index, &decl_names, defs),
         teardown_possible: teardown_possible(defs),
-        teardown_clean: teardown_clean(defs, decl, &used, &model),
+        teardown_clean: teardown_clean(defs, decl, &used, model),
         eligible,
         total_reads: reaching.per_read().len(),
     })

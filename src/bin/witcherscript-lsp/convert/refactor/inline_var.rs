@@ -7,8 +7,10 @@ pub(super) struct InlineVariableRefactoring;
 
 impl Refactoring for InlineVariableRefactoring {
     fn actions(&self, ctx: &RefactorContext) -> Vec<CodeActionOrCommand> {
-        let Some(inlining) = inline_variable(ctx.canonical_uri, ctx.document, ctx.db, ctx.cursor())
-        else {
+        let Some(model) = ctx.body_model() else {
+            return Vec::new();
+        };
+        let Some(inlining) = inline_variable(model, ctx.cursor()) else {
             return Vec::new();
         };
         let title = match (&inlining.scope, &inlining.confidence) {

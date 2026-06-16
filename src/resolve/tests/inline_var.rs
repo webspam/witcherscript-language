@@ -1,7 +1,7 @@
 use rstest::rstest;
 
 use crate::resolve::extract_common::apply_splices;
-use crate::resolve::{InlineConfidence, inline_variable};
+use crate::resolve::{BodyModel, InlineConfidence, inline_variable};
 use crate::test_support::TestDb;
 
 fn inline_outcome(src: &str) -> Option<(String, bool)> {
@@ -9,7 +9,9 @@ fn inline_outcome(src: &str) -> Option<(String, bool)> {
     let (uri, pos) = t.cursor();
     let doc = t.doc_for(&uri);
     let byte = doc.line_index.position_to_byte(&doc.source, pos)?;
-    let inlining = inline_variable(&uri, doc, &t.db(), byte)?;
+    let db = t.db();
+    let model = BodyModel::enclosing(&uri, doc, &db, byte)?;
+    let inlining = inline_variable(&model, byte)?;
     let verified = matches!(inlining.confidence, InlineConfidence::Verified);
     Some((apply_splices(&doc.source, &inlining.edits), verified))
 }

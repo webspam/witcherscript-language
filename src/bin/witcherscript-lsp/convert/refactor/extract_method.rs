@@ -10,13 +10,10 @@ impl Refactoring for ExtractMethodRefactoring {
         if ctx.selection.is_empty() {
             return Vec::new();
         }
-        let Some(extraction) = extract_method(
-            ctx.canonical_uri,
-            ctx.document,
-            ctx.db,
-            ctx.selection.clone(),
-            ctx.options,
-        ) else {
+        let Some(model) = ctx.body_model() else {
+            return Vec::new();
+        };
+        let Some(extraction) = extract_method(model, ctx.selection.clone(), ctx.options) else {
             return Vec::new();
         };
         vec![extraction_code_action(

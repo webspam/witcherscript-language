@@ -5,7 +5,7 @@
 
 use rstest::rstest;
 
-use super::super::{extract_function, extract_method};
+use super::super::{BodyModel, extract_function, extract_method};
 use crate::formatter::FormatOptions;
 use crate::test_support::TestDb;
 
@@ -72,9 +72,11 @@ fn apply(src: &str, needle: &str, which: Which) -> Option<String> {
     let start = doc.source.find(needle).expect("needle present");
     let range = start..start + needle.len();
     let options = FormatOptions::default();
+    let db = t.db();
+    let model = BodyModel::enclosing(uri, doc, &db, start)?;
     let extraction = match which {
-        Which::Function => extract_function(uri, doc, &t.db(), range, options),
-        Which::Method => extract_method(uri, doc, &t.db(), range, options),
+        Which::Function => extract_function(&model, range, options),
+        Which::Method => extract_method(&model, range, options),
     }?;
     Some(extraction.apply(&doc.source))
 }

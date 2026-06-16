@@ -1,7 +1,7 @@
 use rstest::rstest;
 
 use crate::resolve::extract_common::apply_splices;
-use crate::resolve::{join_declaration, split_declaration};
+use crate::resolve::{BodyModel, join_declaration, split_declaration};
 use crate::test_support::TestDb;
 
 fn joined(src: &str) -> Option<String> {
@@ -9,7 +9,9 @@ fn joined(src: &str) -> Option<String> {
     let (uri, pos) = t.cursor();
     let doc = t.doc_for(&uri);
     let byte = doc.line_index.position_to_byte(&doc.source, pos)?;
-    let edits = join_declaration(&uri, doc, &t.db(), byte)?;
+    let db = t.db();
+    let model = BodyModel::enclosing(&uri, doc, &db, byte)?;
+    let edits = join_declaration(&model, byte)?;
     Some(apply_splices(&doc.source, &edits))
 }
 
@@ -18,7 +20,9 @@ fn split(src: &str) -> Option<String> {
     let (uri, pos) = t.cursor();
     let doc = t.doc_for(&uri);
     let byte = doc.line_index.position_to_byte(&doc.source, pos)?;
-    let edits = split_declaration(&uri, doc, &t.db(), byte)?;
+    let db = t.db();
+    let model = BodyModel::enclosing(&uri, doc, &db, byte)?;
+    let edits = split_declaration(&model, byte)?;
     Some(apply_splices(&doc.source, &edits))
 }
 

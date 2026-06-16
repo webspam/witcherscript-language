@@ -40,12 +40,13 @@ const STATEMENT_KINDS: &[&str] = &[
 ];
 
 pub fn extract_variable(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    model: &BodyModel,
     selection: Range<usize>,
     options: FormatOptions,
 ) -> Option<Extraction> {
+    let uri = model.uri();
+    let document = model.document();
+    let db = model.db();
     let source = &document.source;
     let selection = trim_selection(source, selection)?;
     let root = document.tree.root_node();
@@ -72,7 +73,6 @@ pub fn extract_variable(
     let name = unique_name(&name_base(uri, document, db, node), document, db, callable);
     let expr = &source[selection.clone()];
 
-    let model = BodyModel::enclosing(uri, document, db, selection.start)?;
     let value = selection.clone();
     let reads_nonlocal =
         has_descendant_of_kind(node, &[kinds::FUNC_CALL_EXPR]) || model.references_field(&value);

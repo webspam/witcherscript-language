@@ -11,8 +11,10 @@ impl Refactoring for JoinDeclarationRefactoring {
         if !ctx.selection.is_empty() {
             return Vec::new();
         }
-        let Some(edits) = join_declaration(ctx.canonical_uri, ctx.document, ctx.db, ctx.cursor())
-        else {
+        let Some(model) = ctx.body_model() else {
+            return Vec::new();
+        };
+        let Some(edits) = join_declaration(model, ctx.cursor()) else {
             return Vec::new();
         };
         vec![splice_rewrite_action(
@@ -30,8 +32,10 @@ impl Refactoring for SplitDeclarationRefactoring {
         if !ctx.selection.is_empty() {
             return Vec::new();
         }
-        let Some(edits) = split_declaration(ctx.canonical_uri, ctx.document, ctx.db, ctx.cursor())
-        else {
+        let Some(model) = ctx.body_model() else {
+            return Vec::new();
+        };
+        let Some(edits) = split_declaration(model, ctx.cursor()) else {
             return Vec::new();
         };
         vec![splice_rewrite_action(

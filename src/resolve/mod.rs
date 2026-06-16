@@ -34,6 +34,7 @@ mod tests;
 
 pub(crate) use assignability::{Assignability, assignability};
 pub use ast::BUILTIN_TYPE_COMPLETIONS;
+pub use body_model::BodyModel;
 pub use completion::{
     ExpressionCompletions, OverrideBody, OverrideCompletion, StatementCompletions,
     annotation_arg_completions, annotation_name_completions, class_body_keyword_completions,

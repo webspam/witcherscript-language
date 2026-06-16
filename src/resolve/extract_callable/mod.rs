@@ -56,49 +56,41 @@ enum Destination {
 }
 
 pub fn extract_function(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    model: &BodyModel,
     selection: Range<usize>,
     options: FormatOptions,
 ) -> Option<Extraction> {
-    extract(
-        uri,
-        document,
-        db,
-        selection,
-        options,
-        Destination::GlobalFunction,
-    )
+    extract(model, selection, options, Destination::GlobalFunction)
 }
 
 pub fn extract_method(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    model: &BodyModel,
     selection: Range<usize>,
     options: FormatOptions,
 ) -> Option<Extraction> {
-    extract(uri, document, db, selection, options, Destination::Method)
+    extract(model, selection, options, Destination::Method)
 }
 
 fn extract(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    model: &BodyModel,
     selection: Range<usize>,
     options: FormatOptions,
     destination: Destination,
 ) -> Option<Extraction> {
+    let document = model.document();
     let selection = trim_selection(&document.source, selection)?;
     let root = document.tree.root_node();
-    let ctx = ResolveCtx { uri, document, db };
+    let ctx = ResolveCtx {
+        uri: model.uri(),
+        document,
+        db: model.db(),
+    };
     match classify_selection(root, &selection) {
         SelectionKind::Expression { node, range } => {
-            extract_expression(&ctx, node, range, options, destination)
+            extract_expression(&ctx, model, node, range, options, destination)
         }
         SelectionKind::Statements { range } => {
-            extract_statements(&ctx, root, range, options, destination)
+            extract_statements(&ctx, model, root, range, options, destination)
         }
     }
 }
@@ -128,6 +120,7 @@ fn default_name(destination: Destination) -> &'static str {
 
 fn extract_expression(
     ctx: &ResolveCtx,
+    model: &BodyModel,
     node: Node,
     selection: Range<usize>,
     options: FormatOptions,
@@ -150,10 +143,9 @@ fn extract_expression(
         return None;
     }
     let type_context = enclosing_type_context(ctx.document, ctx.db, selection.start);
-    let model = BodyModel::enclosing(ctx.uri, ctx.document, ctx.db, selection.start)?;
     let captures = collect_captures(
         ctx,
-        &model,
+        model,
         &[node],
         &selection,
         callable,
@@ -196,6 +188,7 @@ fn extract_expression(
 
 fn extract_statements(
     ctx: &ResolveCtx,
+    model: &BodyModel,
     root: Node,
     selection: Range<usize>,
     options: FormatOptions,
@@ -207,7 +200,6 @@ fn extract_statements(
         return None;
     }
     let first = *stmts.first()?;
-    let model = BodyModel::enclosing(ctx.uri, ctx.document, ctx.db, range.start)?;
     let callable = ctx
         .document
         .symbols
@@ -218,7 +210,7 @@ fn extract_statements(
     let type_context = enclosing_type_context(ctx.document, ctx.db, range.start);
     let captures = collect_captures(
         ctx,
-        &model,
+        model,
         &stmts,
         &range,
         callable,

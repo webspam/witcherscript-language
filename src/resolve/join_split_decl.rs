@@ -17,12 +17,10 @@ use super::definition::resolve_definition_at_byte;
 use super::extract_common::{Splice, delete_statement};
 use super::symbol_db::SymbolDb;
 
-pub fn join_declaration(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    byte: usize,
-) -> Option<Vec<Splice>> {
+pub fn join_declaration(model: &BodyModel, byte: usize) -> Option<Vec<Splice>> {
+    let uri = model.uri();
+    let document = model.document();
+    let db = model.db();
     let root = document.tree.root_node();
     let (def, from_assignment) = target_local(uri, document, db, root, byte)?;
     if def.symbol.kind != SymbolKind::Variable || def.uri.as_str() != uri {
@@ -30,7 +28,6 @@ pub fn join_declaration(
     }
 
     let anchor = def.symbol.selection_byte_range.start;
-    let model = BodyModel::enclosing(uri, document, db, anchor)?;
     let local = model.local_declared_at(anchor)?;
     let JoinTarget {
         value,
@@ -53,12 +50,8 @@ pub fn join_declaration(
     ])
 }
 
-pub fn split_declaration(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    byte: usize,
-) -> Option<Vec<Splice>> {
+pub fn split_declaration(model: &BodyModel, byte: usize) -> Option<Vec<Splice>> {
+    let document = model.document();
     let root = document.tree.root_node();
     let decl = enclosing(root, byte, kinds::LOCAL_VAR_DECL_STMT)?;
     if decl.parent().map(|p| p.kind()) != Some(kinds::FUNC_BLOCK) {
@@ -68,7 +61,6 @@ pub fn split_declaration(
     let init = decl.child_by_field_name(fields::INIT_VALUE)?;
     let var_type = decl.child_by_field_name(fields::VAR_TYPE)?;
 
-    let model = BodyModel::enclosing(uri, document, db, name.start_byte())?;
     let local = model.local_declared_at(name.start_byte())?;
     let SplitTarget { insert_at } = model.splittable_declaration(local)?;
 

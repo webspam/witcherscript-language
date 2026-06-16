@@ -129,7 +129,7 @@ struct WriteIndex<'a> {
     positions: HashMap<DefKey, Vec<usize>>,
 }
 
-pub(crate) struct BodyModel<'a> {
+pub struct BodyModel<'a> {
     uri: &'a str,
     document: &'a ParsedDocument,
     db: &'a SymbolDb<'a>,
@@ -141,7 +141,7 @@ pub(crate) struct BodyModel<'a> {
 
 impl<'a> BodyModel<'a> {
     /// Build the model for the callable body enclosing `byte`, or `None` outside any callable body.
-    pub(crate) fn enclosing(
+    pub fn enclosing(
         uri: &'a str,
         document: &'a ParsedDocument,
         db: &'a SymbolDb<'a>,
@@ -179,6 +179,18 @@ impl<'a> BodyModel<'a> {
             reads_by_local,
             writes,
         })
+    }
+
+    pub(crate) fn uri(&self) -> &'a str {
+        self.uri
+    }
+
+    pub(crate) fn document(&self) -> &'a ParsedDocument {
+        self.document
+    }
+
+    pub(crate) fn db(&self) -> &'a SymbolDb<'a> {
+        self.db
     }
 
     /// The local whose declaration name covers `byte`, or `None` if `byte` is not on a declaration.

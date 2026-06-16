@@ -1,3 +1,4 @@
+use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::ops::Range;
 
@@ -9,7 +10,7 @@ use tree_sitter::Node;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::formatter::FormatOptions;
 use witcherscript_language::line_index::LineIndex;
-use witcherscript_language::resolve::{Extraction, Inlining, Splice, SymbolDb};
+use witcherscript_language::resolve::{BodyModel, Extraction, Inlining, Splice, SymbolDb};
 
 use super::lsp_range;
 
@@ -147,6 +148,7 @@ pub(crate) fn refactor_code_actions<'a>(
         db,
         selection,
         options,
+        body_model: OnceCell::new(),
     };
     REFACTORINGS.iter().flat_map(|r| r.actions(&ctx)).collect()
 }
@@ -158,6 +160,8 @@ struct RefactorContext<'a> {
     db: &'a SymbolDb<'a>,
     selection: Range<usize>,
     options: FormatOptions,
+    // Built once per request, then borrowed by every body-level action (dispatch is single-threaded).
+    body_model: OnceCell<Option<BodyModel<'a>>>,
 }
 
 impl<'a> RefactorContext<'a> {
@@ -167,6 +171,14 @@ impl<'a> RefactorContext<'a> {
 
     fn cursor(&self) -> usize {
         self.selection.start
+    }
+
+    fn body_model(&self) -> Option<&BodyModel<'a>> {
+        self.body_model
+            .get_or_init(|| {
+                BodyModel::enclosing(self.canonical_uri, self.document, self.db, self.cursor())
+            })
+            .as_ref()
     }
 
     fn source(&self) -> &'a str {

@@ -1,7 +1,7 @@
 use expect_test::expect;
 use rstest::rstest;
 
-use super::super::{Extraction, extract_function};
+use super::super::{BodyModel, Extraction, extract_function};
 use crate::formatter::{ColonSpacing, FormatOptions};
 use crate::test_support::{TestDb, script_env};
 
@@ -13,7 +13,9 @@ fn run(src: &str, needle: &str, options: FormatOptions) -> (String, Option<Extra
         .source
         .find(needle)
         .unwrap_or_else(|| panic!("needle {needle:?} not found in fixture"));
-    let result = extract_function(uri, doc, &t.db(), start..start + needle.len(), options);
+    let db = t.db();
+    let result = BodyModel::enclosing(uri, doc, &db, start)
+        .and_then(|model| extract_function(&model, start..start + needle.len(), options));
     (doc.source.clone(), result)
 }
 
@@ -308,10 +310,10 @@ fn array_method_call_makes_array_an_out_parameter() {
     let uri = t.primary_uri();
     let doc = t.doc_for(uri);
     let start = doc.source.find("arr.Size() + 1").expect("needle present");
+    let db = t.db();
+    let model = BodyModel::enclosing(uri, doc, &db, start).expect("cursor is in a function body");
     let result = extract_function(
-        uri,
-        doc,
-        &t.db(),
+        &model,
         start..start + "arr.Size() + 1".len(),
         FormatOptions::default(),
     )
@@ -373,10 +375,10 @@ fn script_global_is_not_captured() {
     let uri = t.primary_uri();
     let doc = t.doc_for(uri);
     let start = doc.source.find("theGame + 1").expect("needle present");
+    let db = t.db().with_script_env(&env);
+    let model = BodyModel::enclosing(uri, doc, &db, start).expect("cursor is in a function body");
     let result = extract_function(
-        uri,
-        doc,
-        &t.db().with_script_env(&env),
+        &model,
         start..start + "theGame + 1".len(),
         FormatOptions::default(),
     )

@@ -1,7 +1,7 @@
 use expect_test::expect;
 use rstest::rstest;
 
-use super::super::{Extraction, extract_variable};
+use super::super::{BodyModel, Extraction, extract_variable};
 use crate::formatter::{ColonSpacing, FormatOptions};
 use crate::test_support::{TestDb, script_env};
 
@@ -13,7 +13,9 @@ fn run(src: &str, needle: &str, options: FormatOptions) -> (String, Option<Extra
         .source
         .find(needle)
         .unwrap_or_else(|| panic!("needle {needle:?} not found in fixture"));
-    let result = extract_variable(uri, doc, &t.db(), start..start + needle.len(), options);
+    let db = t.db();
+    let result = BodyModel::enclosing(uri, doc, &db, start)
+        .and_then(|model| extract_variable(&model, start..start + needle.len(), options));
     (doc.source.clone(), result)
 }
 
@@ -281,10 +283,10 @@ fn derived_name_shadowing_script_global_gets_suffix() {
     let uri = t.primary_uri();
     let doc = t.doc_for(uri);
     let start = doc.source.find("s.theGame").expect("needle present");
+    let db = t.db().with_script_env(&env);
+    let model = BodyModel::enclosing(uri, doc, &db, start).expect("cursor is in a function body");
     let result = extract_variable(
-        uri,
-        doc,
-        &t.db().with_script_env(&env),
+        &model,
         start..start + "s.theGame".len(),
         FormatOptions::default(),
     )
@@ -301,8 +303,10 @@ fn returns_none_for_empty_selection() {
     let uri = t.primary_uri();
     let doc = t.doc_for(uri);
     let start = doc.source.find("1 + 2").expect("needle present");
+    let db = t.db();
+    let model = BodyModel::enclosing(uri, doc, &db, start).expect("cursor is in a function body");
     assert!(
-        extract_variable(uri, doc, &t.db(), start..start, FormatOptions::default()).is_none(),
+        extract_variable(&model, start..start, FormatOptions::default()).is_none(),
         "empty selection must not extract"
     );
 }
