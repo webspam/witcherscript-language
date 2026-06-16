@@ -11,8 +11,8 @@ fn joined(src: &str) -> Option<String> {
     let byte = doc.line_index.position_to_byte(&doc.source, pos)?;
     let db = t.db();
     let model = BodyModel::enclosing(&uri, doc, &db, byte)?;
-    let edits = join_declaration(&model, byte)?;
-    Some(apply_splices(&doc.source, &edits))
+    let plan = join_declaration(&model, byte)?;
+    Some(apply_splices(&doc.source, &plan.edits))
 }
 
 fn split(src: &str) -> Option<String> {
@@ -22,8 +22,8 @@ fn split(src: &str) -> Option<String> {
     let byte = doc.line_index.position_to_byte(&doc.source, pos)?;
     let db = t.db();
     let model = BodyModel::enclosing(&uri, doc, &db, byte)?;
-    let edits = split_declaration(&model, byte)?;
-    Some(apply_splices(&doc.source, &edits))
+    let plan = split_declaration(&model, byte)?;
+    Some(apply_splices(&doc.source, &plan.edits))
 }
 
 #[rstest]

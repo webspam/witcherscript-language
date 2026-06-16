@@ -1,9 +1,9 @@
 use crate::formatter::line_indent;
 
 use super::body_model::{BodyModel, JoinTarget, SplitTarget};
-use super::extract_common::{Splice, delete_statement};
+use super::extract_common::{Confidence, EditPlan, Splice, delete_statement};
 
-pub fn join_declaration(model: &BodyModel, byte: usize) -> Option<Vec<Splice>> {
+pub fn join_declaration(model: &BodyModel, byte: usize) -> Option<EditPlan> {
     let (local, from_assignment) = if let Some(local) = model.local_at_declaration_stmt(byte) {
         (local, None)
     } else {
@@ -23,16 +23,19 @@ pub fn join_declaration(model: &BodyModel, byte: usize) -> Option<Vec<Splice>> {
 
     let source = &model.document().source;
     let init = &source[value];
-    Some(vec![
-        Splice {
-            range: insert_at..insert_at,
-            text: format!(" = {init}"),
-        },
-        delete_statement(source, stmt),
-    ])
+    Some(EditPlan {
+        edits: vec![
+            Splice {
+                range: insert_at..insert_at,
+                text: format!(" = {init}"),
+            },
+            delete_statement(source, stmt),
+        ],
+        confidence: Confidence::Verified,
+    })
 }
 
-pub fn split_declaration(model: &BodyModel, byte: usize) -> Option<Vec<Splice>> {
+pub fn split_declaration(model: &BodyModel, byte: usize) -> Option<EditPlan> {
     let local = model.local_at_declaration_stmt(byte)?;
     let decl = model.declaration(local)?;
     let SplitTarget { insert_at } = model.splittable_declaration(local)?;
@@ -46,14 +49,17 @@ pub fn split_declaration(model: &BodyModel, byte: usize) -> Option<Vec<Splice>> 
         indent = line_indent(source, insert_at),
         value = &source[init.clone()],
     );
-    Some(vec![
-        Splice {
-            range: var_type.end..init.end,
-            text: String::new(),
-        },
-        Splice {
-            range: insert_at..insert_at,
-            text: assignment,
-        },
-    ])
+    Some(EditPlan {
+        edits: vec![
+            Splice {
+                range: var_type.end..init.end,
+                text: String::new(),
+            },
+            Splice {
+                range: insert_at..insert_at,
+                text: assignment,
+            },
+        ],
+        confidence: Confidence::Verified,
+    })
 }

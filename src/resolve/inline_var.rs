@@ -2,25 +2,16 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use super::body_model::{BodyModel, Declaration, LocalId, ReachDef, Stability};
-use super::extract_common::{Splice, delete_statement};
+use super::extract_common::{Confidence, EditPlan, Splice, delete_statement};
 
 pub enum InlineScope {
     AllUsages,
     SingleUsage,
 }
 
-pub enum InlineConfidence {
-    /// A single definition reaches each read and nothing the value depends on changes before it
-    Verified,
-    /// We cannot verify with certainty that there will be no runtime changes from inlining
-    Unverified,
-}
-
 pub struct Inlining {
-    /// Non-overlapping edits against the original source
-    pub edits: Vec<Splice>,
+    pub plan: EditPlan,
     pub scope: InlineScope,
-    pub confidence: InlineConfidence,
 }
 
 pub fn inline_variable(model: &BodyModel, byte_offset: usize) -> Option<Inlining> {
@@ -146,11 +137,11 @@ fn build_teardown(source: &str, decl: &Declaration, defs: &[ReachDef]) -> Vec<Sp
     teardown
 }
 
-fn confidence(verified: bool) -> InlineConfidence {
+fn confidence(verified: bool) -> Confidence {
     if verified {
-        InlineConfidence::Verified
+        Confidence::Verified
     } else {
-        InlineConfidence::Unverified
+        Confidence::Unverified
     }
 }
 
@@ -176,9 +167,11 @@ fn inline_all_reads(plan: &InlinePlan) -> Option<Inlining> {
         && plan.eligible.iter().all(|read| read.verified)
         && !duplicates_a_call_or_construct(&plan.eligible);
     Some(Inlining {
-        edits,
+        plan: EditPlan {
+            edits,
+            confidence: confidence(verified),
+        },
         scope,
-        confidence: confidence(verified),
     })
 }
 
@@ -200,9 +193,11 @@ fn inline_single_read(range: &Range<usize>, plan: &InlinePlan) -> Option<Inlinin
         verified = false;
     }
     Some(Inlining {
-        edits,
+        plan: EditPlan {
+            edits,
+            confidence: confidence(verified),
+        },
         scope: InlineScope::SingleUsage,
-        confidence: confidence(verified),
     })
 }
 

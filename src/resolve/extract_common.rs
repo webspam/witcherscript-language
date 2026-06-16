@@ -35,6 +35,17 @@ impl Extraction {
     }
 }
 
+/// Whether a refactor's edits are provably free of runtime change.
+pub enum Confidence {
+    Verified,
+    Unverified,
+}
+
+pub struct EditPlan {
+    pub edits: Vec<Splice>,
+    pub confidence: Confidence,
+}
+
 // Splice rightmost-first so each replace_range leaves earlier byte offsets untouched.
 pub(super) fn apply_splices(text: &str, splices: &[Splice]) -> String {
     let mut ordered: Vec<&Splice> = splices.iter().collect();

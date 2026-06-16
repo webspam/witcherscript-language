@@ -10,7 +10,7 @@ use tree_sitter::Node;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::formatter::FormatOptions;
 use witcherscript_language::line_index::LineIndex;
-use witcherscript_language::resolve::{BodyModel, Extraction, Inlining, Splice, SymbolDb};
+use witcherscript_language::resolve::{BodyModel, Extraction, Splice, SymbolDb};
 
 use super::lsp_range;
 
@@ -84,27 +84,15 @@ fn extraction_code_action(
     })
 }
 
-fn inline_code_action(
-    ctx: &RefactorContext,
-    inlining: &Inlining,
-    title: &str,
-) -> CodeActionOrCommand {
-    CodeActionOrCommand::CodeAction(CodeAction {
-        title: title.to_string(),
-        kind: Some(CodeActionKind::REFACTOR_INLINE),
-        edit: Some(workspace_edit_from_splices(ctx, &inlining.edits)),
-        ..CodeAction::default()
-    })
-}
-
-fn splice_rewrite_action(
+fn splice_code_action(
     ctx: &RefactorContext,
     splices: &[Splice],
+    kind: CodeActionKind,
     title: &str,
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
-        kind: Some(CodeActionKind::REFACTOR_REWRITE),
+        kind: Some(kind),
         edit: Some(workspace_edit_from_splices(ctx, splices)),
         ..CodeAction::default()
     })

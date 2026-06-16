@@ -1,7 +1,7 @@
-use lsp_types::CodeActionOrCommand;
-use witcherscript_language::resolve::{InlineConfidence, InlineScope, inline_variable};
+use lsp_types::{CodeActionKind, CodeActionOrCommand};
+use witcherscript_language::resolve::{Confidence, InlineScope, inline_variable};
 
-use super::{RefactorContext, Refactoring, inline_code_action};
+use super::{RefactorContext, Refactoring, splice_code_action};
 
 pub(super) struct InlineVariableRefactoring;
 
@@ -13,14 +13,17 @@ impl Refactoring for InlineVariableRefactoring {
         let Some(inlining) = inline_variable(model, ctx.cursor()) else {
             return Vec::new();
         };
-        let title = match (&inlining.scope, &inlining.confidence) {
-            (InlineScope::AllUsages, InlineConfidence::Verified) => "Inline variable (all)",
-            (InlineScope::AllUsages, InlineConfidence::Unverified) => {
-                "Inline variable (all, unsafe)"
-            }
-            (InlineScope::SingleUsage, InlineConfidence::Verified) => "Inline variable",
-            (InlineScope::SingleUsage, InlineConfidence::Unverified) => "Inline variable (unsafe)",
+        let title = match (&inlining.scope, &inlining.plan.confidence) {
+            (InlineScope::AllUsages, Confidence::Verified) => "Inline variable (all)",
+            (InlineScope::AllUsages, Confidence::Unverified) => "Inline variable (all, unsafe)",
+            (InlineScope::SingleUsage, Confidence::Verified) => "Inline variable",
+            (InlineScope::SingleUsage, Confidence::Unverified) => "Inline variable (unsafe)",
         };
-        vec![inline_code_action(ctx, &inlining, title)]
+        vec![splice_code_action(
+            ctx,
+            &inlining.plan.edits,
+            CodeActionKind::REFACTOR_INLINE,
+            title,
+        )]
     }
 }

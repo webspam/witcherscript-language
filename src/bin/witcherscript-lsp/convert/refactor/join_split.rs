@@ -1,7 +1,7 @@
-use lsp_types::CodeActionOrCommand;
-use witcherscript_language::resolve::{join_declaration, split_declaration};
+use lsp_types::{CodeActionKind, CodeActionOrCommand};
+use witcherscript_language::resolve::{Confidence, join_declaration, split_declaration};
 
-use super::{RefactorContext, Refactoring, splice_rewrite_action};
+use super::{RefactorContext, Refactoring, splice_code_action};
 
 pub(super) struct JoinDeclarationRefactoring;
 
@@ -14,13 +14,18 @@ impl Refactoring for JoinDeclarationRefactoring {
         let Some(model) = ctx.body_model() else {
             return Vec::new();
         };
-        let Some(edits) = join_declaration(model, ctx.cursor()) else {
+        let Some(plan) = join_declaration(model, ctx.cursor()) else {
             return Vec::new();
         };
-        vec![splice_rewrite_action(
+        let title = match plan.confidence {
+            Confidence::Verified => "Join declaration and assignment",
+            Confidence::Unverified => "Join declaration and assignment (unsafe)",
+        };
+        vec![splice_code_action(
             ctx,
-            &edits,
-            "Join declaration and assignment",
+            &plan.edits,
+            CodeActionKind::REFACTOR_REWRITE,
+            title,
         )]
     }
 }
@@ -35,13 +40,18 @@ impl Refactoring for SplitDeclarationRefactoring {
         let Some(model) = ctx.body_model() else {
             return Vec::new();
         };
-        let Some(edits) = split_declaration(model, ctx.cursor()) else {
+        let Some(plan) = split_declaration(model, ctx.cursor()) else {
             return Vec::new();
         };
-        vec![splice_rewrite_action(
+        let title = match plan.confidence {
+            Confidence::Verified => "Split declaration and initializer",
+            Confidence::Unverified => "Split declaration and initializer (unsafe)",
+        };
+        vec![splice_code_action(
             ctx,
-            &edits,
-            "Split declaration and initializer",
+            &plan.edits,
+            CodeActionKind::REFACTOR_REWRITE,
+            title,
         )]
     }
 }
