@@ -14,9 +14,9 @@ use crate::symbols::{Symbol, SymbolKind};
 use crate::types::Type;
 
 use super::Definition;
-use super::body_model::BodyModel;
+use super::body_model::{BodyModel, CALLABLE_KINDS};
 use super::definition::resolve_definition_at_byte;
-use super::extract_common::{CALLABLE_KINDS, Extraction, insert_and_replace};
+use super::edit_plan::{Extraction, insert_and_replace};
 use super::inference::{enclosing_type_context, infer_type};
 use super::selection::{SelectionKind, classify_selection, is_call_callee, trim_selection};
 use super::symbol_db::SymbolDb;

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use super::body_model::{BodyModel, Declaration, LocalId, ReachDef, Stability};
-use super::extract_common::{Confidence, EditPlan, Splice, delete_statement};
+use super::edit_plan::{Confidence, EditPlan, Splice, delete_statement};
 
 pub enum InlineScope {
     AllUsages,

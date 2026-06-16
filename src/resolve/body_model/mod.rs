@@ -22,7 +22,7 @@ use crate::symbols::{SymbolId, SymbolKind};
 
 use super::Definition;
 use super::definition::{definition_key, resolve_definition_at_byte};
-use super::extract_common::{CALLABLE_KINDS, Confidence};
+use super::edit_plan::Confidence;
 use super::name_context::{NameContext, classify_ident_context};
 use super::reaching_defs::reaching_defs;
 use super::symbol_db::SymbolDb;
@@ -30,6 +30,9 @@ use super::writes::{WriteSite, is_value_type, write_site_node, write_sites};
 
 /// Identity of a local, parameter, or field for cross-occurrence matching: `(uri, decl range)`.
 type DefKey = (String, Range<usize>);
+
+pub(super) const CALLABLE_KINDS: &[SymbolKind] =
+    &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event];
 
 // A call is the only side effect; `new` is effect-free and an assignment is a tracked write.
 const SIDE_EFFECT_KINDS: &[&str] = &[kinds::FUNC_CALL_EXPR];

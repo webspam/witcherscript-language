@@ -7,14 +7,13 @@ use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kin
 use crate::cst::grammar::member_access_member;
 use crate::cst::kinds;
 use crate::cst::nav::first_named_child;
-use crate::strings::receiver_name;
+use crate::strings::{receiver_name, suffixed_unique};
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
 
 use super::super::Definition;
 use super::super::body_model::{BodyModel, LocalId};
 use super::super::definition::definition_key;
-use super::super::extract_common::suffixed_unique;
 use super::super::inference::TypeContext;
 use super::super::symbol_db::SymbolDb;
 use super::{Destination, ResolveCtx};

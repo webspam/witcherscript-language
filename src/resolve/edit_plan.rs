@@ -1,7 +1,5 @@
 use std::ops::Range;
 
-use crate::symbols::SymbolKind;
-
 #[derive(Debug, Clone)]
 pub struct Splice {
     /// Byte range in the original source this edit replaces; an empty range is a pure insertion.
@@ -111,20 +109,3 @@ pub(super) fn insert_and_replace(
         cursor,
     }
 }
-
-pub(super) fn suffixed_unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
-    if !taken(base) {
-        return base.to_string();
-    }
-    let mut suffix = 1usize;
-    loop {
-        let candidate = format!("{base}{suffix}");
-        if !taken(&candidate) {
-            return candidate;
-        }
-        suffix += 1;
-    }
-}
-
-pub(super) const CALLABLE_KINDS: &[SymbolKind] =
-    &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event];

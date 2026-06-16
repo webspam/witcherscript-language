@@ -1,6 +1,6 @@
 use rstest::rstest;
 
-use crate::resolve::extract_common::apply_splices;
+use crate::resolve::edit_plan::apply_splices;
 use crate::resolve::{BodyModel, Confidence, join_declaration, split_declaration};
 use crate::test_support::TestDb;
 

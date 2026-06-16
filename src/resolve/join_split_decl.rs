@@ -1,7 +1,7 @@
 use crate::formatter::line_indent;
 
 use super::body_model::{BodyModel, JoinTarget, SplitTarget};
-use super::extract_common::{EditPlan, Splice, delete_statement};
+use super::edit_plan::{EditPlan, Splice, delete_statement};
 
 pub fn join_declaration(model: &BodyModel, byte: usize) -> Option<EditPlan> {
     let (local, from_assignment) = if let Some(local) = model.local_at_declaration_stmt(byte) {
