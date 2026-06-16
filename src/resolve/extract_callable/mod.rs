@@ -16,11 +16,9 @@ use crate::types::Type;
 use super::Definition;
 use super::body_model::BodyModel;
 use super::definition::resolve_definition_at_byte;
-use super::extract_common::{
-    CALLABLE_KINDS, Extraction, SelectionKind, classify_selection, insert_and_replace,
-    is_call_callee, trim_selection,
-};
+use super::extract_common::{CALLABLE_KINDS, Extraction, insert_and_replace};
 use super::inference::{enclosing_type_context, infer_type};
+use super::selection::{SelectionKind, classify_selection, is_call_callee, trim_selection};
 use super::symbol_db::SymbolDb;
 
 use captures::collect_captures;

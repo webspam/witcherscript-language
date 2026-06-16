@@ -20,6 +20,7 @@ mod name_context;
 mod overrides;
 mod reaching_defs;
 mod references;
+mod selection;
 mod shadowed_base;
 mod signature;
 mod state_classes;
@@ -28,6 +29,7 @@ mod symbol_db;
 mod type_definition;
 mod workspace_index;
 mod workspace_symbols;
+mod writes;
 
 #[cfg(test)]
 mod tests;

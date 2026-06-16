@@ -17,10 +17,10 @@ use crate::types::Type;
 use super::body_model::{BodyModel, WriteKinds};
 use super::definition::callee_params;
 use super::extract_common::{
-    CALLABLE_KINDS, Extraction, SelectionKind, Splice, applied_offset, classify_selection,
-    insert_and_replace, is_call_callee, suffixed_unique, trim_selection,
+    CALLABLE_KINDS, Extraction, Splice, applied_offset, insert_and_replace, suffixed_unique,
 };
 use super::inference::infer_type;
+use super::selection::{SelectionKind, classify_selection, is_call_callee, trim_selection};
 use super::symbol_db::SymbolDb;
 
 const STATEMENT_KINDS: &[&str] = &[
