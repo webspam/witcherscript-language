@@ -4,7 +4,7 @@ use tree_sitter::Node;
 
 use crate::cst::ancestors::find_ancestor_of_kind;
 use crate::cst::grammar::write_target;
-use crate::cst::nav::first_child_kind;
+use crate::cst::nav::{first_child_kind, single_name};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::formatter::line_indent;
@@ -106,13 +106,4 @@ fn enclosing<'t>(root: Node<'t>, byte: usize, kind: &str) -> Option<Node<'t>> {
     nodes_at_offset(root, byte)
         .into_iter()
         .find_map(|n| find_ancestor_of_kind(n, &[kind]))
-}
-
-fn single_name(decl: Node) -> Option<Node> {
-    let mut cursor = decl.walk();
-    let mut names = decl
-        .children_by_field_name(fields::NAMES, &mut cursor)
-        .filter(|n| n.kind() == kinds::IDENT);
-    let first = names.next()?;
-    names.next().is_none().then_some(first)
 }

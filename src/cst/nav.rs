@@ -1,5 +1,7 @@
 use tree_sitter::Node;
 
+use crate::cst::{fields, kinds};
+
 pub(crate) fn first_child_kind<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
     nth_child_kind(node, kind, 0)
 }
@@ -30,4 +32,18 @@ pub(crate) fn child_nodes(node: Node) -> Vec<Node> {
 pub(crate) fn named_child_nodes(node: Node) -> Vec<Node> {
     let mut c = node.walk();
     node.named_children(&mut c).collect()
+}
+
+pub(crate) fn decl_name_idents(decl: Node) -> Vec<Node> {
+    let mut cursor = decl.walk();
+    decl.children_by_field_name(fields::NAMES, &mut cursor)
+        .filter(|n| n.kind() == kinds::IDENT)
+        .collect()
+}
+
+pub(crate) fn single_name(decl: Node) -> Option<Node> {
+    match decl_name_idents(decl).as_slice() {
+        [only] => Some(*only),
+        _ => None,
+    }
 }

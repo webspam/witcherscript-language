@@ -14,7 +14,7 @@ use tree_sitter::Node;
 use crate::cst::ancestors::{find_ancestor_of_kind, node_and_ancestors};
 use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
 use crate::cst::grammar::write_target;
-use crate::cst::nav::{first_named_child, named_child_nodes};
+use crate::cst::nav::{decl_name_idents, first_named_child, named_child_nodes};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::symbols::{SymbolId, SymbolKind};
@@ -220,7 +220,7 @@ impl<'a> BodyModel<'a> {
             .cloned()
             .collect();
 
-        let names_len = name_count(decl);
+        let names_len = decl_name_idents(decl).len();
         let rd = reaching_defs(self.body, decl, names_len, &mutations, &reads);
         let defs = rd
             .all_defs
@@ -239,7 +239,9 @@ impl<'a> BodyModel<'a> {
 
     pub(crate) fn joinable_assignment(&self, local: LocalId) -> Option<JoinTarget> {
         let decl = self.decl_node(local)?;
-        if name_count(decl) != 1 || decl.child_by_field_name(fields::INIT_VALUE).is_some() {
+        if decl_name_idents(decl).len() != 1
+            || decl.child_by_field_name(fields::INIT_VALUE).is_some()
+        {
             return None;
         }
 
@@ -672,13 +674,6 @@ fn is_write(site: &WriteSite, value_type: bool) -> bool {
         WriteSite::AssignTarget(_) | WriteSite::OutArg(_) => true,
         WriteSite::AssignBase(_) | WriteSite::ReceiverBase(_) => value_type,
     }
-}
-
-fn name_count(decl: Node) -> usize {
-    let mut cursor = decl.walk();
-    decl.children_by_field_name(fields::NAMES, &mut cursor)
-        .filter(|n| n.kind() == kinds::IDENT)
-        .count()
 }
 
 // In these positions the value is a whole operand, so no outer operator can capture part of it.

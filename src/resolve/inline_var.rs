@@ -4,7 +4,8 @@ use std::ops::Range;
 use tree_sitter::Node;
 
 use crate::cst::ancestors::find_ancestor_of_kind;
-use crate::cst::{fields, kinds};
+use crate::cst::kinds;
+use crate::cst::nav::{decl_name_idents, single_name};
 use crate::document::ParsedDocument;
 use crate::symbols::SymbolKind;
 
@@ -116,7 +117,7 @@ fn plan_inline(
     let model = BodyModel::enclosing(uri, document, db, anchor)?;
     let target = model.local_declared_at(anchor)?;
 
-    let decl_names = name_nodes(decl);
+    let decl_names = decl_name_idents(decl);
     let target_index = decl_names
         .iter()
         .position(|n| n.byte_range() == def.symbol.selection_byte_range)?;
@@ -265,20 +266,6 @@ fn decl_stmt_for<'tree>(root: Node<'tree>, def: &Definition) -> Option<Node<'tre
     let range = &def.symbol.byte_range;
     let node = root.descendant_for_byte_range(range.start, range.end)?;
     find_ancestor_of_kind(node, &[kinds::LOCAL_VAR_DECL_STMT])
-}
-
-fn name_nodes(decl: Node) -> Vec<Node> {
-    let mut cursor = decl.walk();
-    decl.children_by_field_name(fields::NAMES, &mut cursor)
-        .filter(|n| n.kind() == kinds::IDENT)
-        .collect()
-}
-
-fn single_name(decl: Node) -> Option<Node> {
-    match name_nodes(decl).as_slice() {
-        [only] => Some(*only),
-        _ => None,
-    }
 }
 
 fn remove_binding(source: &str, decl: Node, target_index: usize, names: &[Node]) -> Splice {
