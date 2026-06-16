@@ -14,6 +14,7 @@ use tree_sitter::Node;
 use crate::cst::ancestors::{find_ancestor_of_kind, node_and_ancestors};
 use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
 use crate::cst::grammar::write_target;
+use crate::cst::if_stmt::mutually_exclusive_branches;
 use crate::cst::nav::{decl_name_idents, first_named_child, named_child_nodes};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
@@ -468,6 +469,29 @@ impl<'a> BodyModel<'a> {
         self.statements_between(window, block)
             .into_iter()
             .any(|n| has_descendant_of_kind(n, SIDE_EFFECT_KINDS))
+    }
+
+    pub(crate) fn call_precedes_value(&self, value: &Range<usize>, window: &Range<usize>) -> bool {
+        self.effect_in_window(value, window, &[kinds::FUNC_CALL_EXPR])
+    }
+
+    // A call in a branch mutually exclusive with `value` can't run first, unless a loop re-runs both.
+    fn effect_in_window(
+        &self,
+        value: &Range<usize>,
+        window: &Range<usize>,
+        kinds: &[&str],
+    ) -> bool {
+        let Some(anchor) = self.node_at(value) else {
+            return false;
+        };
+        let in_loop = self.enclosing_loop(value).is_some();
+        let mut effects = Vec::new();
+        collect_descendants_of_kind(self.body, kinds, &mut effects);
+        effects.iter().any(|effect| {
+            window.contains(&effect.start_byte())
+                && (in_loop || !mutually_exclusive_branches(*effect, anchor))
+        })
     }
 
     /// Whether the value at `value` still holds the same result when evaluated at the read site,

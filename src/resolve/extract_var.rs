@@ -4,9 +4,9 @@ use std::ops::Range;
 use tree_sitter::Node;
 
 use crate::cst::ancestors::{enclosing_callable_block, node_and_ancestors};
-use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
+use crate::cst::descendants::has_descendant_of_kind;
 use crate::cst::grammar::{arg_slots, call_callee, callee_ident, member_access_member};
-use crate::cst::if_stmt::{if_chain_above, mutually_exclusive_branches};
+use crate::cst::if_stmt::if_chain_above;
 use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::formatter::{FormatOptions, indent_block, indent_unit_for, line_indent};
@@ -83,8 +83,7 @@ pub fn extract_variable(
     let hoist_end = loop_end.unwrap_or(selection.start);
     let cannot_hoist_initializer = |window: Range<usize>| {
         model.operand_written_in(&value, &window, WriteKinds::Reassignment)
-            || (reads_nonlocal
-                && overridable_call_precedes(node, block, window, loop_end.is_some()))
+            || (reads_nonlocal && model.call_precedes_value(&value, &window))
     };
 
     match decl_site(source, block, &selection, options)? {
@@ -429,16 +428,6 @@ fn parameter_slot_name(
 
 // Calls in an earlier initializer run before our decl regardless, so only those from the insertion
 // point (window start, after the last leading var decl) up to the hoist end can change the reads.
-fn overridable_call_precedes(node: Node, block: Node, window: Range<usize>, in_loop: bool) -> bool {
-    let mut calls = Vec::new();
-    collect_descendants_of_kind(block, &[kinds::FUNC_CALL_EXPR], &mut calls);
-    calls.iter().any(|call| {
-        // A loop re-runs both branches, so the then/else exclusion only holds outside one.
-        window.contains(&call.start_byte())
-            && (in_loop || !mutually_exclusive_branches(*call, node))
-    })
-}
-
 fn unique_name(base: &str, document: &ParsedDocument, db: &SymbolDb, callable: &Symbol) -> String {
     let taken: HashSet<&str> = document
         .symbols
