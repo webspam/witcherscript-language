@@ -561,7 +561,7 @@ impl<'a> BodyModel<'a> {
             .is_some_and(|n| has_descendant_of_kind(n, SIDE_EFFECT_KINDS))
     }
 
-    fn value_calls_or_constructs(&self, span: &Range<usize>) -> bool {
+    pub(crate) fn value_calls_or_constructs(&self, span: &Range<usize>) -> bool {
         self.node_at(span)
             .is_some_and(|n| has_descendant_of_kind(n, CALL_OR_CONSTRUCT_KINDS))
     }

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use super::body_model::{BodyModel, Declaration, LocalId, ReachDef, Stability};
@@ -38,6 +38,8 @@ struct EligibleRead {
     text: String,
     /// The value is proven stable to move to this read.
     verified: bool,
+    calls_or_constructs: bool,
+    def_index: usize,
 }
 
 struct InlinePlan {
@@ -80,6 +82,8 @@ fn plan_inline(model: &BodyModel, target: LocalId) -> Option<InlinePlan> {
             range: range.clone(),
             text: substituted_text(source, &value, range, model),
             verified,
+            calls_or_constructs: model.value_calls_or_constructs(&value),
+            def_index: *idx,
         });
         used.insert(*idx);
     }
@@ -91,6 +95,14 @@ fn plan_inline(model: &BodyModel, target: LocalId) -> Option<InlinePlan> {
         eligible,
         total_reads: reaching.per_read().len(),
     })
+}
+
+fn duplicates_a_call_or_construct(eligible: &[EligibleRead]) -> bool {
+    let mut per_def: HashMap<usize, usize> = HashMap::new();
+    for read in eligible.iter().filter(|r| r.calls_or_constructs) {
+        *per_def.entry(read.def_index).or_default() += 1;
+    }
+    per_def.values().any(|&count| count > 1)
 }
 
 fn teardown_possible(defs: &[ReachDef]) -> bool {
@@ -160,7 +172,9 @@ fn inline_all_reads(plan: &InlinePlan) -> Option<Inlining> {
     } else {
         InlineScope::SingleUsage
     };
-    let verified = plan.teardown_clean && plan.eligible.iter().all(|read| read.verified);
+    let verified = plan.teardown_clean
+        && plan.eligible.iter().all(|read| read.verified)
+        && !duplicates_a_call_or_construct(&plan.eligible);
     Some(Inlining {
         edits,
         scope,
@@ -181,6 +195,9 @@ fn inline_single_read(range: &Range<usize>, plan: &InlinePlan) -> Option<Inlinin
         }
         edits.extend(plan.teardown.iter().cloned());
         verified = verified && plan.teardown_clean;
+    } else if read.calls_or_constructs {
+        // The declaration stays, so a call or construction would run there and at this read.
+        verified = false;
     }
     Some(Inlining {
         edits,
