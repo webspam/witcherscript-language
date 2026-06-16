@@ -213,7 +213,7 @@ impl<'a> BodyModel<'a> {
         let local = self
             .local_reading(byte)
             .or_else(|| self.local_declared_at(byte))
-            .or_else(|| self.local_at_decl_head(byte))?;
+            .or_else(|| self.local_at_var_keyword(byte))?;
         self.is_variable(local).then_some(local)
     }
 
@@ -248,11 +248,12 @@ impl<'a> BodyModel<'a> {
         })
     }
 
-    fn local_at_decl_head(&self, byte: usize) -> Option<LocalId> {
+    // The `var` keyword has no identifier to resolve; map it to the variable it declares.
+    fn local_at_var_keyword(&self, byte: usize) -> Option<LocalId> {
         self.locals.iter().find_map(|e| {
             let decl = self.declaration(LocalId(e.id))?;
-            let head = decl.stmt.start..=decl.names[decl.target_index].end;
-            (decl.names.len() == 1 && head.contains(&byte)).then_some(LocalId(e.id))
+            let keyword_through_name = decl.stmt.start..=decl.names[decl.target_index].end;
+            (decl.names.len() == 1 && keyword_through_name.contains(&byte)).then_some(LocalId(e.id))
         })
     }
 
