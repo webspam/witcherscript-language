@@ -722,6 +722,11 @@ impl<'a> BodyModel<'a> {
         windows
     }
 
+    /// End byte of the outermost loop enclosing `byte`, or `None` when it sits in no loop.
+    pub(crate) fn enclosing_loop_end(&self, byte: usize) -> Option<usize> {
+        self.enclosing_loop(&(byte..byte)).map(|n| n.end_byte())
+    }
+
     fn enclosing_loop(&self, selection: &Range<usize>) -> Option<Node<'a>> {
         let probe = self
             .body

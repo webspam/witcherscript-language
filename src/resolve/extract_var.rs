@@ -78,8 +78,9 @@ pub fn extract_variable(
 
     // A frozen top-of-block value is stale once a read is written before the expression re-evaluates:
     // before it textually, or anywhere in an enclosing loop body (which re-runs the expression).
-    let loop_end = enclosing_loop_end(node, block);
-    let hoist_end = loop_end.unwrap_or(selection.start);
+    let hoist_end = model
+        .enclosing_loop_end(selection.start)
+        .unwrap_or(selection.start);
     let cannot_hoist_initializer = |window: Range<usize>| {
         model.operand_written_in(&value, &window, WriteKinds::Reassignment)
             || (reads_nonlocal && model.call_precedes_value(&value, &window))
@@ -312,20 +313,6 @@ fn decl_site(
         at: open_brace.end_byte(),
         indent,
     })
-}
-
-// End byte of the outermost loop enclosing the selection within `block`; None if it sits in no loop.
-fn enclosing_loop_end(node: Node, block: Node) -> Option<usize> {
-    node_and_ancestors(node)
-        .take_while(|n| n.id() != block.id())
-        .filter(|n| {
-            matches!(
-                n.kind(),
-                kinds::FOR_STMT | kinds::WHILE_STMT | kinds::DO_WHILE_STMT
-            )
-        })
-        .last()
-        .map(|loop_node| loop_node.end_byte())
 }
 
 const BRACELESS_HOST_KINDS: &[&str] = &[
