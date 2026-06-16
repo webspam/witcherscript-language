@@ -451,7 +451,7 @@ impl<'a> BodyModel<'a> {
             return !self.has_statement_between(window, block);
         }
         // A call between the two could change one of the operands the value reads.
-        !self.window_has_effect(window, block) || operands.is_empty()
+        !self.effect_in_window(value, window, SIDE_EFFECT_KINDS) || operands.is_empty()
     }
 
     fn statements_between(&self, window: &Range<usize>, block: Node<'a>) -> Vec<Node<'a>> {
@@ -463,12 +463,6 @@ impl<'a> BodyModel<'a> {
 
     fn has_statement_between(&self, window: &Range<usize>, block: Node<'a>) -> bool {
         !self.statements_between(window, block).is_empty()
-    }
-
-    fn window_has_effect(&self, window: &Range<usize>, block: Node<'a>) -> bool {
-        self.statements_between(window, block)
-            .into_iter()
-            .any(|n| has_descendant_of_kind(n, SIDE_EFFECT_KINDS))
     }
 
     pub(crate) fn call_precedes_value(&self, value: &Range<usize>, window: &Range<usize>) -> bool {
