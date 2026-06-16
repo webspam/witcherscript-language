@@ -47,7 +47,7 @@ pub(super) enum BodyRewrite {
 // A global function only reaches public members, so a private/protected field reached through `this`
 // is passed in by value (or `out`) instead of being squashed into an illegal `receiver.field`.
 pub(super) struct PromotedField {
-    key: (String, Range<usize>),
+    def: Definition,
     pub(super) name: String,
     pub(super) ty: Type,
     pub(super) is_written: bool,
@@ -246,7 +246,7 @@ fn this_member<'tree>(
 
 fn promote_field(promoted: &mut Vec<PromotedField>, definition: &Definition) -> Option<usize> {
     let key = definition_key(definition);
-    if let Some(index) = promoted.iter().position(|p| p.key == key) {
+    if let Some(index) = promoted.iter().position(|p| definition_key(&p.def) == key) {
         return Some(index);
     }
     let ty = definition.symbol.type_annotation.clone()?;
@@ -254,7 +254,7 @@ fn promote_field(promoted: &mut Vec<PromotedField>, definition: &Definition) -> 
         return None;
     }
     promoted.push(PromotedField {
-        key,
+        def: definition.clone(),
         name: definition.symbol.name.clone(),
         ty,
         is_written: false,
@@ -264,7 +264,7 @@ fn promote_field(promoted: &mut Vec<PromotedField>, definition: &Definition) -> 
 
 fn detect_promoted_writes(model: &BodyModel, range: &Range<usize>, promoted: &mut [PromotedField]) {
     for field in promoted {
-        field.is_written = model.field_written_in(&field.key, &field.ty, range);
+        field.is_written = model.field_written_in(&field.def, range);
     }
 }
 

@@ -18,8 +18,8 @@ use crate::cst::nav::first_named_child;
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::symbols::{SymbolId, SymbolKind};
-use crate::types::Type;
 
+use super::Definition;
 use super::definition::{definition_key, resolve_definition_at_byte};
 use super::extract_common::{
     CALLABLE_KINDS, WriteSite, is_value_type, write_site_node, write_sites,
@@ -306,8 +306,13 @@ impl<'a> BodyModel<'a> {
         self.written_in(&key, self.local_is_value_type(local), span)
     }
 
-    pub(crate) fn field_written_in(&self, key: &DefKey, ty: &Type, span: &Range<usize>) -> bool {
-        self.written_in(key, is_value_type(ty, self.db), span)
+    pub(crate) fn field_written_in(&self, field: &Definition, span: &Range<usize>) -> bool {
+        let value_type = field
+            .symbol
+            .type_annotation
+            .as_ref()
+            .is_some_and(|ty| is_value_type(ty, self.db));
+        self.written_in(&definition_key(field), value_type, span)
     }
 
     /// Whether an unconditional whole-value write overwrites `local`'s entry value before any read in `span`.
