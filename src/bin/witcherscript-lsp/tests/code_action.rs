@@ -566,6 +566,17 @@ fn offers_inline_for_dead_initializer() {
 }
 
 #[test]
+fn inline_of_method_call_value_is_safe() {
+    let src = "class CComponent {}\nclass CEntity {\n    function GetComponents() : array<CComponent> {\n        var result : array<CComponent>;\n        return result;\n    }\n}\nfunction Collect(entity : CEntity) : array<CComponent> {\n    var components : array<CComponent>;\n    components = entity.GetComponents();\n    return components;\n}\n";
+    let actions = refactor_actions(src, "components;");
+    assert_eq!(
+        titles(&actions),
+        vec!["Inline variable"],
+        "a call's receiver is part of the value, not a reassignment that would make the inline unsafe"
+    );
+}
+
+#[test]
 fn flags_inline_when_value_is_unverified() {
     let src = "function F() {\n    var a : int = 1;\n    var x : int = 0;\n    x = a;\n    a = 99;\n    return x;\n}\n";
     let actions = refactor_actions(src, "x;");

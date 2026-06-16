@@ -1,6 +1,6 @@
 use rstest::rstest;
 
-use super::BodyModel;
+use super::{BodyModel, Stability};
 use crate::test_support::TestDb;
 
 fn read_texts(src: &str) -> Vec<String> {
@@ -163,6 +163,50 @@ fn entry_value_unread_when_overwritten_before_read() {
 fn entry_value_read_when_used_before_overwrite() {
     let src = "function f() {\n    var $0x : int = 0;\n    Use(x);\n    x = 5;\n}\n";
     assert!(!entry_value_unread(src, "Use(x);"));
+}
+
+fn value_stability(src: &str, value_text: &str) -> &'static str {
+    let t = TestDb::new(src);
+    let (uri, pos) = t.cursor();
+    let doc = t.doc_for(&uri);
+    let db = t.db();
+    let byte = doc.line_index.position_to_byte(&doc.source, pos).unwrap();
+    let model = BodyModel::enclosing(&uri, doc, &db, byte).unwrap();
+    let target = model.local_declared_at(byte).unwrap();
+    let vstart = doc.source.find(value_text).expect("value present");
+    let value = vstart..vstart + value_text.len();
+    let captured_at = doc.source[..vstart].rfind('\n').map_or(0, |i| i + 1);
+    match model.value_stability(&value, captured_at, target) {
+        Stability::Stable => "stable",
+        Stability::MayChange => "may-change",
+        Stability::ReferencesTarget => "references-target",
+    }
+}
+
+#[rstest]
+#[case::call_receiver_is_not_a_write(
+    "a method call's receiver is part of the value, not a reassignment",
+    "class CEntity {}\nfunction f(e : CEntity) {\n    var $0x : array<int>;\n    x = e.GetComponents();\n    Use(x);\n}\n",
+    "e.GetComponents()",
+    "stable"
+)]
+#[case::operand_reassigned_after_capture(
+    "an operand reassigned between capture and read changes the value",
+    "function f() {\n    var seed : int = 1;\n    var $0x : int = 0;\n    x = seed + 1;\n    seed = 99;\n    Use(x);\n}\n",
+    "seed + 1",
+    "may-change"
+)]
+fn value_stability_ignores_in_value_writes(
+    #[case] label: &str,
+    #[case] src: &str,
+    #[case] value_text: &str,
+    #[case] expected: &str,
+) {
+    assert_eq!(
+        value_stability(src, value_text),
+        expected,
+        "case {label}: stability mismatch"
+    );
 }
 
 #[test]

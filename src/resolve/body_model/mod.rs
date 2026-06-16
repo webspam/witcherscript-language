@@ -539,12 +539,12 @@ impl<'a> BodyModel<'a> {
             if key == target_key {
                 return Stability::ReferencesTarget;
             }
-            if self
-                .writes
-                .positions
-                .get(&key)
-                .is_some_and(|positions| positions.iter().any(|&p| p >= captured_at))
-            {
+            // A write inside the value (e.g. a call's receiver) evaluates it, not reassigns it.
+            if self.writes.positions.get(&key).is_some_and(|positions| {
+                positions
+                    .iter()
+                    .any(|&p| p >= captured_at && !value.contains(&p))
+            }) {
                 stable = false;
             }
         }
