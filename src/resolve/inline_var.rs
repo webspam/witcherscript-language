@@ -1,20 +1,8 @@
 use std::collections::HashSet;
 use std::ops::Range;
 
-use tree_sitter::Node;
-
-use crate::cst::ancestors::find_ancestor_of_kind;
-use crate::cst::kinds;
-use crate::cst::nav::{decl_name_idents, single_name};
-use crate::document::ParsedDocument;
-use crate::symbols::SymbolKind;
-
-use super::Definition;
-use super::ast::{identifier_at, nodes_at_offset};
-use super::body_model::{BodyModel, ReachDef, Stability};
-use super::definition::resolve_definition_at_byte;
+use super::body_model::{BodyModel, Declaration, LocalId, ReachDef, Stability};
 use super::extract_common::{Splice, delete_statement};
-use super::symbol_db::SymbolDb;
 
 pub enum InlineScope {
     AllUsages,
@@ -36,52 +24,12 @@ pub struct Inlining {
 }
 
 pub fn inline_variable(model: &BodyModel, byte_offset: usize) -> Option<Inlining> {
-    let uri = model.uri();
-    let document = model.document();
-    let db = model.db();
-    let root = document.tree.root_node();
-    let cursor_ident = identifier_at(root, byte_offset);
-
-    // The `var` keyword has no identifier to resolve, so anchor on the declaration head instead.
-    let anchor = match cursor_ident {
-        Some(_) => byte_offset,
-        None => decl_head_name(root, byte_offset)?.start_byte(),
-    };
-    let (def, decl) = variable_decl_at(uri, document, db, root, anchor)?;
-    let plan = plan_inline(model, &def, decl)?;
-
-    let on_declaration = def.symbol.selection_byte_range.start <= byte_offset
-        && byte_offset <= def.symbol.selection_byte_range.end;
-
-    match cursor_ident {
-        Some(ident) if !on_declaration => inline_single_read(ident, &plan),
-        _ => inline_all_reads(&plan),
+    let target = model.variable_at(byte_offset)?;
+    let plan = plan_inline(model, target)?;
+    match model.read_at(target, byte_offset) {
+        Some(range) => inline_single_read(&range, &plan),
+        None => inline_all_reads(&plan),
     }
-}
-
-fn variable_decl_at<'t>(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    root: Node<'t>,
-    anchor_byte: usize,
-) -> Option<(Definition, Node<'t>)> {
-    let def = resolve_definition_at_byte(uri, document, db, anchor_byte)?;
-    if def.symbol.kind != SymbolKind::Variable || def.uri.as_str() != uri {
-        return None;
-    }
-    let decl = decl_stmt_for(root, &def)?;
-    Some((def, decl))
-}
-
-fn decl_head_name(root: Node<'_>, byte_offset: usize) -> Option<Node<'_>> {
-    let decl = nodes_at_offset(root, byte_offset)
-        .into_iter()
-        .find_map(|node| find_ancestor_of_kind(node, &[kinds::LOCAL_VAR_DECL_STMT]))?;
-    let name = single_name(decl)?;
-    (decl.start_byte()..=name.end_byte())
-        .contains(&byte_offset)
-        .then_some(name)
 }
 
 struct EligibleRead {
@@ -104,15 +52,9 @@ struct InlinePlan {
     teardown_clean: bool,
 }
 
-fn plan_inline(model: &BodyModel, def: &Definition, decl: Node<'_>) -> Option<InlinePlan> {
-    let document = model.document();
-    let anchor = def.symbol.selection_byte_range.start;
-    let target = model.local_declared_at(anchor)?;
-
-    let decl_names = decl_name_idents(decl);
-    let target_index = decl_names
-        .iter()
-        .position(|n| n.byte_range() == def.symbol.selection_byte_range)?;
+fn plan_inline(model: &BodyModel, target: LocalId) -> Option<InlinePlan> {
+    let source = &model.document().source;
+    let decl = model.declaration(target)?;
 
     let reaching = model.reaching(target);
     if reaching.per_read().is_empty() {
@@ -127,7 +69,7 @@ fn plan_inline(model: &BodyModel, def: &Definition, decl: Node<'_>) -> Option<In
         let Some(value) = defs[*idx].value() else {
             continue;
         };
-        let captured_at = defs[*idx].stmt().map_or(decl.start_byte(), |s| s.start);
+        let captured_at = defs[*idx].stmt().map_or(decl.stmt.start, |s| s.start);
         let verified = match model.value_stability(&value, captured_at, target) {
             // Inlining would reference the variable the teardown removes.
             Stability::ReferencesTarget => continue,
@@ -136,16 +78,16 @@ fn plan_inline(model: &BodyModel, def: &Definition, decl: Node<'_>) -> Option<In
         };
         eligible.push(EligibleRead {
             range: range.clone(),
-            text: substituted_text(&document.source, &value, range, model),
+            text: substituted_text(source, &value, range, model),
             verified,
         });
         used.insert(*idx);
     }
 
     Some(InlinePlan {
-        teardown: build_teardown(&document.source, decl, target_index, &decl_names, defs),
+        teardown: build_teardown(source, &decl, defs),
         teardown_possible: teardown_possible(defs),
-        teardown_clean: teardown_clean(defs, decl, &used, model),
+        teardown_clean: teardown_clean(defs, &decl, &used, model),
         eligible,
         total_reads: reaching.per_read().len(),
     })
@@ -159,7 +101,7 @@ fn teardown_possible(defs: &[ReachDef]) -> bool {
 
 fn teardown_clean(
     defs: &[ReachDef],
-    decl: Node<'_>,
+    decl: &Declaration,
     used: &HashSet<usize>,
     model: &BodyModel,
 ) -> bool {
@@ -169,7 +111,7 @@ fn teardown_clean(
             return true;
         }
         let stmt = if def.is_decl() {
-            Some(decl.byte_range())
+            Some(decl.stmt.clone())
         } else {
             def.stmt()
         };
@@ -177,15 +119,9 @@ fn teardown_clean(
     })
 }
 
-fn build_teardown(
-    source: &str,
-    decl: Node<'_>,
-    target_index: usize,
-    decl_names: &[Node<'_>],
-    defs: &[ReachDef],
-) -> Vec<Splice> {
-    let mut teardown = vec![remove_binding(source, decl, target_index, decl_names)];
-    let mut seen = HashSet::from([decl.byte_range()]);
+fn build_teardown(source: &str, decl: &Declaration, defs: &[ReachDef]) -> Vec<Splice> {
+    let mut teardown = vec![remove_binding(source, decl)];
+    let mut seen = HashSet::from([decl.stmt.clone()]);
     for stmt in defs
         .iter()
         .filter(|d| !d.is_decl())
@@ -232,11 +168,10 @@ fn inline_all_reads(plan: &InlinePlan) -> Option<Inlining> {
     })
 }
 
-fn inline_single_read(occurrence: Node, plan: &InlinePlan) -> Option<Inlining> {
-    let range = occurrence.byte_range();
-    let read = plan.eligible.iter().find(|read| read.range == range)?;
+fn inline_single_read(range: &Range<usize>, plan: &InlinePlan) -> Option<Inlining> {
+    let read = plan.eligible.iter().find(|read| read.range == *range)?;
     let mut edits = vec![Splice {
-        range,
+        range: range.clone(),
         text: read.text.clone(),
     }];
     let mut verified = read.verified;
@@ -254,26 +189,20 @@ fn inline_single_read(occurrence: Node, plan: &InlinePlan) -> Option<Inlining> {
     })
 }
 
-fn decl_stmt_for<'tree>(root: Node<'tree>, def: &Definition) -> Option<Node<'tree>> {
-    let range = &def.symbol.byte_range;
-    let node = root.descendant_for_byte_range(range.start, range.end)?;
-    find_ancestor_of_kind(node, &[kinds::LOCAL_VAR_DECL_STMT])
-}
-
-fn remove_binding(source: &str, decl: Node, target_index: usize, names: &[Node]) -> Splice {
-    match names {
-        [_] => delete_statement(source, decl.byte_range()),
-        _ => remove_name_from_list(target_index, names),
+fn remove_binding(source: &str, decl: &Declaration) -> Splice {
+    match decl.names.as_slice() {
+        [_] => delete_statement(source, decl.stmt.clone()),
+        _ => remove_name_from_list(decl.target_index, &decl.names),
     }
 }
 
-fn remove_name_from_list(index: usize, names: &[Node]) -> Splice {
-    let target = names[index];
+fn remove_name_from_list(index: usize, names: &[Range<usize>]) -> Splice {
+    let target = &names[index];
     // Account for the comma we need to remove
     let range = if index == 0 {
-        target.start_byte()..names[1].start_byte()
+        target.start..names[1].start
     } else {
-        names[index - 1].end_byte()..target.end_byte()
+        names[index - 1].end..target.end
     };
     Splice {
         range,

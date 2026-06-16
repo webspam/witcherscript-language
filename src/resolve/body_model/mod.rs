@@ -119,6 +119,13 @@ pub(crate) struct SplitTarget {
     pub(crate) insert_at: usize,
 }
 
+// Byte ranges, not nodes, so callers can rewrite a declaration without touching the CST.
+pub(crate) struct Declaration {
+    pub(crate) stmt: Range<usize>,
+    pub(crate) names: Vec<Range<usize>>,
+    pub(crate) target_index: usize,
+}
+
 struct LocalEntry {
     id: SymbolId,
     selection: Range<usize>,
@@ -199,6 +206,61 @@ impl<'a> BodyModel<'a> {
             .iter()
             .find(|e| e.selection.start <= byte && byte <= e.selection.end)
             .map(|e| LocalId(e.id))
+    }
+
+    // A read, the declaration name, or the single-name decl head; never a parameter.
+    pub(crate) fn variable_at(&self, byte: usize) -> Option<LocalId> {
+        let local = self
+            .local_reading(byte)
+            .or_else(|| self.local_declared_at(byte))
+            .or_else(|| self.local_at_decl_head(byte))?;
+        self.is_variable(local).then_some(local)
+    }
+
+    pub(crate) fn read_at(&self, local: LocalId, byte: usize) -> Option<Range<usize>> {
+        self.reads(local)
+            .iter()
+            .find(|r| r.start <= byte && byte <= r.end)
+            .cloned()
+    }
+
+    pub(crate) fn declaration(&self, local: LocalId) -> Option<Declaration> {
+        let decl = self.decl_node(local)?;
+        let entry = self.locals.iter().find(|e| e.id == local.0)?;
+        let names: Vec<Range<usize>> = decl_name_idents(decl)
+            .iter()
+            .map(Node::byte_range)
+            .collect();
+        let target_index = names.iter().position(|r| *r == entry.selection)?;
+        Some(Declaration {
+            stmt: decl.byte_range(),
+            names,
+            target_index,
+        })
+    }
+
+    fn local_reading(&self, byte: usize) -> Option<LocalId> {
+        self.locals.iter().find_map(|e| {
+            self.reads_by_local
+                .get(&e.id)
+                .filter(|rs| rs.iter().any(|r| r.start <= byte && byte <= r.end))
+                .map(|_| LocalId(e.id))
+        })
+    }
+
+    fn local_at_decl_head(&self, byte: usize) -> Option<LocalId> {
+        self.locals.iter().find_map(|e| {
+            let decl = self.declaration(LocalId(e.id))?;
+            let head = decl.stmt.start..=decl.names[decl.target_index].end;
+            (decl.names.len() == 1 && head.contains(&byte)).then_some(LocalId(e.id))
+        })
+    }
+
+    fn is_variable(&self, local: LocalId) -> bool {
+        self.document
+            .symbols
+            .by_id(local.0)
+            .is_some_and(|s| s.kind == SymbolKind::Variable)
     }
 
     /// Byte ranges of every occurrence that reads `local`'s value. A whole-value assignment target
