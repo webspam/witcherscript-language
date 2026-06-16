@@ -1,7 +1,7 @@
 use lsp_types::{CodeActionKind, CodeActionOrCommand};
 use witcherscript_language::resolve::{Confidence, InlineScope, inline_variable};
 
-use super::{RefactorContext, Refactoring, splice_code_action};
+use super::{RefactorContext, Refactoring, refactor_action};
 
 pub(super) struct InlineVariableRefactoring;
 
@@ -19,11 +19,12 @@ impl Refactoring for InlineVariableRefactoring {
             (InlineScope::SingleUsage, Confidence::Verified) => "Inline variable",
             (InlineScope::SingleUsage, Confidence::Unverified) => "Inline variable (unsafe)",
         };
-        vec![splice_code_action(
+        vec![refactor_action(
             ctx,
-            &inlining.plan.edits,
+            &inlining.plan,
             CodeActionKind::REFACTOR_INLINE,
             title,
+            None,
         )]
     }
 }

@@ -1,7 +1,7 @@
 use lsp_types::{CodeActionKind, CodeActionOrCommand};
 use witcherscript_language::resolve::{Confidence, join_declaration, split_declaration};
 
-use super::{RefactorContext, Refactoring, splice_code_action};
+use super::{RefactorContext, Refactoring, refactor_action};
 
 pub(super) struct JoinDeclarationRefactoring;
 
@@ -21,11 +21,12 @@ impl Refactoring for JoinDeclarationRefactoring {
             Confidence::Verified => "Join declaration and assignment",
             Confidence::Unverified => "Join declaration and assignment (unsafe)",
         };
-        vec![splice_code_action(
+        vec![refactor_action(
             ctx,
-            &plan.edits,
+            &plan,
             CodeActionKind::REFACTOR_REWRITE,
             title,
+            None,
         )]
     }
 }
@@ -47,11 +48,12 @@ impl Refactoring for SplitDeclarationRefactoring {
             Confidence::Verified => "Split declaration and initializer",
             Confidence::Unverified => "Split declaration and initializer (unsafe)",
         };
-        vec![splice_code_action(
+        vec![refactor_action(
             ctx,
-            &plan.edits,
+            &plan,
             CodeActionKind::REFACTOR_REWRITE,
             title,
+            None,
         )]
     }
 }
