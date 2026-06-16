@@ -1,10 +1,10 @@
 use rstest::rstest;
 
 use crate::resolve::extract_common::apply_splices;
-use crate::resolve::{BodyModel, join_declaration, split_declaration};
+use crate::resolve::{BodyModel, Confidence, join_declaration, split_declaration};
 use crate::test_support::TestDb;
 
-fn joined(src: &str) -> Option<String> {
+fn join_outcome(src: &str) -> Option<(String, bool)> {
     let t = TestDb::new(src);
     let (uri, pos) = t.cursor();
     let doc = t.doc_for(&uri);
@@ -12,10 +12,11 @@ fn joined(src: &str) -> Option<String> {
     let db = t.db();
     let model = BodyModel::enclosing(&uri, doc, &db, byte)?;
     let plan = join_declaration(&model, byte)?;
-    Some(apply_splices(&doc.source, &plan.edits))
+    let verified = matches!(plan.confidence, Confidence::Verified);
+    Some((apply_splices(&doc.source, &plan.edits), verified))
 }
 
-fn split(src: &str) -> Option<String> {
+fn split_outcome(src: &str) -> Option<(String, bool)> {
     let t = TestDb::new(src);
     let (uri, pos) = t.cursor();
     let doc = t.doc_for(&uri);
@@ -23,7 +24,16 @@ fn split(src: &str) -> Option<String> {
     let db = t.db();
     let model = BodyModel::enclosing(&uri, doc, &db, byte)?;
     let plan = split_declaration(&model, byte)?;
-    Some(apply_splices(&doc.source, &plan.edits))
+    let verified = matches!(plan.confidence, Confidence::Verified);
+    Some((apply_splices(&doc.source, &plan.edits), verified))
+}
+
+fn joined(src: &str) -> Option<String> {
+    join_outcome(src).map(|(text, _)| text)
+}
+
+fn split(src: &str) -> Option<String> {
+    split_outcome(src).map(|(text, _)| text)
 }
 
 #[rstest]
@@ -58,8 +68,10 @@ fn split(src: &str) -> Option<String> {
     "class C {\n    function f() {\n        var x : C = new C in this;\n        Foo();\n    }\n}\n"
 )]
 fn joins(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
-    let got = joined(src).unwrap_or_else(|| panic!("case {label}: expected a join"));
+    let (got, verified) =
+        join_outcome(src).unwrap_or_else(|| panic!("case {label}: expected a join"));
     assert_eq!(got, expected, "case {label}: joined output mismatch");
+    assert!(verified, "case {label}: expected a verified join");
 }
 
 #[rstest]
@@ -98,10 +110,6 @@ fn joins(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
 #[case::operand_introduced_in_window(
     "an operand is declared between the declaration and the assignment",
     "function f() {\n    var $0x : int;\n    var y : int = 5;\n    x = y;\n}\n"
-)]
-#[case::effectful_value_crosses_statement(
-    "a side-effecting value would reorder past a statement",
-    "function f() {\n    var $0x : int;\n    Foo();\n    x = Bar();\n}\n"
 )]
 #[case::call_in_window_with_operand(
     "a call in the window may mutate the value's operand",
@@ -148,8 +156,10 @@ fn join_refuses(#[case] label: &str, #[case] src: &str) {
     "function f() {\n    var one : float = 1;\n    var two : int;\n    two = 2;\n}\n"
 )]
 fn splits(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
-    let got = split(src).unwrap_or_else(|| panic!("case {label}: expected a split"));
+    let (got, verified) =
+        split_outcome(src).unwrap_or_else(|| panic!("case {label}: expected a split"));
     assert_eq!(got, expected, "case {label}: split output mismatch");
+    assert!(verified, "case {label}: expected a verified split");
 }
 
 #[rstest]
@@ -161,15 +171,37 @@ fn splits(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     "multi-name initialised declaration",
     "function f() {\n    var $0a, b : int = 0;\n}\n"
 )]
-#[case::effectful_value_crosses_declaration(
-    "a side-effecting initializer cannot reorder past a following declaration",
-    "function f() {\n    var $0one : int = Compute();\n    var two : int = 2;\n}\n"
-)]
 fn split_refuses(#[case] label: &str, #[case] src: &str) {
     assert!(
         split(src).is_none(),
         "case {label}: expected no split offered"
     );
+}
+
+#[rstest]
+#[case::call_value_crosses_statement(
+    "joining a call value reorders its effects past a statement",
+    "function f() {\n    var $0x : int;\n    Foo();\n    x = Bar();\n}\n",
+    "function f() {\n    var x : int = Bar();\n    Foo();\n}\n"
+)]
+fn join_offers_unsafe(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
+    let (got, verified) =
+        join_outcome(src).unwrap_or_else(|| panic!("case {label}: expected a join"));
+    assert_eq!(got, expected, "case {label}: joined output mismatch");
+    assert!(!verified, "case {label}: expected an unverified join");
+}
+
+#[rstest]
+#[case::call_initializer_crosses_declaration(
+    "splitting a call initializer reorders its effects past a declaration",
+    "function f() {\n    var $0one : int = Compute();\n    var two : int = 2;\n}\n",
+    "function f() {\n    var one : int;\n    var two : int = 2;\n    one = Compute();\n}\n"
+)]
+fn split_offers_unsafe(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
+    let (got, verified) =
+        split_outcome(src).unwrap_or_else(|| panic!("case {label}: expected a split"));
+    assert_eq!(got, expected, "case {label}: split output mismatch");
+    assert!(!verified, "case {label}: expected an unverified split");
 }
 
 #[test]

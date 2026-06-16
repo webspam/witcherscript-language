@@ -23,7 +23,7 @@ use crate::symbols::{SymbolId, SymbolKind};
 use super::Definition;
 use super::definition::{definition_key, resolve_definition_at_byte};
 use super::extract_common::{
-    CALLABLE_KINDS, WriteSite, is_value_type, write_site_node, write_sites,
+    CALLABLE_KINDS, Confidence, WriteSite, is_value_type, write_site_node, write_sites,
 };
 use super::name_context::{NameContext, classify_ident_context};
 use super::reaching_defs::reaching_defs;
@@ -118,10 +118,12 @@ pub(crate) struct JoinTarget {
     pub(crate) value: Range<usize>,
     pub(crate) stmt: Range<usize>,
     pub(crate) insert_at: usize,
+    pub(crate) confidence: Confidence,
 }
 
 pub(crate) struct SplitTarget {
     pub(crate) insert_at: usize,
+    pub(crate) confidence: Confidence,
 }
 
 // Byte ranges, not nodes, so callers can rewrite a declaration without touching the CST.
@@ -394,14 +396,13 @@ impl<'a> BodyModel<'a> {
         if self.reads(local).iter().any(|r| window.contains(&r.start)) {
             return None;
         }
-        if !self.value_hoistable(&value, &window, local, block) {
-            return None;
-        }
+        let confidence = self.value_hoistability(&value, &window, local, block)?;
         let insert_at = decl.child_by_field_name(fields::VAR_TYPE)?.end_byte();
         Some(JoinTarget {
             value,
             stmt,
             insert_at,
+            confidence,
         })
     }
 
@@ -418,44 +419,53 @@ impl<'a> BodyModel<'a> {
         let insert_at = run_end.max(decl.end_byte());
 
         let window = decl.end_byte()..insert_at;
-        if !self.value_hoistable(&value, &window, local, block) {
-            return None;
-        }
-        Some(SplitTarget { insert_at })
+        let confidence = self.value_hoistability(&value, &window, local, block)?;
+        Some(SplitTarget {
+            insert_at,
+            confidence,
+        })
     }
 
-    /// Whether the value at `value` yields the same result at both ends of `window`.
-    fn value_hoistable(
+    /// Whether the value at `value` can move to the declaration, and whether that move is verified.
+    fn value_hoistability(
         &self,
         value: &Range<usize>,
         window: &Range<usize>,
         target: LocalId,
         block: Node<'a>,
-    ) -> bool {
+    ) -> Option<Confidence> {
         let operands: Vec<DefKey> = self
             .referenced_defs(value)
             .into_iter()
             .map(|(key, _)| key)
             .collect();
         if operands.contains(&self.local_key(target)) {
-            return false;
+            return None;
         }
         // An operand declared between the two is not yet in scope back at the declaration.
         if operands
             .iter()
             .any(|k| k.0 == self.uri && window.contains(&k.1.start))
         {
-            return false;
+            return None;
         }
         if self.operand_written_in(value, window, WriteKinds::AnyWrite) {
-            return false;
+            return None;
         }
         if self.has_observable_effect(value) {
-            // Moving a call past a statement reorders its effects, so allow it only with nothing between.
-            return !self.has_statement_between(window, block);
+            // Moving a call past a statement reorders its effects, so offer that as unverified.
+            return Some(if self.has_statement_between(window, block) {
+                Confidence::Unverified
+            } else {
+                Confidence::Verified
+            });
         }
         // A call between the two could change one of the operands the value reads.
-        !self.effect_in_window(value, window, SIDE_EFFECT_KINDS) || operands.is_empty()
+        if !self.effect_in_window(value, window, SIDE_EFFECT_KINDS) || operands.is_empty() {
+            Some(Confidence::Verified)
+        } else {
+            None
+        }
     }
 
     fn statements_between(&self, window: &Range<usize>, block: Node<'a>) -> Vec<Node<'a>> {
