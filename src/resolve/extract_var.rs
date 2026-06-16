@@ -14,7 +14,7 @@ use crate::strings::lowercase_first;
 use crate::symbols::{AccessLevel, Symbol, SymbolKind};
 use crate::types::Type;
 
-use super::body_model::BodyModel;
+use super::body_model::{BodyModel, WriteKinds};
 use super::definition::callee_params;
 use super::extract_common::{
     CALLABLE_KINDS, Extraction, SelectionKind, Splice, applied_offset, classify_selection,
@@ -82,7 +82,7 @@ pub fn extract_variable(
     let loop_end = enclosing_loop_end(node, block);
     let hoist_end = loop_end.unwrap_or(selection.start);
     let cannot_hoist_initializer = |window: Range<usize>| {
-        model.operand_reassigned_in(&value, &window)
+        model.operand_written_in(&value, &window, WriteKinds::Reassignment)
             || (reads_nonlocal
                 && overridable_call_precedes(node, block, window, loop_end.is_some()))
     };
@@ -113,7 +113,11 @@ pub fn extract_variable(
             // Hoisting the whole decl would skip a write; split it so the computation stays in place.
             let slot = assign_slot(node)?;
             let statement = slot.statement();
-            if model.operand_reassigned_in(&value, &(statement.start_byte()..selection.start)) {
+            if model.operand_written_in(
+                &value,
+                &(statement.start_byte()..selection.start),
+                WriteKinds::Reassignment,
+            ) {
                 return None;
             }
             let decl = format!(

@@ -28,6 +28,7 @@ mod inference;
 mod inheritance;
 mod inlay_hints;
 mod inline_var;
+mod join_split_decl;
 mod overrides;
 mod parameters;
 mod references;

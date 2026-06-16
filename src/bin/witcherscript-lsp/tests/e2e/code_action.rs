@@ -284,6 +284,85 @@ async fn automatic_trigger_suppresses_refactors() {
 }
 
 #[tokio::test]
+async fn offers_join_declaration_and_assignment() {
+    let uri: Url = "file:///main.ws".parse().unwrap();
+    let mut client = LspClient::spawn().await;
+    let source = "function F() {\n    var x : int;\n    x = 5;\n}\n";
+    client.open(&uri, source).await;
+
+    let cursor = Position::new(1, 8);
+    let params = CodeActionParams {
+        text_document: TextDocumentIdentifier { uri },
+        range: Range::new(cursor, cursor),
+        context: CodeActionContext::default(),
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    };
+
+    let response = client
+        .request::<CodeActionRequest>(params)
+        .await
+        .expect("expected a code action response");
+    assert_eq!(response.len(), 1, "a bare declaration offers join only");
+    let CodeActionOrCommand::CodeAction(action) = &response[0] else {
+        panic!("expected a CodeAction, got {:?}", response[0]);
+    };
+    assert_eq!(action.title, "Join declaration and assignment");
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_REWRITE));
+    let edits = action
+        .edit
+        .as_ref()
+        .and_then(|e| e.changes.as_ref())
+        .and_then(|c| c.values().next())
+        .expect("rewrite carries a WorkspaceEdit");
+    let texts: Vec<&str> = edits.iter().map(|e| e.new_text.as_str()).collect();
+    assert!(texts.contains(&" = 5"), "unexpected edits: {texts:?}");
+}
+
+#[tokio::test]
+async fn offers_split_declaration_and_initializer() {
+    let uri: Url = "file:///main.ws".parse().unwrap();
+    let mut client = LspClient::spawn().await;
+    let source = "function F() {\n    var x : int = 5;\n}\n";
+    client.open(&uri, source).await;
+
+    let cursor = Position::new(1, 8);
+    let params = CodeActionParams {
+        text_document: TextDocumentIdentifier { uri },
+        range: Range::new(cursor, cursor),
+        context: CodeActionContext::default(),
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    };
+
+    let response = client
+        .request::<CodeActionRequest>(params)
+        .await
+        .expect("expected a code action response");
+    assert_eq!(
+        response.len(),
+        1,
+        "an initialised declaration offers split only"
+    );
+    let CodeActionOrCommand::CodeAction(action) = &response[0] else {
+        panic!("expected a CodeAction, got {:?}", response[0]);
+    };
+    assert_eq!(action.title, "Split declaration and initializer");
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_REWRITE));
+    let edits = action
+        .edit
+        .as_ref()
+        .and_then(|e| e.changes.as_ref())
+        .and_then(|c| c.values().next())
+        .expect("rewrite carries a WorkspaceEdit");
+    let texts: Vec<&str> = edits.iter().map(|e| e.new_text.as_str()).collect();
+    assert!(
+        texts.contains(&"\n    x = 5;"),
+        "unexpected edits: {texts:?}"
+    );
+}
+
+#[tokio::test]
 async fn offers_collapse_rewrite_on_a_block_if() {
     let uri: Url = "file:///main.ws".parse().unwrap();
     let mut client = LspClient::spawn().await;

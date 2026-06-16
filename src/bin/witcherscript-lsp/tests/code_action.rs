@@ -499,7 +499,10 @@ const INLINE_SRC: &str = "function F() {\n    var count : int = 5;\n    Foo(coun
 #[test]
 fn offers_inline_variable_on_declaration() {
     let actions = refactor_actions(INLINE_SRC, "count : int");
-    assert_eq!(titles(&actions), vec!["Inline variable"]);
+    assert_eq!(
+        titles(&actions),
+        vec!["Inline variable", "Split declaration and initializer"]
+    );
     let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
         panic!("expected a CodeAction, got {:?}", actions[0]);
     };
@@ -536,7 +539,10 @@ fn offers_inline_single_usage_on_a_use() {
 fn offers_inline_for_dead_initializer() {
     let src = "function F() {\n    var rah : int = 0;\n    rah = 14;\n    if (true) {\n        return rah;\n    }\n}\n";
     let actions = refactor_actions(src, "rah : int");
-    assert_eq!(titles(&actions), vec!["Inline variable"]);
+    assert_eq!(
+        titles(&actions),
+        vec!["Inline variable", "Split declaration and initializer"]
+    );
     let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
         panic!("expected a CodeAction, got {:?}", actions[0]);
     };
@@ -578,7 +584,10 @@ fn flags_inline_when_value_is_unverified() {
 fn inline_on_declaration_with_many_uses_says_all() {
     let src = "function F() {\n    var count : int = 5;\n    Foo(count);\n    Bar(count);\n}\n";
     let actions = refactor_actions(src, "count : int");
-    assert_eq!(titles(&actions), vec!["Inline variable (all)"]);
+    assert_eq!(
+        titles(&actions),
+        vec!["Inline variable (all)", "Split declaration and initializer"]
+    );
 }
 
 #[test]
@@ -597,4 +606,49 @@ fn inlining_the_last_use_deletes_the_declaration() {
     let texts: Vec<&str> = edits.iter().map(|e| e.new_text.as_str()).collect();
     assert!(texts.contains(&"5"), "the use is replaced by the value");
     assert!(texts.contains(&""), "the declaration is deleted");
+}
+
+const JOIN_SRC: &str = "function F() {\n    var x : int;\n    x = 5;\n}\n";
+const SPLIT_SRC: &str = "function F() {\n    var x : int = 5;\n}\n";
+
+#[rstest]
+#[case::on_declaration("x : int")]
+#[case::on_assignment("x = 5")]
+fn offers_join_declaration(#[case] needle: &str) {
+    let actions = refactor_actions(JOIN_SRC, needle);
+    assert_eq!(titles(&actions), vec!["Join declaration and assignment"]);
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_REWRITE));
+    let texts: Vec<String> = extract_workspace_edit(action)
+        .iter()
+        .map(|e| e.new_text.clone())
+        .collect();
+    assert!(
+        texts.iter().any(|t| t == " = 5"),
+        "the initializer is inserted"
+    );
+    assert!(
+        texts.iter().any(String::is_empty),
+        "the assignment statement is removed"
+    );
+}
+
+#[test]
+fn offers_split_declaration() {
+    let actions = refactor_actions(SPLIT_SRC, "x : int");
+    assert_eq!(titles(&actions), vec!["Split declaration and initializer"]);
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    assert_eq!(action.kind, Some(CodeActionKind::REFACTOR_REWRITE));
+    let texts: Vec<String> = extract_workspace_edit(action)
+        .iter()
+        .map(|e| e.new_text.clone())
+        .collect();
+    assert!(
+        texts.iter().any(|t| t == "\n    x = 5;"),
+        "the assignment statement is appended"
+    );
 }

@@ -77,6 +77,45 @@ fn is_written_in_reports_mutations(#[case] src: &str, #[case] expected: bool) {
     assert_eq!(written_in_body(src), expected);
 }
 
+fn joinable(src: &str) -> Option<(String, String)> {
+    let t = TestDb::new(src);
+    let (uri, pos) = t.cursor();
+    let doc = t.doc_for(&uri);
+    let db = t.db();
+    let byte = doc.line_index.position_to_byte(&doc.source, pos).unwrap();
+    let model = BodyModel::enclosing(&uri, doc, &db, byte).unwrap();
+    let local = model.local_declared_at(byte).unwrap();
+    let target = model.joinable_assignment(local)?;
+    Some((
+        doc.source[target.value].to_string(),
+        doc.source[target.stmt].to_string(),
+    ))
+}
+
+#[rstest]
+#[case::adjacent("function f() {\n    var $0x : int;\n    x = 1;\n}\n", Some(("1", "x = 1;")))]
+#[case::across_pure_decl(
+    "function f() {\n    var $0x : int;\n    var y : int;\n    x = 2;\n}\n",
+    Some(("2", "x = 2;"))
+)]
+#[case::already_initialised("function f() {\n    var $0x : int = 0;\n    x = 1;\n}\n", None)]
+#[case::read_between(
+    "function f() {\n    var $0x : int;\n    Use(x);\n    x = 1;\n}\n",
+    None
+)]
+#[case::operand_introduced(
+    "function f() {\n    var $0x : int;\n    var y : int = 5;\n    x = y;\n}\n",
+    None
+)]
+fn joinable_assignment_reports_first_safe_assignment(
+    #[case] src: &str,
+    #[case] expected: Option<(&str, &str)>,
+) {
+    let got = joinable(src);
+    let got = got.as_ref().map(|(v, s)| (v.as_str(), s.as_str()));
+    assert_eq!(got, expected);
+}
+
 fn live_after_selection(src: &str, select: &str) -> bool {
     let t = TestDb::new(src);
     let (uri, pos) = t.cursor();

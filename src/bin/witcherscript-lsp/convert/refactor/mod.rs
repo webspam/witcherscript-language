@@ -18,6 +18,7 @@ mod extract_method;
 mod extract_var;
 mod if_stmt;
 mod inline_var;
+mod join_split;
 mod switch;
 
 // A bare rename races VS Code's cursor placement, so a custom command repositions before renaming.
@@ -95,6 +96,19 @@ fn inline_code_action(
     })
 }
 
+fn splice_rewrite_action(
+    ctx: &RefactorContext,
+    splices: &[Splice],
+    title: &str,
+) -> CodeActionOrCommand {
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: title.to_string(),
+        kind: Some(CodeActionKind::REFACTOR_REWRITE),
+        edit: Some(workspace_edit_from_splices(ctx, splices)),
+        ..CodeAction::default()
+    })
+}
+
 // Adding a construct means writing a `Refactoring` impl and listing it here.
 const REFACTORINGS: &[&dyn Refactoring] = &[
     &switch::SwitchLayoutRefactoring,
@@ -103,6 +117,8 @@ const REFACTORINGS: &[&dyn Refactoring] = &[
     &extract_method::ExtractMethodRefactoring,
     &extract_func::ExtractFunctionRefactoring,
     &inline_var::InlineVariableRefactoring,
+    &join_split::JoinDeclarationRefactoring,
+    &join_split::SplitDeclarationRefactoring,
 ];
 
 // A cursor-driven "rewrite this construct" code action. Each impl locates its own target node
