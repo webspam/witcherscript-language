@@ -95,6 +95,34 @@ pub(super) fn applied_offset(edits: &[Splice], original: usize) -> usize {
         .fold(original, |pos, s| pos + s.text.len() - s.range.len())
 }
 
+// The cursor lands where the replacement moves to, shifted into it by `cursor_prefix`.
+pub(super) fn insert_and_replace(
+    insert_at: usize,
+    insert_text: String,
+    replace: Range<usize>,
+    replace_text: String,
+    cursor_prefix: usize,
+    name: String,
+) -> Extraction {
+    let cursor_anchor = replace.start;
+    let edits = vec![
+        Splice {
+            range: insert_at..insert_at,
+            text: insert_text,
+        },
+        Splice {
+            range: replace,
+            text: replace_text,
+        },
+    ];
+    let cursor = applied_offset(&edits, cursor_anchor) + cursor_prefix;
+    Extraction {
+        edits,
+        name,
+        cursor,
+    }
+}
+
 const EXTRACTABLE_KINDS: &[&str] = &[
     kinds::BINARY_OP_EXPR,
     kinds::UNARY_OP_EXPR,

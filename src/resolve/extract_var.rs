@@ -18,7 +18,7 @@ use super::body_model::{BodyModel, WriteKinds};
 use super::definition::callee_params;
 use super::extract_common::{
     CALLABLE_KINDS, Extraction, SelectionKind, Splice, applied_offset, classify_selection,
-    is_call_callee, trim_selection,
+    insert_and_replace, is_call_callee, trim_selection,
 };
 use super::inference::infer_type;
 use super::symbol_db::SymbolDb;
@@ -91,20 +91,24 @@ pub fn extract_variable(
                 return None;
             }
             let stmt = declaration_statement(&name, &ty, expr, options);
-            Some(single_insert(
+            Some(insert_and_replace(
                 at,
                 format!("{stmt}\n{indent}"),
                 selection,
+                name.clone(),
+                0,
                 name,
             ))
         }
         DeclSite::TopOfBlock { at, indent } => {
             if !cannot_hoist_initializer(at..hoist_end) {
                 let stmt = declaration_statement(&name, &ty, expr, options);
-                return Some(single_insert(
+                return Some(insert_and_replace(
                     at,
                     format!("\n{indent}{stmt}"),
                     selection,
+                    name.clone(),
+                    0,
                     name,
                 ));
             }
@@ -159,26 +163,6 @@ pub fn extract_variable(
                 }
             }
         }
-    }
-}
-
-fn single_insert(at: usize, text: String, selection: Range<usize>, name: String) -> Extraction {
-    let anchor = selection.start;
-    let edits = vec![
-        Splice {
-            range: at..at,
-            text,
-        },
-        Splice {
-            range: selection,
-            text: name.clone(),
-        },
-    ];
-    let cursor = applied_offset(&edits, anchor);
-    Extraction {
-        edits,
-        name,
-        cursor,
     }
 }
 

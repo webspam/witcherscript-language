@@ -17,7 +17,7 @@ use super::Definition;
 use super::body_model::BodyModel;
 use super::definition::resolve_definition_at_byte;
 use super::extract_common::{
-    CALLABLE_KINDS, Extraction, SelectionKind, Splice, applied_offset, classify_selection,
+    CALLABLE_KINDS, Extraction, SelectionKind, classify_selection, insert_and_replace,
     is_call_callee, trim_selection,
 };
 use super::inference::{enclosing_type_context, infer_type};
@@ -176,7 +176,7 @@ fn extract_expression(
     };
     let call_text = call_expression(&plan);
     let (insert_at, insert_text) = placement(ctx.document, node, &plan, options, destination)?;
-    Some(build_extraction(
+    Some(insert_and_replace(
         insert_at,
         insert_text,
         selection,
@@ -284,7 +284,7 @@ fn extract_statements(
         None => (format!("{call};"), 0),
     };
     let (insert_at, insert_text) = placement(ctx.document, first, &plan, options, destination)?;
-    Some(build_extraction(
+    Some(insert_and_replace(
         insert_at,
         insert_text,
         range,
@@ -304,33 +304,6 @@ fn placement(
     match destination {
         Destination::GlobalFunction => global_insertion(document, anchor, plan, options),
         Destination::Method => method_insertion(document, anchor, plan, options),
-    }
-}
-
-fn build_extraction(
-    insert_at: usize,
-    insert_text: String,
-    replace: Range<usize>,
-    call_text: String,
-    cursor_prefix: usize,
-    name: String,
-) -> Extraction {
-    let cursor_anchor = replace.start;
-    let edits = vec![
-        Splice {
-            range: insert_at..insert_at,
-            text: insert_text,
-        },
-        Splice {
-            range: replace,
-            text: call_text,
-        },
-    ];
-    let cursor = applied_offset(&edits, cursor_anchor) + cursor_prefix;
-    Extraction {
-        edits,
-        name,
-        cursor,
     }
 }
 
