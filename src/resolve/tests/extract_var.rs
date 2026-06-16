@@ -387,6 +387,23 @@ fn hoists_with_init_when_write_follows_selection(#[case] src: &str, #[case] need
     "function Use(x : int) {}\nclass C {\n    var count : int;\n    function M() {\n        this.count = 5;\n        Use(count + 1);\n    }\n}\n",
     "count + 1"
 )]
+#[case::inherited_field_written_before_selection(
+    concat!(
+        "//- /main.ws\n",
+        "function Use(x : int) {}\n",
+        "class C extends B {\n",
+        "    function M() {\n",
+        "        count = 5;\n",
+        "        Use(count + 1);\n",
+        "    }\n",
+        "}\n",
+        "//- /lib.ws\n",
+        "class B {\n",
+        "    var count : int;\n",
+        "}\n",
+    ),
+    "count + 1"
+)]
 fn splits_when_write_precedes_selection(#[case] src: &str, #[case] needle: &str) {
     assert_eq!(
         edit_count(src, needle),

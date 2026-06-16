@@ -4,6 +4,7 @@ use crate::symbols::Symbol;
 
 mod assignability;
 mod ast;
+mod body_model;
 mod completion;
 mod completion_catalog;
 mod definition;

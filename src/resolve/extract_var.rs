@@ -11,13 +11,14 @@ use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::formatter::{FormatOptions, indent_block, indent_unit_for, line_indent};
 use crate::strings::lowercase_first;
-use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+use crate::symbols::{AccessLevel, Symbol, SymbolKind};
 use crate::types::Type;
 
-use super::definition::{callee_params, resolve_definition_at_byte};
+use super::body_model::BodyModel;
+use super::definition::callee_params;
 use super::extract_common::{
-    CALLABLE_KINDS, Extraction, SelectionKind, Splice, WriteSite, applied_offset,
-    classify_selection, is_call_callee, trim_selection, write_sites,
+    CALLABLE_KINDS, Extraction, SelectionKind, Splice, applied_offset, classify_selection,
+    is_call_callee, trim_selection,
 };
 use super::inference::infer_type;
 use super::symbol_db::SymbolDb;
@@ -71,13 +72,18 @@ pub fn extract_variable(
     let name = unique_name(&name_base(uri, document, db, node), document, db, callable);
     let expr = &source[selection.clone()];
 
+    let model = BodyModel::enclosing(uri, document, db, selection.start)?;
+    let value = selection.clone();
+    let reads_nonlocal =
+        has_descendant_of_kind(node, &[kinds::FUNC_CALL_EXPR]) || model.references_field(&value);
+
     // A frozen top-of-block value is stale once a read is written before the expression re-evaluates:
     // before it textually, or anywhere in an enclosing loop body (which re-runs the expression).
     let loop_end = enclosing_loop_end(node, block);
     let hoist_end = loop_end.unwrap_or(selection.start);
     let cannot_hoist_initializer = |window: Range<usize>| {
-        tracked_write_in_window(uri, document, db, node, block, window.clone(), callable.id)
-            || (reads_nonlocal_state(uri, document, db, node)
+        model.operand_reassigned_in(&value, &window)
+            || (reads_nonlocal
                 && overridable_call_precedes(node, block, window, loop_end.is_some()))
     };
 
@@ -107,8 +113,7 @@ pub fn extract_variable(
             // Hoisting the whole decl would skip a write; split it so the computation stays in place.
             let slot = assign_slot(node)?;
             let statement = slot.statement();
-            let window = statement.start_byte()..selection.start;
-            if tracked_write_in_window(uri, document, db, node, block, window, callable.id) {
+            if model.operand_reassigned_in(&value, &(statement.start_byte()..selection.start)) {
                 return None;
             }
             let decl = format!(
@@ -418,47 +423,6 @@ fn parameter_slot_name(
         .map(|parameter| parameter.name.clone())
 }
 
-// A write inside `window` to any id the selection reads makes moving the computation there unsafe.
-fn tracked_write_in_window(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    selection_node: Node,
-    block: Node,
-    window: Range<usize>,
-    callable: SymbolId,
-) -> bool {
-    let tracked = selection_tracked_ids(uri, document, db, selection_node, callable);
-    if tracked.is_empty() {
-        return false;
-    }
-    let is_tracked_write = |target: Node| {
-        window.contains(&target.start_byte())
-            && resolved_write_tracked_id(uri, document, db, target, callable)
-                .is_some_and(|id| tracked.contains(&id))
-    };
-    write_sites(uri, document, db, &[block])
-        .into_iter()
-        .any(|write| match write {
-            WriteSite::AssignTarget(target) | WriteSite::OutArg(target) => is_tracked_write(target),
-            WriteSite::AssignBase(_) | WriteSite::ReceiverBase(_) => false,
-        })
-}
-
-// Any function/method may be redirected by @wrapMethod/@replaceMethod beyond our visibility, so a
-// call that can run before the expression could mutate the non-local state it reads.
-fn reads_nonlocal_state(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> bool {
-    if has_descendant_of_kind(node, &[kinds::FUNC_CALL_EXPR]) {
-        return true;
-    }
-    let mut idents = Vec::new();
-    collect_descendants_of_kind(node, &[kinds::IDENT], &mut idents);
-    idents.iter().any(|ident| {
-        resolve_definition_at_byte(uri, document, db, ident.start_byte())
-            .is_some_and(|def| def.symbol.kind == SymbolKind::Field)
-    })
-}
-
 // Calls in an earlier initializer run before our decl regardless, so only those from the insertion
 // point (window start, after the last leading var decl) up to the hoist end can change the reads.
 fn overridable_call_precedes(node: Node, block: Node, window: Range<usize>, in_loop: bool) -> bool {
@@ -469,42 +433,6 @@ fn overridable_call_precedes(node: Node, block: Node, window: Range<usize>, in_l
         window.contains(&call.start_byte())
             && (in_loop || !mutually_exclusive_branches(*call, node))
     })
-}
-
-fn selection_tracked_ids(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    node: Node,
-    callable: SymbolId,
-) -> HashSet<SymbolId> {
-    let mut idents = Vec::new();
-    collect_descendants_of_kind(node, &[kinds::IDENT], &mut idents);
-    idents
-        .iter()
-        .filter_map(|ident| resolved_write_tracked_id(uri, document, db, *ident, callable))
-        .collect()
-}
-
-// Same-file only: SymbolId is an index into one document's symbols, so cross-file ids cannot be compared.
-fn resolved_write_tracked_id(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    ident: Node,
-    callable: SymbolId,
-) -> Option<SymbolId> {
-    let definition = resolve_definition_at_byte(uri, document, db, ident.start_byte())?;
-    if definition.uri != uri {
-        return None;
-    }
-    let symbol = definition.symbol;
-    let tracked = match symbol.kind {
-        SymbolKind::Variable | SymbolKind::Parameter => symbol.container == Some(callable),
-        SymbolKind::Field => true,
-        _ => false,
-    };
-    tracked.then_some(symbol.id)
 }
 
 fn unique_name(base: &str, document: &ParsedDocument, db: &SymbolDb, callable: &Symbol) -> String {

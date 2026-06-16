@@ -8,6 +8,7 @@ use crate::cst::nav::first_named_child;
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::symbols::SymbolKind;
+use crate::types::Type;
 
 use super::definition::callee_params;
 use super::symbol_db::SymbolDb;
@@ -43,6 +44,36 @@ pub(super) fn apply_splices(text: &str, splices: &[Splice]) -> String {
         applied.replace_range(splice.range.clone(), &splice.text);
     }
     applied
+}
+
+pub(super) fn delete_statement(source: &str, stmt: Range<usize>) -> Splice {
+    let bytes = source.as_bytes();
+    let mut start = stmt.start;
+    while start > 0 && matches!(bytes[start - 1], b' ' | b'\t') {
+        start -= 1;
+    }
+    let at_line_start = start == 0 || bytes[start - 1] == b'\n';
+
+    let mut end = stmt.end;
+    while end < bytes.len() && matches!(bytes[end], b' ' | b'\t') {
+        end += 1;
+    }
+    if at_line_start {
+        if end < bytes.len() && bytes[end] == b'\r' {
+            end += 1;
+        }
+        if end < bytes.len() && bytes[end] == b'\n' {
+            end += 1;
+        }
+    } else {
+        // Other code shares the statement's line, so keep that code and its indentation.
+        start = stmt.start;
+    }
+
+    Splice {
+        range: start..end,
+        text: String::new(),
+    }
 }
 
 // Where `original` lands after the edits apply: shift it past every edit that ends at or before it.
@@ -310,6 +341,17 @@ fn method_call_receiver_base(call: Node) -> Option<Node> {
         return None;
     }
     lvalue_base_ident(first_named_child(callee)?)
+}
+
+// Arrays and structs copy on assignment and into parameters; classes are shared handles.
+pub(super) fn is_value_type(ty: &Type, db: &SymbolDb) -> bool {
+    match ty {
+        Type::Array(_) => true,
+        Type::Named(name) => db
+            .find_top_level(name)
+            .is_some_and(|d| d.symbol.kind == SymbolKind::Struct),
+        Type::Null | Type::Unknown | Type::Void | Type::Primitive(_) => false,
+    }
 }
 
 pub(super) fn out_args<'tree>(
