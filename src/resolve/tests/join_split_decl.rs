@@ -1,6 +1,5 @@
 use rstest::rstest;
 
-use crate::resolve::edit_plan::apply_splices;
 use crate::resolve::{BodyModel, Confidence, join_declaration, split_declaration};
 use crate::test_support::TestDb;
 
@@ -13,7 +12,7 @@ fn join_outcome(src: &str) -> Option<(String, bool)> {
     let model = BodyModel::enclosing(&uri, doc, &db, byte)?;
     let plan = join_declaration(&model, byte)?;
     let verified = matches!(plan.confidence, Confidence::Verified);
-    Some((apply_splices(&doc.source, &plan.edits), verified))
+    Some((plan.apply(&doc.source), verified))
 }
 
 fn split_outcome(src: &str) -> Option<(String, bool)> {
@@ -25,7 +24,7 @@ fn split_outcome(src: &str) -> Option<(String, bool)> {
     let model = BodyModel::enclosing(&uri, doc, &db, byte)?;
     let plan = split_declaration(&model, byte)?;
     let verified = matches!(plan.confidence, Confidence::Verified);
-    Some((apply_splices(&doc.source, &plan.edits), verified))
+    Some((plan.apply(&doc.source), verified))
 }
 
 fn joined(src: &str) -> Option<String> {

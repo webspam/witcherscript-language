@@ -27,7 +27,7 @@ mod switch;
 const EXTRACT_COMMAND: &str = "witcherscript.extractVariable";
 
 fn rename_position(source: &str, extraction: &Extraction) -> Position {
-    let applied = extraction.apply(source);
+    let applied = extraction.plan.apply(source);
     let p = LineIndex::new(&applied).byte_to_position(&applied, extraction.cursor);
     Position {
         line: p.line,
@@ -78,7 +78,7 @@ fn extraction_code_action(
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
         kind: Some(CodeActionKind::REFACTOR_EXTRACT),
-        edit: Some(workspace_edit_from_splices(ctx, &extraction.edits)),
+        edit: Some(workspace_edit_from_splices(ctx, &extraction.plan.edits)),
         command: Some(extract_command(command_title, ctx.uri, position)),
         ..CodeAction::default()
     })

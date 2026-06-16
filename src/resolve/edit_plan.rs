@@ -7,30 +7,33 @@ pub struct Splice {
     pub text: String,
 }
 
-#[derive(Debug)]
-pub struct Extraction {
-    /// Non-overlapping edits against the original source.
-    pub edits: Vec<Splice>,
-    pub name: String,
-    /// Byte offset in the applied text where the new name starts, for cursor placement.
-    pub cursor: usize,
-}
-
-impl Extraction {
-    pub fn apply(&self, source: &str) -> String {
-        apply_splices(source, &self.edits)
-    }
-}
-
 /// Whether a refactor's edits are provably free of runtime change.
+#[derive(Debug)]
 pub enum Confidence {
     Verified,
     Unverified,
 }
 
+#[derive(Debug)]
 pub struct EditPlan {
+    /// Non-overlapping edits against the original source.
     pub edits: Vec<Splice>,
     pub confidence: Confidence,
+}
+
+impl EditPlan {
+    pub fn apply(&self, source: &str) -> String {
+        apply_splices(source, &self.edits)
+    }
+}
+
+/// An `EditPlan` that also introduces a named symbol, with a caret offset for a follow-up rename.
+#[derive(Debug)]
+pub struct Extraction {
+    pub plan: EditPlan,
+    pub name: String,
+    /// Byte offset in the applied text where the new name starts, for cursor placement.
+    pub cursor: usize,
 }
 
 // Splice rightmost-first so each replace_range leaves earlier byte offsets untouched.
@@ -104,7 +107,10 @@ pub(super) fn insert_and_replace(
     ];
     let cursor = applied_offset(&edits, cursor_anchor) + cursor_prefix;
     Extraction {
-        edits,
+        plan: EditPlan {
+            edits,
+            confidence: Confidence::Verified,
+        },
         name,
         cursor,
     }

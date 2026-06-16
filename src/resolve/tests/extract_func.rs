@@ -28,7 +28,7 @@ fn extraction(src: &str, needle: &str) -> Extraction {
 fn applied_with(src: &str, needle: &str, options: FormatOptions) -> String {
     let (source, result) = run(src, needle, options);
     let x = result.unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"));
-    x.apply(&source)
+    x.plan.apply(&source)
 }
 
 fn applied(src: &str, needle: &str) -> String {
@@ -329,7 +329,7 @@ fn array_method_call_makes_array_an_out_parameter() {
             return arr.Size() + 1;
         }
     "]]
-    .assert_eq(&result.apply(&doc.source));
+    .assert_eq(&result.plan.apply(&doc.source));
 }
 
 #[test]
@@ -383,7 +383,7 @@ fn script_global_is_not_captured() {
         FormatOptions::default(),
     )
     .expect("expected an extraction");
-    let applied = result.apply(&doc.source);
+    let applied = result.plan.apply(&doc.source);
     assert!(
         applied.contains("function NewFunction() : int {"),
         "engine global must not become a parameter, got:\n{applied}"

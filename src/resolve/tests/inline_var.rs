@@ -1,6 +1,5 @@
 use rstest::rstest;
 
-use crate::resolve::edit_plan::apply_splices;
 use crate::resolve::{BodyModel, Confidence, inline_variable};
 use crate::test_support::TestDb;
 
@@ -13,7 +12,7 @@ fn inline_outcome(src: &str) -> Option<(String, bool)> {
     let model = BodyModel::enclosing(&uri, doc, &db, byte)?;
     let inlining = inline_variable(&model, byte)?;
     let verified = matches!(inlining.plan.confidence, Confidence::Verified);
-    Some((apply_splices(&doc.source, &inlining.plan.edits), verified))
+    Some((inlining.plan.apply(&doc.source), verified))
 }
 
 fn inlined(src: &str) -> Option<String> {

@@ -28,7 +28,7 @@ fn extraction(src: &str, needle: &str) -> Extraction {
 fn applied(src: &str, needle: &str) -> String {
     let (source, result) = run(src, needle, FormatOptions::default());
     let x = result.unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"));
-    x.apply(&source)
+    x.plan.apply(&source)
 }
 
 fn refused(src: &str, needle: &str) -> bool {

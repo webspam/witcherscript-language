@@ -28,7 +28,7 @@ fn extraction(src: &str, needle: &str) -> Extraction {
 fn applied_with(src: &str, needle: &str, options: FormatOptions) -> String {
     let (source, result) = run(src, needle, options);
     let x = result.unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"));
-    x.apply(&source)
+    x.plan.apply(&source)
 }
 
 fn applied(src: &str, needle: &str) -> String {
@@ -350,7 +350,7 @@ fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
 
 // With-init extraction emits two edits (decl + replacement); the split form adds an in-place assignment.
 fn edit_count(src: &str, needle: &str) -> usize {
-    extraction(src, needle).edits.len()
+    extraction(src, needle).plan.edits.len()
 }
 
 #[rstest]
@@ -420,6 +420,7 @@ fn extracted_expr(src: &str, needle: &str) -> String {
     let (source, result) = run(src, needle, FormatOptions::default());
     let x = result.unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"));
     let splice = x
+        .plan
         .edits
         .iter()
         .find(|s| s.text == x.name)

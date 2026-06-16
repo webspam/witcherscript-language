@@ -78,7 +78,7 @@ fn apply(src: &str, needle: &str, which: Which) -> Option<String> {
         Which::Function => extract_function(&model, range, options),
         Which::Method => extract_method(&model, range, options),
     }?;
-    Some(extraction.apply(&doc.source))
+    Some(extraction.plan.apply(&doc.source))
 }
 
 #[rstest]

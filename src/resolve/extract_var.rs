@@ -16,7 +16,9 @@ use crate::types::Type;
 
 use super::body_model::{BodyModel, CALLABLE_KINDS, WriteKinds};
 use super::definition::callee_params;
-use super::edit_plan::{Extraction, Splice, applied_offset, insert_and_replace};
+use super::edit_plan::{
+    Confidence, EditPlan, Extraction, Splice, applied_offset, insert_and_replace,
+};
 use super::inference::infer_type;
 use super::selection::{SelectionKind, classify_selection, is_call_callee, trim_selection};
 use super::symbol_db::SymbolDb;
@@ -189,7 +191,10 @@ fn split(
     ];
     let cursor = applied_offset(&edits, anchor);
     Extraction {
-        edits,
+        plan: EditPlan {
+            edits,
+            confidence: Confidence::Verified,
+        },
         name,
         cursor,
     }
@@ -237,13 +242,16 @@ fn split_braceless(
     let body_indent = indent_unit_for(&options).len() + indent.len();
     let cursor = stmt_start + decl.text.len() + "{\n".len() + body_indent;
     Extraction {
-        edits: vec![
-            decl,
-            Splice {
-                range: stmt_start..stmt_end,
-                text: block,
-            },
-        ],
+        plan: EditPlan {
+            edits: vec![
+                decl,
+                Splice {
+                    range: stmt_start..stmt_end,
+                    text: block,
+                },
+            ],
+            confidence: Confidence::Verified,
+        },
         name,
         cursor,
     }
