@@ -9,8 +9,8 @@ mod completion;
 mod completion_catalog;
 mod definition;
 mod document_highlight;
+mod edit_plan;
 mod extract_callable;
-mod extract_common;
 mod extract_var;
 mod inference;
 mod inlay_hints;
@@ -20,6 +20,7 @@ mod name_context;
 mod overrides;
 mod reaching_defs;
 mod references;
+mod selection;
 mod shadowed_base;
 mod signature;
 mod state_classes;
@@ -28,12 +29,14 @@ mod symbol_db;
 mod type_definition;
 mod workspace_index;
 mod workspace_symbols;
+mod writes;
 
 #[cfg(test)]
 mod tests;
 
 pub(crate) use assignability::{Assignability, assignability};
 pub use ast::BUILTIN_TYPE_COMPLETIONS;
+pub use body_model::BodyModel;
 pub use completion::{
     ExpressionCompletions, OverrideBody, OverrideCompletion, StatementCompletions,
     annotation_arg_completions, annotation_name_completions, class_body_keyword_completions,
@@ -52,13 +55,13 @@ pub use definition::{
     resolve_definition_at_byte, resolve_definition_at_ident,
 };
 pub use document_highlight::{HighlightKind, document_highlights};
+pub use edit_plan::{Confidence, EditPlan, Extraction, Splice};
 pub use extract_callable::{extract_function, extract_method};
-pub use extract_common::{Extraction, Splice};
 pub use extract_var::extract_variable;
 pub(crate) use inference::infer_type;
 pub(crate) use inference::infer_type_memo;
 pub use inlay_hints::{InlayHintInfo, inlay_hints};
-pub use inline_var::{InlineConfidence, InlineScope, Inlining, inline_variable};
+pub use inline_var::{InlineScope, Inlining, inline_variable};
 pub use join_split_decl::{join_declaration, split_declaration};
 pub use name_context::{NameContext, classify_ident_context};
 pub use overrides::{OverriddenSymbol, overridden_top_level};

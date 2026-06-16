@@ -1,7 +1,7 @@
 use expect_test::expect;
 use rstest::rstest;
 
-use super::super::{Extraction, extract_variable};
+use super::super::{BodyModel, Confidence, Extraction, extract_variable};
 use crate::formatter::{ColonSpacing, FormatOptions};
 use crate::test_support::{TestDb, script_env};
 
@@ -13,7 +13,9 @@ fn run(src: &str, needle: &str, options: FormatOptions) -> (String, Option<Extra
         .source
         .find(needle)
         .unwrap_or_else(|| panic!("needle {needle:?} not found in fixture"));
-    let result = extract_variable(uri, doc, &t.db(), start..start + needle.len(), options);
+    let db = t.db();
+    let result = BodyModel::enclosing(uri, doc, &db, start)
+        .and_then(|model| extract_variable(&model, start..start + needle.len(), options));
     (doc.source.clone(), result)
 }
 
@@ -26,7 +28,7 @@ fn extraction(src: &str, needle: &str) -> Extraction {
 fn applied_with(src: &str, needle: &str, options: FormatOptions) -> String {
     let (source, result) = run(src, needle, options);
     let x = result.unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"));
-    x.apply(&source)
+    x.plan.apply(&source)
 }
 
 fn applied(src: &str, needle: &str) -> String {
@@ -35,6 +37,13 @@ fn applied(src: &str, needle: &str) -> String {
 
 fn refused(src: &str, needle: &str) -> bool {
     run(src, needle, FormatOptions::default()).1.is_none()
+}
+
+fn verified(src: &str, needle: &str) -> bool {
+    matches!(
+        extraction(src, needle).plan.confidence,
+        Confidence::Verified
+    )
 }
 
 #[rstest]
@@ -281,10 +290,10 @@ fn derived_name_shadowing_script_global_gets_suffix() {
     let uri = t.primary_uri();
     let doc = t.doc_for(uri);
     let start = doc.source.find("s.theGame").expect("needle present");
+    let db = t.db().with_script_env(&env);
+    let model = BodyModel::enclosing(uri, doc, &db, start).expect("cursor is in a function body");
     let result = extract_variable(
-        uri,
-        doc,
-        &t.db().with_script_env(&env),
+        &model,
         start..start + "s.theGame".len(),
         FormatOptions::default(),
     )
@@ -301,8 +310,10 @@ fn returns_none_for_empty_selection() {
     let uri = t.primary_uri();
     let doc = t.doc_for(uri);
     let start = doc.source.find("1 + 2").expect("needle present");
+    let db = t.db();
+    let model = BodyModel::enclosing(uri, doc, &db, start).expect("cursor is in a function body");
     assert!(
-        extract_variable(uri, doc, &t.db(), start..start, FormatOptions::default()).is_none(),
+        extract_variable(&model, start..start, FormatOptions::default()).is_none(),
         "empty selection must not extract"
     );
 }
@@ -346,7 +357,7 @@ fn refuses_unextractable_selection(#[case] src: &str, #[case] needle: &str) {
 
 // With-init extraction emits two edits (decl + replacement); the split form adds an in-place assignment.
 fn edit_count(src: &str, needle: &str) -> usize {
-    extraction(src, needle).edits.len()
+    extraction(src, needle).plan.edits.len()
 }
 
 #[rstest]
@@ -416,6 +427,7 @@ fn extracted_expr(src: &str, needle: &str) -> String {
     let (source, result) = run(src, needle, FormatOptions::default());
     let x = result.unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"));
     let splice = x
+        .plan
         .edits
         .iter()
         .find(|s| s.text == x.name)
@@ -574,11 +586,29 @@ fn split_declares_at_callable_top_when_field_written_first() {
 }
 
 #[test]
-fn refuses_when_split_cannot_place_assignment() {
+fn offers_unsafe_split_when_out_arg_reorders_the_value() {
     let src = "function Fill(out target : int) : int { return 0; }\nfunction Use(x : int, y : int) {}\nfunction F() {\n    var a : int;\n    Use(Fill(a), a + 1);\n}\n";
     assert!(
-        refused(src, "a + 1"),
-        "\"a + 1\" has no safe in-place assignment slot and must not be offered"
+        !verified(src, "a + 1"),
+        "an out-arg write before \"a + 1\" reorders the split, so it is offered as unsafe"
+    );
+}
+
+#[test]
+fn offers_unsafe_hoist_above_leading_decl_when_a_call_precedes() {
+    let src = "function F() {\n    var b : int = Left() + Right();\n}\nfunction Left() : int { return 1; }\nfunction Right() : int { return 2; }\n";
+    assert!(
+        !verified(src, "Right()"),
+        "hoisting Right() above the decl reorders it before Left(), so it is offered as unsafe"
+    );
+}
+
+#[test]
+fn side_effect_free_extraction_is_verified() {
+    let src = "function F() {\n    var r : int;\n    r = 1 + 2;\n}\n";
+    assert!(
+        verified(src, "1 + 2"),
+        "a side-effect-free literal extraction is verified"
     );
 }
 

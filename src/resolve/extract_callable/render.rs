@@ -2,15 +2,14 @@ use std::ops::Range;
 
 use crate::document::ParsedDocument;
 use crate::formatter::{FormatOptions, indent_block, line_indent};
+use crate::strings::suffixed_unique;
 use crate::symbols::{AccessLevel, Symbol};
 use crate::types::Type;
 
-use super::super::extract_common::{Splice, apply_splices};
+use super::super::edit_plan::{Splice, apply_splices};
 use super::super::inference::TypeContext;
 use super::super::symbol_db::SymbolDb;
-use super::captures::{
-    BodyRewrite, CapturedLocal, Captures, PromotedField, Receiver, suffixed_unique,
-};
+use super::captures::{BodyRewrite, CapturedLocal, Captures, PromotedField, Receiver};
 
 pub(super) struct Param {
     name: String,

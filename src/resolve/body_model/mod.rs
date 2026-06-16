@@ -14,6 +14,7 @@ use tree_sitter::Node;
 use crate::cst::ancestors::{find_ancestor_of_kind, node_and_ancestors};
 use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
 use crate::cst::grammar::write_target;
+use crate::cst::if_stmt::mutually_exclusive_branches;
 use crate::cst::nav::{decl_name_idents, first_named_child, named_child_nodes};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
@@ -21,17 +22,23 @@ use crate::symbols::{SymbolId, SymbolKind};
 
 use super::Definition;
 use super::definition::{definition_key, resolve_definition_at_byte};
-use super::extract_common::{
-    CALLABLE_KINDS, WriteSite, is_value_type, write_site_node, write_sites,
-};
+use super::edit_plan::Confidence;
 use super::name_context::{NameContext, classify_ident_context};
 use super::reaching_defs::reaching_defs;
 use super::symbol_db::SymbolDb;
+use super::writes::{WriteSite, is_value_type, write_site_node, write_sites};
 
 /// Identity of a local, parameter, or field for cross-occurrence matching: `(uri, decl range)`.
 type DefKey = (String, Range<usize>);
 
-const SIDE_EFFECT_KINDS: &[&str] = &[kinds::FUNC_CALL_EXPR, kinds::NEW_EXPR];
+pub(super) const CALLABLE_KINDS: &[SymbolKind] =
+    &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event];
+
+// A call is the only side effect; `new` is effect-free and an assignment is a tracked write.
+const SIDE_EFFECT_KINDS: &[&str] = &[kinds::FUNC_CALL_EXPR];
+
+// A call or `new` can differ each run, so moving one past other statements is not a free reorder.
+const CALL_OR_CONSTRUCT_KINDS: &[&str] = &[kinds::FUNC_CALL_EXPR, kinds::NEW_EXPR];
 
 // Forms that already bind tighter than any surrounding operator, so substituting them needs no parens.
 const ATOMIC_VALUE_KINDS: &[&str] = &[
@@ -113,10 +120,21 @@ pub(crate) struct JoinTarget {
     pub(crate) value: Range<usize>,
     pub(crate) stmt: Range<usize>,
     pub(crate) insert_at: usize,
+    pub(crate) confidence: Confidence,
 }
 
 pub(crate) struct SplitTarget {
     pub(crate) insert_at: usize,
+    pub(crate) confidence: Confidence,
+}
+
+// Byte ranges, not nodes, so callers can rewrite a declaration without touching the CST.
+pub(crate) struct Declaration {
+    pub(crate) stmt: Range<usize>,
+    pub(crate) names: Vec<Range<usize>>,
+    pub(crate) target_index: usize,
+    pub(crate) var_type: Option<Range<usize>>,
+    pub(crate) init: Option<Range<usize>>,
 }
 
 struct LocalEntry {
@@ -129,7 +147,7 @@ struct WriteIndex<'a> {
     positions: HashMap<DefKey, Vec<usize>>,
 }
 
-pub(crate) struct BodyModel<'a> {
+pub struct BodyModel<'a> {
     uri: &'a str,
     document: &'a ParsedDocument,
     db: &'a SymbolDb<'a>,
@@ -141,7 +159,7 @@ pub(crate) struct BodyModel<'a> {
 
 impl<'a> BodyModel<'a> {
     /// Build the model for the callable body enclosing `byte`, or `None` outside any callable body.
-    pub(crate) fn enclosing(
+    pub fn enclosing(
         uri: &'a str,
         document: &'a ParsedDocument,
         db: &'a SymbolDb<'a>,
@@ -181,12 +199,119 @@ impl<'a> BodyModel<'a> {
         })
     }
 
+    pub(crate) fn uri(&self) -> &'a str {
+        self.uri
+    }
+
+    pub(crate) fn document(&self) -> &'a ParsedDocument {
+        self.document
+    }
+
+    pub(crate) fn db(&self) -> &'a SymbolDb<'a> {
+        self.db
+    }
+
     /// The local whose declaration name covers `byte`, or `None` if `byte` is not on a declaration.
     pub(crate) fn local_declared_at(&self, byte: usize) -> Option<LocalId> {
         self.locals
             .iter()
             .find(|e| e.selection.start <= byte && byte <= e.selection.end)
             .map(|e| LocalId(e.id))
+    }
+
+    // A read, the declaration name, or the single-name decl head; never a parameter.
+    pub(crate) fn variable_at(&self, byte: usize) -> Option<LocalId> {
+        let local = self
+            .local_reading(byte)
+            .or_else(|| self.local_declared_at(byte))
+            .or_else(|| self.local_at_var_keyword(byte))?;
+        self.is_variable(local).then_some(local)
+    }
+
+    pub(crate) fn read_at(&self, local: LocalId, byte: usize) -> Option<Range<usize>> {
+        self.reads(local)
+            .iter()
+            .find(|r| r.start <= byte && byte <= r.end)
+            .cloned()
+    }
+
+    pub(crate) fn declaration(&self, local: LocalId) -> Option<Declaration> {
+        let decl = self.decl_node(local)?;
+        let entry = self.locals.iter().find(|e| e.id == local.0)?;
+        let names: Vec<Range<usize>> = decl_name_idents(decl)
+            .iter()
+            .map(Node::byte_range)
+            .collect();
+        let target_index = names.iter().position(|r| *r == entry.selection)?;
+        Some(Declaration {
+            stmt: decl.byte_range(),
+            names,
+            target_index,
+            var_type: decl
+                .child_by_field_name(fields::VAR_TYPE)
+                .map(|n| n.byte_range()),
+            init: decl
+                .child_by_field_name(fields::INIT_VALUE)
+                .map(|n| n.byte_range()),
+        })
+    }
+
+    // Cursor anywhere in the declaration statement, not just the name (unlike local_declared_at).
+    pub(crate) fn local_at_declaration_stmt(&self, byte: usize) -> Option<LocalId> {
+        self.locals.iter().find_map(|e| {
+            let local = LocalId(e.id);
+            let decl = self.declaration(local)?;
+            (decl.stmt.start <= byte && byte <= decl.stmt.end).then_some(local)
+        })
+    }
+
+    /// The local assigned by the assignment statement covering `byte`, with that statement's range.
+    pub(crate) fn write_at(&self, byte: usize) -> Option<(LocalId, Range<usize>)> {
+        self.writes.sites.iter().find_map(|(key, site)| {
+            let WriteSite::AssignTarget(node) = site else {
+                return None;
+            };
+            let stmt = find_ancestor_of_kind(*node, &[kinds::EXPR_STMT])?.byte_range();
+            if byte < stmt.start || stmt.end < byte {
+                return None;
+            }
+            Some((self.local_for_key(key)?, stmt))
+        })
+    }
+
+    fn local_for_key(&self, key: &DefKey) -> Option<LocalId> {
+        if key.0 != self.uri {
+            return None;
+        }
+        self.locals
+            .iter()
+            .find(|e| e.selection == key.1)
+            .map(|e| LocalId(e.id))
+    }
+
+    fn local_reading(&self, byte: usize) -> Option<LocalId> {
+        self.locals.iter().find_map(|e| {
+            self.reads_by_local
+                .get(&e.id)
+                .filter(|rs| rs.iter().any(|r| r.start <= byte && byte <= r.end))
+                .map(|_| LocalId(e.id))
+        })
+    }
+
+    // The `var` keyword has no identifier to resolve; map it to the variable it declares.
+    fn local_at_var_keyword(&self, byte: usize) -> Option<LocalId> {
+        self.locals.iter().find_map(|e| {
+            let decl = self.declaration(LocalId(e.id))?;
+            let keyword_through_name = decl.stmt.start..=decl.names[decl.target_index].end;
+            (decl.names.len() == 1 && keyword_through_name.contains(&byte)).then_some(LocalId(e.id))
+        })
+    }
+
+    fn is_variable(&self, local: LocalId) -> bool {
+        self.document
+            .symbols
+            .by_id(local.0)
+            .is_some_and(|s| s.kind == SymbolKind::Variable)
     }
 
     /// Byte ranges of every occurrence that reads `local`'s value. A whole-value assignment target
@@ -273,14 +398,13 @@ impl<'a> BodyModel<'a> {
         if self.reads(local).iter().any(|r| window.contains(&r.start)) {
             return None;
         }
-        if !self.value_hoistable(&value, &window, local, block) {
-            return None;
-        }
+        let confidence = self.value_hoistability(&value, &window, local, block)?;
         let insert_at = decl.child_by_field_name(fields::VAR_TYPE)?.end_byte();
         Some(JoinTarget {
             value,
             stmt,
             insert_at,
+            confidence,
         })
     }
 
@@ -297,44 +421,53 @@ impl<'a> BodyModel<'a> {
         let insert_at = run_end.max(decl.end_byte());
 
         let window = decl.end_byte()..insert_at;
-        if !self.value_hoistable(&value, &window, local, block) {
-            return None;
-        }
-        Some(SplitTarget { insert_at })
+        let confidence = self.value_hoistability(&value, &window, local, block)?;
+        Some(SplitTarget {
+            insert_at,
+            confidence,
+        })
     }
 
-    /// Whether the value at `value` yields the same result at both ends of `window`.
-    fn value_hoistable(
+    /// Whether the value at `value` can move to the declaration, and whether that move is verified.
+    fn value_hoistability(
         &self,
         value: &Range<usize>,
         window: &Range<usize>,
         target: LocalId,
         block: Node<'a>,
-    ) -> bool {
+    ) -> Option<Confidence> {
         let operands: Vec<DefKey> = self
             .referenced_defs(value)
             .into_iter()
             .map(|(key, _)| key)
             .collect();
         if operands.contains(&self.local_key(target)) {
-            return false;
+            return None;
         }
         // An operand declared between the two is not yet in scope back at the declaration.
         if operands
             .iter()
             .any(|k| k.0 == self.uri && window.contains(&k.1.start))
         {
-            return false;
+            return None;
         }
         if self.operand_written_in(value, window, WriteKinds::AnyWrite) {
-            return false;
+            return None;
         }
         if self.has_observable_effect(value) {
-            // A value with side effects can only move up when nothing runs between the two.
-            return !self.has_statement_between(window, block);
+            // Moving a call past a statement reorders its effects, so offer that as unverified.
+            return Some(if self.has_statement_between(window, block) {
+                Confidence::Unverified
+            } else {
+                Confidence::Verified
+            });
         }
-        // A call between the two could change one of the operands the value reads.
-        !self.window_has_effect(window, block) || operands.is_empty()
+        // A call between the two could change an operand the value reads, so offer it as unverified.
+        if !self.effect_in_window(value, window, SIDE_EFFECT_KINDS) || operands.is_empty() {
+            Some(Confidence::Verified)
+        } else {
+            Some(Confidence::Unverified)
+        }
     }
 
     fn statements_between(&self, window: &Range<usize>, block: Node<'a>) -> Vec<Node<'a>> {
@@ -348,10 +481,27 @@ impl<'a> BodyModel<'a> {
         !self.statements_between(window, block).is_empty()
     }
 
-    fn window_has_effect(&self, window: &Range<usize>, block: Node<'a>) -> bool {
-        self.statements_between(window, block)
-            .into_iter()
-            .any(|n| has_descendant_of_kind(n, SIDE_EFFECT_KINDS))
+    pub(crate) fn call_precedes_value(&self, value: &Range<usize>, window: &Range<usize>) -> bool {
+        self.effect_in_window(value, window, &[kinds::FUNC_CALL_EXPR])
+    }
+
+    // A call in a branch mutually exclusive with `value` can't run first, unless a loop re-runs both.
+    fn effect_in_window(
+        &self,
+        value: &Range<usize>,
+        window: &Range<usize>,
+        kinds: &[&str],
+    ) -> bool {
+        let Some(anchor) = self.node_at(value) else {
+            return false;
+        };
+        let in_loop = self.enclosing_loop(value).is_some();
+        let mut effects = Vec::new();
+        collect_descendants_of_kind(self.body, kinds, &mut effects);
+        effects.iter().any(|effect| {
+            window.contains(&effect.start_byte())
+                && (in_loop || !mutually_exclusive_branches(*effect, anchor))
+        })
     }
 
     /// Whether the value at `value` still holds the same result when evaluated at the read site,
@@ -421,6 +571,11 @@ impl<'a> BodyModel<'a> {
     pub(crate) fn has_observable_effect(&self, span: &Range<usize>) -> bool {
         self.node_at(span)
             .is_some_and(|n| has_descendant_of_kind(n, SIDE_EFFECT_KINDS))
+    }
+
+    pub(crate) fn value_calls_or_constructs(&self, span: &Range<usize>) -> bool {
+        self.node_at(span)
+            .is_some_and(|n| has_descendant_of_kind(n, CALL_OR_CONSTRUCT_KINDS))
     }
 
     pub(crate) fn local_for(&self, id: SymbolId) -> Option<LocalId> {
@@ -565,6 +720,11 @@ impl<'a> BodyModel<'a> {
             windows.push(loop_node.start_byte()..selection.start);
         }
         windows
+    }
+
+    /// End byte of the outermost loop enclosing `byte`, or `None` when it sits in no loop.
+    pub(crate) fn enclosing_loop_end(&self, byte: usize) -> Option<usize> {
+        self.enclosing_loop(&(byte..byte)).map(|n| n.end_byte())
     }
 
     fn enclosing_loop(&self, selection: &Range<usize>) -> Option<Node<'a>> {

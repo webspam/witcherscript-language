@@ -1,7 +1,6 @@
 use rstest::rstest;
 
-use crate::resolve::extract_common::apply_splices;
-use crate::resolve::{InlineConfidence, inline_variable};
+use crate::resolve::{BodyModel, Confidence, inline_variable};
 use crate::test_support::TestDb;
 
 fn inline_outcome(src: &str) -> Option<(String, bool)> {
@@ -9,9 +8,11 @@ fn inline_outcome(src: &str) -> Option<(String, bool)> {
     let (uri, pos) = t.cursor();
     let doc = t.doc_for(&uri);
     let byte = doc.line_index.position_to_byte(&doc.source, pos)?;
-    let inlining = inline_variable(&uri, doc, &t.db(), byte)?;
-    let verified = matches!(inlining.confidence, InlineConfidence::Verified);
-    Some((apply_splices(&doc.source, &inlining.edits), verified))
+    let db = t.db();
+    let model = BodyModel::enclosing(&uri, doc, &db, byte)?;
+    let inlining = inline_variable(&model, byte)?;
+    let verified = matches!(inlining.plan.confidence, Confidence::Verified);
+    Some((inlining.plan.apply(&doc.source), verified))
 }
 
 fn inlined(src: &str) -> Option<String> {
@@ -134,6 +135,11 @@ fn inlined(src: &str) -> Option<String> {
     "function f(target : CObj) {\n    var kind : name;\n    target.Prepare();\n    kind = GetKind(target);\n    if (!Check($0kind)) return false;\n}\n",
     "function f(target : CObj) {\n    target.Prepare();\n    if (!Check(GetKind(target))) return false;\n}\n"
 )]
+#[case::single_new_relocates(
+    "a single new is a pure relocation",
+    "class C {\n    function f() {\n        var $0a : C = new C in this;\n        return a;\n    }\n}\n",
+    "class C {\n    function f() {\n        return new C in this;\n    }\n}\n"
+)]
 fn inlines(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     let (got, verified) =
         inline_outcome(src).unwrap_or_else(|| panic!("case {label}: expected an inlining"));
@@ -212,6 +218,16 @@ fn refuses(#[case] label: &str, #[case] src: &str) {
     "the value calls a method on an unresolved receiver",
     "function f(groupId : int) {\n    var idx : int;\n    idx = config.GetGroupIdx(groupId);\n    return $0idx;\n}\n",
     "function f(groupId : int) {\n    return config.GetGroupIdx(groupId);\n}\n"
+)]
+#[case::call_duplicated_across_reads(
+    "inlining a call into several reads runs it more than once",
+    "function Compute() : int {\n    return 1;\n}\nfunction f() {\n    var $0x : int = Compute();\n    Foo(x);\n    Bar(x);\n}\n",
+    "function Compute() : int {\n    return 1;\n}\nfunction f() {\n    Foo(Compute());\n    Bar(Compute());\n}\n"
+)]
+#[case::new_duplicated_across_reads(
+    "inlining a new into several reads constructs more than one object",
+    "class C {\n    function f() {\n        var $0a : C = new C in this;\n        Foo(a);\n        Bar(a);\n    }\n}\n",
+    "class C {\n    function f() {\n        Foo(new C in this);\n        Bar(new C in this);\n    }\n}\n"
 )]
 fn offers_flagged(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     let (got, verified) =

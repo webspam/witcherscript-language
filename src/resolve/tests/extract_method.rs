@@ -1,7 +1,7 @@
 use expect_test::expect;
 use rstest::rstest;
 
-use super::super::{Extraction, extract_function, extract_method};
+use super::super::{BodyModel, Extraction, extract_function, extract_method};
 use crate::formatter::FormatOptions;
 use crate::test_support::TestDb;
 
@@ -13,7 +13,9 @@ fn run(src: &str, needle: &str, options: FormatOptions) -> (String, Option<Extra
         .source
         .find(needle)
         .unwrap_or_else(|| panic!("needle {needle:?} not found in fixture"));
-    let result = extract_method(uri, doc, &t.db(), start..start + needle.len(), options);
+    let db = t.db();
+    let result = BodyModel::enclosing(uri, doc, &db, start)
+        .and_then(|model| extract_method(&model, start..start + needle.len(), options));
     (doc.source.clone(), result)
 }
 
@@ -26,7 +28,7 @@ fn extraction(src: &str, needle: &str) -> Extraction {
 fn applied(src: &str, needle: &str) -> String {
     let (source, result) = run(src, needle, FormatOptions::default());
     let x = result.unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"));
-    x.apply(&source)
+    x.plan.apply(&source)
 }
 
 fn refused(src: &str, needle: &str) -> bool {
@@ -353,12 +355,14 @@ fn extract_to_function_refuses_what_extract_to_method_accepts() {
         .find(COMBAT_SELECTION)
         .expect("selection present");
     let range = start..start + COMBAT_SELECTION.len();
+    let db = t.db();
+    let model = BodyModel::enclosing(uri, doc, &db, start).expect("cursor is in a function body");
     assert!(
-        extract_function(uri, doc, &t.db(), range.clone(), FormatOptions::default()).is_none(),
+        extract_function(&model, range.clone(), FormatOptions::default()).is_none(),
         "a global function cannot reach the private helper Floor0",
     );
     assert!(
-        extract_method(uri, doc, &t.db(), range, FormatOptions::default()).is_some(),
+        extract_method(&model, range, FormatOptions::default()).is_some(),
         "a sibling method reaches every member, so the same selection extracts",
     );
 }

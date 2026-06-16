@@ -7,7 +7,7 @@ use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kin
 use crate::cst::grammar::member_access_member;
 use crate::cst::kinds;
 use crate::cst::nav::first_named_child;
-use crate::strings::receiver_name;
+use crate::strings::{receiver_name, suffixed_unique};
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 use crate::types::Type;
 
@@ -300,18 +300,4 @@ fn build_receiver(
         type_name: type_context.name.clone(),
         param_name,
     })
-}
-
-pub(super) fn suffixed_unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
-    if !taken(base) {
-        return base.to_string();
-    }
-    let mut suffix = 1usize;
-    loop {
-        let candidate = format!("{base}{suffix}");
-        if !taken(&candidate) {
-            return candidate;
-        }
-        suffix += 1;
-    }
 }

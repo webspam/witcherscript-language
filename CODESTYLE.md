@@ -116,7 +116,6 @@ When a lock is warranted, prefer `parking_lot::Mutex`/`parking_lot::RwLock` over
 ## Public-API conventions
 
 `pub` struct fields are rare; types expose constructors and methods, not raw state, so internal invariants are enforceable (`C-STRUCT-PRIVATE`).
-Mark extension-prone public enums and structs `#[non_exhaustive]`.
 Use the sealed-trait pattern (`C-SEALED`) for traits not meant for downstream implementation.
 Use the builder pattern only when a type has many optional fields *and* construction order or validation matters; for two or three fields, a direct constructor reads better.
 

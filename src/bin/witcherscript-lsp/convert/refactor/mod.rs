@@ -1,3 +1,4 @@
+use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::ops::Range;
 
@@ -9,13 +10,11 @@ use tree_sitter::Node;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::formatter::FormatOptions;
 use witcherscript_language::line_index::LineIndex;
-use witcherscript_language::resolve::{Extraction, Inlining, Splice, SymbolDb};
+use witcherscript_language::resolve::{BodyModel, EditPlan, Splice, SymbolDb};
 
 use super::lsp_range;
 
-mod extract_func;
-mod extract_method;
-mod extract_var;
+mod extract;
 mod if_stmt;
 mod inline_var;
 mod join_split;
@@ -25,9 +24,14 @@ mod switch;
 // The command is extraction-agnostic; reusing it for every extract action spares an extension release.
 const EXTRACT_COMMAND: &str = "witcherscript.extractVariable";
 
-fn rename_position(source: &str, extraction: &Extraction) -> Position {
-    let applied = extraction.apply(source);
-    let p = LineIndex::new(&applied).byte_to_position(&applied, extraction.cursor);
+struct RenameAfter<'a> {
+    cursor: usize,
+    command_title: &'a str,
+}
+
+fn rename_position(source: &str, plan: &EditPlan, cursor: usize) -> Position {
+    let applied = plan.apply(source);
+    let p = LineIndex::new(&applied).byte_to_position(&applied, cursor);
     Position {
         line: p.line,
         character: p.character,
@@ -67,44 +71,22 @@ fn workspace_edit_from_splices(ctx: &RefactorContext, splices: &[Splice]) -> Wor
     }
 }
 
-fn extraction_code_action(
+fn refactor_action(
     ctx: &RefactorContext,
-    extraction: &Extraction,
+    plan: &EditPlan,
+    kind: CodeActionKind,
     title: &str,
-    command_title: &str,
+    rename: Option<RenameAfter>,
 ) -> CodeActionOrCommand {
-    let position = rename_position(&ctx.document.source, extraction);
+    let command = rename.map(|r| {
+        let position = rename_position(&ctx.document.source, plan, r.cursor);
+        extract_command(r.command_title, ctx.uri, position)
+    });
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
-        kind: Some(CodeActionKind::REFACTOR_EXTRACT),
-        edit: Some(workspace_edit_from_splices(ctx, &extraction.edits)),
-        command: Some(extract_command(command_title, ctx.uri, position)),
-        ..CodeAction::default()
-    })
-}
-
-fn inline_code_action(
-    ctx: &RefactorContext,
-    inlining: &Inlining,
-    title: &str,
-) -> CodeActionOrCommand {
-    CodeActionOrCommand::CodeAction(CodeAction {
-        title: title.to_string(),
-        kind: Some(CodeActionKind::REFACTOR_INLINE),
-        edit: Some(workspace_edit_from_splices(ctx, &inlining.edits)),
-        ..CodeAction::default()
-    })
-}
-
-fn splice_rewrite_action(
-    ctx: &RefactorContext,
-    splices: &[Splice],
-    title: &str,
-) -> CodeActionOrCommand {
-    CodeActionOrCommand::CodeAction(CodeAction {
-        title: title.to_string(),
-        kind: Some(CodeActionKind::REFACTOR_REWRITE),
-        edit: Some(workspace_edit_from_splices(ctx, splices)),
+        kind: Some(kind),
+        edit: Some(workspace_edit_from_splices(ctx, &plan.edits)),
+        command,
         ..CodeAction::default()
     })
 }
@@ -113,9 +95,9 @@ fn splice_rewrite_action(
 const REFACTORINGS: &[&dyn Refactoring] = &[
     &switch::SwitchLayoutRefactoring,
     &if_stmt::IfLayoutRefactoring,
-    &extract_var::ExtractVariableRefactoring,
-    &extract_method::ExtractMethodRefactoring,
-    &extract_func::ExtractFunctionRefactoring,
+    &extract::ExtractVariableRefactoring,
+    &extract::ExtractMethodRefactoring,
+    &extract::ExtractFunctionRefactoring,
     &inline_var::InlineVariableRefactoring,
     &join_split::JoinDeclarationRefactoring,
     &join_split::SplitDeclarationRefactoring,
@@ -147,6 +129,7 @@ pub(crate) fn refactor_code_actions<'a>(
         db,
         selection,
         options,
+        body_model: OnceCell::new(),
     };
     REFACTORINGS.iter().flat_map(|r| r.actions(&ctx)).collect()
 }
@@ -158,6 +141,8 @@ struct RefactorContext<'a> {
     db: &'a SymbolDb<'a>,
     selection: Range<usize>,
     options: FormatOptions,
+    // Built once per request, then borrowed by every body-level action (dispatch is single-threaded).
+    body_model: OnceCell<Option<BodyModel<'a>>>,
 }
 
 impl<'a> RefactorContext<'a> {
@@ -167,6 +152,14 @@ impl<'a> RefactorContext<'a> {
 
     fn cursor(&self) -> usize {
         self.selection.start
+    }
+
+    fn body_model(&self) -> Option<&BodyModel<'a>> {
+        self.body_model
+            .get_or_init(|| {
+                BodyModel::enclosing(self.canonical_uri, self.document, self.db, self.cursor())
+            })
+            .as_ref()
     }
 
     fn source(&self) -> &'a str {
@@ -185,20 +178,14 @@ impl<'a> RefactorContext<'a> {
         new_text: String,
         preference: &Preference,
     ) -> CodeActionOrCommand {
-        let range = lsp_range(self.document.line_index.byte_range_to_range(
-            &self.document.source,
-            node.start_byte(),
-            node.end_byte(),
-        ));
-        let mut changes = HashMap::new();
-        changes.insert(self.uri.clone(), vec![TextEdit { range, new_text }]);
+        let splice = Splice {
+            range: node.byte_range(),
+            text: new_text,
+        };
         CodeActionOrCommand::CodeAction(CodeAction {
             title: title.to_string(),
             kind: Some(CodeActionKind::REFACTOR_REWRITE),
-            edit: Some(WorkspaceEdit {
-                changes: Some(changes),
-                ..WorkspaceEdit::default()
-            }),
+            edit: Some(workspace_edit_from_splices(self, &[splice])),
             is_preferred: matches!(preference, Preference::Preferred).then_some(true),
             ..CodeAction::default()
         })

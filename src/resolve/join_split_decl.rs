@@ -1,41 +1,20 @@
-use std::ops::Range;
-
-use tree_sitter::Node;
-
-use crate::cst::ancestors::find_ancestor_of_kind;
-use crate::cst::grammar::write_target;
-use crate::cst::nav::{first_child_kind, single_name};
-use crate::cst::{fields, kinds};
-use crate::document::ParsedDocument;
 use crate::formatter::line_indent;
-use crate::symbols::SymbolKind;
 
-use super::Definition;
-use super::ast::nodes_at_offset;
 use super::body_model::{BodyModel, JoinTarget, SplitTarget};
-use super::definition::resolve_definition_at_byte;
-use super::extract_common::{Splice, delete_statement};
-use super::symbol_db::SymbolDb;
+use super::edit_plan::{EditPlan, Splice, delete_statement};
 
-pub fn join_declaration(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    byte: usize,
-) -> Option<Vec<Splice>> {
-    let root = document.tree.root_node();
-    let (def, from_assignment) = target_local(uri, document, db, root, byte)?;
-    if def.symbol.kind != SymbolKind::Variable || def.uri.as_str() != uri {
-        return None;
-    }
-
-    let anchor = def.symbol.selection_byte_range.start;
-    let model = BodyModel::enclosing(uri, document, db, anchor)?;
-    let local = model.local_declared_at(anchor)?;
+pub fn join_declaration(model: &BodyModel, byte: usize) -> Option<EditPlan> {
+    let (local, from_assignment) = if let Some(local) = model.local_at_declaration_stmt(byte) {
+        (local, None)
+    } else {
+        let (local, stmt) = model.write_at(byte)?;
+        (local, Some(stmt))
+    };
     let JoinTarget {
         value,
         stmt,
         insert_at,
+        confidence,
     } = model.joinable_assignment(local)?;
 
     // When the cursor is on an assignment, join that one rather than an earlier assignment.
@@ -43,75 +22,48 @@ pub fn join_declaration(
         return None;
     }
 
-    let init = &document.source[value];
-    Some(vec![
-        Splice {
-            range: insert_at..insert_at,
-            text: format!(" = {init}"),
-        },
-        delete_statement(&document.source, stmt),
-    ])
+    let source = &model.document().source;
+    let init = &source[value];
+    Some(EditPlan {
+        edits: vec![
+            Splice {
+                range: insert_at..insert_at,
+                text: format!(" = {init}"),
+            },
+            delete_statement(source, stmt),
+        ],
+        confidence,
+    })
 }
 
-pub fn split_declaration(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    byte: usize,
-) -> Option<Vec<Splice>> {
-    let root = document.tree.root_node();
-    let decl = enclosing(root, byte, kinds::LOCAL_VAR_DECL_STMT)?;
-    if decl.parent().map(|p| p.kind()) != Some(kinds::FUNC_BLOCK) {
-        return None;
-    }
-    let name = single_name(decl)?;
-    let init = decl.child_by_field_name(fields::INIT_VALUE)?;
-    let var_type = decl.child_by_field_name(fields::VAR_TYPE)?;
+pub fn split_declaration(model: &BodyModel, byte: usize) -> Option<EditPlan> {
+    let local = model.local_at_declaration_stmt(byte)?;
+    let decl = model.declaration(local)?;
+    let SplitTarget {
+        insert_at,
+        confidence,
+    } = model.splittable_declaration(local)?;
 
-    let model = BodyModel::enclosing(uri, document, db, name.start_byte())?;
-    let local = model.local_declared_at(name.start_byte())?;
-    let SplitTarget { insert_at } = model.splittable_declaration(local)?;
-
-    let source = &document.source;
+    let source = &model.document().source;
+    let name = &source[decl.names[decl.target_index].clone()];
+    let var_type = decl.var_type?;
+    let init = decl.init?;
     let assignment = format!(
-        "\n{indent}{name} = {init};",
+        "\n{indent}{name} = {value};",
         indent = line_indent(source, insert_at),
-        name = &source[name.byte_range()],
-        init = &source[init.byte_range()],
+        value = &source[init.clone()],
     );
-    Some(vec![
-        Splice {
-            range: var_type.end_byte()..init.end_byte(),
-            text: String::new(),
-        },
-        Splice {
-            range: insert_at..insert_at,
-            text: assignment,
-        },
-    ])
-}
-
-fn target_local(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
-    root: Node<'_>,
-    byte: usize,
-) -> Option<(Definition, Option<Range<usize>>)> {
-    if let Some(decl) = enclosing(root, byte, kinds::LOCAL_VAR_DECL_STMT) {
-        let name = single_name(decl)?;
-        let def = resolve_definition_at_byte(uri, document, db, name.start_byte())?;
-        return Some((def, None));
-    }
-    let stmt = enclosing(root, byte, kinds::EXPR_STMT)?;
-    let assign = first_child_kind(stmt, kinds::ASSIGN_OP_EXPR)?;
-    let target = write_target(assign.child_by_field_name(fields::LEFT)?)?;
-    let def = resolve_definition_at_byte(uri, document, db, target.start_byte())?;
-    Some((def, Some(stmt.byte_range())))
-}
-
-fn enclosing<'t>(root: Node<'t>, byte: usize, kind: &str) -> Option<Node<'t>> {
-    nodes_at_offset(root, byte)
-        .into_iter()
-        .find_map(|n| find_ancestor_of_kind(n, &[kind]))
+    Some(EditPlan {
+        edits: vec![
+            Splice {
+                range: var_type.end..init.end,
+                text: String::new(),
+            },
+            Splice {
+                range: insert_at..insert_at,
+                text: assignment,
+            },
+        ],
+        confidence,
+    })
 }

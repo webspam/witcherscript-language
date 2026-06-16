@@ -1,3 +1,17 @@
+pub(crate) fn suffixed_unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
+    if !taken(base) {
+        return base.to_string();
+    }
+    let mut suffix = 1usize;
+    loop {
+        let candidate = format!("{base}{suffix}");
+        if !taken(&candidate) {
+            return candidate;
+        }
+        suffix += 1;
+    }
+}
+
 pub(crate) fn lowercase_first(s: &str) -> String {
     let mut chars = s.chars();
     match chars.next() {

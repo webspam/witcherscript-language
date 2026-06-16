@@ -12,7 +12,7 @@ use crate::cst::ancestors::find_ancestor_of_kind;
 use crate::cst::nav::named_child_nodes;
 use crate::cst::{fields, kinds};
 
-use super::extract_common::{WriteSite, write_site_node};
+use super::writes::{WriteSite, write_site_node};
 
 /// A bitset over `LocalDefinition` indices; the 128 cap is arbitrary.
 type Mask = u128;

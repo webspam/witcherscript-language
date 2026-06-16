@@ -1,7 +1,7 @@
-use lsp_types::CodeActionOrCommand;
-use witcherscript_language::resolve::{join_declaration, split_declaration};
+use lsp_types::{CodeActionKind, CodeActionOrCommand};
+use witcherscript_language::resolve::{Confidence, join_declaration, split_declaration};
 
-use super::{RefactorContext, Refactoring, splice_rewrite_action};
+use super::{RefactorContext, Refactoring, refactor_action};
 
 pub(super) struct JoinDeclarationRefactoring;
 
@@ -11,14 +11,22 @@ impl Refactoring for JoinDeclarationRefactoring {
         if !ctx.selection.is_empty() {
             return Vec::new();
         }
-        let Some(edits) = join_declaration(ctx.canonical_uri, ctx.document, ctx.db, ctx.cursor())
-        else {
+        let Some(model) = ctx.body_model() else {
             return Vec::new();
         };
-        vec![splice_rewrite_action(
+        let Some(plan) = join_declaration(model, ctx.cursor()) else {
+            return Vec::new();
+        };
+        let title = match plan.confidence {
+            Confidence::Verified => "Join declaration and assignment",
+            Confidence::Unverified => "Join declaration and assignment (unsafe)",
+        };
+        vec![refactor_action(
             ctx,
-            &edits,
-            "Join declaration and assignment",
+            &plan,
+            CodeActionKind::REFACTOR_REWRITE,
+            title,
+            None,
         )]
     }
 }
@@ -30,14 +38,22 @@ impl Refactoring for SplitDeclarationRefactoring {
         if !ctx.selection.is_empty() {
             return Vec::new();
         }
-        let Some(edits) = split_declaration(ctx.canonical_uri, ctx.document, ctx.db, ctx.cursor())
-        else {
+        let Some(model) = ctx.body_model() else {
             return Vec::new();
         };
-        vec![splice_rewrite_action(
+        let Some(plan) = split_declaration(model, ctx.cursor()) else {
+            return Vec::new();
+        };
+        let title = match plan.confidence {
+            Confidence::Verified => "Split declaration and initializer",
+            Confidence::Unverified => "Split declaration and initializer (unsafe)",
+        };
+        vec![refactor_action(
             ctx,
-            &edits,
-            "Split declaration and initializer",
+            &plan,
+            CodeActionKind::REFACTOR_REWRITE,
+            title,
+            None,
         )]
     }
 }

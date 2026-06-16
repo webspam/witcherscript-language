@@ -40,10 +40,3 @@ pub(crate) fn decl_name_idents(decl: Node) -> Vec<Node> {
         .filter(|n| n.kind() == kinds::IDENT)
         .collect()
 }
-
-pub(crate) fn single_name(decl: Node) -> Option<Node> {
-    match decl_name_idents(decl).as_slice() {
-        [only] => Some(*only),
-        _ => None,
-    }
-}

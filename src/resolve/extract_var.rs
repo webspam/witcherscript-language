@@ -4,23 +4,23 @@ use std::ops::Range;
 use tree_sitter::Node;
 
 use crate::cst::ancestors::{enclosing_callable_block, node_and_ancestors};
-use crate::cst::descendants::{collect_descendants_of_kind, has_descendant_of_kind};
+use crate::cst::descendants::has_descendant_of_kind;
 use crate::cst::grammar::{arg_slots, call_callee, callee_ident, member_access_member};
-use crate::cst::if_stmt::{if_chain_above, mutually_exclusive_branches};
+use crate::cst::if_stmt::if_chain_above;
 use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::formatter::{FormatOptions, indent_block, indent_unit_for, line_indent};
-use crate::strings::lowercase_first;
+use crate::strings::{lowercase_first, suffixed_unique};
 use crate::symbols::{AccessLevel, Symbol, SymbolKind};
 use crate::types::Type;
 
-use super::body_model::{BodyModel, WriteKinds};
+use super::body_model::{BodyModel, CALLABLE_KINDS, WriteKinds};
 use super::definition::callee_params;
-use super::extract_common::{
-    CALLABLE_KINDS, Extraction, SelectionKind, Splice, applied_offset, classify_selection,
-    is_call_callee, trim_selection,
+use super::edit_plan::{
+    Confidence, EditPlan, Extraction, Splice, applied_offset, insert_and_replace,
 };
 use super::inference::infer_type;
+use super::selection::{SelectionKind, classify_selection, is_call_callee, trim_selection};
 use super::symbol_db::SymbolDb;
 
 const STATEMENT_KINDS: &[&str] = &[
@@ -40,12 +40,13 @@ const STATEMENT_KINDS: &[&str] = &[
 ];
 
 pub fn extract_variable(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    model: &BodyModel,
     selection: Range<usize>,
     options: FormatOptions,
 ) -> Option<Extraction> {
+    let uri = model.uri();
+    let document = model.document();
+    let db = model.db();
     let source = &document.source;
     let selection = trim_selection(source, selection)?;
     let root = document.tree.root_node();
@@ -72,60 +73,63 @@ pub fn extract_variable(
     let name = unique_name(&name_base(uri, document, db, node), document, db, callable);
     let expr = &source[selection.clone()];
 
-    let model = BodyModel::enclosing(uri, document, db, selection.start)?;
     let value = selection.clone();
-    let reads_nonlocal =
-        has_descendant_of_kind(node, &[kinds::FUNC_CALL_EXPR]) || model.references_field(&value);
+    let reads_nonlocal = model.has_observable_effect(&value) || model.references_field(&value);
 
     // A frozen top-of-block value is stale once a read is written before the expression re-evaluates:
     // before it textually, or anywhere in an enclosing loop body (which re-runs the expression).
-    let loop_end = enclosing_loop_end(node, block);
-    let hoist_end = loop_end.unwrap_or(selection.start);
+    let hoist_end = model
+        .enclosing_loop_end(selection.start)
+        .unwrap_or(selection.start);
     let cannot_hoist_initializer = |window: Range<usize>| {
         model.operand_written_in(&value, &window, WriteKinds::Reassignment)
-            || (reads_nonlocal
-                && overridable_call_precedes(node, block, window, loop_end.is_some()))
+            || (reads_nonlocal && model.call_precedes_value(&value, &window))
     };
 
     match decl_site(source, block, &selection, options)? {
         DeclSite::AboveLeadingDecl { at, indent } => {
-            if cannot_hoist_initializer(at..hoist_end) {
-                return None;
-            }
+            // The new decl must carry the initializer here, so an unsafe hoist is offered, not refused.
+            let confidence = confidence(!cannot_hoist_initializer(at..hoist_end));
             let stmt = declaration_statement(&name, &ty, expr, options);
-            Some(single_insert(
-                at,
-                format!("{stmt}\n{indent}"),
-                selection,
-                name,
-            ))
+            Some(
+                insert_and_replace(
+                    at,
+                    format!("{stmt}\n{indent}"),
+                    selection,
+                    name.clone(),
+                    0,
+                    name,
+                )
+                .with_confidence(confidence),
+            )
         }
         DeclSite::TopOfBlock { at, indent } => {
             if !cannot_hoist_initializer(at..hoist_end) {
                 let stmt = declaration_statement(&name, &ty, expr, options);
-                return Some(single_insert(
+                return Some(insert_and_replace(
                     at,
                     format!("\n{indent}{stmt}"),
                     selection,
+                    name.clone(),
+                    0,
                     name,
                 ));
             }
             // Hoisting the whole decl would skip a write; split it so the computation stays in place.
             let slot = assign_slot(node)?;
             let statement = slot.statement();
-            if model.operand_written_in(
+            // A write between the statement and the selection means even the split reorders the value.
+            let confidence = confidence(!model.operand_written_in(
                 &value,
                 &(statement.start_byte()..selection.start),
                 WriteKinds::Reassignment,
-            ) {
-                return None;
-            }
+            ));
             let decl = format!(
                 "\n{indent}{}",
                 uninitialised_declaration(&name, &ty, options)
             );
-            match slot {
-                AssignSlot::BeforeStatement(statement) => Some(split_before(
+            let extraction = match slot {
+                AssignSlot::BeforeStatement(statement) => split_before(
                     at,
                     decl,
                     statement.start_byte(),
@@ -133,52 +137,37 @@ pub fn extract_variable(
                     name,
                     expr,
                     selection,
-                )),
-                AssignSlot::WrapBraceless(statement) => match pre_chain_head(statement, node) {
-                    Some(head) => Some(split_before(
-                        at,
-                        decl,
-                        head.start_byte(),
-                        source,
-                        name,
-                        expr,
-                        selection,
-                    )),
-                    None => Some(split_braceless(
-                        Splice {
-                            range: at..at,
-                            text: decl,
-                        },
-                        statement,
-                        expr,
-                        source,
-                        options,
-                        selection,
-                        name,
-                    )),
-                },
-            }
+                ),
+                AssignSlot::WrapBraceless(statement) => {
+                    match pre_chain_head(model, statement, node) {
+                        Some(head) => {
+                            split_before(at, decl, head.start_byte(), source, name, expr, selection)
+                        }
+                        None => split_braceless(
+                            Splice {
+                                range: at..at,
+                                text: decl,
+                            },
+                            statement,
+                            expr,
+                            source,
+                            options,
+                            selection,
+                            name,
+                        ),
+                    }
+                }
+            };
+            Some(extraction.with_confidence(confidence))
         }
     }
 }
 
-fn single_insert(at: usize, text: String, selection: Range<usize>, name: String) -> Extraction {
-    let anchor = selection.start;
-    let edits = vec![
-        Splice {
-            range: at..at,
-            text,
-        },
-        Splice {
-            range: selection,
-            text: name.clone(),
-        },
-    ];
-    let cursor = applied_offset(&edits, anchor);
-    Extraction {
-        edits,
-        name,
-        cursor,
+fn confidence(verified: bool) -> Confidence {
+    if verified {
+        Confidence::Verified
+    } else {
+        Confidence::Unverified
     }
 }
 
@@ -207,7 +196,10 @@ fn split(
     ];
     let cursor = applied_offset(&edits, anchor);
     Extraction {
-        edits,
+        plan: EditPlan {
+            edits,
+            confidence: Confidence::Verified,
+        },
         name,
         cursor,
     }
@@ -255,13 +247,16 @@ fn split_braceless(
     let body_indent = indent_unit_for(&options).len() + indent.len();
     let cursor = stmt_start + decl.text.len() + "{\n".len() + body_indent;
     Extraction {
-        edits: vec![
-            decl,
-            Splice {
-                range: stmt_start..stmt_end,
-                text: block,
-            },
-        ],
+        plan: EditPlan {
+            edits: vec![
+                decl,
+                Splice {
+                    range: stmt_start..stmt_end,
+                    text: block,
+                },
+            ],
+            confidence: Confidence::Verified,
+        },
         name,
         cursor,
     }
@@ -324,20 +319,6 @@ fn decl_site(
     })
 }
 
-// End byte of the outermost loop enclosing the selection within `block`; None if it sits in no loop.
-fn enclosing_loop_end(node: Node, block: Node) -> Option<usize> {
-    node_and_ancestors(node)
-        .take_while(|n| n.id() != block.id())
-        .filter(|n| {
-            matches!(
-                n.kind(),
-                kinds::FOR_STMT | kinds::WHILE_STMT | kinds::DO_WHILE_STMT
-            )
-        })
-        .last()
-        .map(|loop_node| loop_node.end_byte())
-}
-
 const BRACELESS_HOST_KINDS: &[&str] = &[
     kinds::IF_STMT,
     kinds::FOR_STMT,
@@ -359,7 +340,7 @@ impl<'tree> AssignSlot<'tree> {
     }
 }
 
-// Where the in-place split assignment lands. A braceless control-flow body interposes no func_block,
+// Where the in-place split assignment lands. A braceless control-flow body has no func_block,
 // so the statement's parent being a control-flow node identifies the braces-needed case.
 fn assign_slot(node: Node) -> Option<AssignSlot> {
     let statement = node_and_ancestors(node).find(|n| STATEMENT_KINDS.contains(&n.kind()))?;
@@ -373,19 +354,23 @@ fn assign_slot(node: Node) -> Option<AssignSlot> {
 
 // An else-if assignment can precede the chain's first `if` (no block needed) only if nothing reached
 // on the way - the extracted expression and every preceding condition - can mutate the reads.
-fn pre_chain_head<'tree>(statement: Node<'tree>, expr: Node) -> Option<Node<'tree>> {
+fn pre_chain_head<'tree>(
+    model: &BodyModel,
+    statement: Node<'tree>,
+    expr: Node,
+) -> Option<Node<'tree>> {
     let (head, preceding_conditions) = if_chain_above(statement)?;
     if head.parent()?.kind() != kinds::FUNC_BLOCK {
         return None;
     }
-    if has_side_effect(expr) || preceding_conditions.iter().any(|c| has_side_effect(*c)) {
+    let has_call_or_write = |n: Node| {
+        model.has_observable_effect(&n.byte_range())
+            || has_descendant_of_kind(n, &[kinds::ASSIGN_OP_EXPR])
+    };
+    if has_call_or_write(expr) || preceding_conditions.iter().any(|c| has_call_or_write(*c)) {
         return None;
     }
     Some(head)
-}
-
-fn has_side_effect(node: Node) -> bool {
-    has_descendant_of_kind(node, &[kinds::FUNC_CALL_EXPR, kinds::ASSIGN_OP_EXPR])
 }
 
 fn name_base(uri: &str, document: &ParsedDocument, db: &SymbolDb, node: Node) -> String {
@@ -429,16 +414,6 @@ fn parameter_slot_name(
 
 // Calls in an earlier initializer run before our decl regardless, so only those from the insertion
 // point (window start, after the last leading var decl) up to the hoist end can change the reads.
-fn overridable_call_precedes(node: Node, block: Node, window: Range<usize>, in_loop: bool) -> bool {
-    let mut calls = Vec::new();
-    collect_descendants_of_kind(block, &[kinds::FUNC_CALL_EXPR], &mut calls);
-    calls.iter().any(|call| {
-        // A loop re-runs both branches, so the then/else exclusion only holds outside one.
-        window.contains(&call.start_byte())
-            && (in_loop || !mutually_exclusive_branches(*call, node))
-    })
-}
-
 fn unique_name(base: &str, document: &ParsedDocument, db: &SymbolDb, callable: &Symbol) -> String {
     let taken: HashSet<&str> = document
         .symbols
@@ -451,22 +426,13 @@ fn unique_name(base: &str, document: &ParsedDocument, db: &SymbolDb, callable: &
         .and_then(|id| document.symbols.by_id(id))
         .filter(|c| c.kind.is_instantiable());
     // Mirror the shadowing diagnostics: the generated local must not shadow a class field or engine global.
-    let shadows = |name: &str| {
-        db.find_script_global(name).is_some()
+    let in_use = |name: &str| {
+        taken.contains(name)
+            || db.find_script_global(name).is_some()
             || class.is_some_and(|c| {
                 db.find_member(&c.name, name, AccessLevel::Private)
                     .is_some_and(|d| d.symbol.kind == SymbolKind::Field)
             })
     };
-    if !taken.contains(base) && !shadows(base) {
-        return base.to_string();
-    }
-    let mut suffix = 1usize;
-    loop {
-        let candidate = format!("{base}{suffix}");
-        if !taken.contains(candidate.as_str()) && !shadows(&candidate) {
-            return candidate;
-        }
-        suffix += 1;
-    }
+    suffixed_unique(base, in_use)
 }

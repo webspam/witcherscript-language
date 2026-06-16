@@ -14,13 +14,11 @@ use crate::symbols::{Symbol, SymbolKind};
 use crate::types::Type;
 
 use super::Definition;
-use super::body_model::BodyModel;
+use super::body_model::{BodyModel, CALLABLE_KINDS};
 use super::definition::resolve_definition_at_byte;
-use super::extract_common::{
-    CALLABLE_KINDS, Extraction, SelectionKind, Splice, applied_offset, classify_selection,
-    is_call_callee, trim_selection,
-};
+use super::edit_plan::{Extraction, insert_and_replace};
 use super::inference::{enclosing_type_context, infer_type};
+use super::selection::{SelectionKind, classify_selection, is_call_callee, trim_selection};
 use super::symbol_db::SymbolDb;
 
 use captures::collect_captures;
@@ -56,49 +54,41 @@ enum Destination {
 }
 
 pub fn extract_function(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    model: &BodyModel,
     selection: Range<usize>,
     options: FormatOptions,
 ) -> Option<Extraction> {
-    extract(
-        uri,
-        document,
-        db,
-        selection,
-        options,
-        Destination::GlobalFunction,
-    )
+    extract(model, selection, options, Destination::GlobalFunction)
 }
 
 pub fn extract_method(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    model: &BodyModel,
     selection: Range<usize>,
     options: FormatOptions,
 ) -> Option<Extraction> {
-    extract(uri, document, db, selection, options, Destination::Method)
+    extract(model, selection, options, Destination::Method)
 }
 
 fn extract(
-    uri: &str,
-    document: &ParsedDocument,
-    db: &SymbolDb,
+    model: &BodyModel,
     selection: Range<usize>,
     options: FormatOptions,
     destination: Destination,
 ) -> Option<Extraction> {
+    let document = model.document();
     let selection = trim_selection(&document.source, selection)?;
     let root = document.tree.root_node();
-    let ctx = ResolveCtx { uri, document, db };
+    let ctx = ResolveCtx {
+        uri: model.uri(),
+        document,
+        db: model.db(),
+    };
     match classify_selection(root, &selection) {
         SelectionKind::Expression { node, range } => {
-            extract_expression(&ctx, node, range, options, destination)
+            extract_expression(&ctx, model, node, range, options, destination)
         }
         SelectionKind::Statements { range } => {
-            extract_statements(&ctx, root, range, options, destination)
+            extract_statements(&ctx, model, root, range, options, destination)
         }
     }
 }
@@ -128,6 +118,7 @@ fn default_name(destination: Destination) -> &'static str {
 
 fn extract_expression(
     ctx: &ResolveCtx,
+    model: &BodyModel,
     node: Node,
     selection: Range<usize>,
     options: FormatOptions,
@@ -150,10 +141,9 @@ fn extract_expression(
         return None;
     }
     let type_context = enclosing_type_context(ctx.document, ctx.db, selection.start);
-    let model = BodyModel::enclosing(ctx.uri, ctx.document, ctx.db, selection.start)?;
     let captures = collect_captures(
         ctx,
-        &model,
+        model,
         &[node],
         &selection,
         callable,
@@ -184,7 +174,7 @@ fn extract_expression(
     };
     let call_text = call_expression(&plan);
     let (insert_at, insert_text) = placement(ctx.document, node, &plan, options, destination)?;
-    Some(build_extraction(
+    Some(insert_and_replace(
         insert_at,
         insert_text,
         selection,
@@ -196,6 +186,7 @@ fn extract_expression(
 
 fn extract_statements(
     ctx: &ResolveCtx,
+    model: &BodyModel,
     root: Node,
     selection: Range<usize>,
     options: FormatOptions,
@@ -207,7 +198,6 @@ fn extract_statements(
         return None;
     }
     let first = *stmts.first()?;
-    let model = BodyModel::enclosing(ctx.uri, ctx.document, ctx.db, range.start)?;
     let callable = ctx
         .document
         .symbols
@@ -218,7 +208,7 @@ fn extract_statements(
     let type_context = enclosing_type_context(ctx.document, ctx.db, range.start);
     let captures = collect_captures(
         ctx,
-        &model,
+        model,
         &stmts,
         &range,
         callable,
@@ -292,7 +282,7 @@ fn extract_statements(
         None => (format!("{call};"), 0),
     };
     let (insert_at, insert_text) = placement(ctx.document, first, &plan, options, destination)?;
-    Some(build_extraction(
+    Some(insert_and_replace(
         insert_at,
         insert_text,
         range,
@@ -312,33 +302,6 @@ fn placement(
     match destination {
         Destination::GlobalFunction => global_insertion(document, anchor, plan, options),
         Destination::Method => method_insertion(document, anchor, plan, options),
-    }
-}
-
-fn build_extraction(
-    insert_at: usize,
-    insert_text: String,
-    replace: Range<usize>,
-    call_text: String,
-    cursor_prefix: usize,
-    name: String,
-) -> Extraction {
-    let cursor_anchor = replace.start;
-    let edits = vec![
-        Splice {
-            range: insert_at..insert_at,
-            text: insert_text,
-        },
-        Splice {
-            range: replace,
-            text: call_text,
-        },
-    ];
-    let cursor = applied_offset(&edits, cursor_anchor) + cursor_prefix;
-    Extraction {
-        edits,
-        name,
-        cursor,
     }
 }
 
