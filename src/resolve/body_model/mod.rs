@@ -115,6 +115,10 @@ pub(crate) struct JoinTarget {
     pub(crate) insert_at: usize,
 }
 
+pub(crate) struct SplitTarget {
+    pub(crate) insert_at: usize,
+}
+
 struct LocalEntry {
     id: SymbolId,
     selection: Range<usize>,
@@ -280,6 +284,26 @@ impl<'a> BodyModel<'a> {
         })
     }
 
+    pub(crate) fn splittable_declaration(&self, local: LocalId) -> Option<SplitTarget> {
+        let decl = self.decl_node(local)?;
+        let block = decl.parent().filter(|p| p.kind() == kinds::FUNC_BLOCK)?;
+        if decl_name_idents(decl).len() != 1 {
+            return None;
+        }
+        let value = decl.child_by_field_name(fields::INIT_VALUE)?.byte_range();
+
+        // The assignment is a statement, so it must follow every leading declaration.
+        let run_end = declaration_run_end(block).unwrap_or(decl.end_byte());
+        let insert_at = run_end.max(decl.end_byte());
+
+        let window = decl.end_byte()..insert_at;
+        if !self.value_hoistable(&value, &window, local, block) {
+            return None;
+        }
+        Some(SplitTarget { insert_at })
+    }
+
+    /// Whether the value at `value` yields the same result at both ends of `window`.
     fn value_hoistable(
         &self,
         value: &Range<usize>,
@@ -639,6 +663,18 @@ fn collect_writes<'a>(
         sites.push((key, site));
     }
     WriteIndex { sites, positions }
+}
+
+fn declaration_run_end(block: Node) -> Option<usize> {
+    let mut end = None;
+    for child in named_child_nodes(block) {
+        match child.kind() {
+            kinds::LOCAL_VAR_DECL_STMT => end = Some(child.end_byte()),
+            kinds::COMMENT => {}
+            _ => break,
+        }
+    }
+    end
 }
 
 // `x = ...` where `x` is the entire left-hand side: the prior value is overwritten, not read.

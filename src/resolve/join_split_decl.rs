@@ -12,7 +12,7 @@ use crate::symbols::SymbolKind;
 
 use super::Definition;
 use super::ast::nodes_at_offset;
-use super::body_model::{BodyModel, JoinTarget};
+use super::body_model::{BodyModel, JoinTarget, SplitTarget};
 use super::definition::resolve_definition_at_byte;
 use super::extract_common::{Splice, delete_statement};
 use super::symbol_db::SymbolDb;
@@ -53,7 +53,12 @@ pub fn join_declaration(
     ])
 }
 
-pub fn split_declaration(document: &ParsedDocument, byte: usize) -> Option<Vec<Splice>> {
+pub fn split_declaration(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte: usize,
+) -> Option<Vec<Splice>> {
     let root = document.tree.root_node();
     let decl = enclosing(root, byte, kinds::LOCAL_VAR_DECL_STMT)?;
     if decl.parent().map(|p| p.kind()) != Some(kinds::FUNC_BLOCK) {
@@ -63,21 +68,24 @@ pub fn split_declaration(document: &ParsedDocument, byte: usize) -> Option<Vec<S
     let init = decl.child_by_field_name(fields::INIT_VALUE)?;
     let var_type = decl.child_by_field_name(fields::VAR_TYPE)?;
 
+    let model = BodyModel::enclosing(uri, document, db, name.start_byte())?;
+    let local = model.local_declared_at(name.start_byte())?;
+    let SplitTarget { insert_at } = model.splittable_declaration(local)?;
+
     let source = &document.source;
     let assignment = format!(
         "\n{indent}{name} = {init};",
-        indent = line_indent(source, decl.start_byte()),
+        indent = line_indent(source, insert_at),
         name = &source[name.byte_range()],
         init = &source[init.byte_range()],
     );
-    let after = decl.end_byte();
     Some(vec![
         Splice {
             range: var_type.end_byte()..init.end_byte(),
             text: String::new(),
         },
         Splice {
-            range: after..after,
+            range: insert_at..insert_at,
             text: assignment,
         },
     ])

@@ -30,7 +30,8 @@ impl Refactoring for SplitDeclarationRefactoring {
         if !ctx.selection.is_empty() {
             return Vec::new();
         }
-        let Some(edits) = split_declaration(ctx.document, ctx.cursor()) else {
+        let Some(edits) = split_declaration(ctx.canonical_uri, ctx.document, ctx.db, ctx.cursor())
+        else {
             return Vec::new();
         };
         vec![splice_rewrite_action(

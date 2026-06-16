@@ -18,7 +18,7 @@ fn split(src: &str) -> Option<String> {
     let (uri, pos) = t.cursor();
     let doc = t.doc_for(&uri);
     let byte = doc.line_index.position_to_byte(&doc.source, pos)?;
-    let edits = split_declaration(doc, byte)?;
+    let edits = split_declaration(&uri, doc, &t.db(), byte)?;
     Some(apply_splices(&doc.source, &edits))
 }
 
@@ -128,6 +128,16 @@ fn join_refuses(#[case] label: &str, #[case] src: &str) {
     "function f(a : int, b : int) {\n    var $0sum : int = a + b;\n}\n",
     "function f(a : int, b : int) {\n    var sum : int;\n    sum = a + b;\n}\n"
 )]
+#[case::trailing_declaration(
+    "the assignment must clear a following declaration",
+    "function f() {\n    var $0one : float = 1;\n    var two : int = 2;\n}\n",
+    "function f() {\n    var one : float;\n    var two : int = 2;\n    one = 1;\n}\n"
+)]
+#[case::last_in_run(
+    "splitting the last declaration keeps the assignment adjacent",
+    "function f() {\n    var one : float = 1;\n    var $0two : int = 2;\n}\n",
+    "function f() {\n    var one : float = 1;\n    var two : int;\n    two = 2;\n}\n"
+)]
 fn splits(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
     let got = split(src).unwrap_or_else(|| panic!("case {label}: expected a split"));
     assert_eq!(got, expected, "case {label}: split output mismatch");
@@ -141,6 +151,10 @@ fn splits(#[case] label: &str, #[case] src: &str, #[case] expected: &str) {
 #[case::multi_name(
     "multi-name initialised declaration",
     "function f() {\n    var $0a, b : int = 0;\n}\n"
+)]
+#[case::effectful_value_crosses_declaration(
+    "a side-effecting initializer cannot reorder past a following declaration",
+    "function f() {\n    var $0one : int = Compute();\n    var two : int = 2;\n}\n"
 )]
 fn split_refuses(#[case] label: &str, #[case] src: &str) {
     assert!(
