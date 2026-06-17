@@ -1,8 +1,6 @@
 # WitcherScript class body - valid specifiers and flavours
 
-Derived from compiler testing against `scratch/class_body_specifiers.ws`.
-Lines that caused the compiler to halt (parse error) are marked **INVALID**.
-Lines that produced a semantic error are noted with the error message.
+Derived from compiler testing against `scratch/class_body_specifiers.ws`. Lines that caused the compiler to halt (parse error) are marked **INVALID**. Lines that produced a semantic error are noted with the error message.
 
 ---
 
