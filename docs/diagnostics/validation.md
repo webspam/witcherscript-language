@@ -238,7 +238,7 @@ A class or state field whose name is already a field anywhere up the inheritance
 
 ### 33. Override with weaker access
 
-A class or state method whose name matches a class-body method up the inheritance chain, declared with weaker access than the ancestor's (`private` < `protected` < `public`; no modifier means `public`). Mirrors the compiler error "Function 'X' cannot have a weaker access modifier than in ancestor class 'Y'". Annotated (`@wrapMethod` etc.) functions and events are exempt.
+A class or state method whose name matches a class-body method up the inheritance chain, declared with weaker (more accessible) access than the ancestor's; default accessibility is `public`. Mirrors the compiler error "Function 'X' cannot have a weaker access modifier than in ancestor class 'Y'". Annotated (`@wrapMethod` etc.) functions and events are exempt.
 
 ### 34. Override parameter count mismatch
 

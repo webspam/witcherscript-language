@@ -3,12 +3,12 @@ use crate::diagnostics::Severity;
 use crate::test_support::TestDb;
 
 #[test]
-fn reports_private_override_of_public_base_method() {
+fn reports_public_override_of_private_base_method() {
     let t = TestDb::new(concat!(
         "//- /a.ws\n",
-        "class Base {\n  public function Run() {}\n}\n",
+        "class Base {\n  private function Run() {}\n}\n",
         "//- /b.ws\n",
-        "class Child extends Base {\n  private function Run() {}\n}\n",
+        "class Child extends Base {\n  public function Run() {}\n}\n",
     ));
 
     let result = collect_override_consistency_diagnostics(&t.search_docs(), &t.db());
@@ -29,23 +29,23 @@ fn reports_private_override_of_public_base_method() {
 }
 
 #[test]
-fn reports_private_override_of_unmodified_base_method() {
+fn reports_unmodified_override_of_private_base_method() {
     let t = TestDb::new(concat!(
-        "class Base {\n  function Run() {}\n}\n",
-        "class Child extends Base {\n  private function Run() {}\n}\n",
+        "class Base {\n  private function Run() {}\n}\n",
+        "class Child extends Base {\n  function Run() {}\n}\n",
     ));
 
     let result = collect_override_consistency_diagnostics(&t.search_docs(), &t.db());
 
     let diags = result.get(t.primary_uri()).expect("primary file flagged");
-    assert_eq!(diags.len(), 1, "an unmodified base method is public");
+    assert_eq!(diags.len(), 1, "an unmodified override is public");
 }
 
 #[test]
 fn reports_weaker_access_than_base_script_method() {
     let t = TestDb::new(concat!(
         "class MyPlayer extends CR4Player {\n",
-        "  private function ShowToast() {}\n",
+        "  public function ShowToast() {}\n",
         "}\n",
     ))
     .with_base_doc(
@@ -135,15 +135,15 @@ fn accepts_same_access_override() {
 }
 
 #[test]
-fn accepts_stronger_access_override() {
+fn accepts_more_restrictive_override() {
     let t = TestDb::new(concat!(
-        "class Base {\n  private function Run() {}\n}\n",
+        "class Base {\n  public function Run() {}\n}\n",
         "class Child extends Base {\n  protected function Run() {}\n}\n",
     ));
 
     assert!(
         collect_override_consistency_diagnostics(&t.search_docs(), &t.db()).is_empty(),
-        "widening access is fine",
+        "narrowing access is fine",
     );
 }
 
@@ -163,9 +163,9 @@ fn accepts_method_without_ancestor_counterpart() {
 #[test]
 fn accepts_wrap_method_annotated_function() {
     let t = TestDb::new(concat!(
-        "class Base {\n  public function Run() {}\n}\n",
+        "class Base {\n  private function Run() {}\n}\n",
         "class Child extends Base {}\n",
-        "@wrapMethod(Child) private function Run() { wrappedMethod(); }\n",
+        "@wrapMethod(Child) function Run() { wrappedMethod(); }\n",
     ));
 
     assert!(
