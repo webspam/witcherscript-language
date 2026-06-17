@@ -2,76 +2,39 @@
 
 **Module:** `src/symbols/`
 
-| File | Purpose |
-|------|---------|
-| `types.rs` | `SymbolId`, `SymbolKind`, `Symbol`, `DocumentSymbols` and index queries |
-| `extract.rs` | `extract_symbols`, `SymbolExtractor` CST walk |
-| `util.rs` | `node_text`, child-text/base-type helpers |
-| `tests.rs` | Unit tests |
+`extract_symbols` walks a parsed CST and produces a `DocumentSymbols`: a flat, per-file list of `Symbol`s - one per declaration (class, function, field, local, ...). This is the per-file declaration model every higher layer (resolution, hover, outline, semantic tokens) queries. Types live in `types.rs`, the CST walk in `extract.rs`.
 
 ## SymbolKind
 
-```rust
-pub enum SymbolKind {
-    Class,        // class_decl
-    NativeType,   // builtin class retagged during builtins ingestion (no grammar node)
-    Struct,       // struct_decl
-    Enum,         // enum_decl
-    EnumMember,   // enum_member_decl
-    Function,     // func_decl at top level (no container)
-    Method,       // func_decl inside a class/struct/state (has container)
-    Field,        // member_var_decl or autobind_decl inside a class/struct/state
-    Variable,     // local_var_decl_stmt inside a function body
-    Parameter,    // ident inside func_param_group
-    State,        // state_decl (associated with an owner class)
-    Event,        // event_decl (top-level or inside a class)
-}
-```
+The kind of declaration a `Symbol` is: `Class`, `NativeType`, `Struct`, `Enum`, `EnumMember`, `Function`, `Method`, `Field`, `Variable`, `Parameter`, `State`, `Event`.
 
-`Function` vs `Method` is determined at extraction time: if a `func_decl` node has a non-None container it becomes `Method`.
+`Function` vs `Method` is decided at extraction time, not by syntax: a `func_decl` with a container becomes `Method`, one without becomes `Function`.
 
-`NativeType` is the only variant not produced by extraction: native engine types are stubbed as `class` in the builtin source (no native-type syntax exists), then `DocumentSymbols::retag_top_level` rewrites their kind from `Class` to `NativeType` during builtins ingestion.
+`NativeType` is the one kind the extractor never emits: native engine types are declared as `class` in the builtin sources, then `retag_top_level` rewrites them from `Class` to `NativeType` during builtins ingestion.
 
-## Symbol struct
+## Symbol
 
-```rust
-pub struct Symbol {
-    pub id: SymbolId,                         // Opaque index; equals position in DocumentSymbols.symbols vec
-    pub name: String,                         // Identifier text
-    pub kind: SymbolKind,
-    pub range: SourceRange,                   // Full node span (LSP positions, UTF-16)
-    pub selection_range: SourceRange,         // Identifier token span only
-    pub byte_range: Range<usize>,             // Full node byte offsets
-    pub selection_byte_range: Range<usize>,   // Identifier token byte offsets
-    pub container: Option<SymbolId>,          // Parent symbol ID; None = top-level
-    pub container_name: Option<String>,       // Cached parent name for fast index inserts
-    pub type_annotation: Option<Type>,        // Parsed declared type (var/field/param type, callable return)
-    pub base_class: Option<String>,           // Raw superclass name for Class/Struct/State
-    pub owner_class: Option<String>,          // Raw owner class name for State (second ident in state_decl)
-    pub flavour: Option<FuncFlavour>,         // func_flavour keyword for callables (e.g. quest, timer)
-    pub annotations: Vec<Annotation>,        // @addField, @wrapMethod, etc.
-    pub access: AccessLevel,                  // default: Public
-    pub specifiers: Specifiers,              // non-access modifier bitset (editable, optional, out, ...)
-}
-```
+Each `Symbol` carries its name, kind, source ranges (both LSP and byte), container, and the typed pieces resolution needs - declared type, base/owner class, func flavour, annotations, access level, specifiers. Read `symbols/types.rs` for the fields.
 
-No symbol stores rendered text; `resolve/signature.rs` renders signatures and declarations on demand from the fields above.
+Two non-obvious facts:
 
-`base_class` / `owner_class` are the typed source of truth for `extends` and a state's owner. `display_detail()` renders them as `"extends X"` / `"in Y"` for display only - structural code reads the fields and never parses those strings back (see [invariants.md](invariants.md)).
+- **No rendered text is stored.** Signatures and field declarations are rendered on demand from these fields by `resolve/signature.rs`; do not add cached display strings.
+- **`base_class` / `owner_class` are the typed source of truth** for `extends` and a state's owner. Structural code (inheritance walks, `superclass_by_name`) reads them directly; `display_detail()` renders them to `"extends X"` / `"in Y"` for display only - never parse those strings back (see [invariants.md](invariants.md)).
 
 ## DocumentSymbols
 
-The per-file result: a flat `Vec<Symbol>` plus prebuilt name/container/byte lookup indexes. `SymbolId(n)` indexes the vec; IDs are stable for the document's lifetime, and within a callable they run func -> params -> locals.
+The per-file result: a flat `Vec<Symbol>` indexed by `SymbolId(n)`, plus prebuilt name/container/byte lookup indexes that back the query helpers. IDs are assigned sequentially at extraction and never change.
 
-Most query helpers are obvious by name (`by_id`, `children_of`, `member_of`, `*_by_name`). The two that are not:
+Most query helpers are obvious from their names (`by_id`, `children_of`, `member_of`, `*_by_name`). The two that are not:
+
 - `enclosing_symbol_at(byte, kinds)` - smallest symbol of those kinds covering a byte ("which function/class am I in?").
-- `local_at_byte(function, name, before_byte)` - a local/param visible at a point, respecting declaration order.
+- `local_at_byte(function, name, before_byte)` - a local or parameter visible at a point, respecting declaration order.
 
 ## Adding a new symbol kind
 
-1. Add variant to `SymbolKind` in `symbols/types.rs`.
-2. Handle the new grammar node in `enter_in_body` (or the relevant `enter_in_*` dispatcher) in `SymbolExtractor` (`symbols/extract.rs`).
-3. Add mapping in `symbol_kind_to_token_type()` in `semantic_tokens/mod.rs`.
-4. Add mapping in `lsp_symbol_kind()` in `src/bin/witcherscript-lsp/convert/symbols.rs`.
-5. Add mapping in `hover_text()` in `resolve/signature.rs` if the label text is different.
+1. Add the variant to `SymbolKind` (`symbols/types.rs`).
+2. Handle its grammar node in `enter_in_body` (or the relevant `enter_in_*` dispatcher) in `SymbolExtractor` (`symbols/extract.rs`).
+3. Map it in `symbol_kind_to_token_type()` (`semantic_tokens/mod.rs`).
+4. Map it in `lsp_symbol_kind()` (`src/bin/witcherscript-lsp/convert/symbols.rs`).
+5. Map it in `hover_text()` (`resolve/signature.rs`) if its label differs.
 6. Add tests.
