@@ -169,11 +169,9 @@ See `CODESTYLE.md` for the normative Rust code standard.
 
 ## Adding a validation rule
 
-1. Add the detection logic in `src/diagnostics/` (extend `collect_diagnostics` in
-   `mod.rs` or add a new rule module).
+1. Add the detection logic in `src/diagnostics/` (extend `collect_diagnostics` in `mod.rs` or add a new rule module).
 2. Add a unit test in `src/diagnostics/tests.rs` or the rule module.
-3. Add or extend a fixture file under `tests/fixtures/` if the rule is complex enough to
-   warrant one.
+3. Add or extend a fixture file under `tests/fixtures/` if the rule is complex enough to warrant one.
 4. Document the new rule in the "Diagnostics" section of `README.md`.
 
 ## Adding an LSP capability
