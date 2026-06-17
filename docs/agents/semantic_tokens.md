@@ -38,9 +38,11 @@ A declaration-site ident takes a fixed token type from its parent decl node (cla
 
 Every other ident is a reference and must be resolved. It falls through to the `_` arm in `classify_ident`, which:
 
-1. Calls `classify_locally()` (local variables/parameters of enclosing function, then members of enclosing class/struct/state, then top-level symbols in the current document).
-2. If the ident is the RHS of a `member_access_expr` (i.e. after the `.`), calls `classify_definition_at_ident()` directly, which dispatches to `resolve_member_access()` to infer the receiver type and look up the member.
-3. Otherwise, calls `classify_definition_at_ident()` which searches locals, type members, document top-level, then the workspace db (`find_top_level`, `find_enum_member`, `find_script_global`). If the resolved definition is the class a script global redirects to (Go-To-Def jumps to `CR4Player` for `thePlayer`), or the synthetic INI Variable when that class is not loaded, the token is recoloured as `variable` (5) with the `defaultLibrary` modifier so `thePlayer` doesn't paint as a type. Workspace symbols that shadow the global name win normally and are not overridden.
+1. `classify_locally()` - locals/params of the enclosing function, then members of the enclosing class/struct/state, then document top-level.
+2. If the ident is the right-hand side of a `member_access_expr` (after the `.`), it resolves through `resolve_member_access()`, which infers the receiver's type (below) and looks the member up on it.
+3. Otherwise `classify_definition_at_ident()` walks the same local scope out to the workspace db.
+
+A reference that resolves is coloured by its definition's kind. One special case: redscripts.ini script globals (e.g. `thePlayer`) resolve to the class they alias - or to a synthetic variable when that class isn't loaded - and are recoloured `variable` + `defaultLibrary` so they do not paint as a type. A workspace symbol that shadows the global name wins normally and keeps its real kind.
 
 ## resolve_member_access (for `receiver.member` expressions)
 
