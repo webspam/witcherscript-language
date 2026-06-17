@@ -4,7 +4,7 @@
 
 WitcherScript has engine-magic types - `array<T>`, a fixed set of engine enums, and a handful of engine classes - that have no declaration anywhere in user code or shipped game scripts. The LSP synthesises their definitions so that completion, hover, and go-to-definition work on them.
 
-`builtins/enums.ws` holds the engine enums. Each enum is a global type and each of its values is a global symbol, used by bare name (`AD_Back`, not `EAttackDirection.AD_Back`). Both flow through the normal symbol pipeline once the file is parsed into the builtins index - no enum-specific Rust logic.
+`builtins/enums.ws` holds most of the engine enums; two large ones get their own file (`builtins/EInputKey.ws`, `builtins/EShowFlags.ws`). Each enum is a global type and each of its values is a global symbol, used by bare name (`AD_Back`, not `EAttackDirection.AD_Back`). Both flow through the normal symbol pipeline once the files are parsed into the builtins index - no enum-specific Rust logic.
 
 `builtins/orphan_enums.ws` collects engine enum values whose enclosing enum is unknown, under one catch-all enum. That catch-all is not a real type, so it is hidden from type completion (see Guardrails).
 
