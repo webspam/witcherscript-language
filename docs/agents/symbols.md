@@ -57,7 +57,7 @@ pub struct Symbol {
 
 No symbol carries rendered signature or declaration text. Callable signatures are rendered on demand by `render_signature()` in `resolve/signature.rs` from the callable's `Parameter` symbols plus its `type_annotation` (the return type); field declarations are rendered the same way by `hover_text()` from `access`, `specifiers`, `name`, and `type_annotation`.
 
-**`Symbol::display_detail()`** renders the human-readable detail string used in hover popups and the document outline. It reads from `base_class` / `owner_class`:
+**`Symbol::display_detail()`** renders the human-readable detail string used in hover popups, the document outline, and completion items. It reads from `base_class` / `owner_class`:
 - Class/Struct: `"extends BaseClass"` (or `None` if no base)
 - State: `"in OwnerClass"`, `"in OwnerClass extends BaseState"`, `"extends BaseState"`, or `None`
 - All others: `None`
