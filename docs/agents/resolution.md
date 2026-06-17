@@ -129,15 +129,13 @@ Called when the trigger character is `.` or `:`. Returns `Vec<(u8, Definition)>`
 - `0` = own member of the receiver's type
 - `1` = inherited member
 
-Access level: `Public` for global use; `Protected` from within the same class.
+Access level: `Public` - only public members are offered.
 
 ### `default_or_hint_member_completions(document, db, position)`
 Called when the cursor sits in the `member` position of `default x = ...`, `defaults { x = ...; }`, or `hint x = ...`. Returns members of the enclosing class with private inherited fields included (a subclass may override the default or hint of a private inherited field).
 
 ### `type_completions(document, db, position)`
-Called in type annotation context. Returns:
-- All `Class`, `Struct`, `Enum`, `State` symbols from workspace + base
-- `BUILTIN_TYPE_COMPLETIONS`: `["bool", "byte", "float", "int", "name", "string", "void"]`
+Called in type annotation context. Returns the merged type catalog: `Class`/`Struct`/`Enum`/`State` from workspace + base + builtins (minus `array`). The LSP handler appends the primitive keywords from `BUILTIN_TYPE_COMPLETIONS` separately.
 
 ### `new_type_completions(uri, document, db, position)`
 Called when the cursor is in the class slot of a `new` expression (after the `new` keyword, before or inside the class ident). Returns class symbols narrowed to the expected type (LHS of the surrounding `var` decl or assignment) plus its descendants; falls back to every class when no expected type can be inferred or the expected type is unknown.
@@ -149,9 +147,10 @@ Called when the cursor is in the lifetime slot of a `new` expression (after `new
 Called in function body context. Returns `StatementCompletions`:
 ```rust
 pub struct StatementCompletions {
+    pub active: bool,               // false when cursor is not in a statement position
     pub locals: Vec<Definition>,    // local vars + params in scope
     pub members: Vec<Definition>,   // members of enclosing class
-    pub globals: Vec<Definition>,   // all top-level callables (excluding exec/quest)
+    pub needs_globals: bool,        // caller should add top-level callables
     pub has_this: bool,
     pub has_super: bool,
     pub has_parent: bool,           // state body: offers parent/virtual_parent
