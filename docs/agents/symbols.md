@@ -160,7 +160,7 @@ The three modes select how a node's named children are interpreted:
 ## Adding a new symbol kind
 
 1. Add variant to `SymbolKind` in `symbols/types.rs`.
-2. Handle the new grammar node in `visit()` in `SymbolExtractor` (`symbols/extract.rs`).
+2. Handle the new grammar node in `enter_in_body` (or the relevant `enter_in_*` dispatcher) in `SymbolExtractor` (`symbols/extract.rs`).
 3. Add mapping in `symbol_kind_to_token_type()` in `semantic_tokens/mod.rs`.
 4. Add mapping in `lsp_symbol_kind()` in `src/bin/witcherscript-lsp/convert/symbols.rs`.
 5. Add mapping in `hover_text()` in `resolve/signature.rs` if the label text is different.
