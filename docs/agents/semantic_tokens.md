@@ -4,30 +4,11 @@
 
 ## Token types
 
-```rust
-pub const TOKEN_TYPES: &[&str] = &[
-    "class",      // 0  - Class, Struct, State declarations and references
-    "enum",       // 1  - Enum declarations
-    "enumMember", // 2  - EnumMember; also CName literals ('SomeName')
-    "function",   // 3  - Function, Method, Event
-    "parameter",  // 4  - Parameter
-    "variable",   // 5  - Variable (local)
-    "property",   // 6  - Field, autobind_decl
-    "keyword",    // 7  - registered but NEVER emitted (TextMate handles keywords)
-    "comment",    // 8  - comment nodes
-    "string",     // 9  - literal_string
-    "number",     // 10 - literal_int, literal_float, literal_hex
-    "type",       // 11 - registered to preserve indices but NEVER emitted
-    "decorator",  // 12 - annotation_ident (@addField etc.)
-    "modifier",   // 13 - specifier, func_flavour, autobind_single, declaration keywords
-];
+`TOKEN_TYPES` and `TOKEN_MODIFIERS` (the LSP legend) are declared at the top of `mod.rs`; the index numbers used below (e.g. `modifier` (13)) are positions in that list. The parts not obvious from the list itself:
 
-pub const TOKEN_MODIFIERS: &[&str] = &["declaration", "defaultLibrary"];
-```
-
-Only `defaultLibrary` is currently emitted; `declaration` is registered but never set.
-
-Index 11 (`"type"`) is intentionally never emitted. Type-annotation identifiers are resolved to their actual symbol kind and emitted with that kind's token type instead.
+- `keyword` (7) and `type` (11) are registered but never emitted. `keyword` is left to the TextMate grammar; `type` exists only to keep the later indices stable - a type-annotation identifier is resolved and emitted as its real symbol kind instead.
+- One token type covers several symbol kinds (`symbol_kind_to_token_type`): `class` also paints Struct, State, and native types; `function` also paints methods and events.
+- Of the two modifiers, only `defaultLibrary` is emitted (on redscripts.ini globals); `declaration` is never set.
 
 ## Classification rules
 
