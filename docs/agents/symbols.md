@@ -144,12 +144,18 @@ pub struct DocumentSymbols {
 
 ## extract_symbols walk
 
-1. `SymbolExtractor::visit_children(root, None, vec![])` starts the walk.
-2. Named children are visited in order. If a child is `annotation`, it is parsed and pushed to `pending_annotations`; the loop continues without visiting it as a symbol.
-3. The next non-annotation named child consumes `pending_annotations` and calls `visit()`.
-4. `visit()` dispatches on `node.kind()`. Unknown node kinds fall through to `visit_children()`, which recurses with the current container.
-5. For callables, params are extracted from `func_params → func_param_group`, then locals from `func_block`.
-6. Container ID is threaded through every recursive call. Top-level symbols have `container = None`.
+`extract_symbols` runs `walk(root, &mut extractor)`, driving `SymbolExtractor` as a `CstVisitor` (`enter`/`leave`), then `finish` calls `build_indexes`. State is a stack of `Frame`s; each frame records the tree depth it was pushed at plus a `Mode`. `enter` pushes frames and `leave` pops the frame whose depth matches, so a frame lives for exactly the subtree of the node that opened it.
+
+The three modes select how a node's named children are interpreted:
+
+- `Mode::Body { container, pending }` - the default declaration context. `container` is the enclosing symbol (`None` at the root), `pending` holds sibling annotations awaiting the next declaration.
+- `Mode::EnumMembers(enum_id)` - inside an enum; only `enum_member_decl` children become symbols.
+- `Mode::Callable { id, body_seen }` - inside a callable; only the first `func_block` opens a body.
+
+1. The first `enter` (empty frame stack) pushes the root `Mode::Body { container: None, pending: [] }`; the root is a pure container, never a declaration.
+2. `enter` dispatches on the innermost frame's mode. In a `Body` frame, `enter_in_body` matches `node.kind()`: an `annotation` is parsed and pended (children skipped); each declaration kind calls its `enter_*` handler; any other named node pushes a fresh `Body` frame carrying the same `container` and forwarded `pending`, then recurses.
+3. A declaration handler takes pending annotations, extends them with the node's own `direct_annotations`, pushes the `Symbol`, and opens the child frame: `Body` (new symbol as container) for class/struct/state, `EnumMembers` for enums, `Callable` for callables.
+4. For callables, parameters are pushed (`func_params → func_param_group`) before the `Callable` frame, so `SymbolId` order is func -> params -> locals.
 
 ## Adding a new symbol kind
 
