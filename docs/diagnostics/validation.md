@@ -155,7 +155,7 @@ Assignability allows:
 
 - an identical type;
 - a derived class into a base slot (upcast, traversed up to depth 32);
-- `NULL` into a class/struct/state slot;
+- `NULL` into a class or state slot;
 - an `enum` and `int` in either direction;
 - the implicit primitive conversions listed below.
 
