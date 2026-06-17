@@ -49,37 +49,11 @@ Primitives, keywords, modifiers, receivers, annotations, and state-machine synta
 
 The non-obvious constraints that cause silent bugs if violated (symbol IDs, UTF-16 positions, inheritance depth cap, the index model, loose files, read-only base scripts, incremental text sync, ...): [docs/agents/invariants.md](docs/agents/invariants.md). Read these before touching resolution, indexing, or text sync.
 
-## Build
+## Build and test
 
-Use justfile recipes instead of hand-crafting your own build / test commands:
+Use justfile recipes, not hand-rolled cargo commands: `just build`, and `just test` (fmt + clippy + nextest in one). The test inventory, fixtures, and benchmarks are in [docs/agents/testing.md](docs/agents/testing.md).
 
-```
-just build
-```
-
-## Test
-
-```
-just test
-```
-
-Tests run via cargo-nextest, which produces a compact per-test status table
-instead of the verbose `cargo test` output.
-
-The test suite includes:
-
-- Embedded `#[cfg(test)]` modules in `diagnostics/`, `symbols/`, `line_index.rs`,
-  `script_env.rs`, `resolve/tests/`, `semantic_tokens/tests.rs`, and `src/bin/witcherscript-lsp/tests.rs`.
-- `tests/parser_fixtures.rs` - fixture-driven parse tests; discovers every `.ws` file
-  under `tests/fixtures/valid/` (must parse cleanly) and `tests/fixtures/invalid/`
-  (must produce at least one tree-sitter diagnostic).
-- `tests/language_features.rs` - integration tests for symbol extraction and definition
-  resolution.
-
-See [docs/agents/testing.md](docs/agents/testing.md) for the full breakdown of what lives where and when to add each kind of test.
-
-IMPORTANT: When adding a new grammar construct or validation rule, add or update a
-fixture file and a targeted unit test.
+IMPORTANT: When adding a new grammar construct or validation rule, add or update a fixture file and a targeted unit test.
 
 ## Committing changes
 
