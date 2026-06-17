@@ -1,6 +1,8 @@
 # Semantic tokens
 
-**Files:** `src/semantic_tokens/mod.rs`, `src/semantic_tokens/tests.rs`
+Resolution-aware highlighting layered on top of the TextMate grammar. TextMate already colours keywords and the constant-language tokens (`true`/`false`/`null`/`this`/`super`); semantic tokens supply only what TextMate cannot know without resolving a name - whether an identifier is a class, a field, a local, an enum member, and so on. Whatever the grammar already handles is deliberately left unclassified here.
+
+**Code:** `src/semantic_tokens/mod.rs` holds the walk and `classify()`; tests in `src/semantic_tokens/tests.rs`. The LSP request handlers are in `src/bin/witcherscript-lsp/queries/semantic_tokens.rs`, the delta cache in `src/bin/witcherscript-lsp/semantic_tokens_cache.rs`.
 
 ## Token types
 
