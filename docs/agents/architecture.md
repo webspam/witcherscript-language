@@ -92,23 +92,46 @@ src/
 │   ├── extract.rs                  SymbolExtractor: CST walk to DocumentSymbols
 │   └── util.rs                     node_text, CST helper text extraction
 ├── resolve/
-│   ├── mod.rs                      public API: WorkspaceIndex, SymbolDb, resolve_definition
-│   ├── ast.rs                      re-exports cst/ navigation helpers; BUILTIN_TYPES
-│   ├── workspace_index/            WorkspaceIndex (mod, indices, subscribers, lookup)
+│   ├── mod.rs                      public re-export facade for the resolve subsystem
+│   ├── ast.rs                      shared cst/ navigation helpers; BUILTIN_TYPE_COMPLETIONS
+│   ├── assignability.rs            pure type-compatibility engine + implicit cast table
+│   ├── definition.rs               goto-definition: resolve identifier at a position
+│   ├── type_definition.rs          goto-type-definition: resolve a declared type
+│   ├── inference.rs                expression type inference; name / member resolution
+│   ├── references.rs               find-all-references for a resolved definition
+│   ├── document_highlight.rs       read/write occurrences of the symbol under cursor
+│   ├── signature.rs                signature help, hover text, parameter rendering
+│   ├── inlay_hints.rs              parameter-name inlay hints for call sites
+│   ├── name_context.rs             NameContext: position restricting valid symbol kinds
+│   ├── overrides.rs                pair workspace symbols with the base defs they shadow
+│   ├── shadowed_base.rs            base index view with overridden URIs filtered out
+│   ├── state_classes.rs            engine-synthesised backing class for state decls
+│   ├── reaching_defs.rs            reaching-definitions analysis for one local
+│   ├── writes.rs                   classify write sites (assign targets, out-args)
+│   ├── selection.rs                classify / trim a byte-range selection for refactors
+│   ├── edit_plan.rs                EditPlan / Splice / Extraction byte-range edits
+│   ├── extract_var.rs              extract-variable refactor
+│   ├── inline_var.rs               inline-variable refactor
+│   ├── join_split_decl.rs          join / split variable-declaration refactors
+│   ├── completion_catalog.rs       CompletionCatalog: global callable / type / enum lists
+│   ├── workspace_symbols.rs        ranked workspace-wide symbol search (workspace/symbol)
+│   ├── subscription_registry.rs    tracks which docs observe which symbol names
+│   ├── body_model/                 request-scoped semantic model of one callable body
+│   ├── extract_callable/           extract function / method (captures, render, statements)
+│   ├── workspace_index/            WorkspaceIndex (mod, indices, lookup, subscribers)
 │   ├── symbol_db/                  SymbolDb (mod, lookup, generics)
-│   ├── definition.rs               goto-definition logic
-│   ├── inference.rs                type inference
-│   ├── references.rs               find-references logic
-│   ├── signature.rs                signature-help logic
 │   ├── completion/                 completion submodule
-│   │   ├── mod.rs
-│   │   ├── body_function.rs        statement / expression / default+hint member completions inside function bodies
-│   │   ├── body_class.rs           class-body keyword completions (specifier state machine)
-│   │   ├── body_script.rs          script-level body completions
-│   │   ├── headers.rs              completions in declarations/headers (annotations, extends, state-owner)
-│   │   ├── members.rs              member-access completions
-│   │   └── types.rs                type-name completions
-│   └── tests/                      resolution + completion tests
+│   │   ├── mod.rs                  re-export facade for the completion sub-modules
+│   │   ├── body_function.rs        expression / statement completions in bodies
+│   │   ├── body_class.rs           keyword completions in class / state / struct bodies
+│   │   ├── body_script.rs          keyword + annotation completions at script top level
+│   │   ├── comment.rs              predicate: is the cursor inside a comment?
+│   │   ├── globals.rs              merge global callables, script globals, enum members
+│   │   ├── headers.rs              keyword completions in declaration headers (extends, in)
+│   │   ├── members.rs              member-access completions by inferred receiver type
+│   │   ├── new_expr.rs             type + lifetime completions for new expressions
+│   │   └── types.rs                type-name completions at annotation / cast positions
+│   └── tests/                      resolution + completion + refactor tests
 └── semantic_tokens/
     └── mod.rs                      TOKEN_TYPES, collect_semantic_tokens, classify
 
