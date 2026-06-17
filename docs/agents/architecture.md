@@ -259,11 +259,13 @@ When constructing a `SymbolDb` for a request:
 | Type | Produced by | Consumed by |
 |------|------------|------------|
 | `ParsedDocument` | `document::parse_document()` | LSP handlers, WorkspaceIndex, resolve, semantic_tokens |
-| `DocumentSymbols` | `symbols::extract_symbols()` | resolve functions, semantic_tokens, LSP document_symbol |
-| `WorkspaceIndex` | `WorkspaceIndex::update_document()` | `SymbolDb` (wraps two of them) |
+| `DocumentSymbols` | `symbols::extract_symbols()` (via `SymbolExtractor`) | resolve functions, semantic_tokens, LSP document_symbol |
+| `WorkspaceIndex` | `WorkspaceIndex::update_document()` | `SymbolDb` (workspace + base + optional builtins), `Compilation` |
 | `SymbolDb<'_>` | constructed per-request in LSP handlers | resolve_definition, completion_*, find_references, semantic_tokens |
+| `Compilation` | `CompilationBuilder` (LSP writers) | every reader handler, via one lock-free `ArcSwap` load |
 | `Definition` | resolve functions | LSP handlers (hover, goto, completion items) |
-| `ParseDiagnostic` | `diagnostics::collect_diagnostics()` | LSP `publish_diagnostics` |
+| `Type` | `types::parse` (type-annotation parsing) | inference, assignability, type_mismatch |
+| `ParseDiagnostic` | `SyntaxDiagnostics` (parse-time) + the CST diagnostic passes | LSP `publish_diagnostics` |
 | `LineIndex` | `LineIndex::new(source)` | position_to_byte / byte_to_position in all modules |
 | `ScriptEnvironment` | `script_env::parse_script_environment()` | `SymbolDb::with_script_env()` |
 
