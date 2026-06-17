@@ -50,7 +50,7 @@ all_types()                                       // all Class/Struct/State/Enum
 all_top_level_callables()                         // all Function/Event, excluding exec/quest
 ```
 
-`SymbolDb::definition_at_selection(uri, selection, name)` probes workspace -> base -> builtins with the two doc-scan queries (exact selection first, then name); completionItem/resolve uses it to re-derive a symbol after edits.
+`SymbolDb::definition_at_selection(uri, selection, name, container)` re-derives a symbol after edits (used by completionItem/resolve): an exact selection-range match across workspace -> base -> builtins first, then a by-name fallback with script globals last. A `container` argument routes member lookups through `find_member`, which is also how a generic-instance member like `array<int>` is re-substituted.
 
 ## SymbolDb
 
