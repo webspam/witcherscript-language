@@ -28,20 +28,11 @@ CST-walking rules, each a unit struct implementing `CstRule`, registered in `col
 
 Each rule module owns its `#[cfg(test)] mod tests`.
 
-## ParseDiagnostic
+## Data types
 
-```rust
-pub struct ParseDiagnostic {
-    pub kind: String,              // category tag (e.g. "late_local_var_decl")
-    pub message: String,           // human-readable description
-    pub start: Point,              // tree-sitter Point { row, column } (0-indexed)
-    pub end: Point,
-    pub byte_range: Range<usize>,  // byte offsets in source
-    pub snippet: Option<String>,   // the source line where the error occurred
-}
-```
+`ParseDiagnostic` carries a `kind` tag, message, tree-sitter `Point`s (`start`/`end`, 0-indexed), a `byte_range`, and a `snippet` of the source line. It has **no** severity field; severity is decided at LSP-conversion time. `start.row + 1` is the 1-indexed display line.
 
-`start.row + 1` = 1-indexed line number for display. In LSP the byte range is converted via `LineIndex::byte_range_to_range()` to UTF-16 positions.
+`WorkspaceDiagnostic` carries its own `Severity`, an already-UTF-16 `SourceRange` (from `Symbol.selection_range`, or converted by the rule via `LineIndex::byte_range_to_range`), a `Vec<RelatedLocation>` (the `relatedInformation` list), and optional `data` (`base_script_conflict` uses it to drive its code action).
 
 ## collect_diagnostics
 
