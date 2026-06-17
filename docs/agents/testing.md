@@ -28,6 +28,10 @@ For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writ
 | `references.rs` | `find_references` - scoping, include_declaration flag, private member scoping |
 | `inheritance.rs` | `this`/`super`/`parent`, access levels, inherited method resolution |
 | `chaining.rs` | Method-on-return-value, multi-level chained calls |
+| `inference.rs` | `infer_type` - expression type inference |
+| `base_shadowing.rs` | Mod-over-base shadowing: suppressed base stays indexed but out of top-level lookup |
+| `overrides.rs` | `overridden_top_level` - which base symbol a mod definition overrides |
+| `state_classes.rs` | Synthetic `CState*` class name resolution |
 | `script_globals.rs` | INI globals, redirect to class, local shadows global |
 | `parameters.rs` | `display_parameters_of` - ordering, optional flags, multi-name groups |
 | `completion_members.rs` | `completion_members` - dot-access, tier ordering |
@@ -35,6 +39,8 @@ For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writ
 | `completion_type.rs` | `type_completions`, `extends_completions`, `state_owner_completions`, `class_header_keyword_completions` |
 | `completion_keywords.rs` | `class_body_keyword_completions` - specifier state machine |
 | `completion_script_keywords.rs` | Script-level keyword completions |
+| `completion_new.rs` | Class slot of a `new` expression (`new_type_completions`, `new_lifetime_completions`) |
+| `completion_comment.rs` | `position_in_comment` - completion suppressed inside comments |
 | `completion_annotation_name.rs` | `annotation_name_completions` |
 | `completion_annotation_arg.rs` | `annotation_arg_completions` |
 | `completion_annotation_wrap.rs` | `override_completions` (overridable-method list after `@wrapMethod`/`@replaceMethod`) |
@@ -42,10 +48,12 @@ For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writ
 | `completion_annotation_body.rs` | Inside `@addMethod` / `@wrapMethod` bodies: statement, member, definition resolution |
 | `completion_default_hint.rs` | `default_or_hint_member_completions` |
 | `builtin_array.rs` | Built-in `array<T>` resolution, `parse_generic_type`, members/hover via `load_builtins_index` |
-| `builtin_classes.rs` / `builtin_enums.rs` | Other embedded engine types |
+| `builtin_classes.rs` / `builtin_enums.rs` / `builtin_native_types.rs` | Embedded engine classes, enums, native (`CBehTreeVal*`) types |
 | `index.rs` | `WorkspaceIndex::all_top_level` - multi-document iteration |
 | `signature_help.rs` | `signature_help` - parameter hints + active param tracking |
-| `mod.rs` | `make_doc`, `make_index`, `make_env`, `index_docs` helpers shared across this module |
+| `document_highlight.rs`, `inlay_hints.rs`, `workspace_symbols.rs` | One file per like-named LSP feature |
+| `extract_func.rs`, `extract_method.rs`, `extract_var.rs`, `inline_var.rs`, `join_split_decl.rs`, `extract_access.rs` | Refactoring code actions; `extract_access` pins the access-level matrix |
+| `mod.rs` | `make_doc` helper + submodule declarations |
 
 ## Canonical examples
 
