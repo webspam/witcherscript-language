@@ -38,7 +38,7 @@ Start with [architecture.md](docs/agents/architecture.md) for the source file tr
 | Change highlighting                         | `src/semantic_tokens/mod.rs` + `src/semantic_tokens/tests.rs`                                                                                                                                      |
 | Fix position/encoding bug                   | `src/line_index.rs` + its `#[cfg(test)]` block                                                                                                                                                     |
 | Add WitcherScript syntax support            | Grammar repo (`tree-sitter-witcherscript`) is external; pin new tag in `Cargo.toml`                                                                                                                |
-| Inspect grammar node kinds / rule structure | Read `../tree-sitter-witcherscript/grammar.js` (relative to repo root). Online: https://raw.githubusercontent.com/webspam/tree-sitter-witcherscript/refs/heads/master/grammar.js                   |
+| Inspect grammar node kinds / rule structure | Read `../tree-sitter-witcherscript/grammar.js` (relative to repo root). Online: <https://raw.githubusercontent.com/webspam/tree-sitter-witcherscript/refs/heads/master/grammar.js>                   |
 | Add or edit a built-in method (e.g. `array.NewMethod`) | Edit `builtins/<name>.ws` + add a test under `src/resolve/tests/builtin_<name>.rs`                                                                                |
 
 ## Build and test
@@ -82,11 +82,3 @@ See `CODESTYLE.md` for the normative Rust code standard.
 ## Releasing
 
 Version bumps follow the process in [RELEASING.md](RELEASING.md).
-
-## Dependencies
-
-- Do not add new dependencies without a clear reason. Prefer the standard library.
-- `tree-sitter` is pinned to `=0.26.8`; do not bump it without also checking the
-  `tree-sitter-witcherscript` grammar compatibility.
-- The grammar tag is pinned in `Cargo.toml`; retarget it by changing the `tag` field and
-  running `cargo update`.
