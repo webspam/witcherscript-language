@@ -29,14 +29,9 @@ tests/                crate-root integration tests + .ws fixtures (valid/, inval
 
 ## Module dependency graph
 
-```
-Leaves (no intra-crate dependencies):
-  cst         shared tree-sitter CST traversal primitives
-  line_index  byte <-> UTF-16 position mapping
-  strings     string utilities
-  types       structured Type enum + type-annotation parsing
-  files       .ws discovery + canonical_uri
+Leaves (no intra-crate dependencies): `cst`, `line_index`, `strings`, `types`, `files`.
 
+```
 symbols     ──► cst, line_index
 script_env  ──► files, line_index, symbols, types
 formatter   ──► cst
@@ -53,12 +48,9 @@ lib  ──► declares all of the above (bare `pub mod`s, no curated re-exports
 
 bin/witcherscript-lsp/ ──► witcherscript_language::* (all library modules)
 main                   ──► witcherscript_language::{document, files, diagnostics}
-
-NOTE: document, diagnostics, and resolve form an intra-crate dependency cycle
-(permitted within a single crate). parse_document runs the syntactic pass +
-symbol extraction; the cross-file diagnostic passes call resolve; resolve reads
-the parsed documents.
 ```
+
+`document`, `diagnostics`, and `resolve` form an intra-crate dependency cycle (permitted within a single crate): `parse_document` runs the syntactic pass and symbol extraction, the cross-file diagnostic passes call `resolve`, and `resolve` reads the parsed documents.
 
 ## Data flow pipeline
 
@@ -75,18 +67,14 @@ parse_document(source)          [document.rs]
 ParsedDocument { source, tree, line_index, diagnostics, symbols, parse_version }
     │
     ├─► WorkspaceIndex::update_document(uri, doc)    [resolve/workspace_index/]
-    │       folds the doc's symbols into top_level_by_name, enum_member_by_name,
-    │       superclass_by_name, states_by_owner, member_by_type, doc_idents, …
-    │       and the cached completion_catalog
+    │       folds the doc's symbols into top_level_by_name, enum_member_by_name, superclass_by_name, states_by_owner, member_by_type, doc_idents, … and the cached completion_catalog
     │
     └─► LSP response handlers                        [bin/witcherscript-lsp/{completion,queries/*,references_rename,…}.rs]
             SymbolDb::new(workspace, base).with_builtins(builtins).with_script_env(env)
             resolve_definition / completion_members / statement_completions / …
-
-Cross-file diagnostics (unknown symbol, type mismatch, …) are NOT produced here;
-they run later from the LSP via collect_cst_diagnostics_for_document(uri, doc, db),
-which needs a SymbolDb and is cached per file (cst_cache.rs).
 ```
+
+Cross-file diagnostics (unknown symbol, type mismatch, …) are not produced here; they run later from the LSP via `collect_cst_diagnostics_for_document(uri, doc, db)`, which needs a `SymbolDb` and is cached per file (`cst_cache.rs`).
 
 ## Index model
 
