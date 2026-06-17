@@ -76,14 +76,4 @@ LSP semantic tokens use delta encoding. The output is a flat `Vec<u32>` with gro
 
 ## Tests
 
-`src/semantic_tokens/tests.rs` covers:
-- Class/enum/function/field/variable declaration sites
-- Resolved type annotations (only highlighted if the type is defined); primitive names like `int` get no token
-- Member access with `this.field`, local variable type inference
-- Inheritance: members from base classes via the db
-- Unresolvable identifiers produce no token
-- Script globals colour as `variable` + `defaultLibrary`; a workspace class shadowing the global name wins as `class`
-- CName literals (`'SomeName'`) emit `enumMember`
-- Keywords emit `modifier`
-- Comments and strings emit correct types
-- Cancellation returns `None`; range requests emit only the intersecting tokens
+`tests.rs` exercises each path: declaration sites, reference resolution and inheritance via the db, the script-global recolour and its workspace-shadow override, range and cancellation, and the negative cases that must emit nothing (unresolvable idents, primitive type names).
