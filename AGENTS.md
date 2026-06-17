@@ -49,9 +49,7 @@ IMPORTANT: When adding a new grammar construct or validation rule, add or update
 
 ## Committing changes
 
-Commit each logical change as a separate commit as soon as it is complete - do not
-accumulate unrelated edits into a single commit. This keeps `git bisect` useful and
-makes the history easy to read.
+Commit each logical change as a separate commit as soon as it is complete - do not accumulate unrelated edits into a single commit. This keeps `git bisect` useful and makes the history easy to read.
 
 Before committing:
 
