@@ -69,16 +69,10 @@ LSP semantic tokens use delta encoding. The output is a flat `Vec<u32>` with gro
 
 `delta_line` and `delta_start` are relative to the previous token (not absolute). On a new line `delta_start` resets to the absolute column. The token modifiers bitset is 0 for almost every token; redscripts.ini globals are the only emitted tokens that set a modifier (`defaultLibrary`, bit 1).
 
-## Range requests
+## Request handlers
 
-`textDocument/semanticTokens/range` is served by `collect_semantic_tokens_in_range_cancellable`, which converts the LSP range to a byte range (clamped on conversion failure, mirroring `inlay_hints`) and prunes every CST subtree that does not intersect it. Tokens partially overlapping the range edges are included; the LSP spec permits overflow. The encoded deltas still start from the document origin, so a range payload is standalone.
-
-## Full/delta requests
-
-`textDocument/semanticTokens/full` and `full/delta` mint a monotonically increasing `result_id` and store the exact returned `Vec<u32>` per open document in `Backend::semantic_tokens_cache` (`src/bin/witcherscript-lsp/semantic_tokens_cache.rs`), evicted on `did_close`. A `full/delta` request recomputes tokens (the saving is wire size and client work, not server CPU), then:
-
-- previous entry matches `previousResultId` -> `SemanticTokensDelta` with a single minimal edit from `semantic_token_edits` (whole-token prefix/suffix trim; lsp-types represents edit data as `SemanticToken` structs, so edits stay 5-u32 aligned),
-- otherwise -> a full payload with a fresh `result_id` (protocol-correct fallback, never an error).
+- **`range`** prunes the walk to CST subtrees intersecting the requested byte range (clamped on conversion failure, as `inlay_hints` does). Edge-overlapping tokens are kept - the spec permits overflow - and the deltas still start from the document origin, so the payload stands alone.
+- **`full` / `full/delta`** mint a monotonic `result_id` and cache the emitted `Vec<u32>` per open document in `Backend::semantic_tokens_cache`, dropped on `did_close`. `full/delta` always recomputes (the win is wire size, not server CPU): if the cached `result_id` matches the client's `previousResultId` it returns a single minimal edit (`semantic_token_edits`, a whole-token prefix/suffix trim); otherwise it returns a full payload with a fresh id, which the protocol allows.
 
 ## Tests
 
