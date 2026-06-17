@@ -97,6 +97,6 @@ For larger or structured snapshots (multi-symbol completion result vectors, full
 
 ## Markers, not magic numbers
 
-When a test needs a cursor, use a `$0` marker in the source - never hand-counted `SourcePosition { line: N, character: M }` literals. A reader must not have to count characters to verify a test, and a 1-character edit to the source must not silently move the cursor onto the wrong token.
+Use a `$0` marker for a cursor - never hand-counted `SourcePosition { line, character }` literals, so a 1-character source edit cannot silently move the cursor onto the wrong token.
 
-Exception: tests that read a fixture file from `tests/fixtures/` cannot embed `$0` (that would break the parser-fixture suite). For those, keep the hand-counted positions but pull them into a `for` loop or `#[rstest] #[case]` so the positions live alongside their human-readable labels.
+Exception: fixtures under `tests/fixtures/` cannot embed `$0` (it would break the parser-fixture suite). Keep hand-counted positions there, but pull them into a `for` loop or `#[rstest] #[case]` so each sits beside its label.
