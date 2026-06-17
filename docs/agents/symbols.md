@@ -121,42 +121,6 @@ pub struct DocumentSymbols {
 | `member_of(container, name)` | Iterate members of `container` with that name |
 | `local_at_byte(function, name, before_byte)` | Local or parameter named `name` in scope at `before_byte` |
 
-## Grammar nodes handled during extraction
-
-| Grammar node | Produces |
-|---|---|
-| `class_decl` | `SymbolKind::Class` |
-| `struct_decl` | `SymbolKind::Struct` |
-| `enum_decl` | `SymbolKind::Enum` |
-| `enum_member_decl` | `SymbolKind::EnumMember` |
-| `state_decl` | `SymbolKind::State` |
-| `func_decl` | `Function` or `Method` (depending on container) |
-| `event_decl` | `SymbolKind::Event` |
-| `member_var_decl` | `SymbolKind::Field` |
-| `autobind_decl` | `SymbolKind::Field` |
-| `local_var_decl_stmt` | `SymbolKind::Variable` |
-| `func_param_group` | `SymbolKind::Parameter` (one per `ident` in the group) |
-| `annotation` | Parsed into `Annotation`, attached to next symbol |
-| `type_annot` | Parsed via `Type::from_annotation` into `type_annotation` |
-| `specifier` | Sets `access` (`private`/`protected`/`public`) or inserts into the `Specifiers` bitset (`final`, `editable`, `optional`, `out`, ...) |
-| `func_flavour` | Stored in `flavour` |
-| `func_block` | Opens the body scope for locals; parameters come from `func_params`, not here |
-
-## extract_symbols walk
-
-`extract_symbols` runs `walk(root, &mut extractor)`, driving `SymbolExtractor` as a `CstVisitor` (`enter`/`leave`), then `finish` calls `build_indexes`. State is a stack of `Frame`s; each frame records the tree depth it was pushed at plus a `Mode`. `enter` pushes frames and `leave` pops the frame whose depth matches, so a frame lives for exactly the subtree of the node that opened it.
-
-The three modes select how a node's named children are interpreted:
-
-- `Mode::Body { container, pending }` - the default declaration context. `container` is the enclosing symbol (`None` at the root), `pending` holds sibling annotations awaiting the next declaration.
-- `Mode::EnumMembers(enum_id)` - inside an enum; only `enum_member_decl` children become symbols.
-- `Mode::Callable { id, body_seen }` - inside a callable; only the first `func_block` opens a body.
-
-1. The first `enter` (empty frame stack) pushes the root `Mode::Body { container: None, pending: [] }`; the root is a pure container, never a declaration.
-2. `enter` dispatches on the innermost frame's mode. In a `Body` frame, `enter_in_body` matches `node.kind()`: an `annotation` is parsed and pended (children skipped); each declaration kind calls its `enter_*` handler; any other named node pushes a fresh `Body` frame carrying the same `container` and forwarded `pending`, then recurses.
-3. A declaration handler takes pending annotations, extends them with the node's own `direct_annotations`, pushes the `Symbol`, and opens the child frame: `Body` (new symbol as container) for class/struct/state, `EnumMembers` for enums, `Callable` for callables.
-4. For callables, parameters are pushed (`func_params → func_param_group`) before the `Callable` frame, so `SymbolId` order is func -> params -> locals.
-
 ## Adding a new symbol kind
 
 1. Add variant to `SymbolKind` in `symbols/types.rs`.
