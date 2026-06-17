@@ -18,7 +18,7 @@ The native engine value-types (`CBehTreeVal*`) are C++ primitives with no script
 
 `builtins/array.ws` is a real `.ws` file embedded at build time via `include_str!`. To change the array API, edit that file and rebuild - no Rust changes required.
 
-The grammar cannot parse `class array<T>` (generic params on a class decl produce tree-sitter `ERROR` nodes), so the file is written without the `<T>` header. The bare ident `T` inside method signatures stands in for the element type. A one-line comment at the top of `builtins/array.ws` documents this convention.
+The grammar cannot parse `class array<T>` (generic params on a class decl produce tree-sitter `ERROR` nodes), so the file is written without the `<T>` header. The bare ident `T` inside method signatures stands in for the element type. A comment at the top of `builtins/array.ws` documents this convention.
 
 ## Loading
 
