@@ -25,7 +25,6 @@ Start with [architecture.md](docs/agents/architecture.md) for the source file tr
 | [writing-tests.md](docs/agents/writing-tests.md) | How to write tests: style, helpers, fixture markers |
 | [language.md](docs/agents/language.md) | WitcherScript language cheat sheet |
 | [invariants.md](docs/agents/invariants.md) | Non-obvious constraints that cause silent bugs - read before touching resolution, indexing, or text sync |
-| [task-guide.md](docs/agents/task-guide.md) | Task -> which source files to edit |
 
 ## Build and test
 
