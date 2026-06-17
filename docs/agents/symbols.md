@@ -64,33 +64,6 @@ No symbol carries rendered signature or declaration text. Callable signatures ar
 
 Structural queries (e.g. building `superclass_by_name`, walking inheritance chains) read `base_class` / `owner_class` directly. The rendered detail string is display-only.
 
-## AccessLevel
-
-```rust
-pub enum AccessLevel { Private, Protected, Public }  // Ord: Private < Protected < Public
-```
-
-Default is `Public` (WitcherScript default when no specifier is present).
-
-`AccessLevel::as_keyword` returns `None` for `Public` so editors omit the redundant keyword. Member access enforcement during inheritance-chain lookup lives in `resolve` (see [resolution.md](resolution.md)), not here.
-
-## Annotation
-
-```rust
-pub struct Annotation {
-    pub name: String,           // without @, e.g. "addField"
-    pub argument: Option<String>,  // optional argument, e.g. "CR4Player"
-}
-```
-
-Common annotations in WitcherScript modding:
-- `@addField(ClassName)` - inject a field into an existing class
-- `@addMethod(ClassName)` - inject a method
-- `@wrapMethod(ClassName)` - wrap an existing method
-- `@replaceMethod(ClassName)` - replace an existing method
-
-Annotations attach to a declaration two ways. Sibling annotations preceding a declaration are parsed and held in the enclosing `Mode::Body` frame's `pending` vec, then consumed by the next declaration via `take_pending`. Annotations that are direct children of the declaration node are read separately by `direct_annotations` and appended. Pending sibling annotations never consumed die with their frame.
-
 ## DocumentSymbols
 
 ```rust
