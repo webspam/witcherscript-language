@@ -21,14 +21,14 @@ Start with [architecture.md](docs/agents/architecture.md) for the source file tr
 | [lsp_server.md](docs/agents/lsp_server.md) | LSP backend: handlers, capabilities, URI handling, indexing, text sync |
 | [builtins.md](docs/agents/builtins.md) | Embedded engine types (`array<T>`, classes, enums) |
 | [class_body_specifiers.md](docs/agents/class_body_specifiers.md) | Which specifiers and flavours are valid in a class body |
-| [testing.md](docs/agents/testing.md) | Test inventory, fixtures, benchmarks |
+| [testing.md](docs/agents/testing.md) | Test inventory, fixtures |
 | [writing-tests.md](docs/agents/writing-tests.md) | How to write tests: style, helpers, fixture markers |
 | [language.md](docs/agents/language.md) | WitcherScript language cheat sheet |
 | [invariants.md](docs/agents/invariants.md) | Non-obvious constraints that cause silent bugs - read before touching resolution, indexing, or text sync |
 
 ## Build and test
 
-Use justfile recipes, not hand-rolled cargo commands: `just build`, and `just test` (fmt + clippy + nextest in one). The test inventory, fixtures, and benchmarks are in [docs/agents/testing.md](docs/agents/testing.md).
+Use justfile recipes, not hand-rolled cargo commands: `just build`, and `just test` (fmt + clippy + nextest in one). The test inventory and fixtures are in [docs/agents/testing.md](docs/agents/testing.md).
 
 IMPORTANT: When adding a new grammar construct or validation rule, add or update a fixture file and a targeted unit test.
 
