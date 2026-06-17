@@ -112,7 +112,9 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "did_close", uri = %uri, "start");
         let scope = self.file_scope_of(&uri);
-        let prior_source = if scope.is_loose() {
+        // reindex_closed_file would re-add an excluded (gitignored / files.exclude) file from disk; drop it instead.
+        let excluded = !scope.is_loose() && self.is_uri_excluded(&uri);
+        let prior_source = if scope.is_loose() || excluded {
             None
         } else {
             self.snapshot()
@@ -121,6 +123,7 @@ impl Backend {
                 .map(|doc| doc.source.clone())
         };
         let mut loose_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
+        let mut ws_changed: Vec<witcherscript_language::resolve::ObservedKey> = Vec::new();
         self.publish_compilation(|builder| {
             builder.documents_mut().remove(&uri);
             if scope.is_loose() {
@@ -128,11 +131,19 @@ impl Backend {
                     builder.loose_index_mut(),
                     &uri,
                 ));
+            } else if excluded {
+                ws_changed.extend(crate::indexing::remove_document_all_spellings(
+                    builder.workspace_index_mut(),
+                    &uri,
+                ));
             }
         });
         if scope.is_loose() {
             // A loose file is a transient compilation member: closing it drops it from the index entirely.
             let invalidated = self.invalidated_loose(&loose_changed);
+            self.evict_cache_entries(&invalidated);
+        } else if excluded {
+            let invalidated = self.invalidated_workspace(&ws_changed);
             self.evict_cache_entries(&invalidated);
         } else if self.reindex_closed_file(&uri, prior_source.as_deref()) {
             self.refresh_legacy_override_maps_if_legacy_uri(&uri);
