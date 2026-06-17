@@ -34,58 +34,15 @@ Each rule module owns its `#[cfg(test)] mod tests`.
 
 `WorkspaceDiagnostic` carries its own `Severity`, an already-UTF-16 `SourceRange` (from `Symbol.selection_range`, or converted by the rule via `LineIndex::byte_range_to_range`), a `Vec<RelatedLocation>` (the `relatedInformation` list), and optional `data` (`base_script_conflict` uses it to drive its code action).
 
-## collect_diagnostics
+## Syntactic pass
 
-```rust
-pub fn collect_diagnostics(root: Node, source: &str) -> Vec<ParseDiagnostic>
-```
+`collect_diagnostics(root, source)` runs `SyntaxDiagnostics` (a `CstVisitor`) in a single walk that always descends - missing tokens are often anonymous and must still be visited. `SyntaxDiagnostics::enter` appends a `ParseDiagnostic` for each match on the current node:
 
-Performs a single recursive walk (`collect_walk`) over the tree. On each node it checks
-for four conditions in sequence, collecting into a single Vec:
+- tree-sitter `is_error()` / `is_missing()` nodes (`Syntax error`, or `Missing {kind}`);
+- `incomplete_member_access_expr`, `ternary_cond_expr`, `string_linefeed`, `int_overflow` (int/hex literal past 32 bits), `event_return_not_void`, `event_bare_return`, `non_constant_default`, and `struct_property_access_modifier`;
+- inside a `func_block`, a `local_var_decl_stmt` that appears after any executable statement (`late_local_var_decl`). `comment` and `nop` are not executable; the rule fires only inside `func_block`.
 
-### Condition 1: Tree-sitter errors
-
-For any node where `node.is_error() || node.is_missing()`:
-- **Error node:** `kind = node.kind()`, `message = "Syntax error"`
-- **Missing node:** `kind = node.kind()`, `message = "Missing {kind}"`
-
-These cover all structural parse failures detected by tree-sitter's error recovery.
-
-### Condition 2: Incomplete member access
-
-For any `incomplete_member_access_expr` node (grammar produces these when a `.` is typed
-but no identifier follows, e.g. `obj.` at end of line):
-
-```
-kind:    "incomplete_member_access_expr"
-message: "Incomplete member access: expected identifier after '.'"
-```
-
-### Condition 3: Ternary expressions
-
-For any `ternary_cond_expr` node. WitcherScript parses `cond ? a : b` but the compiler
-always evaluates it to `0 / false / void`:
-
-```
-kind:     "ternary_cond_expr"
-message:  "Ternary expression is not supported: ..."
-severity: WARNING
-```
-
-### Condition 4: Late local variable declarations (`collect_late_local_vars_in_block`)
-
-Scans inside each `func_block` node. Tracks whether any executable statement has been seen. If a `local_var_decl_stmt` appears after one, it is flagged:
-
-```
-kind:    "late_local_var_decl"
-message: "Local variable declarations must precede executable statements"
-```
-
-**Rules for what counts as "code statement":**
-- Any named node that is NOT `comment` and NOT `nop` counts.
-- `local_var_decl_stmt` itself resets nothing - it either fires or doesn't.
-
-This rule only applies inside `func_block` nodes, not at file scope or in class bodies.
+Each emitted code, message, and severity is listed in [../diagnostics/validation.md](../diagnostics/validation.md).
 
 ## Workspace diagnostics
 
