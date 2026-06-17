@@ -87,8 +87,9 @@ src/
 │   ├── mod.rs                      TestDb: build a WorkspaceIndex from a fixture string
 │   └── fixture.rs                  marker fixture parser ($0 cursor, ^^^ spans, //- headers)
 ├── symbols/                        SymbolKind, Symbol, DocumentSymbols, extract_symbols
-│   ├── types.rs                    Symbol, DocumentSymbols, indexes
-│   ├── extract.rs                  SymbolExtractor, extract_symbols
+│   ├── mod.rs                      public re-export surface for symbols
+│   ├── types.rs                    Symbol, SymbolId, SymbolKind, Specifiers, AccessLevel
+│   ├── extract.rs                  SymbolExtractor: CST walk to DocumentSymbols
 │   └── util.rs                     node_text, CST helper text extraction
 ├── resolve/
 │   ├── mod.rs                      public API: WorkspaceIndex, SymbolDb, resolve_definition
@@ -109,8 +110,7 @@ src/
 │   │   └── types.rs                type-name completions
 │   └── tests/                      resolution + completion tests
 └── semantic_tokens/
-    ├── mod.rs                      TOKEN_TYPES, collect_semantic_tokens, classify
-    └── tests.rs                    semantic token tests
+    └── mod.rs                      TOKEN_TYPES, collect_semantic_tokens, classify
 
 tests/
 ├── parser_fixtures.rs              fixture-driven parse tests (valid/ and invalid/)
