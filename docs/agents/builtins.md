@@ -48,7 +48,6 @@ Nested generics (`array<array<int>>`) substitute one level: `Last()` resolves wi
 
 ## Adding a new built-in
 
-1. Add or edit `builtins/<name>.ws`. For a generic type, use `T` for the element type as `array.ws` does.
+1. Add or edit `builtins/<name>.ws`.
 2. In `src/builtins.rs`, add a row to the `BUILTIN_SOURCES` table like the existing ones. A type that is not bare-writable (like `array`) must also be added to `is_non_type_builtin()`.
-3. If the type is generic, the substitution layer in `src/resolve/symbol_db/` will work automatically - it keys off `parse_generic_type()` (in `src/types/`) and is not array-specific.
-4. Add unit tests in `src/resolve/tests/builtin_<name>.rs` and a fixture in `tests/fixtures/valid/`.
+3. Add unit tests in `src/resolve/tests/builtin_<name>.rs` and a fixture in `tests/fixtures/valid/`.
