@@ -54,27 +54,15 @@ The LSP serves diagnostics by pull (`textDocument/diagnostic` per URI, `workspac
 
 ## LSP conversion
 
-All diagnostics are returned in pull reports as:
-- Severity: `ERROR` for most rules; `WARNING` for shadowing, the `ternary_cond_expr`
-  `ParseDiagnostic`, and any rule that sets `Severity::Warning` on its `WorkspaceDiagnostic`
-- Code: the `kind` string
-- Source: `"witcherscript"`
-- Range: `ParseDiagnostic` is converted from `byte_range` via
-  `line_index.byte_range_to_range(source, start, end)`; `WorkspaceDiagnostic` already
-  carries a UTF-16 `SourceRange` and converts directly via `lsp_range`.
+In `src/bin/witcherscript-lsp/convert/diagnostics.rs`. Every diagnostic carries `code = kind` and `source = "witcherscript"`.
+
+- `lsp_diagnostics` converts a document's `ParseDiagnostic`s, mapping `byte_range` through `LineIndex`; severity is `ERROR` for all except `ternary_cond_expr` (`WARNING`).
+- `lsp_workspace_diagnostic` uses the `WorkspaceDiagnostic`'s own `Severity`, attaches the `Unnecessary` tag for `unused_symbol` (so editors fade it), and passes through `related` and `data`.
+- `base_script_conflict_code_actions` turns a `base_script_conflict`'s `data` into an "add to legacyScriptDirectories" quick fix.
 
 ## format_tree
 
-```rust
-pub fn format_tree(root: Node) -> String
-```
-
-Dumps the full concrete syntax tree for debugging. Each node is formatted as:
-```
-{indent}{kind}[ERROR|MISSING] [{row}:{col}-{row}:{col}] bytes {start}..{end}
-```
-
-Used by the CLI's `--dump-tree` flag.
+`format_tree(root)` dumps the full CST for debugging - one line per node, `{kind}` plus an `ERROR`/`MISSING` marker, its `{row}:{col}` span, and byte range. Used by the CLI `--dump-tree` flag.
 
 ## Adding a new validation rule
 
