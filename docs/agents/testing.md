@@ -13,7 +13,7 @@ For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writ
 | `src/script_env.rs` `#[cfg(test)]` | INI parsing, globals section, symbol positions |
 | `src/resolve/tests/` | `resolve/` submodules - definition, references, completion, inheritance, signature help, builtins |
 | `src/semantic_tokens/tests.rs` | `collect_semantic_tokens()` - classify, resolve, encode |
-| `src/formatter/tests/` | `format_document()` - alignment, blank lines, calls, colon spacing, comments, if/switch actions, line breaking; some cases load `tests/fixtures/formatter/*.ws` via `include_str!` |
+| `src/formatter/tests/` | `format_document()` output; some cases `include_str!` from `tests/fixtures/formatter/` |
 | `src/bin/witcherscript-lsp/tests/` | LSP handler unit tests (`completion.rs`, `diagnostics.rs`, `hover.rs`, `indexing/*.rs`, `refactoring.rs`) |
 | `src/bin/witcherscript-lsp/tests/e2e/` | Wire-level E2E - framed JSON-RPC against a real `Backend` over `tokio::io::duplex` |
 | `src/test_support/` | Shared toolkit: `TestDb`, `Fixture` marker parser, name assertion helpers |
@@ -71,9 +71,7 @@ Positions are UTF-16 code units (LSP-compatible).
 
 ## Parse-fixture directory
 
-`tests/fixtures/valid/` - all `.ws` files must parse with zero diagnostics. `tests/fixtures/invalid/` - all must produce at least one diagnostic. `tests/parser_fixtures.rs` discovers and runs both. When adding a grammar feature, add a fixture rather than relying solely on unit tests.
-
-`tests/fixtures/formatter/` is separate: those files are pulled in by the formatter tests (`src/formatter/tests/`) via `include_str!`, not auto-discovered by `parser_fixtures.rs`.
+`tests/fixtures/valid/` - all `.ws` files must parse with zero diagnostics. `tests/fixtures/invalid/` - all must produce at least one diagnostic. `tests/parser_fixtures.rs` discovers and runs both. When adding a grammar feature, add a fixture rather than relying solely on unit tests. (`tests/fixtures/formatter/` is not auto-discovered; the formatter tests `include_str!` it directly.)
 
 ## Running tests
 
