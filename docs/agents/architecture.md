@@ -11,25 +11,52 @@ src/
 ├── bin/
 │   ├── dump_tree.rs               developer helper: prints a tree-sitter parse tree
 │   └── witcherscript-lsp/         LSP server binary (handlers split by LSP concern)
-│       ├── main.rs                tokio entry point, tracing setup, Backend wiring
-│       ├── backend.rs             Backend struct + thin LanguageServer trait impl (delegates to siblings)
-│       ├── lifecycle.rs           _initialize / _initialized / configuration change handlers
-│       ├── text_sync.rs           _did_open / _did_change / _did_close + workspace folder + watched files
-│       ├── completion.rs          _completion handler + dispatch through resolve/completion/
-│       ├── queries.rs             hover, definition, document symbols, signature help, semantic tokens, formatting, code action
-│       ├── references_rename.rs   _references, _prepare_rename, _rename + cross-doc merge_documents helper
-│       ├── config.rs              Config struct, settings parsing
-│       ├── convert/               LSP↔internal conversion (positions, diagnostics, completions, symbols, file_ops)
+│       ├── main.rs                router + middleware wiring; stdio / TCP serve
+│       ├── backend.rs             Backend state struct + shared handler helpers
+│       ├── compilation.rs         atomically-swapped index/document snapshot + COW builder
+│       ├── lifecycle.rs           initialize / initialized; registers LSP capabilities
+│       ├── text_sync.rs           didOpen / didChange / didClose + watched-file events
+│       ├── edit_queue.rs          in-flight edit state pending reindex
+│       ├── completion.rs          completion handler; dispatch to resolve/completion/
+│       ├── completion_cache.rs    merged global/type completion list, cached by hash
+│       ├── references_rename.rs   references, prepareRename, rename + cross-doc merge
+│       ├── config.rs              Config struct, DiagnosticsScope, settings parsing
+│       ├── project_manifest.rs    parse witcherscript.toml; resolve scripts_root
+│       ├── convert/               LSP <-> internal conversion
+│       │   ├── mod.rs             re-exports the convert sub-modules
+│       │   ├── positions.rs       LSP <-> internal position / range
+│       │   ├── diagnostics.rs     internal diagnostics + base-conflict actions to LSP
+│       │   ├── completions.rs     definitions to CompletionItem / SignatureHelp
+│       │   ├── symbols.rs         symbols to DocumentSymbol / WorkspaceSymbol / hover
+│       │   ├── highlights.rs      HighlightKind to LSP DocumentHighlight
+│       │   ├── inlay_hints.rs     InlayHintInfo to LSP InlayHint
+│       │   ├── file_ops.rs        create / delete / rename params to file events
+│       │   └── refactor/          code-action refactorings (extract, inline, if/switch, join/split)
+│       ├── queries/               read-only request handlers
+│       │   ├── mod.rs             shared query helpers; FormatOptions
+│       │   ├── hover.rs           hover
+│       │   ├── definition.rs      goto-definition + goto-type-definition
+│       │   ├── document_symbol.rs document symbols
+│       │   ├── workspace_symbol.rs workspace symbol search
+│       │   ├── signature_help.rs  signature help
+│       │   ├── semantic_tokens.rs semantic tokens full / delta / range
+│       │   ├── document_highlight.rs document highlight
+│       │   ├── inlay_hint.rs      inlay hints (config-gated)
+│       │   ├── code_action.rs     base-conflict + refactor code actions
+│       │   ├── code_lens.rs       base-definition + reference-count lenses
+│       │   ├── diagnostics.rs     document + workspace pull-diagnostic handlers
+│       │   └── formatting.rs      full-document formatting
+│       ├── semantic_tokens_cache.rs  per-document semantic token cache + delta
 │       ├── cst_cache.rs           per-file CST diagnostic cache
-│       ├── diagnostics_publish.rs publish_diagnostics helper
-│       ├── file_scope.rs          FileScope classifier (workspace / loose / base / legacy)
+│       ├── diagnostics_publish.rs bundles + publishes all diagnostic categories
+│       ├── view_refresh.rs        client refresh requests on state-version change
+│       ├── file_scope.rs          classify a URI (project / legacy / base / loose)
 │       ├── file_scope_status.rs   witcherscript/fileScopeStatus notification type
-│       ├── indexing/              workspace + base-script indexing (helpers, open_documents, legacy, scan)
 │       ├── legacy_status.rs       witcherscript/legacyScriptStatus notification type
-│       ├── logging.rs             LspLogSender tracing layer + level parsing
-│       ├── watcher.rs             file-system watcher integration
-│       ├── tests.rs               #[cfg(test)] LSP-specific unit tests
-│       └── tests/                 E2E and integration tests (per-feature files + e2e/ subdir)
+│       ├── indexing/              workspace + base-script indexing (helpers, open_documents, legacy, scan)
+│       ├── logging.rs             tracing layer forwarding events to the client
+│       ├── watcher.rs             file watchers to canonical upsert / delete
+│       └── tests/                 unit + E2E / integration tests (per-feature + e2e/ subdir)
 ├── builtins.rs                     embed + parse engine .ws sources into a WorkspaceIndex
 ├── cst/                            shared tree-sitter CST traversal primitives
 │   ├── mod.rs                      re-exports the cst submodules
