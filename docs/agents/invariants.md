@@ -6,7 +6,7 @@ These are the non-obvious constraints that will cause silent bugs if violated:
 
 2. **`SourcePosition.character` is UTF-16 code units**, not bytes. ASCII = 1 unit, non-BMP chars = 2 units. The LSP spec requires this. All position conversion goes through `LineIndex`.
 
-3. **Read base/owner from the typed fields, never the display string.** `Symbol.base_class` (raw superclass; states use it for `extends`) and `Symbol.owner_class` (raw state owner) are the source of truth. `Symbol::display_detail()` renders the `"extends X"` / `"in Y"` text on demand for display only - never parse it for structural queries.
+3. **Use typed symbol fields, not raw text parsing.** Wherever a fact is available as a typed field on `Symbol` (e.g. `base_class` for the superclass, `owner_class` for a state's owner), read that field. Strings rendered for display - `Symbol::display_detail()`'s `"extends X"` / `"in Y"`, and the like - are output only; never parse them back to recover structure.
 
 4. **Loose files compile in isolation.** A file opened outside every workspace root, or with no workspace folder, is *loose*: indexed into `loose_index` while open, dropped on close. It resolves against `loose_index` + base + builtins only, never `workspace_index`; project files never see loose symbols. `file_scope` is the single source of truth for routing.
 
