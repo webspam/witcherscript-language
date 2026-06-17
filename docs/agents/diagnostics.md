@@ -2,49 +2,31 @@
 
 **Module:** `src/diagnostics/`
 
-- `src/diagnostics/mod.rs` - syntactic, single-document diagnostics (`ParseDiagnostic`,
-  `collect_diagnostics`, `format_tree`), the shared workspace-diagnostic types, and the
-  per-document CST dispatcher `collect_cst_diagnostics_for_document`.
-- `src/diagnostics/duplicate_symbols.rs` - workspace-wide index-walking rule.
-- `src/diagnostics/base_script_conflict.rs` - workspace-wide index-walking rule. Flags a
-  workspace file that re-declares a symbol already declared in a base game script at a
-  matching `/scripts/` path, unless the file sits under a
-  `witcherscript.legacyScriptDirectories` entry. Emits `"base_script_conflict"`.
-- `src/diagnostics/duplicate_local.rs` - workspace-wide index-walking rule; flags
-  parameters or local variables that share a name within the same function. Emits
-  `"duplicate_local"`. Skips functions annotated with `@wrapMethod` or `@replaceMethod`.
-- `src/diagnostics/shadowing.rs` - workspace-wide index-walking rule (warning severity).
-- `src/diagnostics/unknown_method.rs` - CST-walking rule (`UnknownMethodRule`) that
-  implements `CstRule` and is registered in `collect_cst_diagnostics_for_document`. Also
-  exposes `collect_unknown_method_diagnostics(&[(&str, &ParsedDocument)], &SymbolDb)`
-  as a standalone batch function that calls `run_rules_on_document` directly for each
-  document in a slice.
-- `src/diagnostics/unknown_symbol.rs` - workspace-wide CST-walking rule covering every
-  ident-as-use. Dispatches to one of four kinds based on the parent grammar context:
-  `unknown_type`, `unknown_member`, `unknown_function`, `unknown_identifier`. Skips
-  declaration sites, `BUILTIN_TYPES`, tree-sitter error/missing subtrees, and idents
-  already owned by `unknown_method` (member-access calls).
-- `src/diagnostics/annotation_state_target.rs` - CST-walking rule (`AnnotationStateTargetRule`);
-  flags modding annotations whose argument is a state's synthetic backing class name instead of
-  the short state name. Emits `"annotation_targets_backing_class"`.
-- `src/diagnostics/inherited_field.rs` - CST-walking rule (`InheritedFieldRule`); flags a class
-  or state field that redeclares a field inherited from an ancestor. Emits
-  `"duplicate_inherited_field"`.
-- `src/diagnostics/override_consistency.rs` - CST-walking rule (`OverrideConsistencyRule`);
-  flags a method override that is inconsistent with the ancestor's class-body declaration.
-  Emits `"override_weaker_access"` and `"override_param_count"`.
-- `src/diagnostics/unused_symbol.rs` - CST-walking rule (`UnusedSymbolRule`); flags a local,
-  parameter, or `private` field with no references (via `find_references`) at hint severity.
-  Emits `"unused_symbol"`; `convert/diagnostics.rs` attaches the LSP `Unnecessary` tag to that
-  kind so editors fade the range.
-- `src/diagnostics/wrapped_method.rs` - CST-walking rule (`WrappedMethodRule`); flags
-  missing/duplicate `wrappedMethod()` calls and disallowed modifiers/flavour keywords on
-  `@wrapMethod` functions. Emits `"missing_wrapped_method"`, `"duplicate_wrapped_method"`,
-  `"wrapped_method_modifier"`.
-- `src/diagnostics/cst_walker.rs` - `CstRule` trait, `CstRuleCtx`, per-call `TypeMemo`,
-  `run_rules_on_document`, `collect_nodes_with_error_subtree`, `run_parallel_pass`. Any
-  new rule needing to walk a document's CST must use these primitives rather than walking
-  on its own.
+For the catalogue of every diagnostic code, its severity, and what it means, see [../diagnostics/validation.md](../diagnostics/validation.md). This doc covers the machinery: where rules live, how they run, and how to add one.
+
+Two diagnostic types, two phases:
+
+- `ParseDiagnostic` - syntactic, single-document. One CST walk over one parse tree; no cross-file knowledge. Computed at parse time, stored on `ParsedDocument.diagnostics`.
+- `WorkspaceDiagnostic` - cross-file. Needs the index or sibling documents. Two flavours: *index-walking* rules read a `WorkspaceIndex`; *CST-walking* rules walk each document's tree but consult a `SymbolDb`.
+
+## Module map
+
+Infrastructure (`mod.rs`, `cst_walker.rs`):
+
+- `mod.rs` - the data types (`ParseDiagnostic`, `WorkspaceDiagnostic`, `Severity`, `RelatedLocation`), the syntactic walk (`collect_diagnostics` / `SyntaxDiagnostics`), the CST-rule dispatcher `collect_cst_diagnostics_for_document`, and `format_tree`.
+- `cst_walker.rs` - the `CstRule` trait, `CstRuleCtx`, the shared single-walk driver `run_rules_on_document`, the per-call `TypeMemo`, error-subtree tracking, and `run_parallel_pass`.
+- `tests.rs` - tests for the syntactic walk.
+
+Index-walking rules, each `collect_*_diagnostics(&WorkspaceIndex, ...) -> HashMap<uri, Vec<WorkspaceDiagnostic>>`:
+
+- `duplicate_symbols.rs`, `duplicate_local.rs`, `base_script_conflict.rs`, `shadowing.rs`.
+
+CST-walking rules, each a unit struct implementing `CstRule`, registered in `collect_cst_diagnostics_for_document`:
+
+- `unknown_method.rs`, `type_mismatch.rs`, `abstract_instantiation.rs`, `super_field_access.rs`, `state_owner.rs`, `annotation_state_target.rs`, `inherited_field.rs`, `override_consistency.rs`, `unused_symbol.rs`, `wrapped_method.rs`.
+- `unknown_symbol.rs` is the exception: it runs as a separate parallel pass (`run_unknown_symbol_parallel`), not in the shared walk, because it records resolver observations that merge back into the `SymbolDb`.
+
+Each rule module owns its `#[cfg(test)] mod tests`.
 
 ## ParseDiagnostic
 
