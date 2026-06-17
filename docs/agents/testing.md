@@ -63,7 +63,7 @@ When writing a new test, copy the closest existing pattern instead of re-derivin
 - **Multi-document fixture** → `src/resolve/tests/definition.rs` cases using `//- /path.ws` headers.
 - **Inline-snapshot golden output** (hover markdown, formatter output) → `src/bin/witcherscript-lsp/tests/hover.rs` (`expect-test`).
 - **Wire-level LSP request** → `src/bin/witcherscript-lsp/tests/e2e/definition.rs` (`Fixture::parse` + `LspClient::spawn`).
-- **Per-diagnostic test module** → `src/diagnostics/unknown_symbol/tests.rs` (`index_and_docs`/`check`/`kinds` triad).
+- **Per-diagnostic test module** → `src/diagnostics/unknown_symbol/tests.rs` (`TestDb` + `collect_unknown_symbol_diagnostics` + a `kinds` helper over the result).
 - **Decoded semantic-token assertions** → `src/semantic_tokens/tests.rs` (`decode_tokens` → `Vec<SemanticTokenView>`).
 
 ## Fixture markers
