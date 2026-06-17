@@ -45,16 +45,24 @@ src/
 │   ├── sourcegen.rs                test-only: regenerate kinds.rs / fields.rs
 │   └── walk.rs                     iterative pre/post-order visitor; Fused two-visitor
 ├── document.rs                     parse orchestration, ParsedDocument
-├── diagnostics/                    ParseDiagnostic, collect_diagnostics, per-pass modules
-│   ├── mod.rs                      public API: collect_diagnostics, ParseDiagnostic
-│   ├── cst_walker.rs               CstRule trait, run_rules_on_document
-│   ├── base_script_conflict.rs     workspace-vs-base script conflict check
-│   ├── duplicate_local.rs          duplicate local variable check
-│   ├── duplicate_symbols.rs        duplicate top-level symbol check
-│   ├── shadowing.rs                variable shadowing check
-│   ├── unknown_method.rs           unknown method call check
-│   ├── unknown_symbol.rs           unknown symbol reference check
-│   └── wrapped_method.rs           wrapped-method signature check
+├── diagnostics/                    ParseDiagnostic + the cross-file CST rule passes
+│   ├── mod.rs                      registers passes; collect_cst_diagnostics_for_document
+│   ├── cst_walker.rs               CstRule trait, parallel pass runner
+│   ├── abstract_instantiation.rs   flag new on abstract classes
+│   ├── annotation_state_target.rs  validate state-targeting annotation names
+│   ├── base_script_conflict.rs     workspace files shadowing base-game scripts
+│   ├── duplicate_local.rs          duplicate parameter / local variable names
+│   ├── duplicate_symbols.rs        cross-file top-level name collisions
+│   ├── inherited_field.rs          member field duplicating an inherited field
+│   ├── override_consistency.rs     access level + param count on overrides
+│   ├── shadowing.rs                locals / fields shadowing globals or fields
+│   ├── state_owner.rs              a state's owner class must be a statemachine
+│   ├── super_field_access.rs       illegal field access through super
+│   ├── type_mismatch.rs            assignment / return / call-arg type checks
+│   ├── unknown_method.rs           method calls resolving to no known member
+│   ├── unknown_symbol.rs           references resolving to no known symbol
+│   ├── unused_symbol.rs            parameters / locals / fields never referenced
+│   └── wrapped_method.rs           validate @wrapMethod usage and call patterns
 ├── files.rs                        recursive .ws file discovery, canonical_uri
 ├── formatter.rs                    document formatter entry point (textDocument/formatting)
 ├── formatter/
