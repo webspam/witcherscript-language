@@ -178,8 +178,8 @@ find_references(definition, definition_document, search_documents, db, include_d
 ```
 
 Scoping rules:
-- **Local variables / parameters** → only within the `func_block` byte range
-- **Private members** → only within the defining file URI
+- **Local variables / parameters** → the enclosing callable's byte range
+- **Private members** → the declaring type's byte range (same file)
 - **Public / protected members** → all documents in `search_documents`
 
 For each candidate document, the `doc_idents` index is consulted first to skip documents that don't contain the identifier by name at all, then each occurrence is semantically verified by calling `resolve_definition` and checking that it resolves to the same symbol.
