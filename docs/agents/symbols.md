@@ -112,10 +112,12 @@ pub struct DocumentSymbols {
 |--------|-------------|
 | `all()` | All symbols in the document |
 | `by_id(id)` | O(1) lookup by ID |
-| `children_of(parent_id)` | Iterate symbols whose `.container == parent_id` |
+| `children_of(parent)` | Iterate symbols whose `.container == parent`; pass `None` for top-level |
 | `enclosing_symbol_at(byte, kinds)` | Smallest symbol of given kinds that contains `byte`; used to determine "which function/class am I in?" |
-| `top_level_by_name(name)` | First top-level symbol with that name |
-| `type_by_name(name)` | Class, struct, or state symbol with that name |
+| `top_level_by_name(name)` | Top-level symbol with that name, preferring a non-State declaration |
+| `top_level_by_name_filtered(name, accept)` | First top-level symbol with that name whose kind satisfies `accept` |
+| `type_by_name(name)` | Object-typed symbol (class, native type, struct, or state) with that name, preferring non-State |
+| `type_by_name_filtered(name, accept)` | First object-typed symbol with that name whose kind satisfies `accept` |
 | `member_of(container, name)` | Iterate members of `container` with that name |
 | `local_at_byte(function, name, before_byte)` | Local or parameter named `name` in scope at `before_byte` |
 
