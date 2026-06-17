@@ -133,13 +133,14 @@ pub struct DocumentSymbols {
 | `func_decl` | `Function` or `Method` (depending on container) |
 | `event_decl` | `SymbolKind::Event` |
 | `member_var_decl` | `SymbolKind::Field` |
+| `autobind_decl` | `SymbolKind::Field` |
 | `local_var_decl_stmt` | `SymbolKind::Variable` |
 | `func_param_group` | `SymbolKind::Parameter` (one per `ident` in the group) |
 | `annotation` | Parsed into `Annotation`, attached to next symbol |
 | `type_annot` | Parsed via `Type::from_annotation` into `type_annotation` |
-| `specifier` | Sets `access` (`private`/`protected`) or `is_optional` (`optional`) |
+| `specifier` | Sets `access` (`private`/`protected`/`public`) or inserts into the `Specifiers` bitset (`final`, `editable`, `optional`, `out`, ...) |
 | `func_flavour` | Stored in `flavour` |
-| `func_block` | Scope for locals and parameters |
+| `func_block` | Opens the body scope for locals; parameters come from `func_params`, not here |
 
 ## extract_symbols walk
 
