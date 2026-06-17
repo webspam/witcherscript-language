@@ -7,29 +7,24 @@ This is a Rust crate (`witcherscript-language`) that produces two binaries:
 - `witcherscript-check` - CLI syntax validator (`src/main.rs`)
 - `witcherscript-lsp` - LSP server (`src/bin/witcherscript-lsp/`)
 
-## Module quick reference
+## Detail docs
 
-| File                           | Purpose                                                                        | Detail doc                                           |
-| ------------------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| `src/lib.rs`                   | Module declarations                                                             |                                                      |
-| `src/document.rs`              | `ParsedDocument`, parse entry points                                           |                                                      |
-| `src/cst/`                     | Shared tree-sitter CST traversal primitives - use these, never hand-roll a walk | _no detail doc yet_                                  |
-| `src/diagnostics/`             | `ParseDiagnostic`/`collect_diagnostics` (syntactic), `WorkspaceDiagnostic` (cross-file) | [diagnostics.md](docs/agents/diagnostics.md)         |
-| `src/files.rs`                 | Recursive `.ws` file collection via the `ignore` crate; `canonical_uri` URI normalisation | [lsp_server.md](docs/agents/lsp_server.md#uri-handling) |
-| `src/line_index.rs`            | Byte ↔ UTF-16 position mapping (LSP-compatible)                                |                                                      |
-| `src/script_env.rs`            | Script globals from `redscripts.ini`                                           |                                                      |
-| `src/symbols/`                 | `DocumentSymbols`, `Symbol`, `SymbolKind`, `extract_symbols`                   | [symbols.md](docs/agents/symbols.md)                 |
-| `src/builtins.rs` + `builtins/` | Synthetic engine types (`array<T>`) embedded from `.ws` files                  | [builtins.md](docs/agents/builtins.md)               |
-| `src/formatter.rs` + `formatter/` | Document formatter - powers `textDocument/formatting`                        | _no detail doc yet_                                  |
-| `src/resolve/`                 | Resolution, inference, references, signatures, completion, and the extract refactors. `symbol_db/` + `workspace_index/` back lookups; `completion/` and `extract_*` are submodule trees. See detail doc for the full layout. | [resolution.md](docs/agents/resolution.md)           |
-| `src/resolve/tests/`           | Test suite split across many focused files - use as pattern reference | [testing.md](docs/agents/testing.md)                 |
-| `src/semantic_tokens/mod.rs`   | `TOKEN_TYPES`, `collect_semantic_tokens`, classify                             | [semantic_tokens.md](docs/agents/semantic_tokens.md) |
-| `src/semantic_tokens/tests.rs` | Semantic token unit tests                                                      |                                                      |
-| `src/main.rs`                  | CLI binary entry point                                                         | [architecture.md](docs/agents/architecture.md)       |
-| `src/bin/witcherscript-lsp/`   | LSP server: `Backend` + thin `LanguageServer` impl (`backend.rs`), handlers grouped by concern (`completion.rs`, `queries.rs`, `references_rename.rs`, `text_sync.rs`, `lifecycle.rs`), plus `convert/`, `indexing/`, `cst_cache.rs`, `watcher.rs`, and tests under `tests/`. See detail doc. | [lsp_server.md](docs/agents/lsp_server.md)           |
-| `benches/`                     | Perf benches: criterion `lib_*.rs` (local wall-clock), `iai_lib.rs` (iai-callgrind, CI regression gate), `lsp_smoke.rs` (local LSP-binary smoke); shared synth in `common/synth.rs` | [testing.md](docs/agents/testing.md#benchmarks)      |
+Start with [architecture.md](docs/agents/architecture.md) for the source file tree, module graph, data-flow pipeline, and index model. Then the area docs:
 
-Full architecture diagram and data flow: [docs/agents/architecture.md](docs/agents/architecture.md)
+| Doc | Covers |
+| --- | --- |
+| [resolution.md](docs/agents/resolution.md) | Resolution, inference, references, signatures, completion; `SymbolDb` / `WorkspaceIndex` |
+| [mod_resolve.md](docs/agents/mod_resolve.md) | Rules to follow when editing resolve / parsing / syntax code (read first) |
+| [symbols.md](docs/agents/symbols.md) | `DocumentSymbols`, `Symbol`, `SymbolKind`, `extract_symbols` |
+| [diagnostics.md](docs/agents/diagnostics.md) | Syntactic and cross-file validation rules |
+| [semantic_tokens.md](docs/agents/semantic_tokens.md) | `TOKEN_TYPES`, classification, highlighting |
+| [lsp_server.md](docs/agents/lsp_server.md) | LSP backend: handlers, capabilities, URI handling, indexing, text sync |
+| [builtins.md](docs/agents/builtins.md) | Embedded engine types (`array<T>`, classes, enums) |
+| [class_body_specifiers.md](docs/agents/class_body_specifiers.md) | Which specifiers and flavours are valid in a class body |
+| [testing.md](docs/agents/testing.md) | Test inventory, fixtures, benchmarks |
+| [writing-tests.md](docs/agents/writing-tests.md) | How to write tests: style, helpers, fixture markers |
+| [language.md](docs/agents/language.md) | WitcherScript language cheat sheet |
+| [invariants.md](docs/agents/invariants.md) | Non-obvious constraints that cause silent bugs |
 
 ## Task guide - what to touch for a given task
 
