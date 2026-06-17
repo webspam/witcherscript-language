@@ -153,16 +153,13 @@ IMPORTANT: The first part of the commit message should be HUMAN RELATABLE. DO NO
 write which part of the code you changed; instead, what actual problem is it fixing /
 what goal is it achieving?
 
-Commit message format: one imperative-mood subject line (≤50 chars), blank line, then
-optional body. Be CONCISE. Examples:
+Commit message format: one imperative-mood subject line (≤50 chars). Be CONCISE. Examples:
 
-```
+```txt
 Add hover text for enum member symbols
-
-Extend hover_text() to emit "enum member <Name>" for EnumMember kind.
 ```
 
-```
+```txt
 Fix late-local-var rule skipping nop statements
 ```
 
