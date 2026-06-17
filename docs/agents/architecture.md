@@ -1,174 +1,30 @@
 # Architecture overview
 
-## Source file tree
+## Module map
 
-Most modules carry a colocated `tests.rs` (or `tests/` submodule), omitted here; only dedicated test directories are shown.
+Top-level modules and their responsibilities. Per-file detail lives in the area docs (indexed in [AGENTS.md](../../AGENTS.md)); this section changes only when a subsystem is added or repurposed.
 
 ```
 src/
-├── lib.rs                          module declarations
-├── main.rs                         CLI binary (witcherscript-check)
-├── bin/
-│   ├── dump_tree.rs               developer helper: prints a tree-sitter parse tree
-│   └── witcherscript-lsp/         LSP server binary (handlers split by LSP concern)
-│       ├── main.rs                router + middleware wiring; stdio / TCP serve
-│       ├── backend.rs             Backend state struct + shared handler helpers
-│       ├── compilation.rs         atomically-swapped index/document snapshot + COW builder
-│       ├── lifecycle.rs           initialize / initialized; registers LSP capabilities
-│       ├── text_sync.rs           didOpen / didChange / didClose + watched-file events
-│       ├── edit_queue.rs          in-flight edit state pending reindex
-│       ├── completion.rs          completion handler; dispatch to resolve/completion/
-│       ├── completion_cache.rs    merged global/type completion list, cached by hash
-│       ├── references_rename.rs   references, prepareRename, rename + cross-doc merge
-│       ├── config.rs              Config struct, DiagnosticsScope, settings parsing
-│       ├── project_manifest.rs    parse witcherscript.toml; resolve scripts_root
-│       ├── convert/               LSP <-> internal conversion
-│       │   ├── mod.rs             re-exports the convert sub-modules
-│       │   ├── positions.rs       LSP <-> internal position / range
-│       │   ├── diagnostics.rs     internal diagnostics + base-conflict actions to LSP
-│       │   ├── completions.rs     definitions to CompletionItem / SignatureHelp
-│       │   ├── symbols.rs         symbols to DocumentSymbol / WorkspaceSymbol / hover
-│       │   ├── highlights.rs      HighlightKind to LSP DocumentHighlight
-│       │   ├── inlay_hints.rs     InlayHintInfo to LSP InlayHint
-│       │   ├── file_ops.rs        create / delete / rename params to file events
-│       │   └── refactor/          code-action refactorings (extract, inline, if/switch, join/split)
-│       ├── queries/               read-only request handlers
-│       │   ├── mod.rs             shared query helpers; FormatOptions
-│       │   ├── hover.rs           hover
-│       │   ├── definition.rs      goto-definition + goto-type-definition
-│       │   ├── document_symbol.rs document symbols
-│       │   ├── workspace_symbol.rs workspace symbol search
-│       │   ├── signature_help.rs  signature help
-│       │   ├── semantic_tokens.rs semantic tokens full / delta / range
-│       │   ├── document_highlight.rs document highlight
-│       │   ├── inlay_hint.rs      inlay hints (config-gated)
-│       │   ├── code_action.rs     base-conflict + refactor code actions
-│       │   ├── code_lens.rs       base-definition + reference-count lenses
-│       │   ├── diagnostics.rs     document + workspace pull-diagnostic handlers
-│       │   └── formatting.rs      full-document formatting
-│       ├── semantic_tokens_cache.rs  per-document semantic token cache + delta
-│       ├── cst_cache.rs           per-file CST diagnostic cache
-│       ├── diagnostics_publish.rs bundles + publishes all diagnostic categories
-│       ├── view_refresh.rs        client refresh requests on state-version change
-│       ├── file_scope.rs          classify a URI (project / legacy / base / loose)
-│       ├── file_scope_status.rs   witcherscript/fileScopeStatus notification type
-│       ├── legacy_status.rs       witcherscript/legacyScriptStatus notification type
-│       ├── indexing/              workspace + base-script indexing (helpers, open_documents, legacy, scan)
-│       ├── logging.rs             tracing layer forwarding events to the client
-│       ├── watcher.rs             file watchers to canonical upsert / delete
-│       └── tests/                 unit + E2E / integration tests (per-feature + e2e/ subdir)
-├── builtins.rs                     embed + parse engine .ws sources into a WorkspaceIndex
-├── cst/                            shared tree-sitter CST traversal primitives
-│   ├── mod.rs                      re-exports the cst submodules
-│   ├── ancestors.rs                ancestor-of-kind lookup
-│   ├── descendants.rs              collect / detect descendant nodes by kind
-│   ├── fields.rs                   generated grammar field-name constants
-│   ├── grammar.rs                  error-recovery-aware call / member / arg accessors
-│   ├── if_stmt.rs                  if-branch exclusivity + else-chain analysis
-│   ├── kinds.rs                    generated grammar node-kind constants
-│   ├── literals.rs                 classify whether a node is a constant literal
-│   ├── nav.rs                      child / sibling navigation (nth, named, field)
-│   ├── offsets.rs                  byte-offset to node queries; cursor classification
-│   ├── sourcegen.rs                test-only: regenerate kinds.rs / fields.rs
-│   └── walk.rs                     iterative pre/post-order visitor; Fused two-visitor
-├── document.rs                     parse orchestration, ParsedDocument
-├── diagnostics/                    ParseDiagnostic + the cross-file CST rule passes
-│   ├── mod.rs                      registers passes; collect_cst_diagnostics_for_document
-│   ├── cst_walker.rs               CstRule trait, parallel pass runner
-│   ├── abstract_instantiation.rs   flag new on abstract classes
-│   ├── annotation_state_target.rs  validate state-targeting annotation names
-│   ├── base_script_conflict.rs     workspace files shadowing base-game scripts
-│   ├── duplicate_local.rs          duplicate parameter / local variable names
-│   ├── duplicate_symbols.rs        cross-file top-level name collisions
-│   ├── inherited_field.rs          member field duplicating an inherited field
-│   ├── override_consistency.rs     access level + param count on overrides
-│   ├── shadowing.rs                locals / fields shadowing globals or fields
-│   ├── state_owner.rs              a state's owner class must be a statemachine
-│   ├── super_field_access.rs       illegal field access through super
-│   ├── type_mismatch.rs            assignment / return / call-arg type checks
-│   ├── unknown_method.rs           method calls resolving to no known member
-│   ├── unknown_symbol.rs           references resolving to no known symbol
-│   ├── unused_symbol.rs            parameters / locals / fields never referenced
-│   └── wrapped_method.rs           validate @wrapMethod usage and call patterns
-├── files.rs                        recursive .ws file discovery, canonical_uri
-├── formatter.rs                    document formatter entry point (textDocument/formatting)
-├── formatter/
-│   ├── core.rs                     formatter state: emit, indent, comment flushing
-│   ├── action.rs                   indent + substitution helpers
-│   ├── declarations.rs             class / struct / enum / state declarations
-│   ├── signatures.rs               function parameter lists + return types
-│   ├── if_action.rs                if-chain collapse/expand layout rewrites
-│   ├── switch_action.rs            switch collapse/expand layout rewrites
-│   ├── statements/                 statement + expression formatting
-│   │   ├── mod.rs                  statement formatting dispatch
-│   │   ├── if_stmt.rs              per-if block layout, forced-block coercion
-│   │   └── switch.rs               switch arm collection + aligned rendering
-│   └── tests/                      formatter fixture + unit tests
-├── line_index.rs                   byte ↔ UTF-16 position mapping (LSP-compatible)
-├── script_env.rs                   INI script globals parser
-├── strings.rs                      string utilities: suffixing, casing, identifiers
-├── types/                          structured Type enum + type-annotation parsing
-│   ├── mod.rs                      Type enum (Primitive, Named, Array, Null, ...)
-│   └── parse.rs                    parse type annotations; alias + native-type rules
-├── test_support/                   test-only helpers (gated by the test-support feature)
-│   ├── mod.rs                      TestDb: build a WorkspaceIndex from a fixture string
-│   └── fixture.rs                  marker fixture parser ($0 cursor, ^^^ spans, //- headers)
-├── symbols/                        SymbolKind, Symbol, DocumentSymbols, extract_symbols
-│   ├── mod.rs                      public re-export surface for symbols
-│   ├── types.rs                    Symbol, SymbolId, SymbolKind, Specifiers, AccessLevel
-│   ├── extract.rs                  SymbolExtractor: CST walk to DocumentSymbols
-│   └── util.rs                     node_text, CST helper text extraction
-├── resolve/
-│   ├── mod.rs                      public re-export facade for the resolve subsystem
-│   ├── ast.rs                      shared cst/ navigation helpers; BUILTIN_TYPE_COMPLETIONS
-│   ├── assignability.rs            pure type-compatibility engine + implicit cast table
-│   ├── definition.rs               goto-definition: resolve identifier at a position
-│   ├── type_definition.rs          goto-type-definition: resolve a declared type
-│   ├── inference.rs                expression type inference; name / member resolution
-│   ├── references.rs               find-all-references for a resolved definition
-│   ├── document_highlight.rs       read/write occurrences of the symbol under cursor
-│   ├── signature.rs                signature help, hover text, parameter rendering
-│   ├── inlay_hints.rs              parameter-name inlay hints for call sites
-│   ├── name_context.rs             NameContext: position restricting valid symbol kinds
-│   ├── overrides.rs                pair workspace symbols with the base defs they shadow
-│   ├── shadowed_base.rs            base index view with overridden URIs filtered out
-│   ├── state_classes.rs            engine-synthesised backing class for state decls
-│   ├── reaching_defs.rs            reaching-definitions analysis for one local
-│   ├── writes.rs                   classify write sites (assign targets, out-args)
-│   ├── selection.rs                classify / trim a byte-range selection for refactors
-│   ├── edit_plan.rs                EditPlan / Splice / Extraction byte-range edits
-│   ├── extract_var.rs              extract-variable refactor
-│   ├── inline_var.rs               inline-variable refactor
-│   ├── join_split_decl.rs          join / split variable-declaration refactors
-│   ├── completion_catalog.rs       CompletionCatalog: global callable / type / enum lists
-│   ├── workspace_symbols.rs        ranked workspace-wide symbol search (workspace/symbol)
-│   ├── subscription_registry.rs    tracks which docs observe which symbol names
-│   ├── body_model/                 request-scoped semantic model of one callable body
-│   ├── extract_callable/           extract function / method (captures, render, statements)
-│   ├── workspace_index/            WorkspaceIndex (mod, indices, lookup, subscribers)
-│   ├── symbol_db/                  SymbolDb (mod, lookup, generics)
-│   ├── completion/                 completion submodule
-│   │   ├── mod.rs                  re-export facade for the completion sub-modules
-│   │   ├── body_function.rs        expression / statement completions in bodies
-│   │   ├── body_class.rs           keyword completions in class / state / struct bodies
-│   │   ├── body_script.rs          keyword + annotation completions at script top level
-│   │   ├── comment.rs              predicate: is the cursor inside a comment?
-│   │   ├── globals.rs              merge global callables, script globals, enum members
-│   │   ├── headers.rs              keyword completions in declaration headers (extends, in)
-│   │   ├── members.rs              member-access completions by inferred receiver type
-│   │   ├── new_expr.rs             type + lifetime completions for new expressions
-│   │   └── types.rs                type-name completions at annotation / cast positions
-│   └── tests/                      resolution + completion + refactor tests
-└── semantic_tokens/
-    └── mod.rs                      TOKEN_TYPES, collect_semantic_tokens, classify
+├── lib.rs            module declarations (bare `pub mod`s)
+├── main.rs           CLI validator entry point (witcherscript-check)
+├── bin/witcherscript-lsp/  LSP server binary  (see lsp_server.md)
+├── cst/              shared tree-sitter CST traversal primitives
+├── document.rs       parse orchestration; ParsedDocument
+├── diagnostics/      ParseDiagnostic + cross-file CST rule passes  (see diagnostics.md)
+├── symbols/          Symbol, DocumentSymbols, extract_symbols  (see symbols.md)
+├── resolve/          resolution, inference, completion, refactors; SymbolDb / WorkspaceIndex  (see resolution.md, mod_resolve.md)
+├── semantic_tokens/  semantic-token classification  (see semantic_tokens.md)
+├── formatter/        document formatter (entry point formatter.rs)
+├── builtins.rs       embedded engine types parsed into a WorkspaceIndex  (see builtins.md)
+├── types/            structured Type enum + type-annotation parsing
+├── script_env.rs     INI script-globals parser (ScriptEnvironment)
+├── line_index.rs     byte ↔ UTF-16 position mapping (LSP-compatible)
+├── files.rs          .ws file discovery + canonical_uri
+├── strings.rs        string utilities
+└── test_support/     TestDb + fixture parser, test-only  (see writing-tests.md)
 
-tests/
-├── parser_fixtures.rs              fixture-driven parse tests (valid/ and invalid/)
-├── language_features.rs            integration tests for symbol extraction + resolution
-└── fixtures/
-    ├── valid/                      .ws files that must parse with zero diagnostics
-    ├── invalid/                    .ws files that must produce at least one diagnostic
-    └── formatter/                  before/after inputs for formatter fixture tests
+tests/                crate-root integration tests + .ws fixtures (valid/, invalid/, formatter/)
 ```
 
 ## Module dependency graph
