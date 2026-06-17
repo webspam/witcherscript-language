@@ -118,14 +118,7 @@ Tokens are produced in tree walk order (top-to-bottom, left-to-right), which mat
 
 ## Single-line constraint
 
-Multi-line tokens are silently skipped:
-```rust
-if range.start.line == range.end.line && range.end.character > range.start.character {
-    // emit token
-}
-```
-
-This is a defensive check; in practice WitcherScript identifiers don't span lines, but string literals can. String literals that happen to span lines are skipped rather than causing encoding errors.
+A token is emitted only when it starts and ends on the same line. Identifiers never span lines; a multi-line string literal is the only case that can, and it is silently skipped (the per-line delta encoding can't represent a token spanning lines).
 
 ## Recursion rule
 
