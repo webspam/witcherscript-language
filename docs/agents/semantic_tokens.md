@@ -26,13 +26,9 @@ The `classify()` function dispatches on `node.kind()`:
 | `literal_int`, `literal_float`, `literal_hex` | `number` (10) |
 | `specifier` | `modifier` (13) |
 | `func_flavour`, `autobind_single` | `modifier` (13) |
-| Anonymous node (keyword text) | `modifier` (13) if in keyword list, else skipped |
+| Anonymous node (keyword text) | `modifier` (13) if in the declaration/modifier keyword set (`classify_anonymous_keyword`), else skipped |
 
 `literal_bool`, `literal_null`, `this_expr`, `super_expr`, etc. are **not classified** - TextMate grammar handles constant/language keywords.
-
-### Keyword list (anonymous nodes → modifier)
-
-`class`, `struct`, `enum`, `state`, `function`, `event`, `extends`, `var`, `autobind`, `defaults`, `hint`, `abstract`, `statemachine`, `latent`, `import`, `const`, `final`, `editable`, `saved`, `optional`, `out`, `inlined`, `private`, `protected`, `public`, `cleanup`, `entry`, `exec`, `quest`, `reward`, `storyscene`, `timer`, `single`
 
 ## classify_ident: declaration vs reference
 
