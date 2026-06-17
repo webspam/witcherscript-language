@@ -2,6 +2,8 @@
 
 ## Source file tree
 
+Most modules carry a colocated `tests.rs` (or `tests/` submodule), omitted here; only dedicated test directories are shown.
+
 ```
 src/
 ├── lib.rs                          module declarations
@@ -28,6 +30,7 @@ src/
 │       ├── watcher.rs             file-system watcher integration
 │       ├── tests.rs               #[cfg(test)] LSP-specific unit tests
 │       └── tests/                 E2E and integration tests (per-feature files + e2e/ subdir)
+├── builtins.rs                     embed + parse engine .ws sources into a WorkspaceIndex
 ├── cst/                            shared tree-sitter CST traversal primitives
 │   ├── ancestors.rs               ancestor-of-kind lookup
 │   ├── grammar.rs                 grammar node-kind helpers
@@ -53,6 +56,13 @@ src/
 │   └── statements.rs               statement + expression formatting
 ├── line_index.rs                   byte ↔ UTF-16 position mapping (LSP-compatible)
 ├── script_env.rs                   INI script globals parser
+├── strings.rs                      string utilities: suffixing, casing, identifiers
+├── types/                          structured Type enum + type-annotation parsing
+│   ├── mod.rs                      Type enum (Primitive, Named, Array, Null, ...)
+│   └── parse.rs                    parse type annotations; alias + native-type rules
+├── test_support/                   test-only helpers (gated by the test-support feature)
+│   ├── mod.rs                      TestDb: build a WorkspaceIndex from a fixture string
+│   └── fixture.rs                  marker fixture parser ($0 cursor, ^^^ spans, //- headers)
 ├── symbols/                        SymbolKind, Symbol, DocumentSymbols, extract_symbols
 │   ├── types.rs                    Symbol, DocumentSymbols, indexes
 │   ├── extract.rs                  SymbolExtractor, extract_symbols
