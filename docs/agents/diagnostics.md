@@ -66,54 +66,16 @@ In `src/bin/witcherscript-lsp/convert/diagnostics.rs`. Every diagnostic carries 
 
 ## Adding a new validation rule
 
-**Syntactic (single-document) rule:**
+Every new rule needs a row in [../diagnostics/validation.md](../diagnostics/validation.md).
 
-1. Add a new `collect_*` function in `src/diagnostics/mod.rs` that walks the tree for the target pattern.
-2. Call it from `collect_diagnostics()`.
-3. Add a unit test in the `#[cfg(test)]` block in `src/diagnostics/mod.rs`.
-4. If the rule is complex, add a fixture under `tests/fixtures/invalid/` (file must produce at least one diagnostic).
-5. Document the rule in the "Diagnostics" section of `README.md`.
+**Syntactic (single-document):** add a check in `mod.rs` and fire it from `SyntaxDiagnostics::enter` on the target node kind; add a case to `tests.rs`. For a rule best exercised by a whole file, add a fixture under `tests/fixtures/invalid/` (it must produce at least one diagnostic).
 
-**Workspace (cross-file), index-walking rule** (no CST traversal needed - operates over
-`WorkspaceIndex` / `ScriptEnvironment`):
+**Workspace, index-walking** (reads `WorkspaceIndex` / `ScriptEnvironment`, no CST walk): add a submodule returning `HashMap<uri, Vec<WorkspaceDiagnostic>>`, re-export its entry point from `mod.rs`, and call it from `collect_workspace_diagnostics` in `diagnostics_publish.rs` - extending `BundleFingerprint` if it reads an input not already covered. Unit-test in the submodule (fixtures cannot express cross-file rules).
 
-1. Add a new submodule under `src/diagnostics/` returning `HashMap<uri, Vec<WorkspaceDiagnostic>>`.
-2. Re-export its entry point from `src/diagnostics/mod.rs`.
-3. Call it from `collect_workspace_diagnostics` in `src/bin/witcherscript-lsp/diagnostics_publish.rs` (the helper feeds both pull entry points).
-4. Add unit tests in the submodule's `#[cfg(test)]` block (fixtures cannot express cross-file rules).
-5. Document the rule in `README.md`.
+**Workspace, CST-walking** (inspects each tree, consults the `SymbolDb`):
 
-**Workspace (cross-file), CST-walking rule** (needs to inspect the tree of each open
-document - e.g. unknown method/field access, type mismatch):
+1. Add a submodule with a unit struct implementing `CstRule`. `interested_in(kind)` returns `true` only for the kinds it inspects (the dispatcher short-circuits on it); `visit` bails when `ctx.in_error_subtree`, then pushes into `ctx.diagnostics`. Use `infer_type_memo(..., ctx.type_memo)` for receiver-type inference so chained calls share work.
+2. Register the struct in `collect_cst_diagnostics_for_document` in `mod.rs`. The pull handlers and the `cst_cache` (keyed on `(parse_version, DbFingerprint)`) pick it up automatically.
+3. Unit-test in the submodule.
 
-1. Add a new submodule under `src/diagnostics/` containing a unit struct (e.g. `MyRule`)
-   that implements `CstRule` from `crate::diagnostics::cst_walker`.
-2. In `interested_in(kind)`, return `true` only for the node kinds the rule actually
-   inspects - the dispatcher uses this to short-circuit.
-3. In `visit(node, ctx)`, push `WorkspaceDiagnostic` values into `ctx.diagnostics`. Use
-   `infer_expr_type_memo(ctx.uri, ctx.document, ctx.db, node, byte, ctx.type_memo)`
-   for receiver-type inference so chained calls share work.
-4. Register the rule struct in `collect_cst_diagnostics_for_document` in
-   `src/diagnostics/mod.rs`. The LSP picks it up automatically - no edit to the
-   pull handlers needed.
-5. The per-document cache in `src/bin/witcherscript-lsp/cst_cache.rs` already keys on
-   `(parse_version, workspace_generation, base_generation, env_version)`, so rules
-   registered in `collect_cst_diagnostics_for_document` re-run only when the document is
-   reparsed or workspace state changes.
-6. Add unit tests in the submodule's `#[cfg(test)]` block.
-7. Document the rule in `README.md`.
-
-Do not walk the tree yourself in a CST rule - register interest with `CstRule` so all
-rules share a single walk per document and the per-call `TypeMemo` survives across
-rule invocations.
-
-## Existing tests
-
-Five tests in `src/diagnostics/mod.rs`:
-- `accepts_local_vars_before_statements` - var before code is fine
-- `reports_local_vars_after_statements` - var after `a = 1` fires
-- `reports_ternary_expression` - `cond ? a : b` fires `ternary_cond_expr`
-- `accepts_non_ternary_expression` - plain assignment produces no diagnostic
-- `reports_incomplete_member_access` - `super.` without ident fires
-
-These test `collect_diagnostics()` directly with inline source strings.
+Never walk the tree yourself in a CST rule: register interest with `CstRule` so all rules share one walk per document and the per-call `TypeMemo` survives across rule invocations.
