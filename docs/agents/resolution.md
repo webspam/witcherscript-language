@@ -62,7 +62,7 @@ SymbolDb::new(&workspace_index, &base_scripts_index)
 // Precedence: workspace → base → builtins (for same-name symbols, first hit wins)
 ```
 
-`SymbolDb` mirrors most `WorkspaceIndex` queries but searches workspace first, then base, then builtins. For member resolution it uses `find_member_chain_cross()` which can traverse inheritance across all three indexes simultaneously.
+`SymbolDb` mirrors most `WorkspaceIndex` queries but searches workspace first, then base, then builtins. For member resolution it uses `find_member()`, which walks the inheritance chain across all three indexes.
 
 ### Implicit base classes
 
@@ -70,9 +70,9 @@ A class with no `extends` implicitly extends `CObject`; a state with no `extends
 
 ### Generic type lookup (array<T>)
 
-When `find_member` / `members_of_tiered` / `direct_members_of` are called with a container like `array<int>`, `SymbolDb` extracts the constructor (`array`) and element (`int`) via `parse_generic_type()`, looks up members of `array` in the chain, and then substitutes the placeholder ident `T` with `int` in each returned `Definition`'s `type_annotation`, `signature`, `detail`, and `container_name`. Substitution is whole-ident only (`T` and `<T>` match, `TArray` does not). See [docs/agents/builtins.md](builtins.md) for the full story.
+When `find_member` / `members_of_tiered` / `direct_members_of` are called with a container like `array<int>`, `SymbolDb` extracts the constructor (`array`) and element (`int`) via `parse_generic_type()`, looks up members of `array` in the chain, and then substitutes the placeholder ident `T` with `int` in each returned `Definition`'s `type_annotation` and `container_name`. Substitution is whole-ident only (`T` and `<T>` match, `TArray` does not). See [docs/agents/builtins.md](builtins.md) for the full story.
 
-`all_types()` deliberately omits the builtins index - we never want `array` to appear as a user-completable type name.
+`all_types()` includes builtin types but drops `array` (and the orphan-member bucket), so `array` never appears as a user-completable type name.
 
 ## resolve_definition priority chain
 
