@@ -56,8 +56,6 @@ makes the history easy to read.
 Before committing:
 
 1. Run `just test` and confirm all tests pass (runs fmt and clippy automatically).
-2. Stage only the files relevant to the change - avoid `git add .` when unrelated files
-   are dirty.
 
 ### Commit messages
 
