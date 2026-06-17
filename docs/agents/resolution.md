@@ -207,23 +207,14 @@ Each declaration line is prefixed by its access/specifier keywords (e.g. `privat
 
 ## Built-in type names
 
-Two `&[&str]` constants live in `ast.rs`, both re-exported from `resolve`:
+`BUILTIN_TYPE_COMPLETIONS` (in `ast.rs`, re-exported from `resolve`) is the primitive subset offered in a type-annotation context:
 
 ```rust
-// Full set of names treated as known types - engine primitives plus their
-// CamelCase aliases. `unknown_symbol` consults this so it never flags them.
-pub const BUILTIN_TYPES: &[&str] = &[
-    "bool", "byte", "float", "int", "name", "string", "void",
-    "Bool", "Float", "String", "CName",
-    "Int32", "Int16", "Int8", "Uint8", "Uint16", "Uint32", "Uint64", "StringAnsi",
-];
-
-// Primitive subset offered as completions in a type-annotation context.
 pub const BUILTIN_TYPE_COMPLETIONS: &[&str] =
     &["bool", "byte", "float", "int", "name", "string", "void"];
 ```
 
-Neither set lives in any `WorkspaceIndex`. `type_completions()` offers `BUILTIN_TYPE_COMPLETIONS`; resolution and the `unknown_symbol` diagnostic treat every name in `BUILTIN_TYPES` as a valid primitive.
+The full primitive set - these plus CamelCase aliases like `Int32`, `CName`, `StringAnsi` - lives in `types::parse` as `PRIMITIVE_ALIASES`. `is_builtin_type_name()` derives from it, and the `unknown_symbol` diagnostic uses it so it never flags a primitive. Neither set lives in any `WorkspaceIndex`.
 
 ## Script environment (INI globals)
 
