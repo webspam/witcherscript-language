@@ -78,7 +78,3 @@ Fix late-local-var rule skipping nop statements
 ## Code style
 
 See `CODESTYLE.md` for the normative Rust code standard.
-
-## Releasing
-
-Version bumps follow the process in [RELEASING.md](RELEASING.md).
