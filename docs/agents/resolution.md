@@ -79,27 +79,21 @@ When `find_member` / `members_of_tiered` / `direct_members_of` are called with a
 ```
 resolve_definition(uri, document, db, position)
     │
-    ├─ 1. Self keyword? (this/super/parent)
-    │      this   → enclosing class definition
-    │      super  → superclass of enclosing class
-    │      parent → owner class of enclosing state (public members only)
+    ├─ 1. Self keyword (this/super/parent)
+    │      this   → enclosing class/state definition
+    │      super  → base class of enclosing type
+    │      parent → owner class of enclosing state
     │
-    ├─ 2. After dot in member_access_expr?
-    │      → infer_expr_type(receiver) → find_member(type, name, Protected)
+    ├─ 2. `wrappedMethod()` in a @wrapMethod body → the wrapped method
     │
-    ├─ 3. Local variable or parameter in enclosing function
+    ├─ 3. Definition site itself (cursor is on the name being defined)
     │
-    ├─ 4. Member of enclosing class/struct/state
+    ├─ 4. After a dot → infer the receiver type, then find_member
     │
-    ├─ 5. Top-level symbol in this document
-    │
-    ├─ 6. Top-level symbol in workspace (db.find_top_level)
-    │      └─ workspace shadows base for same-name symbols
-    │
-    ├─ 7. Script global from INI (db.find_script_global)
-    │      redirects to the class definition if the class is loaded
-    │
-    └─ 8. Definition site itself (fallback: cursor is on the name being defined)
+    └─ 5. Plain name, in order:
+           local/param → enclosing-type member → top-level in document
+           → workspace → base → builtins (workspace shadows base)
+           → enum member → script global from INI
 ```
 
 ## Member chain traversal
