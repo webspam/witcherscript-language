@@ -12,23 +12,16 @@ Resolution-aware highlighting layered on top of the TextMate grammar. TextMate a
 - One token type covers several symbol kinds (`symbol_kind_to_token_type`): `class` also paints Struct, State, and native types; `function` also paints methods and events.
 - Of the two modifiers, only `defaultLibrary` is emitted (on redscripts.ini globals); `declaration` is never set.
 
-## Classification rules
+## What classify() colours
 
-The `classify()` function dispatches on `node.kind()`:
+`classify()` dispatches on `node.kind()`. The non-trivial cases:
 
-| Grammar node | Token type |
-|---|---|
-| `ident` | see classify_ident() below |
-| `annotation_ident` | `decorator` (12) |
-| `comment` | `comment` (8) |
-| `literal_string` | `string` (9) |
-| `literal_name` | `enumMember` (2) - CName literals like `'SomeName'` |
-| `literal_int`, `literal_float`, `literal_hex` | `number` (10) |
-| `specifier` | `modifier` (13) |
-| `func_flavour`, `autobind_single` | `modifier` (13) |
-| Anonymous node (keyword text) | `modifier` (13) if in the declaration/modifier keyword set (`classify_anonymous_keyword`), else skipped |
+- **Literals** take their obvious type, with one surprise: a CName literal (`'SomeName'`) is emitted as `enumMember`, not `string`.
+- **`specifier`, `func_flavour`, `autobind_single`, and the declaration/modifier keywords** (the `class`/`var`/`private`/`latent`/... set in `classify_anonymous_keyword`) are `modifier`. Control-flow and constant keywords are intentionally absent - TextMate owns them.
+- **`annotation_ident`** (`@addField`, ...) is `decorator`.
+- **`ident`** is the hard case, below.
 
-`literal_bool`, `literal_null`, `this_expr`, `super_expr`, etc. are **not classified** - TextMate grammar handles constant/language keywords.
+`literal_bool`, `literal_null`, `this_expr`, and `super_expr` are deliberately left unclassified - the grammar already colours them.
 
 ## classify_ident: declaration vs reference
 
