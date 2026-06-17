@@ -53,17 +53,6 @@ The first failing case short-circuits the rest. Still better than copy/paste; us
 
 **Each case must carry a unique label**, and every assertion must include that label in its message. When the suite fails, the panic output must name which case failed - otherwise you are left guessing which of 12 inputs broke. (rstest's case names cover this for free; the for-loop pattern does it via `c.name` in the message.)
 
-Use table-driven form when:
-
-- Setup is identical across cases and only the input/expected output varies.
-- You have three or more analogous cases (two is borderline - judge by clarity).
-- The cases form a logical group ("operator precedence", "edge cases for empty input", "all the visibility modifiers").
-
-Use separate tests when:
-
-- Setup genuinely differs (different fixtures, different harness state).
-- Assertion logic differs in a way that does not compress cleanly into one body.
-
 ## Use the shared test toolkit
 
 `src/test_support/` holds the canonical helpers. Inside the library, `use crate::test_support::TestDb`; inside the LSP binary or integration tests, `use witcherscript_language::test_support::TestDb` (the `test-support` Cargo feature is on by default).
