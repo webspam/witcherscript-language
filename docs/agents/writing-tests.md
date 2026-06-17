@@ -112,10 +112,6 @@ When a test needs a cursor, use a `$0` marker in the source - never hand-counted
 
 Exception: tests that read a fixture file from `tests/fixtures/` cannot embed `$0` (that would break the parser-fixture suite). For those, keep the hand-counted positions but pull them into a `for` loop or `#[rstest] #[case]` so the positions live alongside their human-readable labels.
 
-## Do not copy/paste tests
-
-Duplicated tests drift. Someone updates one case's assertion, forgets the others, and the suite quietly disagrees with itself. If you catch yourself duplicating a test to tweak one constant, parametrize it via one of the table-driven forms above or pull the shared setup into a helper. Copy/paste is acceptable only when the duplication is genuinely temporary and you delete it in the same change.
-
 ## Test names and assertion messages
 
 When refactoring a test (e.g. converting from a `struct Case` + for-loop to `#[rstest]`), keep the original `#[test] fn` name and the original `assert!`/`assert_eq!` messages byte-identical. A diff that simultaneously renames a test and reshapes it is much harder to review than two separate changes.
