@@ -69,8 +69,6 @@ LSP semantic tokens use delta encoding. The output is a flat `Vec<u32>` with gro
 
 `delta_line` and `delta_start` are relative to the previous token (not absolute). On a new line `delta_start` resets to the absolute column. The token modifiers bitset is 0 for almost every token; redscripts.ini globals are the only emitted tokens that set a modifier (`defaultLibrary`, bit 1).
 
-Tokens are produced in tree walk order (top-to-bottom, left-to-right), which matches LSP requirements.
-
 ## Range requests
 
 `textDocument/semanticTokens/range` is served by `collect_semantic_tokens_in_range_cancellable`, which converts the LSP range to a byte range (clamped on conversion failure, mirroring `inlay_hints`) and prunes every CST subtree that does not intersect it. Tokens partially overlapping the range edges are included; the LSP spec permits overflow. The encoded deltas still start from the document origin, so a range payload is standalone.
