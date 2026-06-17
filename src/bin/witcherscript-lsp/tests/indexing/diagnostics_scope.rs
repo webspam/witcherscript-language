@@ -804,3 +804,28 @@ async fn closing_an_excluded_file_does_not_index_it() {
         "closing an excluded duplicate must not introduce a duplicate-symbol diagnostic, got {after:?}",
     );
 }
+
+#[tokio::test]
+async fn opening_excluded_file_before_initial_index_does_not_index_it() {
+    let temp = LocalTempDir::new("ws_startup_open_excluded");
+    write_script(temp.path(), "Real.ws", "class CDup {}\n");
+
+    // initial_index_done stays false to model a restored-tab didOpen racing the startup index.
+    let backend = support::make_backend_with(DiagnosticsScope::Workspace);
+    backend.update_config(|c| c.files_exclude = vec!["**/build/**".to_string()]);
+    let build_path = write_script(temp.path(), "build/Dup.ws", "class CDup {}\n");
+    let build_url = Url::from_file_path(&build_path).expect("path -> url");
+
+    index_dir(&backend, temp.path()).await;
+
+    backend._did_open(support::open_params(&build_url, "class CDup {}\n"));
+
+    assert!(
+        !backend
+            .snapshot()
+            .workspace_index
+            .documents()
+            .any(|(uri, _)| uri == build_url.as_str()),
+        "an excluded file opened before the startup index completes must not be indexed",
+    );
+}
