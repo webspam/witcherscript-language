@@ -4,6 +4,15 @@ Resolution-aware highlighting layered on top of the TextMate grammar. TextMate a
 
 **Code:** `src/semantic_tokens/mod.rs` holds the walk and `classify()`; tests in `src/semantic_tokens/tests.rs`. The LSP request handlers are in `src/bin/witcherscript-lsp/queries/semantic_tokens.rs`, the delta cache in `src/bin/witcherscript-lsp/semantic_tokens_cache.rs`.
 
+## Data flow
+
+All three LSP requests - `full`, `full/delta`, `range` - funnel into `collect_in_byte_range`. It walks the CST in tree order (top-to-bottom, left-to-right, the order LSP requires) and calls `classify()` on each node. Four properties of that walk are load-bearing:
+
+- A node that classifies is emitted as one token spanning the whole node, and **its children are not visited**. If you teach `classify()` to colour a parent node, you suppress every token inside it.
+- A named node that does not classify is recursed into; an anonymous (keyword/punctuation) node that does not classify is skipped without recursing.
+- A token is emitted only when it starts and ends on one line. Identifiers never span lines; a multi-line string literal is the one thing that can, and it is dropped, because the delta encoding cannot represent a token across lines.
+- An identifier that resolves to nothing emits no token. Highlighting is best-effort: an undefined type stays uncoloured rather than being guessed.
+
 ## Token types
 
 `TOKEN_TYPES` and `TOKEN_MODIFIERS` (the LSP legend) are declared at the top of `mod.rs`; the index numbers used below (e.g. `modifier` (13)) are positions in that list. The parts not obvious from the list itself:
@@ -32,8 +41,6 @@ Every other ident is a reference and must be resolved. It falls through to the `
 1. Calls `classify_locally()` (local variables/parameters of enclosing function, then members of enclosing class/struct/state, then top-level symbols in the current document).
 2. If the ident is the RHS of a `member_access_expr` (i.e. after the `.`), calls `classify_definition_at_ident()` directly, which dispatches to `resolve_member_access()` to infer the receiver type and look up the member.
 3. Otherwise, calls `classify_definition_at_ident()` which searches locals, type members, document top-level, then the workspace db (`find_top_level`, `find_enum_member`, `find_script_global`). If the resolved definition is the class a script global redirects to (Go-To-Def jumps to `CR4Player` for `thePlayer`), or the synthetic INI Variable when that class is not loaded, the token is recoloured as `variable` (5) with the `defaultLibrary` modifier so `thePlayer` doesn't paint as a type. Workspace symbols that shadow the global name win normally and are not overridden.
-
-If nothing resolves, no token is emitted for the identifier.
 
 ## resolve_member_access (for `receiver.member` expressions)
 
@@ -72,14 +79,6 @@ Tokens are produced in tree walk order (top-to-bottom, left-to-right), which mat
 
 - previous entry matches `previousResultId` -> `SemanticTokensDelta` with a single minimal edit from `semantic_token_edits` (whole-token prefix/suffix trim; lsp-types represents edit data as `SemanticToken` structs, so edits stay 5-u32 aligned),
 - otherwise -> a full payload with a fresh `result_id` (protocol-correct fallback, never an error).
-
-## Single-line constraint
-
-A token is emitted only when it starts and ends on the same line. Identifiers never span lines; a multi-line string literal is the only case that can, and it is silently skipped (the per-line delta encoding can't represent a token spanning lines).
-
-## Recursion rule
-
-When `classify()` returns `Some(type)` for a node, the token covers the whole node span and the children are NOT visited. When `classify()` returns `None` for a named node, children are recursed. Anonymous nodes with no classification are silently skipped without recursion.
 
 ## Tests
 
