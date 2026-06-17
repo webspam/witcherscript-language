@@ -14,12 +14,13 @@
 ```rust
 pub enum SymbolKind {
     Class,        // class_decl
+    NativeType,   // builtin class retagged during builtins ingestion (no grammar node)
     Struct,       // struct_decl
     Enum,         // enum_decl
     EnumMember,   // enum_member_decl
     Function,     // func_decl at top level (no container)
     Method,       // func_decl inside a class/struct/state (has container)
-    Field,        // member_var_decl inside a class/struct/state
+    Field,        // member_var_decl or autobind_decl inside a class/struct/state
     Variable,     // local_var_decl_stmt inside a function body
     Parameter,    // ident inside func_param_group
     State,        // state_decl (associated with an owner class)
@@ -28,6 +29,8 @@ pub enum SymbolKind {
 ```
 
 `Function` vs `Method` is determined at extraction time: if a `func_decl` node has a non-None container it becomes `Method`.
+
+`NativeType` is the only variant not produced by extraction: native engine types are stubbed as `class` in the builtin source (no native-type syntax exists), then `DocumentSymbols::retag_top_level` rewrites their kind from `Class` to `NativeType` during builtins ingestion.
 
 ## Symbol struct
 
