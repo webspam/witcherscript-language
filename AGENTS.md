@@ -24,7 +24,7 @@ Start with [architecture.md](docs/agents/architecture.md) for the source file tr
 | [testing.md](docs/agents/testing.md) | Test inventory, fixtures, benchmarks |
 | [writing-tests.md](docs/agents/writing-tests.md) | How to write tests: style, helpers, fixture markers |
 | [language.md](docs/agents/language.md) | WitcherScript language cheat sheet |
-| [invariants.md](docs/agents/invariants.md) | Non-obvious constraints that cause silent bugs |
+| [invariants.md](docs/agents/invariants.md) | Non-obvious constraints that cause silent bugs - read before touching resolution, indexing, or text sync |
 
 ## Task guide - what to touch for a given task
 
@@ -40,14 +40,6 @@ Start with [architecture.md](docs/agents/architecture.md) for the source file tr
 | Add WitcherScript syntax support            | Grammar repo (`tree-sitter-witcherscript`) is external; pin new tag in `Cargo.toml`                                                                                                                |
 | Inspect grammar node kinds / rule structure | Read `../tree-sitter-witcherscript/grammar.js` (relative to repo root). Online: https://raw.githubusercontent.com/webspam/tree-sitter-witcherscript/refs/heads/master/grammar.js                   |
 | Add or edit a built-in method (e.g. `array.NewMethod`) | Edit `builtins/<name>.ws` + add a test under `src/resolve/tests/builtin_<name>.rs`                                                                                |
-
-## WitcherScript language cheat sheet
-
-Primitives, keywords, modifiers, receivers, annotations, and state-machine syntax: [docs/agents/language.md](docs/agents/language.md).
-
-## Key invariants
-
-The non-obvious constraints that cause silent bugs if violated (symbol IDs, UTF-16 positions, inheritance depth cap, the index model, loose files, read-only base scripts, incremental text sync, ...): [docs/agents/invariants.md](docs/agents/invariants.md). Read these before touching resolution, indexing, or text sync.
 
 ## Build and test
 
