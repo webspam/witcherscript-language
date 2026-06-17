@@ -108,16 +108,17 @@ Callers that want every visible member regardless of access pass `AccessLevel::P
 
 `SymbolDb::members_of` / `members_of_tiered` follow the same first-name-wins rule for enumeration - the closest declaration wins per name - and then filter the resulting set by `min_access`.
 
-## infer_expr_type
+## infer_type
 
 Used to determine the receiver's type for member access and chained calls:
 
 | Receiver node | Inferred type |
 |---|---|
 | `this_expr` | name of enclosing class/struct/state |
-| `super_expr` / `parent_expr` / `virtual_parent_expr` | superclass (via `detail`) |
+| `super_expr` | base class of enclosing type |
+| `parent_expr` / `virtual_parent_expr` | owner class of enclosing state |
 | `ident` | `type_annotation` of the resolved local/param/member |
-| `func_call_expr` | return type of the resolved function (recursive) |
+| `func_call_expr` | return type of the resolved callable (recursive) |
 | `member_access_expr` | return type of the resolved member (recursive) |
 | `new_expr` | type name from the new expression |
 
