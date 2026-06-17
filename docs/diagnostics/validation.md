@@ -41,7 +41,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 33  | `override_weaker_access`           | error    | A method override has weaker access than the ancestor's method                                     |
 | 34  | `override_param_count`             | error    | A method override declares a different parameter count than the ancestor's method                  |
 | 35  | `unused_symbol`                    | hint     | An unused local variable, parameter, or private field; rendered faded by editors                   |
-| 36  | `wrapped_method_modifier`         | error    | A modifier or flavour keyword is applied to a `@wrapMethod` function                                |
+| 36  | `wrapped_method_modifier`          | error    | A modifier or flavour keyword is applied to a `@wrapMethod` function                               |
 
 ## Details
 
