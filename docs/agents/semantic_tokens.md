@@ -85,8 +85,8 @@ If nothing resolves, no token is emitted for the identifier.
 | Receiver kind | Type inference |
 |---|---|
 | `this_expr` | name of enclosing class/struct/state |
-| `super_expr`, `virtual_parent_expr` | `base_class` of enclosing type |
-| `parent_expr` | `owner_class` of enclosing state |
+| `super_expr` | `base_class` of enclosing type |
+| `parent_expr`, `virtual_parent_expr` | `owner_class` of enclosing state |
 | `ident` | `type_annotation` of the resolved local/param/field, or `db.script_global_type()` |
 | `func_call_expr`, `member_access_expr` | return type inferred recursively |
 | anything else | returns None (no token) |
