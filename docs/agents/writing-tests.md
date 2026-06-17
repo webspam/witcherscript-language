@@ -85,7 +85,7 @@ Helpers in `test_support`:
 - `def_names(&[Definition])` / `def_names_tiered(&[(u8, Definition)])` - extract `Vec<&str>` of symbol names.
 - `assert_names_contain(actual, expected)` / `assert_names_exclude(actual, excluded)` - canonical membership assertions for completion-result name lists.
 
-Prefer these over hand-rolling `parse_document` + `WorkspaceIndex` + `SymbolDb` scaffolds. The `make_doc` / `make_index` helpers in `src/resolve/tests/mod.rs` remain available for low-level resolve tests but are now scaffolding for `TestDb`, not the default entry point.
+Prefer these over hand-rolling `parse_document` + `WorkspaceIndex` + `SymbolDb` scaffolds. The `make_doc` helper in `src/resolve/tests/mod.rs` remains available for low-level resolve tests, but `TestDb` is the default entry point.
 
 ## Inline snapshots: `expect-test`
 
