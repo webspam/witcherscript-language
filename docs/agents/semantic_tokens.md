@@ -133,12 +133,14 @@ When `classify()` returns `Some(type)` for a node, the token covers the whole no
 
 ## Tests
 
-`src/semantic_tokens/tests.rs` - 21 tests covering:
+`src/semantic_tokens/tests.rs` covers:
 - Class/enum/function/field/variable declaration sites
-- Resolved type annotations (only highlighted if the type is defined)
+- Resolved type annotations (only highlighted if the type is defined); primitive names like `int` get no token
 - Member access with `this.field`, local variable type inference
 - Inheritance: members from base classes via the db
 - Unresolvable identifiers produce no token
+- Script globals colour as `variable` + `defaultLibrary`; a workspace class shadowing the global name wins as `class`
 - CName literals (`'SomeName'`) emit `enumMember`
 - Keywords emit `modifier`
 - Comments and strings emit correct types
+- Cancellation returns `None`; range requests emit only the intersecting tokens
