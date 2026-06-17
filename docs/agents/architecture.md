@@ -32,10 +32,18 @@ src/
 │       └── tests/                 E2E and integration tests (per-feature files + e2e/ subdir)
 ├── builtins.rs                     embed + parse engine .ws sources into a WorkspaceIndex
 ├── cst/                            shared tree-sitter CST traversal primitives
-│   ├── ancestors.rs               ancestor-of-kind lookup
-│   ├── grammar.rs                 grammar node-kind helpers
-│   ├── nav.rs                     child / sibling navigation
-│   └── offsets.rs                 byte-offset → node queries
+│   ├── mod.rs                      re-exports the cst submodules
+│   ├── ancestors.rs                ancestor-of-kind lookup
+│   ├── descendants.rs              collect / detect descendant nodes by kind
+│   ├── fields.rs                   generated grammar field-name constants
+│   ├── grammar.rs                  error-recovery-aware call / member / arg accessors
+│   ├── if_stmt.rs                  if-branch exclusivity + else-chain analysis
+│   ├── kinds.rs                    generated grammar node-kind constants
+│   ├── literals.rs                 classify whether a node is a constant literal
+│   ├── nav.rs                      child / sibling navigation (nth, named, field)
+│   ├── offsets.rs                  byte-offset to node queries; cursor classification
+│   ├── sourcegen.rs                test-only: regenerate kinds.rs / fields.rs
+│   └── walk.rs                     iterative pre/post-order visitor; Fused two-visitor
 ├── document.rs                     parse orchestration, ParsedDocument
 ├── diagnostics/                    ParseDiagnostic, collect_diagnostics, per-pass modules
 │   ├── mod.rs                      public API: collect_diagnostics, ParseDiagnostic
