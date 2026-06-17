@@ -167,7 +167,8 @@ tests/
 ├── language_features.rs            integration tests for symbol extraction + resolution
 └── fixtures/
     ├── valid/                      .ws files that must parse with zero diagnostics
-    └── invalid/                    .ws files that must produce at least one diagnostic
+    ├── invalid/                    .ws files that must produce at least one diagnostic
+    └── formatter/                  before/after inputs for formatter fixture tests
 ```
 
 ## Module dependency graph
