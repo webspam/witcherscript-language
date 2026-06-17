@@ -89,7 +89,7 @@ Common annotations in WitcherScript modding:
 - `@wrapMethod(ClassName)` - wrap an existing method
 - `@replaceMethod(ClassName)` - replace an existing method
 
-Annotations on a declaration node appear as siblings immediately before it in the AST. The extractor accumulates them in `pending_annotations` and attaches them to the next non-annotation symbol.
+Annotations attach to a declaration two ways. Sibling annotations preceding a declaration are parsed and held in the enclosing `Mode::Body` frame's `pending` vec, then consumed by the next declaration via `take_pending`. Annotations that are direct children of the declaration node are read separately by `direct_annotations` and appended. Pending sibling annotations never consumed die with their frame.
 
 ## DocumentSymbols
 
