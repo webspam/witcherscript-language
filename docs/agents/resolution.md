@@ -193,16 +193,17 @@ Callable parameter lists come from `render_signature(db.display_parameters_of(..
 | Kind | Format |
 |------|--------|
 | `Method` | `(method) ClassName.name(params) : ReturnType` |
-| `Field` | `(field) <declaration as written>` (falls back to `(field) name : Type`) |
+| `Field` | `(field) name : Type` |
 | `Function` | `function name(params) : ReturnType` |
-| `Class`/`Struct`/`State` | `class Name` + `extends Base` on next line |
+| `Class`/`Struct`/`State` | `class Name extends Base` (one line) |
 | `Enum` | `enum Name` |
 | `EnumMember` | `enum member Name` |
+| `NativeType` | `native type Name` |
 | `Variable` | `var name : Type` |
 | `Parameter` | `(parameter) name : Type` |
 | `Event` | `event Name(params)` |
 
-Annotations are prepended as `@name(arg), @name2(arg2)`.
+Each declaration line is prefixed by its access/specifier keywords (e.g. `private final`); annotations, when present, lead on their own first line as `@name(arg), @name2(arg2)`.
 
 ## Built-in type names
 
