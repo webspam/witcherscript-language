@@ -165,7 +165,7 @@ Everything else is reported, including `string` -> `int` (which the compiler per
 
 These mirror the conversions the compiler applies without a cast:
 
-- into `string`: from `byte`, `int`, `float`, or `name`;
+- into `string`: from `bool`, `byte`, `int`, `float`, or `name`;
 - into `bool`: from `byte`, `int`, `float`, or `string`;
 - into `float`: from `byte` or `int`;
 - between `byte` and `int`, in either direction.
