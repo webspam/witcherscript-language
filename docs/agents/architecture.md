@@ -278,8 +278,8 @@ When constructing a `SymbolDb` for a request:
 - Exit code: 0 (ok), 1 (diagnostics found), 2 (runtime error)
 - Flags: `--dump-tree`, `--max-diagnostics N`
 
-**`src/bin/witcherscript-lsp/`** - LSP server (module split across `main.rs`, `backend.rs` + the per-concern handler files `lifecycle.rs` / `text_sync.rs` / `completion.rs` / `queries.rs` / `references_rename.rs`, plus `convert/`, `cst_cache.rs`, `indexing/`, `config.rs`, `diagnostics_publish.rs`, `file_scope.rs`, `file_scope_status.rs`, `legacy_status.rs`, `watcher.rs`, `logging.rs`, and `tests.rs` + per-feature files under `tests/`)
-- Async Tokio runtime; async-lsp framework over stdin/stdout
-- `Backend` struct holds all shared state behind `Arc<Mutex<>>`
+**`src/bin/witcherscript-lsp/`** - LSP server. Handlers are split by concern across `lifecycle.rs`, `text_sync.rs`, `completion.rs`, `references_rename.rs`, and the `queries/` directory (one file per read-only request), with `convert/` for LSP-to-internal conversion and the indexing / caching / status modules alongside.
+- Async Tokio runtime; async-lsp router over stdin/stdout (or TCP in listen mode)
+- `Backend` publishes shared state as an immutable `Compilation` snapshot behind `Arc<ArcSwap<>>`; readers load it lock-free, writers serialise on a `writer_lock` and atomically swap a copy-on-write replacement
 - All parse/resolve logic lives in the library; the binary only orchestrates
 - See [lsp_server.md](lsp_server.md) for full details
