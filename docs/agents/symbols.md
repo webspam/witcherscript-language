@@ -72,7 +72,7 @@ pub enum AccessLevel { Private, Protected, Public }  // Ord: Private < Protected
 
 Default is `Public` (WitcherScript default when no specifier is present).
 
-When traversing an inheritance chain, access is tightened: a child class can never see inherited `Private` members, and the minimum rises to `Protected` when going deeper (`min_access.max(AccessLevel::Protected)`).
+`AccessLevel::as_keyword` returns `None` for `Public` so editors omit the redundant keyword. Member access enforcement during inheritance-chain lookup lives in `resolve` (see [resolution.md](resolution.md)), not here.
 
 ## Annotation
 
