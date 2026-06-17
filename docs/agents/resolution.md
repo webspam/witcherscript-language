@@ -234,9 +234,9 @@ Script globals are the last resort in the priority chain (after workspace and ba
 
 ### Engine-injected overrides
 
-The game engine injects a small, fixed set of globals at runtime independently of `redscripts.ini`. `apply_engine_overrides` adds them after the INI parse, but only when the INI does not already mention them - any existing entry is treated as deliberate customisation and left alone.
+The game engine sets a small, fixed set of globals at runtime independently of `redscripts.ini`. `apply_engine_overrides` reconciles them after the INI parse: `theCamera` is upgraded from its stock `CCamera` to `CCameraDirector` unless the user gave it a custom type; `theTelemetry` is injected only when the INI does not already declare it.
 
-| Global | Injected type |
+| Global | Effective type |
 | --- | --- |
 | `theCamera` | `CCameraDirector` |
 | `theTelemetry` | `CR4TelemetryScriptProxy` |
