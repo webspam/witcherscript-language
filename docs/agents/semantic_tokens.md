@@ -23,26 +23,11 @@ Resolution-aware highlighting layered on top of the TextMate grammar. TextMate a
 
 `literal_bool`, `literal_null`, `this_expr`, and `super_expr` are deliberately left unclassified - the grammar already colours them.
 
-## classify_ident: declaration vs reference
+## Identifiers: declaration vs reference
 
-`ident` nodes have two modes based on their parent:
+A declaration-site ident takes a fixed token type from its parent decl node (class/struct/state -> `class`, enum -> `enum`, enum member -> `enumMember`, func/event -> `function`, member-var and autobind -> `property`, local var -> `variable`, param -> `parameter`). No resolution is involved; these always emit.
 
-**Declaration sites** (syntactically unambiguous, always emit):
-
-| Parent node | Token type |
-|---|---|
-| `class_decl`, `struct_decl`, `state_decl` | `class` (0) |
-| `enum_decl` | `enum` (1) |
-| `enum_member_decl` | `enumMember` (2) |
-| `func_decl`, `event_decl` | `function` (3) |
-| `func_param_group` | `parameter` (4) |
-| `member_var_decl` | `property` (6) |
-| `local_var_decl_stmt` | `variable` (5) |
-| `autobind_decl` | `property` (6) |
-
-**Reference sites** (must resolve; no token if unresolvable):
-
-All reference-site `ident` nodes fall through to the `_` arm in `classify_ident`, which:
+Every other ident is a reference and must be resolved. It falls through to the `_` arm in `classify_ident`, which:
 
 1. Calls `classify_locally()` (local variables/parameters of enclosing function, then members of enclosing class/struct/state, then top-level symbols in the current document).
 2. If the ident is the RHS of a `member_access_expr` (i.e. after the `.`), calls `classify_definition_at_ident()` directly, which dispatches to `resolve_member_access()` to infer the receiver type and look up the member.
