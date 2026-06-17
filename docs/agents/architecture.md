@@ -2,7 +2,7 @@
 
 ## Module map
 
-Top-level modules and their responsibilities. Per-file detail lives in the area docs (indexed in [AGENTS.md](../../AGENTS.md)); this section changes only when a subsystem is added or repurposed.
+Top-level modules and their responsibilities. Per-file detail lives in the area docs (indexed in [AGENTS.md](../../AGENTS.md)).
 
 ```
 src/
