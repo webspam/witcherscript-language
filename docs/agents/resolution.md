@@ -247,6 +247,6 @@ This list is closed - do not add more entries without confirming the engine actu
 
 - Exec/quest functions are **excluded** from `all_top_level_callables()` and therefore from statement completions, matched on `Symbol.flavour`.
 - Optional parameters are excluded from completion snippet slots (`completion_item` in the LSP binary filters `is_optional`).
-- The inheritance depth cap is **32** in both `WorkspaceIndex` (single-index chain) and `SymbolDb` (cross-index chain).
+- The inheritance depth cap (`MAX_INHERITANCE_DEPTH`) is **32**, applied by `SymbolDb`'s chain walks (`find_member`, `members_of`, state-owner lookup).
 - Superclass is stored in `Symbol.base_class` (used for classes, structs, and states' `extends` clause). The display string `"extends ClassName"` is rendered on demand by `Symbol::display_detail()` - never parse it for structural queries, use the typed field.
 - State owner is stored in `Symbol.owner_class`; rendered by `display_detail()` as `"in OwnerClass"` (or `"in OwnerClass extends BaseState"` when the state also extends another state). For `parent` keyword resolution only `Public` members of the owner are accessible.
