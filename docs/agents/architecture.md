@@ -66,10 +66,17 @@ src/
 ├── files.rs                        recursive .ws file discovery, canonical_uri
 ├── formatter.rs                    document formatter entry point (textDocument/formatting)
 ├── formatter/
-│   ├── core.rs                     traversal + line-fitting core
-│   ├── declarations.rs             class/struct/enum/state declaration formatting
-│   ├── signatures.rs               function / event signature formatting
-│   └── statements.rs               statement + expression formatting
+│   ├── core.rs                     formatter state: emit, indent, comment flushing
+│   ├── action.rs                   indent + substitution helpers
+│   ├── declarations.rs             class / struct / enum / state declarations
+│   ├── signatures.rs               function parameter lists + return types
+│   ├── if_action.rs                if-chain collapse/expand layout rewrites
+│   ├── switch_action.rs            switch collapse/expand layout rewrites
+│   ├── statements/                 statement + expression formatting
+│   │   ├── mod.rs                  statement formatting dispatch
+│   │   ├── if_stmt.rs              per-if block layout, forced-block coercion
+│   │   └── switch.rs               switch arm collection + aligned rendering
+│   └── tests/                      formatter fixture + unit tests
 ├── line_index.rs                   byte ↔ UTF-16 position mapping (LSP-compatible)
 ├── script_env.rs                   INI script globals parser
 ├── strings.rs                      string utilities: suffixing, casing, identifiers
