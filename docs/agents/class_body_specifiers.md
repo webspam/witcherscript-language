@@ -103,7 +103,7 @@ Derived from compiler testing against `scratch/class_body_specifiers.ws`. Lines 
 | `quest`      | ✓              |                                                                 |
 | `reward`     | ✓              |                                                                 |
 | `storyscene` | ✓              |                                                                 |
-| `timer`      | ✓ (syntax)     | requires at least two parameters; a third `optional` parameter is also valid. Confirmed game usage: `timer function Foo(dt : float, optional id : int)` |
+| `timer`      | ✓ (syntax)     | takes two parameters, `(dt : float, id : int)` in that order; both must be present. Either may be marked `optional`, though usually neither is. Confirmed game usage: `timer function Foo(dt : float, id : int)` |
 | `entry`      | **INVALID**    | state bodies only                                               |
 | `cleanup`    | **INVALID**    | state bodies only                                               |
 | `exec`       | **INVALID**    | top-level functions only; cannot be declared inside a class     |
@@ -151,7 +151,7 @@ The grammar can express this by using separate flavour rules for `class_def` vs 
 
 ### 5. `timer` parameter requirement
 
-`timer function` requires exactly `(id : int, deltaTime : float)` - this is a semantic rule, not easily expressible in the grammar, but worth noting in diagnostics.
+`timer function` requires `(dt : float, id : int)` - delta time then timer id, both present. This is a semantic rule, not easily expressible in the grammar, but worth noting in diagnostics.
 
 ### 6. `event` naming convention
 
