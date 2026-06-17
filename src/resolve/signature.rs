@@ -279,6 +279,16 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb, colon: ColonSpacing) -
                 None => lines.push(format!("(field) {keywords}{}", symbol.name)),
             }
         }
+        SymbolKind::Parameter => {
+            let keywords = declaration_keywords(symbol);
+            match &symbol.type_annotation {
+                Some(type_annotation) => lines.push(format!(
+                    "(parameter) {keywords}{}{sep}{type_annotation}",
+                    symbol.name
+                )),
+                None => lines.push(format!("(parameter) {keywords}{}", symbol.name)),
+            }
+        }
         _ => {
             let label = match symbol.kind {
                 SymbolKind::Class => "class",
@@ -288,23 +298,25 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb, colon: ColonSpacing) -
                 SymbolKind::EnumMember => "enum member",
                 SymbolKind::Function => "function",
                 SymbolKind::Variable => "var",
-                SymbolKind::Parameter => "(parameter)",
                 SymbolKind::State => "state",
                 SymbolKind::Event => "event",
-                SymbolKind::Method | SymbolKind::Field => unreachable!(),
+                SymbolKind::Method | SymbolKind::Field | SymbolKind::Parameter => unreachable!(),
             };
+            let keywords = declaration_keywords(symbol);
             if symbol.kind.is_callable() {
                 let sig = render_signature(
                     &db.display_parameters_of(definition),
                     symbol.type_annotation.as_ref(),
                     colon,
                 );
-                let keywords = declaration_keywords(symbol);
                 lines.push(format!("{keywords}{label} {}{sig}", symbol.name));
             } else if let Some(type_annotation) = &symbol.type_annotation {
-                lines.push(format!("{label} {}{sep}{type_annotation}", symbol.name));
+                lines.push(format!(
+                    "{keywords}{label} {}{sep}{type_annotation}",
+                    symbol.name
+                ));
             } else {
-                lines.push(format!("{label} {}", symbol.name));
+                lines.push(format!("{keywords}{label} {}", symbol.name));
             }
             if let Some(detail) = symbol.display_detail() {
                 match lines.last_mut() {
