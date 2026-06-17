@@ -85,7 +85,7 @@ A local `var` whose name collides with a field declared in the enclosing class, 
 
 A `receiver.Method()` call where `receiver` resolves to a workspace `class`, `struct`, or `state`, but `Method` is not declared on that type or any of its supertypes (inheritance traversed up to depth 32).
 
-Calls on unknown or primitive receivers, on `super` / `parent` / `virtualParent`, on casts, or through indexed or parenthesised expressions are skipped to avoid false positives. Private methods reached from outside their declaring class are reported as `private_member_access` instead of `unknown_method`.
+The check runs only when the receiver type infers to a workspace `class`, `struct`, or `state`; unknown or primitive receivers yield no type and are skipped, avoiding false positives. A `super`, `parent`, `virtualParent`, or cast receiver infers to a concrete class and is checked, not skipped. Private methods reached from outside their declaring class are reported as `private_member_access` instead of `unknown_method`.
 
 ### 8. Unknown type
 
