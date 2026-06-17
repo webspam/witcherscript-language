@@ -44,30 +44,13 @@ Each rule module owns its `#[cfg(test)] mod tests`.
 
 Each emitted code, message, and severity is listed in [../diagnostics/validation.md](../diagnostics/validation.md).
 
-## Workspace diagnostics
+## Workspace pass: entry points and caching
 
-Some checks need cross-file knowledge and cannot run off a single parse tree. These
-produce `WorkspaceDiagnostic` (with a `relatedInformation`-style `Vec<RelatedLocation>`)
-instead of `ParseDiagnostic`. Positions are already UTF-16 `SourceRange`s - taken from
-`Symbol.selection_range` - so no `LineIndex` round-trip is needed at conversion time.
+The LSP serves diagnostics by pull (`textDocument/diagnostic` per URI, `workspace/diagnostic` for the set). Both go through `Backend::compute_diagnostics_for_uri` and `Backend::compute_workspace_diagnostic_report` in `src/bin/witcherscript-lsp/diagnostics_publish.rs`, which assemble each file's report from three sources: the document's `ParseDiagnostic`s, the index-walking bundle, and the CST-walking results.
 
-`collect_duplicate_symbol_diagnostics(&WorkspaceIndex) -> HashMap<uri, Vec<WorkspaceDiagnostic>>`
-flags any two top-level declarations (class/struct/enum/state/function/event) sharing a
-name. Symbols carrying modding annotations are skipped - `@addMethod`/`@wrapMethod`/etc.
-functions are member injections, not fresh global names. It enumerates raw symbols via
-`WorkspaceIndex::all_top_level()` because `top_level_by_name` dedups by name.
-
-`collect_duplicate_local_diagnostics(&WorkspaceIndex) -> HashMap<uri, Vec<WorkspaceDiagnostic>>`
-flags parameters or local variables that share a name within the same function scope
-(kind `"duplicate_local"`). Functions annotated with `@wrapMethod` or `@replaceMethod`
-are exempt because those annotations intentionally redeclare parameters from the wrapped
-signature.
-
-The LSP computes workspace diagnostics across the whole index and serves them via pull
-(`textDocument/diagnostic` for a single URI, `workspace/diagnostic` for the whole set).
-`Backend::compute_diagnostics_for_uri` and `Backend::compute_workspace_diagnostic_report` in
-`diagnostics_publish.rs` are the two entry points; both merge the cross-file workspace
-diagnostics with the document's syntactic `ParseDiagnostic`s.
+- Index-walking rules run in `collect_workspace_diagnostics` and are memoised as a `DiagnosticsBundle`, keyed by a `BundleFingerprint` (workspace + loose generations, base surface, env, legacy-dirs hash).
+- CST-walking rules run through `cst_diagnostics_with_cache` (`cst_cache.rs`), a per-document cache keyed by `(parse_version, DbFingerprint)`; misses compute in parallel across files.
+- A legacy-override file shows only `base_script_conflict`, not the overlapping `duplicate_symbol` (`duplicates_not_explained_by_conflict`).
 
 ## LSP conversion
 
