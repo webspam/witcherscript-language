@@ -23,7 +23,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 15  | `abstract_instantiation`           | error    | `new T` on an abstract class                                                                       |
 | 16  | `super_field_access`               | error    | `super.x` used outside of a method call                                                            |
 | 17  | `private_member_access`            | error    | Private field or method accessed from outside its declaring class                                  |
-| 18  | `type_used_as_value`               | error    | Type name (class, struct, state, enum) used in a value position                                    |
+| 18  | `type_used_as_value`               | error    | Type name (class, struct, enum, native type) used in a value position                              |
 | 19  | `type_mismatch`                    | error    | A value's type is not assignable to the target slot                                                |
 | 20  | `string_as_name_default`           | info     | A `name`/`CName` field default uses a string literal where a name literal is intended              |
 | 21  | `native_instantiation`             | error    | `new T` on a native engine type (`CBehTreeVal*`), which cannot be instantiated                     |
@@ -143,7 +143,7 @@ The compiler only resolves the `super.` qualifier for method dispatch. Inherited
 
 ### 18. Type used as value
 
-A bare identifier that resolves to a `class`, `struct`, `state`, or `enum` declaration but appears where a value is expected, e.g. `EnumGetMin(ESomeEnum)` or `var x : int; x = MyClass;`. Also fires when a type name is called like a function, e.g. `ESomeEnum()`, except struct constructor calls (`StructName(a, b, ...)`).
+A bare identifier that resolves to a `class`, `struct`, `enum`, or native type declaration but appears where a value is expected, e.g. `EnumGetMin(ESomeEnum)` or `var x : int; x = MyClass;`. Also fires when a type name is called like a function, e.g. `ESomeEnum()`, except struct constructor calls (`StructName(a, b, ...)`).
 
 Type-position uses (`extends T`, `: T` annotations, `new T in owner`, `(T) value` casts, `@addMethod(T)` annotations) are unaffected. Enum _members_ used as values are also unaffected; only the enum's own name triggers the rule.
 
