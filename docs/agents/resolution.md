@@ -66,7 +66,7 @@ SymbolDb::new(&workspace_index, &base_scripts_index)
 
 ### Implicit base classes
 
-A class with no `extends` implicitly extends `CObject`; a state with no `extends` implicitly extends `CScriptableState`. The engine enforces this; the workspace doesn't write it in source. `SymbolDb::superclass_of()` synthesises the fallback so every inheritance walk sees the implicit base - callers must go through `superclass_of`, not read `Symbol.base_class` directly, or the fallback is missed (see invariant 4 in [invariants.md](invariants.md)). Cycle protection: `CObject`/`IScriptable`/`ISerializable` and `CScriptableState` itself get no synthesised base.
+A class with no `extends` implicitly extends `CObject`; a state with no `extends` implicitly extends `CScriptableState`. The engine enforces this; the workspace doesn't write it in source. `SymbolDb::superclass_of()` synthesises the fallback so every inheritance walk sees the implicit base - callers must go through `superclass_of`, not read `Symbol.base_class` directly, or the fallback is missed (see invariant 3 in [invariants.md](invariants.md)). Cycle protection: `CObject`/`IScriptable`/`ISerializable` and `CScriptableState` itself get no synthesised base.
 
 ### Generic type lookup (array<T>)
 
