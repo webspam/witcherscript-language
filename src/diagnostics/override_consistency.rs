@@ -62,7 +62,8 @@ fn check_override<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> 
         .symbols
         .enclosing_symbol_at(name_ident.start_byte(), &[SymbolKind::Method])?;
 
-    if own.access < ancestor.symbol.access {
+    // "Weaker" means more accessible, and the enum orders Public highest.
+    if own.access > ancestor.symbol.access {
         let ancestor_class = ancestor.symbol.container_name.as_deref().unwrap_or(&parent);
         let range = ctx.document.line_index.byte_range_to_range(
             &ctx.document.source,
