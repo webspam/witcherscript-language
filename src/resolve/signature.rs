@@ -211,6 +211,13 @@ pub fn render_signature(
     out
 }
 
+fn render_name_with_type(symbol: &Symbol, separator: &str) -> String {
+    match &symbol.type_annotation {
+        Some(symbol_type) => format!("{}{separator}{symbol_type}", symbol.name),
+        None => symbol.name.clone(),
+    }
+}
+
 /// `access specifier* flavour?` in canonical order; ends with a trailing space when non-empty.
 fn declaration_keywords(symbol: &Symbol) -> String {
     let mut out = String::new();
@@ -269,15 +276,17 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb, colon: ColonSpacing) -
         }
         SymbolKind::Field => {
             let keywords = declaration_keywords(symbol);
-            match &symbol.type_annotation {
-                Some(type_annotation) => {
-                    lines.push(format!(
-                        "(field) {keywords}{}{sep}{type_annotation}",
-                        symbol.name
-                    ));
-                }
-                None => lines.push(format!("(field) {keywords}{}", symbol.name)),
-            }
+            lines.push(format!(
+                "(field) {keywords}{}",
+                render_name_with_type(symbol, sep)
+            ));
+        }
+        SymbolKind::Parameter => {
+            let keywords = declaration_keywords(symbol);
+            lines.push(format!(
+                "(parameter) {keywords}{}",
+                render_name_with_type(symbol, sep)
+            ));
         }
         _ => {
             let label = match symbol.kind {
@@ -288,23 +297,23 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb, colon: ColonSpacing) -
                 SymbolKind::EnumMember => "enum member",
                 SymbolKind::Function => "function",
                 SymbolKind::Variable => "var",
-                SymbolKind::Parameter => "(parameter)",
                 SymbolKind::State => "state",
                 SymbolKind::Event => "event",
-                SymbolKind::Method | SymbolKind::Field => unreachable!(),
+                SymbolKind::Method | SymbolKind::Field | SymbolKind::Parameter => unreachable!(),
             };
+            let keywords = declaration_keywords(symbol);
             if symbol.kind.is_callable() {
                 let sig = render_signature(
                     &db.display_parameters_of(definition),
                     symbol.type_annotation.as_ref(),
                     colon,
                 );
-                let keywords = declaration_keywords(symbol);
                 lines.push(format!("{keywords}{label} {}{sig}", symbol.name));
-            } else if let Some(type_annotation) = &symbol.type_annotation {
-                lines.push(format!("{label} {}{sep}{type_annotation}", symbol.name));
             } else {
-                lines.push(format!("{label} {}", symbol.name));
+                lines.push(format!(
+                    "{keywords}{label} {}",
+                    render_name_with_type(symbol, sep)
+                ));
             }
             if let Some(detail) = symbol.display_detail() {
                 match lines.last_mut() {

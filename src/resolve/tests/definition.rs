@@ -477,6 +477,13 @@ fn goto_def_on_added_method_call_resolves_to_annotation() {
     "(field) editable saved hp : int"
 )]
 #[case::field_one_of_many_names("class C {\n  var a, $0b, c : float;\n}\n", "(field) b : float")]
+#[case::class_specifiers_and_extends(
+    "class B {}\nimport abstract statemachine class $0C extends B {}\n",
+    "import abstract statemachine class C extends B"
+)]
+#[case::struct_specifier("import struct $0SData {}\n", "import struct SData")]
+#[case::state_specifier("class O {}\nabstract state $0S in O {}\n", "abstract state S in O")]
+#[case::param_out_specifier("function F(out $0p : int) {}\n", "(parameter) out p : int")]
 fn hover_shows_declaration_modifiers(#[case] source: &str, #[case] expected: &str) {
     let t = TestDb::new(source);
     let (uri, pos) = t.cursor();

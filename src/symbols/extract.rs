@@ -279,6 +279,8 @@ impl<'a> SymbolExtractor<'a> {
         let base_class = node
             .child_by_field_name(fields::BASE)
             .map(|n| node_text(n, self.source));
+        // Type declarations keep default public access; only flag specifiers matter.
+        let (_, specifiers) = self.specifiers_of(node);
         let id = self.push_symbol(
             node,
             name_node,
@@ -288,6 +290,7 @@ impl<'a> SymbolExtractor<'a> {
                 annotations,
                 base_class,
                 owner_class,
+                specifiers,
                 ..Default::default()
             },
         );
