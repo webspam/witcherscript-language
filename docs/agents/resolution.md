@@ -43,7 +43,6 @@ find_top_level(name)                              // O(1) HashMap lookup
 direct_member_of(container, name, min_access)     // O(1) lookup with access check
 direct_members_of(container, min_access)          // all direct members of a type
 superclass_of(class_name)                         // one hop up the chain
-members_of(container, min_access)                 // full chain including inherited
 full_parameters_of(uri, callable_id)              // Parameter symbols of a callable, in order
 find_symbol_at_selection(uri, selection)          // O(n) doc scan by selection byte range
 find_symbol_by_name(uri, name)                    // O(n) doc scan by name
