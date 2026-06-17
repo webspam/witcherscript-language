@@ -174,29 +174,34 @@ tests/
 ## Module dependency graph
 
 ```
-cst        leaf - shared tree-sitter CST traversal primitives
-line_index leaf - byte ↔ UTF-16 position mapping
+Leaves (no intra-crate dependencies):
+  cst         shared tree-sitter CST traversal primitives
+  line_index  byte <-> UTF-16 position mapping
+  strings     string utilities
+  types       structured Type enum + type-annotation parsing
+  files       .ws discovery + canonical_uri
 
-document ──► diagnostics ──► cst
-         ──► line_index
-         ──► symbols ──► line_index, cst
+symbols     ──► cst, line_index
+script_env  ──► files, line_index, symbols, types
+formatter   ──► cst
 
-resolve  ──► document
-         ──► line_index
-         ──► script_env ──► symbols, line_index
-         ──► symbols
-         ──► cst
+document    ──► cst, line_index, symbols, diagnostics
+diagnostics ──► cst, line_index, files, script_env, symbols, types, document, resolve
+resolve     ──► cst, line_index, strings, symbols, types, script_env, formatter, document
 
-formatter ──► cst
+builtins        ──► document, resolve, symbols, types
+semantic_tokens ──► cst, line_index, document, resolve, symbols
+test_support    ──► document, resolve, symbols  (test-only, behind `test-support`)
 
-semantic_tokens ──► line_index
-                ──► resolve
-                ──► symbols
-
-lib      ──► declares all of the above (no curated re-exports - bare `pub mod`s)
+lib  ──► declares all of the above (bare `pub mod`s, no curated re-exports)
 
 bin/witcherscript-lsp/ ──► witcherscript_language::* (all library modules)
-main                  ──► witcherscript_language::* (document, files, diagnostics)
+main                   ──► witcherscript_language::{document, files, diagnostics}
+
+NOTE: document, diagnostics, and resolve form an intra-crate dependency cycle
+(permitted within a single crate). parse_document runs the syntactic pass +
+symbol extraction; the cross-file diagnostic passes call resolve; resolve reads
+the parsed documents.
 ```
 
 ## Data flow pipeline
