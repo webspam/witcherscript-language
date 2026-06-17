@@ -94,10 +94,17 @@ Annotations attach to a declaration two ways. Sibling annotations preceding a de
 ## DocumentSymbols
 
 ```rust
-pub struct DocumentSymbols { symbols: Vec<Symbol> }
+pub struct DocumentSymbols {
+    symbols: Vec<Symbol>,                                                  // source of truth
+    by_start_byte: Vec<SymbolId>,                                          // sorted by start byte
+    top_level_by_name: HashMap<String, Vec<SymbolId>>,
+    type_by_name: HashMap<String, Vec<SymbolId>>,
+    members_by_container: HashMap<SymbolId, HashMap<String, Vec<SymbolId>>>,
+    locals_in_function: HashMap<SymbolId, HashMap<String, Vec<SymbolId>>>,
+}
 ```
 
-The vec is the only storage; `SymbolId(n)` directly indexes `symbols[n]`. IDs are assigned sequentially and never change after extraction.
+`symbols` is the source of truth; `SymbolId(n)` directly indexes `symbols[n]`. IDs are assigned sequentially and never change after extraction. The remaining fields are secondary lookup indexes built once by `build_indexes()` (called from `finish`) so name, container, and byte queries are O(1) rather than full scans.
 
 ### API
 
