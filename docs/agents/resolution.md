@@ -8,22 +8,12 @@ The persistent cross-document symbol store. One instance exists for the user wor
 
 ```rust
 pub struct WorkspaceIndex {
-    documents: HashMap<String, Vec<Symbol>>,                         // uri → all symbols in that document
-    top_level_by_name: HashMap<String, Vec<Definition>>,            // name → top-level defs (collisions kept)
-    enum_member_by_name: HashMap<String, Vec<Definition>>,          // bare member name → enum-member defs
-    superclass_by_name: HashMap<String, Vec<(String, String)>>,     // class name → [(uri, base class name)]
-    states_by_owner: HashMap<String, HashMap<String, Vec<Definition>>>,         // owner → {state name → defs}
-    state_backing_by_name: HashMap<String, (String, String)>,       // synthetic `OwnerStateS` → (owner, state)
-    member_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,          // container → {member → defs}
-    annotated_members_by_type: HashMap<String, HashMap<String, Vec<Definition>>>, // @addField/@addMethod overlays
-    doc_idents: HashMap<String, HashMap<String, Vec<Range<usize>>>>, // uri → {ident → byte ranges}
-    doc_surface_hashes: HashMap<String, u64>,                       // per-doc public-surface fingerprint
-    surface_hash: u64,                                              // XOR of every doc_surface_hashes entry
-    generation: u64,                                                // bumped on every mutation
-    doc_outward_hashes: HashMap<String, HashMap<ObservedKey, u64>>, // per-doc outward-dependency fingerprints
-    completion_catalog: CompletionCatalog,                          // prebuilt callables/types/enum-members
-    completion_catalog_dirty: bool,
-    catalog_rebuild_suppressed: u32,                                // >0 defers catalog rebuilds during bulk updates
+    documents: HashMap<String, Vec<Symbol>>,                          // uri → all symbols in that document
+    top_level_by_name: HashMap<String, Vec<Definition>>,             // name → top-level defs
+    superclass_by_name: HashMap<String, Vec<(String, String)>>,      // class name → base class
+    member_by_type: HashMap<String, HashMap<String, Vec<Definition>>>, // container → members
+    doc_idents: HashMap<String, HashMap<String, Vec<Range<usize>>>>, // ident occurrence index
+    // plus enum/state lookups, a prebuilt completion catalog, and fingerprint bookkeeping
 }
 ```
 
