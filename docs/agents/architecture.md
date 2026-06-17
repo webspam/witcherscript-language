@@ -213,18 +213,23 @@ the parsed documents.
 parse_document(source)          [document.rs]
     │  tree-sitter parse → Tree
     │  LineIndex::new(source)
-    │  collect_diagnostics(root, source)
-    │  extract_symbols(root, source, line_index)
+    │  walk(root, Fused::new(SyntaxDiagnostics, SymbolExtractor))
+    │      one CST walk feeds the syntactic-diagnostic and symbol passes together
     ▼
-ParsedDocument { source, tree, line_index, diagnostics, symbols }
+ParsedDocument { source, tree, line_index, diagnostics, symbols, parse_version }
     │
     ├─► WorkspaceIndex::update_document(uri, doc)    [resolve/workspace_index/]
-    │       inserts into top_level_by_name, member_by_type,
-    │       superclass_by_name, doc_idents
+    │       folds the doc's symbols into top_level_by_name, enum_member_by_name,
+    │       superclass_by_name, states_by_owner, member_by_type, doc_idents, …
+    │       and the cached completion_catalog
     │
-    └─► LSP response handlers                        [bin/witcherscript-lsp/{completion,queries,references_rename,…}.rs]
-            SymbolDb::new(workspace, base).with_script_env(env).with_builtins(builtins)
+    └─► LSP response handlers                        [bin/witcherscript-lsp/{completion,queries/*,references_rename,…}.rs]
+            SymbolDb::new(workspace, base).with_builtins(builtins).with_script_env(env)
             resolve_definition / completion_members / statement_completions / …
+
+Cross-file diagnostics (unknown symbol, type mismatch, …) are NOT produced here;
+they run later from the LSP via collect_cst_diagnostics_for_document(uri, doc, db),
+which needs a SymbolDb and is cached per file (cst_cache.rs).
 ```
 
 ## Index model
