@@ -22,7 +22,7 @@ The grammar cannot parse `class array<T>` (generic params on a class decl produc
 
 ## Loading
 
-`load_builtins_index()` parses every embedded source into a fresh `WorkspaceIndex` keyed by synthetic URIs (`witcherscript-builtin:/array.ws`, ...). The LSP `Backend` holds it as `Arc<WorkspaceIndex>` - built once at startup, never mutated.
+`build_builtins_index()` parses every embedded source into a `WorkspaceIndex` keyed by synthetic URIs (`witcherscript-builtin:/array.ws`, ...). It runs once behind the `BUILTINS` `LazyLock`; `load_builtins_index()` just clones that cached index. The LSP `Backend` holds the clone as `Arc<WorkspaceIndex>` - built once at startup, never mutated.
 
 Tests opt in via `SymbolDb::new(&ws, &base).with_builtins(&builtins)`; existing tests that don't touch built-ins are unaffected.
 
