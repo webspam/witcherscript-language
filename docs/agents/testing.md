@@ -6,7 +6,7 @@ For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writ
 
 | Location | What it tests |
 |---|---|
-| `src/diagnostics/mod.rs` `#[cfg(test)]` | `collect_diagnostics()` - late vars, incomplete exprs, ternary |
+| `src/diagnostics/tests.rs` | `collect_diagnostics()` - syntactic CST rules: late locals, struct access modifiers, int-literal overflow, ternary |
 | `src/diagnostics/<rule>/tests.rs` | One file per diagnostic rule (see `unknown_symbol/tests.rs` as the cleanest pattern) |
 | `src/symbols/tests.rs` | `extract_symbols()` |
 | `src/line_index.rs` `#[cfg(test)]` | `LineIndex` - byte↔position conversions, UTF-16 |
