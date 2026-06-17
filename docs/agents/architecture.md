@@ -234,20 +234,25 @@ which needs a SymbolDb and is cached per file (cst_cache.rs).
 
 ## Index model
 
-The LSP server maintains three separate `WorkspaceIndex` symbol indexes, plus the open-documents map that overrides them for files being edited:
+Every reader handler reads from a single immutable snapshot, `Compilation`, published through `Arc<ArcSwap<Compilation>>` on the `Backend`. A handler does one `compilation.load_full()` and then reads lock-free for its whole duration. Writers serialise on `writer_lock`, build a copy-on-write shadow `Compilation` via `CompilationBuilder` (only the changed fields are cloned), and atomically swap it in.
+
+The snapshot holds three `WorkspaceIndex` symbol indexes plus the parsed-document caches; a fourth index (`builtins_index`) lives on the `Backend` itself because it is never mutated:
 
 | Name | Type | Source |
 |------|------|--------|
-| `workspace_index` | `WorkspaceIndex` | user project .ws files |
-| `base_scripts_index` | `WorkspaceIndex` | Witcher 3 game scripts (read-only) |
-| `builtins_index` | `Arc<WorkspaceIndex>` | embedded builtin types (never mutated) |
-| open `documents` | `HashMap<Url, ParsedDocument>` | editor-open files (not an index - overrides the indexed copy) |
+| `workspace_index` | `Arc<WorkspaceIndex>` | user project .ws files (under a manifest / workspace root) |
+| `loose_index` | `Arc<WorkspaceIndex>` | open .ws files not part of any project |
+| `base_scripts_index` | `Arc<WorkspaceIndex>` | Witcher 3 game scripts (read-only) |
+| `builtins_index` | `Arc<WorkspaceIndex>` | embedded builtin types (on `Backend`, never mutated) |
+| `documents` | `Arc<HashMap<Url, Arc<ParsedDocument>>>` | editor-open files; override the indexed copy |
+| `workspace_documents` / `base_scripts_documents` | `Arc<HashMap<String, Arc<ParsedDocument>>>` | parsed-tree cache for background-indexed files, so semantic tokens / references read trees without re-parsing |
 
-`workspace_documents` and `base_scripts_documents` hold the `ParsedDocument` cache for background-indexed files so semantic tokens / references can read their trees without re-parsing.
+The snapshot also carries `script_env`, the `suppressed_base_uris` set (vanilla scripts shadowed by the workspace), and a `filtered_base_catalogs` cache.
 
 When constructing a `SymbolDb` for a request:
-- workspace shadows base, builtins are always visible: `SymbolDb::new(&workspace_index, &base_scripts_index).with_script_env(&env).with_builtins(&builtins_index)`
-- open documents take precedence over `workspace_documents` for the file being edited
+- workspace shadows base, builtins are always visible: `SymbolDb::new(&workspace_index, &base_scripts_index).with_builtins(&builtins_index).with_script_env(&script_env)`
+- `.with_suppressed_base_uris(...)` / `.with_prefiltered_base(...)` apply the base-shadowing filter
+- open `documents` take precedence over `workspace_documents` for the file being edited
 
 ## Key types and who produces/consumes them
 
