@@ -87,21 +87,6 @@ Fix late-local-var rule skipping nop statements
 
 See `CODESTYLE.md` for the normative Rust code standard.
 
-## Adding a validation rule
-
-1. Add the detection logic in `src/diagnostics/` (extend `collect_diagnostics` in `mod.rs` or add a new rule module).
-2. Add a unit test in `src/diagnostics/tests.rs` or the rule module.
-3. Add or extend a fixture file under `tests/fixtures/` if the rule is complex enough to warrant one.
-4. Document the new rule in the "Diagnostics" section of `README.md`.
-
-## Adding an LSP capability
-
-1. Enable the capability in `_initialize` in `src/bin/witcherscript-lsp/lifecycle.rs`.
-2. Add the `_handler` method on `Backend` in the file matching its LSP concern: completions in `completion.rs`; hover/definition/symbols/signature-help/semantic-tokens/formatting/code-action in `queries.rs`; references/rename in `references_rename.rs`; text sync + workspace folder events in `text_sync.rs`.
-3. Wire the trait method in `backend.rs` to call `self._handler(params).await`.
-4. If the handler needs new resolve logic, add it to the appropriate `resolve/` submodule (not the binary).
-5. Add a unit test in the relevant `src/bin/witcherscript-lsp/tests/<feature>.rs`.
-
 ## Releasing
 
 Version bumps follow the process in [RELEASING.md](RELEASING.md).
