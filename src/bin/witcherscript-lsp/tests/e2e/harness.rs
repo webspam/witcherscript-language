@@ -167,6 +167,7 @@ impl LspClient {
             let backend = Backend::new(client, config);
 
             let mut router: Router<Backend> = Router::from_language_server(backend);
+            crate::register_custom_requests(&mut router);
             crate::register_notification_handlers(&mut router);
             router.request::<PanicRequest, _>(|_backend, _params| async move {
                 panic!("intentional panic from test/panic handler");
