@@ -17,4 +17,5 @@ mod rename;
 mod semantic_tokens;
 mod session;
 mod type_definition;
+mod view_refresh;
 mod workspace_symbol;

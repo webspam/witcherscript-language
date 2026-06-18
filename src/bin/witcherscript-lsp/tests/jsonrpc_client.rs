@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use lsp_types::notification::{
@@ -153,6 +153,29 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
                     }
                 }
             }
+        })
+        .await
+        .unwrap_or(false)
+    }
+
+    // Answers and skips every server->client request until each of `methods` has been seen at least once, regardless of arrival order.
+    pub(crate) async fn wait_for_server_requests(&mut self, methods: &[&str]) -> bool {
+        let mut remaining: HashSet<&str> = methods.iter().copied().collect();
+        timeout(REQUEST_TIMEOUT, async {
+            while !remaining.is_empty() {
+                let v = self.read_raw().await;
+                let is_request = v.get("id").is_some() && v.get("method").is_some();
+                if !is_request {
+                    continue;
+                }
+                if let Some(reply) = self.handle_inbound(v.clone()) {
+                    self.send_raw(&reply).await;
+                }
+                if let Some(method) = v.get("method").and_then(|m| m.as_str()) {
+                    remaining.remove(method);
+                }
+            }
+            true
         })
         .await
         .unwrap_or(false)

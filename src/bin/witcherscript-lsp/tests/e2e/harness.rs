@@ -15,7 +15,8 @@ use lsp_types::{
     ClientCapabilities, CodeLensWorkspaceClientCapabilities, Diagnostic,
     DiagnosticClientCapabilities, DidSaveTextDocumentParams, DocumentDiagnosticParams,
     DocumentDiagnosticReport, DocumentDiagnosticReportResult, InitializeParams, InitializeResult,
-    InitializedParams, PartialResultParams, ServerCapabilities, TextDocumentClientCapabilities,
+    InitializedParams, InlayHintWorkspaceClientCapabilities, PartialResultParams,
+    SemanticTokensWorkspaceClientCapabilities, ServerCapabilities, TextDocumentClientCapabilities,
     TextDocumentIdentifier, Url, WorkDoneProgressParams, WorkspaceClientCapabilities,
     WorkspaceFolder, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
@@ -67,16 +68,16 @@ enum ConfigReplies {
     Hold,
 }
 
-enum CodeLens {
-    Refresh,
-    NoRefresh,
+enum ViewRefresh {
+    Enabled,
+    Disabled,
 }
 
 pub(crate) struct LspClientBuilder {
     roots: Vec<PathBuf>,
     init_options: Option<Value>,
     config_overrides: HashMap<String, Value>,
-    code_lens_refresh: CodeLens,
+    view_refresh: ViewRefresh,
     config_replies: ConfigReplies,
     wait_until_indexed: bool,
 }
@@ -87,7 +88,7 @@ impl LspClientBuilder {
             roots: Vec::new(),
             init_options: None,
             config_overrides: HashMap::new(),
-            code_lens_refresh: CodeLens::NoRefresh,
+            view_refresh: ViewRefresh::Disabled,
             config_replies: ConfigReplies::Answer,
             wait_until_indexed: true,
         }
@@ -114,8 +115,8 @@ impl LspClientBuilder {
         self
     }
 
-    pub(crate) fn code_lens_refresh(mut self) -> Self {
-        self.code_lens_refresh = CodeLens::Refresh;
+    pub(crate) fn view_refresh(mut self) -> Self {
+        self.view_refresh = ViewRefresh::Enabled;
         self
     }
 
@@ -149,10 +150,10 @@ impl LspClient {
             .await
     }
 
-    // No readiness wait: the post-index codeLens/refresh is the caller's signal, and wait_until_indexed would consume it.
-    pub(crate) async fn spawn_with_code_lens_refresh() -> Self {
+    // No readiness wait: the post-index view refresh is the caller's signal, and wait_until_indexed would consume it.
+    pub(crate) async fn spawn_with_view_refresh() -> Self {
         LspClientBuilder::new()
-            .code_lens_refresh()
+            .view_refresh()
             .no_index_wait()
             .spawn()
             .await
@@ -223,9 +224,15 @@ impl LspClient {
                         diagnostic: Some(DiagnosticClientCapabilities::default()),
                         ..TextDocumentClientCapabilities::default()
                     }),
-                    workspace: matches!(builder.code_lens_refresh, CodeLens::Refresh).then_some(
+                    workspace: matches!(builder.view_refresh, ViewRefresh::Enabled).then_some(
                         WorkspaceClientCapabilities {
                             code_lens: Some(CodeLensWorkspaceClientCapabilities {
+                                refresh_support: Some(true),
+                            }),
+                            semantic_tokens: Some(SemanticTokensWorkspaceClientCapabilities {
+                                refresh_support: Some(true),
+                            }),
+                            inlay_hint: Some(InlayHintWorkspaceClientCapabilities {
                                 refresh_support: Some(true),
                             }),
                             ..WorkspaceClientCapabilities::default()
@@ -324,6 +331,10 @@ impl LspClient {
 
     pub(crate) async fn wait_for_server_request(&mut self, method: &str) -> bool {
         self.rpc.wait_for_server_request(method).await
+    }
+
+    pub(crate) async fn wait_for_server_requests(&mut self, methods: &[&str]) -> bool {
+        self.rpc.wait_for_server_requests(methods).await
     }
 
     pub(crate) async fn pull_diagnostics(&mut self, uri: &Url) -> Vec<Diagnostic> {
