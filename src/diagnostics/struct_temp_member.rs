@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::grammar::member_access_member;
@@ -10,7 +9,7 @@ use crate::document::ParsedDocument;
 use crate::resolve::{SymbolDb, infer_type_memo};
 use crate::symbols::{AccessLevel, SymbolKind};
 
-use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, run_rules_on_document};
+use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, collect_single_rule_diagnostics};
 
 pub(crate) struct StructTempMemberRule;
 
@@ -35,29 +34,7 @@ pub fn collect_struct_temp_member_diagnostics(
     documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
-    let rule = StructTempMemberRule;
-    let rules: Vec<&dyn CstRule> = vec![&rule];
-    let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
-
-    for (uri, document) in documents {
-        let diagnostics = run_rules_on_document(uri, document, db, &rules);
-        if !diagnostics.is_empty() {
-            debug!(
-                uri = %uri,
-                count = diagnostics.len(),
-                "emitted struct-temp-member diagnostics"
-            );
-            result.insert((*uri).to_string(), diagnostics);
-        }
-    }
-
-    trace!(
-        documents = documents.len(),
-        flagged_uris = result.len(),
-        "scanned for struct property access on a temporary"
-    );
-
-    result
+    collect_single_rule_diagnostics(&StructTempMemberRule, documents, db)
 }
 
 fn check_struct_temp_access<'tree>(
