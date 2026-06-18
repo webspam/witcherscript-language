@@ -1,0 +1,105 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.document_symbols(&rel).await
+---
+- name: EEmitterKind
+  kind: enum
+  range: "3:0-8:1"
+  selection: "3:5-3:17"
+  children:
+    - name: EK_None
+      kind: enum_member
+      range: "4:1-4:8"
+      selection: "4:1-4:8"
+    - name: EK_Bell
+      kind: enum_member
+      range: "5:1-5:8"
+      selection: "5:1-5:8"
+    - name: EK_Chime
+      kind: enum_member
+      range: "6:1-6:9"
+      selection: "6:1-6:9"
+    - name: EK_Drum
+      kind: enum_member
+      range: "7:1-7:8"
+      selection: "7:1-7:8"
+- name: IEmitterParams
+  kind: class
+  range: "10:0-19:1"
+  selection: "10:15-10:29"
+  children:
+    - name: hasVolume
+      kind: field
+      range: "11:1-11:29"
+      selection: "11:12-11:21"
+      detail: bool
+    - name: volume
+      kind: field
+      range: "12:1-12:27"
+      selection: "12:12-12:18"
+      detail: float
+    - name: hasRadius
+      kind: field
+      range: "14:1-14:29"
+      selection: "14:12-14:21"
+      detail: bool
+    - name: radius
+      kind: field
+      range: "15:1-15:27"
+      selection: "15:12-15:18"
+      detail: float
+    - name: hasPitch
+      kind: field
+      range: "17:1-17:28"
+      selection: "17:12-17:20"
+      detail: bool
+    - name: pitch
+      kind: field
+      range: "18:1-18:26"
+      selection: "18:12-18:17"
+      detail: float
+- name: CEmitterParams
+  kind: class
+  range: "21:0-56:1"
+  selection: "21:6-21:20"
+  detail: extends IEmitterParams
+  children:
+    - name: tag
+      kind: field
+      range: "22:1-22:23"
+      selection: "22:12-22:15"
+      detail: name
+    - name: displayName
+      kind: field
+      range: "23:1-23:33"
+      selection: "23:12-23:23"
+      detail: string
+    - name: weight
+      kind: field
+      range: "26:1-26:25"
+      selection: "26:12-26:18"
+      detail: int
+    - name: profileName
+      kind: field
+      range: "27:1-27:31"
+      selection: "27:12-27:23"
+      detail: name
+    - name: hasKind
+      kind: field
+      range: "29:1-29:27"
+      selection: "29:12-29:19"
+      detail: bool
+    - name: kind
+      kind: field
+      range: "30:1-30:32"
+      selection: "30:12-30:16"
+      detail: EEmitterKind
+    - name: MatchesEntity
+      kind: method
+      range: "33:1-35:2"
+      selection: "33:17-33:30"
+      detail: bool
+    - name: ApplyTo
+      kind: method
+      range: "38:1-55:2"
+      selection: "38:17-38:24"

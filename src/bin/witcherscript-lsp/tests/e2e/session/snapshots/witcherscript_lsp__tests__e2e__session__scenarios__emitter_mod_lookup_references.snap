@@ -1,0 +1,12 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/scenarios.rs
+expression: session.references(lookup).await
+---
+- file: mod/scripts/manager.ws
+  range: "15:17-15:38"
+- file: mod/scripts/manager.ws
+  range: "41:11-41:32"
+- file: mod/scripts/probe_lookup.ws
+  range: "3:16-3:37"
+- file: mod/scripts/probe_signature.ws
+  range: "3:9-3:30"

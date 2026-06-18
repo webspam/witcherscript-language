@@ -15,6 +15,7 @@ pub(crate) enum WorkspaceFixture {
     Minimal,
     BaseLayering,
     MultiRoot,
+    EmitterMod,
 }
 
 impl WorkspaceFixture {
@@ -23,6 +24,7 @@ impl WorkspaceFixture {
             WorkspaceFixture::Minimal => "minimal",
             WorkspaceFixture::BaseLayering => "base_layering",
             WorkspaceFixture::MultiRoot => "multi_root",
+            WorkspaceFixture::EmitterMod => "emitter_mod",
         }
     }
 }

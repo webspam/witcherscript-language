@@ -1,0 +1,41 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.document_symbols(&rel).await
+---
+- name: CEmitterManager
+  kind: class
+  range: "3:0-63:1"
+  selection: "3:6-3:21"
+  children:
+    - name: HOST_TAG
+      kind: field
+      range: "4:1-4:34"
+      selection: "4:18-4:26"
+      detail: name
+    - name: world
+      kind: field
+      range: "7:1-7:27"
+      selection: "7:12-7:17"
+      detail: CWorld
+    - name: gameStarted
+      kind: field
+      range: "8:1-8:31"
+      selection: "8:12-8:23"
+      detail: bool
+    - name: Init
+      kind: method
+      range: "10:1-12:2"
+      selection: "10:17-10:21"
+    - name: CreateTunerFromParams
+      kind: method
+      range: "15:1-29:2"
+      selection: "15:17-15:38"
+      detail: IEmitterTuner
+    - name: RetuneAll
+      kind: method
+      range: "32:1-44:2"
+      selection: "32:17-32:26"
+    - name: CollectHosts
+      kind: method
+      range: "46:1-62:2"
+      selection: "46:18-46:30"

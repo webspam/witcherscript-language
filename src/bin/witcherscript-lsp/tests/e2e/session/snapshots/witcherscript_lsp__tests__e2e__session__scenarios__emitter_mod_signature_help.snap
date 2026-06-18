@@ -1,0 +1,11 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/scenarios.rs
+expression: session.signature_help(signature).await
+---
+active_signature: 0
+active_parameter: 1
+signatures:
+  - label: "CreateTunerFromParams(params : CEmitterParams, host : CWorldEntity) : IEmitterTuner"
+    parameters:
+      - 22..45
+      - 47..66

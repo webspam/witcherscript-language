@@ -1,0 +1,28 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.inlay_hints(&rel).await
+---
+- position: "15:14"
+  label: "tag:"
+  kind: parameter
+- position: "17:21"
+  label: "params:"
+  kind: parameter
+- position: "60:69"
+  label: "componentName:"
+  kind: parameter
+- position: "77:21"
+  label: "value:"
+  kind: parameter
+- position: "88:55"
+  label: "componentName:"
+  kind: parameter
+- position: "93:25"
+  label: "source:"
+  kind: parameter
+- position: "102:77"
+  label: "componentName:"
+  kind: parameter
+- position: "104:26"
+  label: "source:"
+  kind: parameter

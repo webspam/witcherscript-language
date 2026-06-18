@@ -81,3 +81,50 @@ async fn editing_a_file_reports_new_diagnostics() {
         "an unclosed class introduced by an edit must report a diagnostic"
     );
 }
+
+#[tokio::test]
+async fn emitter_mod_battery() {
+    let mut session = EditorSession::open(WorkspaceFixture::EmitterMod).await;
+    snapshot_battery(&mut session, "emitter_mod", "Emitter").await;
+}
+
+#[tokio::test]
+async fn emitter_mod_resolves_into_base_scripts() {
+    let mut session = EditorSession::open(WorkspaceFixture::EmitterMod).await;
+    let definition = session.definition("mod/scripts/probe_lookup.ws").await;
+    insta::assert_yaml_snapshot!("emitter_mod_lookup_definition", definition);
+    assert!(
+        definition.iter().any(|loc| loc.file.contains("manager.ws")),
+        "the cross-file call must resolve to its declaration, got {definition:?}"
+    );
+}
+
+#[tokio::test]
+async fn emitter_mod_positional_probes() {
+    let mut session = EditorSession::open(WorkspaceFixture::EmitterMod).await;
+
+    let lookup = "mod/scripts/probe_lookup.ws";
+    insta::assert_yaml_snapshot!(
+        "emitter_mod_lookup_type_definition",
+        session.type_definition(lookup).await
+    );
+    insta::assert_yaml_snapshot!("emitter_mod_lookup_hover", session.hover(lookup).await);
+    insta::assert_yaml_snapshot!(
+        "emitter_mod_lookup_references",
+        session.references(lookup).await
+    );
+    insta::assert_yaml_snapshot!(
+        "emitter_mod_lookup_completion",
+        session.completion(lookup).await
+    );
+
+    let signature = "mod/scripts/probe_signature.ws";
+    insta::assert_yaml_snapshot!(
+        "emitter_mod_signature_help",
+        session.signature_help(signature).await
+    );
+    insta::assert_yaml_snapshot!(
+        "emitter_mod_signature_completion",
+        session.completion(signature).await
+    );
+}

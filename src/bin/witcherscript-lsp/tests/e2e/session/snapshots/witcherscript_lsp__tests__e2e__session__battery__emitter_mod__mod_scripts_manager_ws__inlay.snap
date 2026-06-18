@@ -1,0 +1,22 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.inlay_hints(&rel).await
+---
+- position: "27:27"
+  label: "globalOverride:"
+  kind: parameter
+- position: "37:15"
+  label: "out hosts:"
+  kind: parameter
+- position: "41:41"
+  label: "host:"
+  kind: parameter
+- position: "52:16"
+  label: "value:"
+  kind: parameter
+- position: "53:33"
+  label: "out result:"
+  kind: parameter
+- position: "59:19"
+  label: "value:"
+  kind: parameter

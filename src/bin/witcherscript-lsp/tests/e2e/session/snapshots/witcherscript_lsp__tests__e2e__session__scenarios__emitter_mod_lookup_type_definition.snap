@@ -1,0 +1,6 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/scenarios.rs
+expression: session.type_definition(lookup).await
+---
+- file: mod/scripts/tuner.ws
+  range: "3:15-3:28"

@@ -1,0 +1,8 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.document_symbols(&rel).await
+---
+- name: ProbeTunerSignature
+  kind: function
+  range: "2:0-4:1"
+  selection: "2:9-2:28"

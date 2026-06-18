@@ -1,0 +1,59 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.workspace_symbols(symbol_query).await
+---
+- name: CEmitterManager
+  kind: class
+  location:
+    file: mod/scripts/manager.ws
+    range: "3:6-3:21"
+- name: CEmitterParams
+  kind: class
+  location:
+    file: mod/scripts/params.ws
+    range: "21:6-21:20"
+- name: EAnimationTrajectorySelectorType
+  kind: enum
+  location:
+    file: "witcherscript-builtin:/unknown-enums.ws"
+    range: "1:5-1:37"
+- name: EEmitterKind
+  kind: enum
+  location:
+    file: mod/scripts/params.ws
+    range: "3:5-3:17"
+- name: ESoundAmbientDynamicParameter
+  kind: enum
+  location:
+    file: "witcherscript-builtin:/unknown-enums.ws"
+    range: "38:5-38:34"
+- name: IEmitterParams
+  kind: class
+  location:
+    file: mod/scripts/params.ws
+    range: "10:15-10:29"
+- name: IEmitterTuner
+  kind: class
+  location:
+    file: mod/scripts/tuner.ws
+    range: "3:15-3:28"
+- name: SHOW_SoundEmitters
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EShowFlags.ws"
+    range: "152:4-152:22"
+- name: TuneEmitter
+  kind: method
+  location:
+    file: mod/scripts/tuner.ws
+    range: "101:17-101:28"
+- name: TuneEmitter
+  kind: method
+  location:
+    file: mod/scripts/tuner.ws
+    range: "37:17-37:28"
+- name: TuneEmitter
+  kind: method
+  location:
+    file: mod/scripts/tuner.ws
+    range: "80:17-80:28"
