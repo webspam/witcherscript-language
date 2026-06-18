@@ -42,7 +42,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 34  | `override_param_count`             | error    | A method override declares a different parameter count than the ancestor's method                  |
 | 35  | `unused_symbol`                    | hint     | An unused local variable, parameter, or private field; rendered faded by editors                   |
 | 36  | `wrapped_method_modifier`          | error    | A modifier or flavour keyword is applied to a `@wrapMethod` function                               |
-| 37  | `struct_property_on_temporary`     | error    | A struct property is read off a function's return value                                            |
+| 37  | `struct_property_on_temporary`     | error    | `f().x` accesses a struct property on a function result                                            |
 
 ## Details
 
