@@ -10,6 +10,7 @@ mod harness;
 mod hover;
 mod inlay_hints;
 mod notifications;
+mod on_disk_root;
 mod panic_boundary;
 mod rename;
 mod semantic_tokens;

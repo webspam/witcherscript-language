@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -17,7 +19,7 @@ use lsp_types::{
     TextDocumentIdentifier, Url, WorkDoneProgressParams, WorkspaceClientCapabilities,
     WorkspaceFolder, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use tokio::io::{DuplexStream, ReadHalf, WriteHalf, split};
 use tokio::task::JoinHandle;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -70,55 +72,93 @@ enum CodeLens {
     NoRefresh,
 }
 
-impl LspClient {
-    pub(crate) async fn spawn() -> Self {
-        Self::spawn_with(None).await
+pub(crate) struct LspClientBuilder {
+    root: Option<PathBuf>,
+    init_options: Option<Value>,
+    config_overrides: HashMap<String, Value>,
+    code_lens_refresh: CodeLens,
+    config_replies: ConfigReplies,
+    wait_until_indexed: bool,
+}
+
+impl LspClientBuilder {
+    pub(crate) fn new() -> Self {
+        Self {
+            root: None,
+            init_options: None,
+            config_overrides: HashMap::new(),
+            code_lens_refresh: CodeLens::NoRefresh,
+            config_replies: ConfigReplies::Answer,
+            wait_until_indexed: true,
+        }
+    }
+
+    pub(crate) fn root(mut self, dir: &Path) -> Self {
+        self.root = Some(dir.to_path_buf());
+        self
+    }
+
+    pub(crate) fn init_options(mut self, options: Value) -> Self {
+        self.init_options = Some(options);
+        self
+    }
+
+    pub(crate) fn config_override(mut self, section: &str, value: Value) -> Self {
+        self.config_overrides.insert(section.to_string(), value);
+        self
     }
 
     // Holding the workspace/configuration reply keeps the server deterministically pre-index until wait_until_indexed().
+    pub(crate) fn hold_config(mut self) -> Self {
+        self.config_replies = ConfigReplies::Hold;
+        self
+    }
+
+    pub(crate) fn code_lens_refresh(mut self) -> Self {
+        self.code_lens_refresh = CodeLens::Refresh;
+        self
+    }
+
+    pub(crate) fn no_index_wait(mut self) -> Self {
+        self.wait_until_indexed = false;
+        self
+    }
+
+    pub(crate) async fn spawn(self) -> LspClient {
+        LspClient::spawn_from_builder(self).await
+    }
+}
+
+impl LspClient {
+    pub(crate) async fn spawn() -> Self {
+        LspClientBuilder::new().spawn().await
+    }
+
     pub(crate) async fn spawn_with_held_config() -> Self {
-        Self::spawn_inner(None, CodeLens::NoRefresh, ConfigReplies::Hold, None).await
+        LspClientBuilder::new()
+            .hold_config()
+            .no_index_wait()
+            .spawn()
+            .await
     }
 
     pub(crate) async fn spawn_open_files_scope() -> Self {
-        Self::spawn_with(Some(serde_json::json!({
-            "diagnostics": { "scope": "openFiles" }
-        })))
-        .await
+        LspClientBuilder::new()
+            .init_options(json!({ "diagnostics": { "scope": "openFiles" } }))
+            .spawn()
+            .await
     }
 
     // No readiness wait: the post-index codeLens/refresh is the caller's signal, and wait_until_indexed would consume it.
     pub(crate) async fn spawn_with_code_lens_refresh() -> Self {
-        Self::spawn_inner(None, CodeLens::Refresh, ConfigReplies::Answer, None).await
+        LspClientBuilder::new()
+            .code_lens_refresh()
+            .no_index_wait()
+            .spawn()
+            .await
     }
 
-    // Real on-disk root so the server scans it; the directory's .gitignore then governs exclusion.
-    pub(crate) async fn spawn_in_workspace(root: &std::path::Path) -> Self {
-        let uri = Url::from_directory_path(root).expect("workspace root path -> url");
-        let mut client =
-            Self::spawn_inner(None, CodeLens::NoRefresh, ConfigReplies::Answer, Some(uri)).await;
-        client.wait_until_indexed().await;
-        client
-    }
-
-    async fn spawn_with(init_options: Option<Value>) -> Self {
-        let mut client = Self::spawn_inner(
-            init_options,
-            CodeLens::NoRefresh,
-            ConfigReplies::Answer,
-            None,
-        )
-        .await;
-        client.wait_until_indexed().await;
-        client
-    }
-
-    async fn spawn_inner(
-        init_options: Option<Value>,
-        code_lens_refresh: CodeLens,
-        config_replies: ConfigReplies,
-        workspace_root: Option<Url>,
-    ) -> Self {
+    async fn spawn_from_builder(builder: LspClientBuilder) -> Self {
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (server_read, server_write) = split(server_io);
 
@@ -150,10 +190,27 @@ impl LspClient {
 
         let (read, write) = split(client_io);
         let mut rpc = JsonRpcClient::new(read, write);
-        if matches!(config_replies, ConfigReplies::Hold) {
+        if matches!(builder.config_replies, ConfigReplies::Hold) {
             rpc.hold_config_replies();
         }
+        if !builder.config_overrides.is_empty() {
+            rpc.set_config_overrides(builder.config_overrides);
+        }
 
+        let (root_uri, workspace_folders) = match &builder.root {
+            Some(dir) => {
+                let uri = Url::from_directory_path(dir).expect("workspace root path -> URI");
+                let folder = WorkspaceFolder {
+                    uri: uri.clone(),
+                    name: "fixture".to_string(),
+                };
+                (Some(uri), Some(vec![folder]))
+            }
+            None => (None, None),
+        };
+
+        // root_uri is deprecated in the LSP but real editors still send it alongside workspace_folders.
+        #[allow(deprecated)]
         let init_result: <Initialize as Request>::Result = rpc
             .request::<Initialize>(InitializeParams {
                 capabilities: ClientCapabilities {
@@ -161,7 +218,7 @@ impl LspClient {
                         diagnostic: Some(DiagnosticClientCapabilities::default()),
                         ..TextDocumentClientCapabilities::default()
                     }),
-                    workspace: matches!(code_lens_refresh, CodeLens::Refresh).then_some(
+                    workspace: matches!(builder.code_lens_refresh, CodeLens::Refresh).then_some(
                         WorkspaceClientCapabilities {
                             code_lens: Some(CodeLensWorkspaceClientCapabilities {
                                 refresh_support: Some(true),
@@ -171,23 +228,23 @@ impl LspClient {
                     ),
                     ..ClientCapabilities::default()
                 },
-                initialization_options: init_options,
-                workspace_folders: workspace_root.map(|uri| {
-                    vec![WorkspaceFolder {
-                        uri,
-                        name: "test-workspace".to_string(),
-                    }]
-                }),
+                initialization_options: builder.init_options,
+                root_uri,
+                workspace_folders,
                 ..InitializeParams::default()
             })
             .await;
         rpc.notify::<Initialized>(InitializedParams {}).await;
 
-        LspClient {
+        let mut client = LspClient {
             rpc,
             init_result,
             _server: server_handle,
+        };
+        if builder.wait_until_indexed {
+            client.wait_until_indexed().await;
         }
+        client
     }
 
     pub(crate) fn server_capabilities(&self) -> &ServerCapabilities {

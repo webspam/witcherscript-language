@@ -2,7 +2,7 @@ use std::path::Path;
 
 use lsp_types::Url;
 
-use super::harness::LspClient;
+use super::harness::LspClientBuilder;
 use crate::tests::support::LocalTempDir;
 
 fn write(path: &Path, contents: &str) {
@@ -22,7 +22,7 @@ async fn open_gitignored_duplicate_never_conflicts_with_project_file() {
     let real_url = Url::from_file_path(temp.path().join("Real.ws")).expect("real url");
     let build_url = Url::from_file_path(temp.path().join("build/Dup.ws")).expect("build url");
 
-    let mut client = LspClient::spawn_in_workspace(temp.path()).await;
+    let mut client = LspClientBuilder::new().root(temp.path()).spawn().await;
 
     assert!(
         client.pull_diagnostics(&real_url).await.is_empty(),
