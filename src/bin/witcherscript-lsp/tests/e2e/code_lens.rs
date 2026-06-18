@@ -6,7 +6,7 @@ const CODE_LENS_REFRESH: &str = "workspace/codeLens/refresh";
 
 #[tokio::test]
 async fn opening_and_closing_a_file_refreshes_code_lenses() {
-    let mut client = LspClient::spawn_with_code_lens_refresh().await;
+    let mut client = LspClient::spawn_with_view_refresh().await;
     // The startup refresh fires once index_base_scripts settles; consume it first to isolate the rest.
     assert!(
         client.wait_for_server_request(CODE_LENS_REFRESH).await,

@@ -1,0 +1,6 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/scenarios.rs
+expression: definition
+---
+- file: mod/scripts/manager.ws
+  range: "15:17-15:38"

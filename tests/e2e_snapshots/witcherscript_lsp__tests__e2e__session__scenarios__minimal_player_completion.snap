@@ -1,0 +1,13 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/scenarios.rs
+expression: session.completion(rel).await
+---
+- label: GetDamage
+  kind: method
+  detail: "() : int"
+- label: damage
+  kind: field
+  detail: int
+- label: weaponType
+  kind: field
+  detail: EWeaponType

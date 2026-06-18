@@ -1,0 +1,36 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.document_symbols(&rel).await
+---
+- name: CPlayer
+  kind: class
+  range: "0:0-32:1"
+  selection: "0:6-0:13"
+  children:
+    - name: currentWeapon
+      kind: field
+      range: "2:1-2:29"
+      selection: "2:5-2:18"
+      detail: CWeapon
+    - name: health
+      kind: field
+      range: "3:1-3:18"
+      selection: "3:5-3:11"
+      detail: int
+    - name: Attack
+      kind: method
+      range: "5:1-8:2"
+      selection: "5:10-5:16"
+      detail: int
+    - name: TakeDamage
+      kind: method
+      range: "10:1-13:2"
+      selection: "10:10-10:20"
+    - name: ResolveHit
+      kind: method
+      range: "15:1-23:2"
+      selection: "15:10-15:20"
+    - name: Tick
+      kind: method
+      range: "25:1-31:2"
+      selection: "25:10-25:14"

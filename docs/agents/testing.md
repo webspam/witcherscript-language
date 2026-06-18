@@ -7,6 +7,7 @@ For *how* to write tests (style, patterns, helpers), see [writing-tests.md](writ
 - Library unit tests: `#[cfg(test)] mod tests` at the bottom of the file they cover (e.g. `line_index.rs`, `script_env.rs`).
 - Per-area test modules, one subsystem each: `src/diagnostics/`, `src/symbols/`, `src/resolve/tests/`, `src/semantic_tokens/`, `src/formatter/tests/`.
 - LSP tests: `src/bin/witcherscript-lsp/tests/` (handler logic) and `.../tests/e2e/` (framed JSON-RPC against a real `Backend`).
+- Whole-workspace E2E: `.../tests/e2e/session/` drives a real server against on-disk workspaces under `tests/workspaces/`, with `insta` snapshots (see below).
 - Shared toolkit: `src/test_support/` - `TestDb`, the `Fixture` marker parser, and name-assertion helpers, exposed via the on-by-default `test-support` Cargo feature.
 - Crate-root integration tests: `tests/parser_fixtures.rs` and `tests/language_features.rs`.
 
@@ -24,6 +25,13 @@ Annotation lines are stripped before parsing, so positions reference the *stripp
 
 `tests/fixtures/valid/*.ws` must parse with zero diagnostics; `tests/fixtures/invalid/*.ws` must produce at least one. `tests/parser_fixtures.rs` auto-discovers and runs both, so adding a grammar feature only needs a new fixture file. (`tests/fixtures/formatter/` is not auto-discovered; the formatter tests `include_str!` it directly.)
 
+## Whole-workspace E2E suite
+
+`EditorSession` tests in `tests/e2e/session/` drive a real server over on-disk workspaces - derive from an existing scenario.
+
+- Workspaces: `tests/workspaces/<name>/` - a `workspace.toml` (roots and `witcherscript.*` settings) plus the `.ws` files; positional probes use the file's `$0` cursor.
+- Snapshots: `tests/e2e_snapshots/`. A new snapshotting test needs `let _guard = e2e_snapshots().bind_to_scope();`.
+
 ## Running tests
 
 ```
@@ -32,5 +40,4 @@ just ci        # cargo fmt --check + cargo clippy -D warnings + cargo nextest ru
 ```
 
 - After changing an output formatter (hover markdown, snippet, diagnostic message): `UPDATE_EXPECT=1 cargo test` rewrites stale `expect![[]]` literals.
-- For `insta` snapshots: `cargo insta review`.
 - There are no doctests.

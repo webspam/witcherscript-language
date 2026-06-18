@@ -1,0 +1,3 @@
+roots = ["mod"]
+game_dir = "game"
+diagnostics_scope = "workspace"

@@ -1,3 +1,4 @@
+mod builtin_source;
 mod code_action;
 mod code_lens;
 mod completion;
@@ -10,8 +11,11 @@ mod harness;
 mod hover;
 mod inlay_hints;
 mod notifications;
+mod on_disk_root;
 mod panic_boundary;
 mod rename;
 mod semantic_tokens;
+mod session;
 mod type_definition;
+mod view_refresh;
 mod workspace_symbol;

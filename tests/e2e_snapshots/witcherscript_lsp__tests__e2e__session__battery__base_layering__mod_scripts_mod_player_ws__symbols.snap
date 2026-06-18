@@ -1,0 +1,15 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.document_symbols(&rel).await
+---
+- name: CModPlayer
+  kind: class
+  range: "0:0-6:1"
+  selection: "0:6-0:16"
+  detail: extends CBaseEntity
+  children:
+    - name: Describe
+      kind: method
+      range: "2:1-5:2"
+      selection: "2:10-2:18"
+      detail: string

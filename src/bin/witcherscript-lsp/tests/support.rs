@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use arc_swap::ArcSwap;
 use async_lsp::ClientSocket;
@@ -13,9 +14,25 @@ pub(crate) struct LocalTempDir {
     path: PathBuf,
 }
 
+static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
 impl LocalTempDir {
     pub(crate) fn new(name: &str) -> Self {
         let path = std::env::temp_dir().join(name);
+        // remove_dir_all errors NotFound when absent; create_dir_all below fails loud on any real problem
+        std::fs::remove_dir_all(&path).ok();
+        std::fs::create_dir_all(&path).expect("mkdir tempdir");
+        Self { path }
+    }
+
+    // Roots under target/tmp (CLAUDE.local.md) with a per-process-unique suffix so parallel tests never collide.
+    pub(crate) fn under_target(name: &str) -> Self {
+        let id = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("tmp")
+            .join(format!("{name}-{}-{id}", std::process::id()));
+        // remove_dir_all errors NotFound when absent; create_dir_all below fails loud on any real problem
         std::fs::remove_dir_all(&path).ok();
         std::fs::create_dir_all(&path).expect("mkdir tempdir");
         Self { path }

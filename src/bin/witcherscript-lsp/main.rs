@@ -86,11 +86,7 @@ async fn main() {
         let backend = Backend::new(client, Arc::clone(&config_for_backend));
 
         let mut router: Router<Backend> = Router::from_language_server(backend);
-        router.request::<BuiltinSourceRequest, _>(|backend, params| {
-            let backend = backend.clone();
-            async move { backend.handle_builtin_source(params).await }
-        });
-
+        register_custom_requests(&mut router);
         register_notification_handlers(&mut router);
 
         ServiceBuilder::new()
@@ -105,6 +101,14 @@ async fn main() {
         Some(port) => serve_tcp(port, server).await,
         None => serve_stdio(server).await,
     }
+}
+
+// Shared so the e2e harness routes custom requests exactly as production does.
+pub(crate) fn register_custom_requests(router: &mut Router<Backend>) {
+    router.request::<BuiltinSourceRequest, _>(|backend, params| {
+        let backend = backend.clone();
+        async move { backend.handle_builtin_source(params).await }
+    });
 }
 
 /// async-lsp's default for an unhandled notification (e.g. didSave) is to terminate the server.

@@ -1,0 +1,59 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.workspace_symbols(symbol_query).await
+---
+- name: CSharedThing
+  kind: class
+  location:
+    file: rootA/scripts/a.ws
+    range: "0:6-0:18"
+- name: CStorySceneChoiceLineActionScripted
+  kind: class
+  location:
+    file: "witcherscript-builtin:/unknown-classes.ws"
+    range: "15:6-15:41"
+- name: CStorySceneChoiceLineActionScriptedContentGuard
+  kind: class
+  location:
+    file: "witcherscript-builtin:/unknown-classes.ws"
+    range: "16:6-16:53"
+- name: SHOW_ApexThresoldLeft
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EShowFlags.ws"
+    range: "156:4-156:25"
+- name: SHOW_FlaresData
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EShowFlags.ws"
+    range: "51:4-51:19"
+- name: SHOW_RenderTargetBackground
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EShowFlags.ws"
+    range: "217:4-217:31"
+- name: SHOW_ShadowPreviewDynamic
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EShowFlags.ws"
+    range: "78:4-78:29"
+- name: SHOW_ShadowsFromMerged
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EShowFlags.ws"
+    range: "71:4-71:26"
+- name: SHOW_UmbraCullSpeedTreeShadows
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EShowFlags.ws"
+    range: "170:4-170:34"
+- name: SharedDataBuffer
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/unknown-structs.ws"
+    range: "2:7-2:23"
+- name: UseShared
+  kind: function
+  location:
+    file: rootB/scripts/b.ws
+    range: "0:9-0:18"

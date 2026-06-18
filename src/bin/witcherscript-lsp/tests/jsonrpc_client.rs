@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use lsp_types::notification::{
@@ -21,6 +22,7 @@ pub(crate) struct JsonRpcClient<R, W> {
     next_id: i64,
     hold_config: bool,
     held_config_requests: Vec<Value>,
+    config_overrides: HashMap<String, Value>,
 }
 
 #[allow(dead_code)]
@@ -32,6 +34,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
             next_id: 1,
             hold_config: false,
             held_config_requests: Vec::new(),
+            config_overrides: HashMap::new(),
         }
     }
 
@@ -39,10 +42,14 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
         self.hold_config = true;
     }
 
+    pub(crate) fn set_config_overrides(&mut self, overrides: HashMap<String, Value>) {
+        self.config_overrides = overrides;
+    }
+
     pub(crate) async fn release_config_replies(&mut self) {
         self.hold_config = false;
         for request in std::mem::take(&mut self.held_config_requests) {
-            let reply = Self::config_reply(&request);
+            let reply = self.config_reply(&request);
             self.send_raw(&reply).await;
         }
     }
@@ -133,19 +140,27 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
 
     // Answers every server->client request while waiting, so a blocked handler (e.g. fetch_config) unblocks.
     pub(crate) async fn wait_for_server_request(&mut self, method: &str) -> bool {
+        self.wait_for_server_requests(&[method]).await
+    }
+
+    // Answers and skips every server->client request until each of `methods` has been seen at least once, regardless of arrival order.
+    pub(crate) async fn wait_for_server_requests(&mut self, methods: &[&str]) -> bool {
+        let mut remaining: HashSet<&str> = methods.iter().copied().collect();
         timeout(REQUEST_TIMEOUT, async {
-            loop {
+            while !remaining.is_empty() {
                 let v = self.read_raw().await;
                 let is_request = v.get("id").is_some() && v.get("method").is_some();
-                if is_request {
-                    if let Some(reply) = self.handle_inbound(v.clone()) {
-                        self.send_raw(&reply).await;
-                    }
-                    if v.get("method").and_then(|m| m.as_str()) == Some(method) {
-                        return true;
-                    }
+                if !is_request {
+                    continue;
+                }
+                if let Some(reply) = self.handle_inbound(v.clone()) {
+                    self.send_raw(&reply).await;
+                }
+                if let Some(method) = v.get("method").and_then(|m| m.as_str()) {
+                    remaining.remove(method);
                 }
             }
+            true
         })
         .await
         .unwrap_or(false)
@@ -190,20 +205,29 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> JsonRpcClient<R, W> {
                 self.held_config_requests.push(v);
                 return None;
             }
-            return Some(Self::config_reply(&v));
+            return Some(self.config_reply(&v));
         }
         Some(json!({ "jsonrpc": "2.0", "id": v.get("id"), "result": Value::Null }))
     }
 
-    fn config_reply(request: &Value) -> Value {
-        let count = request
+    fn config_reply(&self, request: &Value) -> Value {
+        let results: Vec<Value> = request
             .pointer("/params/items")
-            .and_then(|i| i.as_array())
-            .map_or(0, std::vec::Vec::len);
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|item| {
+                item.get("section")
+                    .and_then(Value::as_str)
+                    .and_then(|section| self.config_overrides.get(section))
+                    .cloned()
+                    .unwrap_or(Value::Null)
+            })
+            .collect();
         json!({
             "jsonrpc": "2.0",
             "id": request.get("id"),
-            "result": Value::Array(vec![Value::Null; count]),
+            "result": Value::Array(results),
         })
     }
 }

@@ -1,0 +1,18 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.semantic_tokens(&rel).await
+---
+- range: "0:0-0:5"
+  token_type: modifier
+- range: "0:6-0:16"
+  token_type: class
+- range: "0:17-0:24"
+  token_type: modifier
+- range: "0:25-0:36"
+  token_type: class
+- range: "2:1-2:9"
+  token_type: modifier
+- range: "2:10-2:18"
+  token_type: function
+- range: "4:14-4:21"
+  token_type: function

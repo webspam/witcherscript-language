@@ -1,0 +1,22 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/scenarios.rs
+expression: session.completion(lookup).await
+---
+- label: CreateTunerFromParams
+  kind: method
+  detail: "(params : CEmitterParams, host : CWorldEntity) : IEmitterTuner"
+- label: HOST_TAG
+  kind: field
+  detail: name
+- label: Init
+  kind: method
+  detail: "(world : CWorld)"
+- label: RetuneAll
+  kind: method
+  detail: "(params : CEmitterParams)"
+- label: gameStarted
+  kind: field
+  detail: bool
+- label: world
+  kind: field
+  detail: CWorld

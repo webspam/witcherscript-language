@@ -1,0 +1,16 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.inlay_hints(&rel).await
+---
+- position: "29:13"
+  label: "amount:"
+  kind: parameter
+- position: "30:13"
+  label: "out result:"
+  kind: parameter
+- position: "30:21"
+  label: "crit:"
+  kind: parameter
+- position: "30:27"
+  label: "out log:"
+  kind: parameter

@@ -1,0 +1,19 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.document_symbols(&rel).await
+---
+- name: CSharedThing
+  kind: class
+  range: "0:0-8:1"
+  selection: "0:6-0:18"
+  children:
+    - name: value
+      kind: field
+      range: "2:1-2:17"
+      selection: "2:5-2:10"
+      detail: int
+    - name: DoIt
+      kind: method
+      range: "4:1-7:2"
+      selection: "4:10-4:14"
+      detail: int

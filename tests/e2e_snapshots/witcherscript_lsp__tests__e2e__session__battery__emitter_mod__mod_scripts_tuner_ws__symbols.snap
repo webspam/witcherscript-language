@@ -1,0 +1,87 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.document_symbols(&rel).await
+---
+- name: IEmitterTuner
+  kind: class
+  range: "3:0-70:1"
+  selection: "3:15-3:28"
+  children:
+    - name: kind
+      kind: field
+      range: "4:1-4:32"
+      selection: "4:12-4:16"
+      detail: EEmitterKind
+    - name: host
+      kind: field
+      range: "5:1-5:32"
+      selection: "5:12-5:16"
+      detail: CWorldEntity
+    - name: params
+      kind: field
+      range: "7:1-7:39"
+      selection: "7:15-7:21"
+      detail: CEmitterParams
+    - name: overrideParams
+      kind: field
+      range: "8:1-8:47"
+      selection: "8:15-8:29"
+      detail: CEmitterParams
+    - name: Init
+      kind: method
+      range: "11:1-19:2"
+      selection: "11:17-11:21"
+    - name: SetGlobalOverride
+      kind: method
+      range: "21:1-27:2"
+      selection: "21:17-21:34"
+    - name: GetEffectiveParams
+      kind: method
+      range: "29:1-34:2"
+      selection: "29:20-29:38"
+      detail: CEmitterParams
+    - name: TuneEmitter
+      kind: method
+      range: "37:1-37:31"
+      selection: "37:17-37:28"
+    - name: ProcessQueued
+      kind: method
+      range: "40:1-40:35"
+      selection: "40:17-40:30"
+    - name: ApplyParams
+      kind: method
+      range: "43:1-53:2"
+      selection: "43:20-43:31"
+    - name: RestoreOriginal
+      kind: method
+      range: "56:1-69:2"
+      selection: "56:17-56:32"
+- name: CBellTuner
+  kind: class
+  range: "72:0-98:1"
+  selection: "72:6-72:16"
+  detail: extends IEmitterTuner
+  children:
+    - name: slotNames
+      kind: field
+      range: "73:1-73:37"
+      selection: "73:13-73:22"
+      detail: array<name>
+    - name: Init
+      kind: method
+      range: "75:1-78:2"
+      selection: "75:17-75:21"
+    - name: TuneEmitter
+      kind: method
+      range: "80:1-97:2"
+      selection: "80:17-80:28"
+- name: CGenericTuner
+  kind: class
+  range: "100:0-107:1"
+  selection: "100:6-100:19"
+  detail: extends IEmitterTuner
+  children:
+    - name: TuneEmitter
+      kind: method
+      range: "101:1-106:2"
+      selection: "101:17-101:28"

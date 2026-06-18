@@ -1,0 +1,2 @@
+roots = ["."]
+diagnostics_scope = "workspace"

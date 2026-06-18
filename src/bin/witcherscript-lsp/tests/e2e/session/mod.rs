@@ -1,0 +1,93 @@
+//! One-call editor simulation: open a workspace fixture, then drive any feature and get a deterministic snapshot struct back.
+
+mod battery;
+mod features;
+mod model;
+mod scenarios;
+mod workspace;
+
+use std::path::Path;
+
+use lsp_types::{Position, Url};
+
+use super::harness::{LspClient, LspClientBuilder};
+use workspace::{LoadedFile, LoadedWorkspace};
+
+// Keep generated snapshots in the crate's tests/ tree, not next to sources under src/.
+fn e2e_snapshots() -> insta::Settings {
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/e2e_snapshots"));
+    settings
+}
+
+pub(crate) enum WorkspaceFixture {
+    Minimal,
+    BaseLayering,
+    MultiRoot,
+    EmitterMod,
+}
+
+impl WorkspaceFixture {
+    fn dir_name(self) -> &'static str {
+        match self {
+            WorkspaceFixture::Minimal => "minimal",
+            WorkspaceFixture::BaseLayering => "base_layering",
+            WorkspaceFixture::MultiRoot => "multi_root",
+            WorkspaceFixture::EmitterMod => "emitter_mod",
+        }
+    }
+}
+
+pub(crate) struct EditorSession {
+    client: LspClient,
+    workspace: LoadedWorkspace,
+}
+
+fn builder_for(workspace: &LoadedWorkspace) -> LspClientBuilder {
+    let mut builder = LspClientBuilder::new();
+    for root in workspace.workspace_roots() {
+        builder = builder.root(root);
+    }
+    for (section, value) in workspace.config_overrides() {
+        builder = builder.config_override(section, value.clone());
+    }
+    builder
+}
+
+impl EditorSession {
+    pub(crate) async fn open(fixture: WorkspaceFixture) -> Self {
+        let workspace = LoadedWorkspace::materialize(fixture.dir_name());
+        let mut client = builder_for(&workspace).spawn().await;
+        for file in workspace.files() {
+            client.open(&file.uri, &file.text).await;
+        }
+        client.wait_until_indexed().await;
+        Self { client, workspace }
+    }
+
+    pub(crate) fn rel_paths(&self) -> Vec<String> {
+        self.workspace
+            .files()
+            .iter()
+            .map(|f| f.rel.clone())
+            .collect()
+    }
+
+    fn file(&self, rel: &str) -> &LoadedFile {
+        self.workspace
+            .files()
+            .iter()
+            .find(|f| f.rel == rel)
+            .unwrap_or_else(|| panic!("no fixture file at {rel:?}"))
+    }
+
+    pub(crate) fn uri_of(&self, rel: &str) -> Url {
+        self.file(rel).uri.clone()
+    }
+
+    pub(crate) fn cursor_in(&self, rel: &str) -> Position {
+        self.file(rel)
+            .cursor
+            .unwrap_or_else(|| panic!("fixture file {rel:?} has no $0 cursor"))
+    }
+}

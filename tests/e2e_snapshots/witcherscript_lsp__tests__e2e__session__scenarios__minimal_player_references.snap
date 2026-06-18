@@ -1,0 +1,8 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/scenarios.rs
+expression: session.references(rel).await
+---
+- file: scripts/player.ws
+  range: "7:23-7:32"
+- file: scripts/types.ws
+  range: "12:10-12:19"

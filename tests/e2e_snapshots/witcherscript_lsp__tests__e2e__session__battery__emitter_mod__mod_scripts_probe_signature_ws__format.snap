@@ -1,0 +1,6 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.formatting(&rel).await
+---
+- range: "0:0-5:0"
+  new_text: "// Positional-probe host: the cursor sits inside the argument list of a two-arg\n// call, on the second argument, so signature help reports an active parameter.\nfunction ProbeTunerSignature(\n\tmanager : CEmitterManager,\n\tparams : CEmitterParams,\n\thost : CWorldEntity\n) {\n\tmanager.CreateTunerFromParams(params, host);\n}\n"

@@ -1,0 +1,6 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.formatting(&rel).await
+---
+- range: "0:0-5:0"
+  new_text: "// Positional-probe host. The cursor sits on a cross-file method call, so one\n// position drives definition, type-definition, hover, references and highlights.\nfunction ProbeTunerLookup(\n\tmanager : CEmitterManager,\n\tparams : CEmitterParams,\n\thost : CWorldEntity\n) : IEmitterTuner {\n\treturn manager.CreateTunerFromParams(params, host);\n}\n"

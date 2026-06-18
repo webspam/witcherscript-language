@@ -1,0 +1,6 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/scenarios.rs
+expression: session.hover(rel).await
+---
+range: "12:10-12:19"
+value: "```witcherscript\n(method) CWeapon.GetDamage() : int\n```\n\nDefined in [types.ws:13](file:///WORKSPACE/scripts/types.ws#L13)"

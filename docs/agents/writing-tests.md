@@ -95,6 +95,10 @@ When the formatter changes, regenerate every stale expectation in one go: `UPDAT
 
 For larger or structured snapshots (multi-symbol completion result vectors, full LSP responses) use `insta` instead - see its docs. We have both crates as dev-deps; pick the one that matches the output size.
 
+## Whole-workspace E2E tests
+
+Behaviour that only shows across a real workspace (disk-scan indexing, base-script layering, cross-root resolution, whole-file tokens) is covered by `EditorSession` snapshot tests under `tests/e2e/session/` - copy an existing one. See [testing.md](testing.md#whole-workspace-e2e-suite) for layout.
+
 ## Markers, not magic numbers
 
 Use a `$0` marker for a cursor - never hand-counted `SourcePosition { line, character }` literals, so a 1-character source edit cannot silently move the cursor onto the wrong token.

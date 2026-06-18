@@ -1,0 +1,6 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/scenarios.rs
+expression: session.highlights(rel).await
+---
+- range: "7:23-7:32"
+  kind: read

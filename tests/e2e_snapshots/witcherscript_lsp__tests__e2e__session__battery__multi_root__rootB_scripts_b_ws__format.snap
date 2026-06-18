@@ -1,0 +1,6 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.formatting(&rel).await
+---
+- range: "0:0-4:0"
+  new_text: "function UseShared(t : CSharedThing) : int {\n\treturn t.DoIt();\n}\n"
