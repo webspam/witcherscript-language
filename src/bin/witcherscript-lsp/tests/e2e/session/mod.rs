@@ -6,10 +6,19 @@ mod model;
 mod scenarios;
 mod workspace;
 
+use std::path::Path;
+
 use lsp_types::{Position, Url};
 
 use super::harness::{LspClient, LspClientBuilder};
 use workspace::{LoadedFile, LoadedWorkspace};
+
+// Keep generated snapshots in the crate's tests/ tree, not next to sources under src/.
+fn e2e_snapshots() -> insta::Settings {
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/e2e_snapshots"));
+    settings
+}
 
 pub(crate) enum WorkspaceFixture {
     Minimal,

@@ -1,14 +1,5 @@
-use std::path::Path;
-
 use super::battery::snapshot_battery;
-use super::{EditorSession, WorkspaceFixture};
-
-// Keep generated snapshots in the crate's tests/ tree, not next to sources under src/.
-fn e2e_snapshots() -> insta::Settings {
-    let mut settings = insta::Settings::clone_current();
-    settings.set_snapshot_path(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/e2e_snapshots"));
-    settings
-}
+use super::{EditorSession, WorkspaceFixture, e2e_snapshots};
 
 #[tokio::test]
 async fn minimal_workspace_battery() {
