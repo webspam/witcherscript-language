@@ -23,7 +23,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 15  | `abstract_instantiation`           | error    | `new T` on an abstract class                                                                       |
 | 16  | `super_field_access`               | error    | `super.x` used outside of a method call                                                            |
 | 17  | `private_member_access`            | error    | Private field or method accessed from outside its declaring class                                  |
-| 18  | `type_used_as_value`               | error    | Type name (class, struct, state, enum) used in a value position                                    |
+| 18  | `type_used_as_value`               | error    | Type name (class, struct, enum, native type) used in a value position                              |
 | 19  | `type_mismatch`                    | error    | A value's type is not assignable to the target slot                                                |
 | 20  | `string_as_name_default`           | info     | A `name`/`CName` field default uses a string literal where a name literal is intended              |
 | 21  | `native_instantiation`             | error    | `new T` on a native engine type (`CBehTreeVal*`), which cannot be instantiated                     |
@@ -41,7 +41,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 33  | `override_weaker_access`           | error    | A method override has weaker access than the ancestor's method                                     |
 | 34  | `override_param_count`             | error    | A method override declares a different parameter count than the ancestor's method                  |
 | 35  | `unused_symbol`                    | hint     | An unused local variable, parameter, or private field; rendered faded by editors                   |
-| 36  | `wrapped_method_modifier`         | error    | A modifier or flavour keyword is applied to a `@wrapMethod` function                                |
+| 36  | `wrapped_method_modifier`          | error    | A modifier or flavour keyword is applied to a `@wrapMethod` function                               |
 
 ## Details
 
@@ -85,7 +85,7 @@ A local `var` whose name collides with a field declared in the enclosing class, 
 
 A `receiver.Method()` call where `receiver` resolves to a workspace `class`, `struct`, or `state`, but `Method` is not declared on that type or any of its supertypes (inheritance traversed up to depth 32).
 
-Calls on unknown or primitive receivers, on `super` / `parent` / `virtualParent`, on casts, or through indexed or parenthesised expressions are skipped to avoid false positives. Private methods reached from outside their declaring class are reported as `private_member_access` instead of `unknown_method`.
+The check runs only when the receiver type infers to a workspace `class`, `struct`, or `state`; unknown or primitive receivers yield no type and are skipped, avoiding false positives. A `super`, `parent`, `virtualParent`, or cast receiver infers to a concrete class and is checked, not skipped. Private methods reached from outside their declaring class are reported as `private_member_access` instead of `unknown_method`.
 
 ### 8. Unknown type
 
@@ -143,7 +143,7 @@ The compiler only resolves the `super.` qualifier for method dispatch. Inherited
 
 ### 18. Type used as value
 
-A bare identifier that resolves to a `class`, `struct`, `state`, or `enum` declaration but appears where a value is expected, e.g. `EnumGetMin(ESomeEnum)` or `var x : int; x = MyClass;`. Also fires when a type name is called like a function, e.g. `ESomeEnum()`, except struct constructor calls (`StructName(a, b, ...)`).
+A bare identifier that resolves to a `class`, `struct`, `enum`, or native type declaration but appears where a value is expected, e.g. `EnumGetMin(ESomeEnum)` or `var x : int; x = MyClass;`. Also fires when a type name is called like a function, e.g. `ESomeEnum()`, except struct constructor calls (`StructName(a, b, ...)`).
 
 Type-position uses (`extends T`, `: T` annotations, `new T in owner`, `(T) value` casts, `@addMethod(T)` annotations) are unaffected. Enum _members_ used as values are also unaffected; only the enum's own name triggers the rule.
 
@@ -155,7 +155,7 @@ Assignability allows:
 
 - an identical type;
 - a derived class into a base slot (upcast, traversed up to depth 32);
-- `NULL` into a class/struct/state slot;
+- `NULL` into a class or state slot;
 - an `enum` and `int` in either direction;
 - the implicit primitive conversions listed below.
 
@@ -165,7 +165,7 @@ Everything else is reported, including `string` -> `int` (which the compiler per
 
 These mirror the conversions the compiler applies without a cast:
 
-- into `string`: from `byte`, `int`, `float`, or `name`;
+- into `string`: from `bool`, `byte`, `int`, `float`, or `name`;
 - into `bool`: from `byte`, `int`, `float`, or `string`;
 - into `float`: from `byte` or `int`;
 - between `byte` and `int`, in either direction.

@@ -2,147 +2,39 @@
 
 **Module:** `src/symbols/`
 
-| File | Purpose |
-|------|---------|
-| `types.rs` | `SymbolId`, `SymbolKind`, `Symbol`, `DocumentSymbols` and index queries |
-| `extract.rs` | `extract_symbols`, `SymbolExtractor` CST walk |
-| `util.rs` | `node_text`, child-text/base-type helpers |
-| `tests.rs` | Unit tests |
+`extract_symbols` walks a parsed CST and produces a `DocumentSymbols`: a flat, per-file list of `Symbol`s - one per declaration (class, function, field, local, ...). This is the per-file declaration model every higher layer (resolution, hover, outline, semantic tokens) queries. Types live in `types.rs`, the CST walk in `extract.rs`.
 
 ## SymbolKind
 
-```rust
-pub enum SymbolKind {
-    Class,        // class_decl
-    Struct,       // struct_decl
-    Enum,         // enum_decl
-    EnumMember,   // enum_member_decl
-    Function,     // func_decl at top level (no container)
-    Method,       // func_decl inside a class/struct/state (has container)
-    Field,        // member_var_decl inside a class/struct/state
-    Variable,     // local_var_decl_stmt inside a function body
-    Parameter,    // ident inside func_param_group
-    State,        // state_decl (associated with an owner class)
-    Event,        // event_decl (top-level or inside a class)
-}
-```
+The kind of declaration a `Symbol` is: `Class`, `NativeType`, `Struct`, `Enum`, `EnumMember`, `Function`, `Method`, `Field`, `Variable`, `Parameter`, `State`, `Event`.
 
-`Function` vs `Method` is determined at extraction time: if a `func_decl` node has a non-None container it becomes `Method`.
+`Function` vs `Method` is decided at extraction time, not by syntax: a `func_decl` with a container becomes `Method`, one without becomes `Function`.
 
-## Symbol struct
+`NativeType` is the one kind the extractor never emits: native engine types are declared as `class` in the builtin sources, then `retag_top_level` rewrites them from `Class` to `NativeType` during builtins ingestion.
 
-```rust
-pub struct Symbol {
-    pub id: SymbolId,                         // Opaque index; equals position in DocumentSymbols.symbols vec
-    pub name: String,                         // Identifier text
-    pub kind: SymbolKind,
-    pub range: SourceRange,                   // Full node span (LSP positions, UTF-16)
-    pub selection_range: SourceRange,         // Identifier token span only
-    pub byte_range: Range<usize>,             // Full node byte offsets
-    pub selection_byte_range: Range<usize>,   // Identifier token byte offsets
-    pub container: Option<SymbolId>,          // Parent symbol ID; None = top-level
-    pub container_name: Option<String>,       // Cached parent name for fast index inserts
-    pub type_annotation: Option<Type>,        // Parsed declared type (var/field/param type, callable return)
-    pub base_class: Option<String>,           // Raw superclass name for Class/Struct/State
-    pub owner_class: Option<String>,          // Raw owner class name for State (second ident in state_decl)
-    pub flavour: Option<FuncFlavour>,         // func_flavour keyword for callables (e.g. quest, timer)
-    pub annotations: Vec<Annotation>,        // @addField, @wrapMethod, etc.
-    pub access: AccessLevel,                  // default: Public
-    pub specifiers: Specifiers,              // non-access modifier bitset (editable, optional, out, ...)
-}
-```
+## Symbol
 
-No symbol carries rendered signature or declaration text. Callable signatures are rendered on demand by `render_signature()` in `resolve/signature.rs` from the callable's `Parameter` symbols plus its `type_annotation` (the return type); field declarations are rendered the same way by `hover_text()` from `access`, `specifiers`, `name`, and `type_annotation`.
+Each `Symbol` carries its name, kind, source ranges (both LSP and byte), container, and the typed pieces resolution needs - declared type, base/owner class, func flavour, annotations, access level, specifiers. Read `symbols/types.rs` for the fields.
 
-**`Symbol::display_detail()`** renders the human-readable detail string used in hover popups and the document outline. It reads from `base_class` / `owner_class`:
-- Class/Struct: `"extends BaseClass"` (or `None` if no base)
-- State: `"in OwnerClass"`, `"in OwnerClass extends BaseState"`, `"extends BaseState"`, or `None`
-- All others: `None`
+Two non-obvious facts:
 
-Structural queries (e.g. building `superclass_by_name`, walking inheritance chains) read `base_class` / `owner_class` directly. The rendered detail string is display-only.
-
-## AccessLevel
-
-```rust
-pub enum AccessLevel { Private, Protected, Public }  // Ord: Private < Protected < Public
-```
-
-Default is `Public` (WitcherScript default when no specifier is present).
-
-When traversing an inheritance chain, access is tightened: a child class can never see inherited `Private` members, and the minimum rises to `Protected` when going deeper (`min_access.max(AccessLevel::Protected)`).
-
-## Annotation
-
-```rust
-pub struct Annotation {
-    pub name: String,           // without @, e.g. "addField"
-    pub argument: Option<String>,  // optional argument, e.g. "CR4Player"
-}
-```
-
-Common annotations in WitcherScript modding:
-- `@addField(ClassName)` - inject a field into an existing class
-- `@addMethod(ClassName)` - inject a method
-- `@wrapMethod(ClassName)` - wrap an existing method
-- `@replaceMethod(ClassName)` - replace an existing method
-
-Annotations on a declaration node appear as siblings immediately before it in the AST. The extractor accumulates them in `pending_annotations` and attaches them to the next non-annotation symbol.
+- **No rendered text is stored.** Signatures and field declarations are rendered on demand from these fields by `resolve/signature.rs`; do not add cached display strings.
+- **`base_class` / `owner_class` are the typed source of truth** for `extends` and a state's owner. Structural code (inheritance walks, `superclass_by_name`) reads them directly; `display_detail()` renders them to `"extends X"` / `"in Y"` for display only - never parse those strings back (see [invariants.md](invariants.md)).
 
 ## DocumentSymbols
 
-```rust
-pub struct DocumentSymbols { symbols: Vec<Symbol> }
-```
+The per-file result: a flat `Vec<Symbol>` indexed by `SymbolId(n)`, plus prebuilt name/container/byte lookup indexes that back the query helpers. IDs are assigned sequentially at extraction and never change.
 
-The vec is the only storage; `SymbolId(n)` directly indexes `symbols[n]`. IDs are assigned sequentially and never change after extraction.
+Most query helpers are obvious from their names (`by_id`, `children_of`, `member_of`, `*_by_name`). The two that are not:
 
-### API
-
-| Method | Description |
-|--------|-------------|
-| `all()` | All symbols in the document |
-| `by_id(id)` | O(1) lookup by ID |
-| `children_of(parent_id)` | Iterate symbols whose `.container == parent_id` |
-| `enclosing_symbol_at(byte, kinds)` | Smallest symbol of given kinds that contains `byte`; used to determine "which function/class am I in?" |
-| `top_level_by_name(name)` | First top-level symbol with that name |
-| `type_by_name(name)` | Class, struct, or state symbol with that name |
-| `member_of(container, name)` | Iterate members of `container` with that name |
-| `local_at_byte(function, name, before_byte)` | Local or parameter named `name` in scope at `before_byte` |
-
-## Grammar nodes handled during extraction
-
-| Grammar node | Produces |
-|---|---|
-| `class_decl` | `SymbolKind::Class` |
-| `struct_decl` | `SymbolKind::Struct` |
-| `enum_decl` | `SymbolKind::Enum` |
-| `enum_member_decl` | `SymbolKind::EnumMember` |
-| `state_decl` | `SymbolKind::State` |
-| `func_decl` | `Function` or `Method` (depending on container) |
-| `event_decl` | `SymbolKind::Event` |
-| `member_var_decl` | `SymbolKind::Field` |
-| `local_var_decl_stmt` | `SymbolKind::Variable` |
-| `func_param_group` | `SymbolKind::Parameter` (one per `ident` in the group) |
-| `annotation` | Parsed into `Annotation`, attached to next symbol |
-| `type_annot` | Parsed via `Type::from_annotation` into `type_annotation` |
-| `specifier` | Sets `access` (`private`/`protected`) or `is_optional` (`optional`) |
-| `func_flavour` | Stored in `flavour` |
-| `func_block` | Scope for locals and parameters |
-
-## extract_symbols walk
-
-1. `SymbolExtractor::visit_children(root, None, vec![])` starts the walk.
-2. Named children are visited in order. If a child is `annotation`, it is parsed and pushed to `pending_annotations`; the loop continues without visiting it as a symbol.
-3. The next non-annotation named child consumes `pending_annotations` and calls `visit()`.
-4. `visit()` dispatches on `node.kind()`. Unknown node kinds fall through to `visit_children()`, which recurses with the current container.
-5. For callables, params are extracted from `func_params → func_param_group`, then locals from `func_block`.
-6. Container ID is threaded through every recursive call. Top-level symbols have `container = None`.
+- `enclosing_symbol_at(byte, kinds)` - smallest symbol of those kinds covering a byte ("which function/class am I in?").
+- `local_at_byte(function, name, before_byte)` - a local or parameter visible at a point, respecting declaration order.
 
 ## Adding a new symbol kind
 
-1. Add variant to `SymbolKind` in `symbols/types.rs`.
-2. Handle the new grammar node in `visit()` in `SymbolExtractor` (`symbols/extract.rs`).
-3. Add mapping in `symbol_kind_to_token_type()` in `semantic_tokens/mod.rs`.
-4. Add mapping in `lsp_symbol_kind()` in `src/bin/witcherscript-lsp/convert/symbols.rs`.
-5. Add mapping in `hover_text()` in `resolve/signature.rs` if the label text is different.
+1. Add the variant to `SymbolKind` (`symbols/types.rs`).
+2. Handle its grammar node in `enter_in_body` (or the relevant `enter_in_*` dispatcher) in `SymbolExtractor` (`symbols/extract.rs`).
+3. Map it in `symbol_kind_to_token_type()` (`semantic_tokens/mod.rs`).
+4. Map it in `lsp_symbol_kind()` (`src/bin/witcherscript-lsp/convert/symbols.rs`).
+5. Map it in `hover_text()` (`resolve/signature.rs`) if its label differs.
 6. Add tests.

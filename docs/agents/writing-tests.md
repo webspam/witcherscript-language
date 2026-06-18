@@ -53,17 +53,6 @@ The first failing case short-circuits the rest. Still better than copy/paste; us
 
 **Each case must carry a unique label**, and every assertion must include that label in its message. When the suite fails, the panic output must name which case failed - otherwise you are left guessing which of 12 inputs broke. (rstest's case names cover this for free; the for-loop pattern does it via `c.name` in the message.)
 
-Use table-driven form when:
-
-- Setup is identical across cases and only the input/expected output varies.
-- You have three or more analogous cases (two is borderline - judge by clarity).
-- The cases form a logical group ("operator precedence", "edge cases for empty input", "all the visibility modifiers").
-
-Use separate tests when:
-
-- Setup genuinely differs (different fixtures, different harness state).
-- Assertion logic differs in a way that does not compress cleanly into one body.
-
 ## Use the shared test toolkit
 
 `src/test_support/` holds the canonical helpers. Inside the library, `use crate::test_support::TestDb`; inside the LSP binary or integration tests, `use witcherscript_language::test_support::TestDb` (the `test-support` Cargo feature is on by default).
@@ -85,7 +74,7 @@ Helpers in `test_support`:
 - `def_names(&[Definition])` / `def_names_tiered(&[(u8, Definition)])` - extract `Vec<&str>` of symbol names.
 - `assert_names_contain(actual, expected)` / `assert_names_exclude(actual, excluded)` - canonical membership assertions for completion-result name lists.
 
-Prefer these over hand-rolling `parse_document` + `WorkspaceIndex` + `SymbolDb` scaffolds. The `make_doc` / `make_index` helpers in `src/resolve/tests/mod.rs` remain available for low-level resolve tests but are now scaffolding for `TestDb`, not the default entry point.
+Prefer these over hand-rolling `parse_document` + `WorkspaceIndex` + `SymbolDb` scaffolds. The `make_doc` helper in `src/resolve/tests/mod.rs` remains available for low-level resolve tests, but `TestDb` is the default entry point.
 
 ## Inline snapshots: `expect-test`
 
@@ -108,16 +97,6 @@ For larger or structured snapshots (multi-symbol completion result vectors, full
 
 ## Markers, not magic numbers
 
-When a test needs a cursor, use a `$0` marker in the source - never hand-counted `SourcePosition { line: N, character: M }` literals. A reader must not have to count characters to verify a test, and a 1-character edit to the source must not silently move the cursor onto the wrong token.
+Use a `$0` marker for a cursor - never hand-counted `SourcePosition { line, character }` literals, so a 1-character source edit cannot silently move the cursor onto the wrong token.
 
-Exception: tests that read a fixture file from `tests/fixtures/` cannot embed `$0` (that would break the parser-fixture suite). For those, keep the hand-counted positions but pull them into a `for` loop or `#[rstest] #[case]` so the positions live alongside their human-readable labels.
-
-## Do not copy/paste tests
-
-Duplicated tests drift. Someone updates one case's assertion, forgets the others, and the suite quietly disagrees with itself. If you catch yourself duplicating a test to tweak one constant, parametrize it via one of the table-driven forms above or pull the shared setup into a helper. Copy/paste is acceptable only when the duplication is genuinely temporary and you delete it in the same change.
-
-## Test names and assertion messages
-
-When refactoring a test (e.g. converting from a `struct Case` + for-loop to `#[rstest]`), keep the original `#[test] fn` name and the original `assert!`/`assert_eq!` messages byte-identical. A diff that simultaneously renames a test and reshapes it is much harder to review than two separate changes.
-
-When rstest case labels need to differ from the `name` field of an existing for-loop, thread the original name through as a `#[case]` parameter so the assertion message format stays unchanged.
+Exception: fixtures under `tests/fixtures/` cannot embed `$0` (it would break the parser-fixture suite). Keep hand-counted positions there, but pull them into a `for` loop or `#[rstest] #[case]` so each sits beside its label.
