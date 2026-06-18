@@ -1,0 +1,2 @@
+roots = ["rootA", "rootB"]
+diagnostics_scope = "workspace"
