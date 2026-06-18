@@ -42,6 +42,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 34  | `override_param_count`             | error    | A method override declares a different parameter count than the ancestor's method                  |
 | 35  | `unused_symbol`                    | hint     | An unused local variable, parameter, or private field; rendered faded by editors                   |
 | 36  | `wrapped_method_modifier`          | error    | A modifier or flavour keyword is applied to a `@wrapMethod` function                               |
+| 37  | `struct_property_on_temporary`     | error    | `f().x` accesses a struct property on a function result                                            |
 
 ## Details
 
@@ -251,3 +252,7 @@ An unused local variable, parameter, or `private` field. Emitted at hint severit
 ### 36. Modifier on a wrapped method
 
 An access modifier (`public`/`protected`/`private`/`final`/...) or function flavour keyword (`exec`, `timer`, ...) on a `@wrapMethod`-annotated function. The wrapper inherits the wrapped method's signature, so the compiler rejects any added modifier or flavour. Each offending keyword is flagged separately.
+
+### 37. Struct property accessed on a temporary
+
+Reading a property straight off a struct that a function returns, e.g. `component.GetLocalPosition().Z`. The compiler rejects this; assign the returned struct to a local `var` and read the property from that variable instead.

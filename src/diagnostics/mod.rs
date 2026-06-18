@@ -16,6 +16,7 @@ mod inherited_field;
 mod override_consistency;
 mod shadowing;
 mod state_owner;
+mod struct_temp_member;
 mod super_field_access;
 mod type_mismatch;
 mod unknown_method;
@@ -57,6 +58,7 @@ use annotation_state_target::AnnotationStateTargetRule;
 use inherited_field::InheritedFieldRule;
 use override_consistency::OverrideConsistencyRule;
 use state_owner::StateOwnerRule;
+use struct_temp_member::StructTempMemberRule;
 use super_field_access::SuperFieldAccessRule;
 use type_mismatch::TypeMismatchRule;
 use unknown_method::UnknownMethodRule;
@@ -73,6 +75,7 @@ pub fn collect_cst_diagnostics_for_document(
     let wrapped_rule = WrappedMethodRule;
     let abstract_rule = AbstractInstantiationRule;
     let super_field_rule = SuperFieldAccessRule;
+    let struct_temp_member_rule = StructTempMemberRule;
     let type_mismatch_rule = TypeMismatchRule;
     let state_owner_rule = StateOwnerRule;
     let annotation_state_target_rule = AnnotationStateTargetRule;
@@ -84,6 +87,7 @@ pub fn collect_cst_diagnostics_for_document(
         &wrapped_rule,
         &abstract_rule,
         &super_field_rule,
+        &struct_temp_member_rule,
         &type_mismatch_rule,
         &state_owner_rule,
         &annotation_state_target_rule,
