@@ -256,14 +256,13 @@ fn infer_member_access_type(
     else {
         return Type::Unknown;
     };
-    let def = resolve_document_member(
-        uri,
-        document,
-        &container_type,
-        member_name,
-        AccessLevel::Public,
-    )
-    .or_else(|| db.find_member(&container_type, member_name, AccessLevel::Public));
+    let min_access = match accessor.kind() {
+        kinds::THIS_EXPR => AccessLevel::Private,
+        kinds::SUPER_EXPR => AccessLevel::Protected,
+        _ => AccessLevel::Public,
+    };
+    let def = resolve_document_member(uri, document, &container_type, member_name, min_access)
+        .or_else(|| db.find_member(&container_type, member_name, min_access));
     def.and_then(|d| d.symbol.type_annotation)
         .unwrap_or(Type::Unknown)
 }

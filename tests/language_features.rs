@@ -1,8 +1,10 @@
+use rstest::rstest;
 use witcherscript_language::builtins::{BUILTIN_ARRAY_URI, load_builtins_index};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::line_index::SourcePosition;
 use witcherscript_language::resolve::{SymbolDb, WorkspaceIndex, resolve_definition};
 use witcherscript_language::symbols::SymbolKind;
+use witcherscript_language::test_support::TestDb;
 use witcherscript_language::types::Type;
 
 #[test]
@@ -218,6 +220,32 @@ fn builtin_array_methods_resolve_through_fixture() {
         Some(Type::from_annotation("int")),
         "parameter type must be substituted"
     );
+}
+
+// `this` grants access to the receiver's private/protected members, so `this.field` must infer even when `field` is not public.
+#[rstest]
+#[case::private_field("private")]
+#[case::protected_field("protected")]
+#[case::public_field("public")]
+fn resolves_inherited_method_through_field_on_this(#[case] access: &str) {
+    let source = format!(
+        "class CHudModule {{}}\n\
+         class CHud {{ function GetHudModule(moduleName : string) : CHudModule {{}} }}\n\
+         class CR4Hud extends CHud {{}}\n\
+         class CR4ScriptedHud extends CR4Hud {{}}\n\
+         class CExample {{\n\
+         \t{access} var hud : CR4ScriptedHud;\n\
+         \tfunction Use() {{\n\
+         \t\tthis.hud.$0GetHudModule(\"x\");\n\
+         \t}}\n\
+         }}\n"
+    );
+    let t = TestDb::new(&source);
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).unwrap_or_else(|| {
+        panic!("case {access}: inherited method should resolve through this.field")
+    });
+    assert_eq!(def.symbol.name, "GetHudModule", "case {access}");
 }
 
 fn assert_symbol(
