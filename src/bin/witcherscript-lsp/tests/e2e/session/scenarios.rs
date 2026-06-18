@@ -77,6 +77,18 @@ async fn clean_workspace_has_no_workspace_diagnostics() {
 }
 
 #[tokio::test]
+async fn workspace_diagnostics_report_an_introduced_error() {
+    let mut session = EditorSession::open(WorkspaceFixture::Minimal).await;
+    let rel = "scripts/types.ws";
+    session.edit(rel, 2, "class CWeapon {\n").await;
+    let diagnostics = session.workspace_diagnostics().await;
+    assert!(
+        diagnostics.iter().any(|(file, _)| file == rel),
+        "workspace diagnostics must report the unclosed class in {rel}, got {diagnostics:?}"
+    );
+}
+
+#[tokio::test]
 async fn editing_a_file_reports_new_diagnostics() {
     let mut session = EditorSession::open(WorkspaceFixture::Minimal).await;
     let rel = "scripts/types.ws";
