@@ -1,5 +1,59 @@
 ---
 source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
-expression: "session.workspace_symbols(\"\").await"
+expression: session.workspace_symbols(symbol_query).await
 ---
-[]
+- name: CModPlayer
+  kind: class
+  location:
+    file: mod/scripts/mod_player.ws
+    range: "0:6-0:16"
+- name: EMS_End_PlayerForfeited
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/enums.ws"
+    range: "404:4-404:27"
+- name: EMS_End_PlayerLost
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/enums.ws"
+    range: "401:4-401:22"
+- name: EMS_End_PlayerWon
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/enums.ws"
+    range: "400:4-400:21"
+- name: EMS_Wait_PlayerLost
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/enums.ws"
+    range: "403:4-403:23"
+- name: FLAG_ExcludePlayer
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/orphan_enums.ws"
+    range: "13:4-13:22"
+- name: IGameplayDLCMounter
+  kind: class
+  location:
+    file: "witcherscript-builtin:/unknown-interfaces.ws"
+    range: "5:15-5:34"
+- name: OT_Player
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/enums.ws"
+    range: "470:4-470:13"
+- name: TE_FIGHT_PLAYER_ATTACKS
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/enums.ws"
+    range: "544:4-544:27"
+- name: TE_FIGHT_PLAYER_DIES
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/enums.ws"
+    range: "543:4-543:24"
+- name: TE_FIGHT_PLAYER_USE_SIGN
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/enums.ws"
+    range: "545:4-545:28"

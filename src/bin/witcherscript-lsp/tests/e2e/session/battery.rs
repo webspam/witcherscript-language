@@ -1,6 +1,10 @@
 use super::EditorSession;
 
-pub(crate) async fn snapshot_battery(session: &mut EditorSession, fixture: &str) {
+pub(crate) async fn snapshot_battery(
+    session: &mut EditorSession,
+    fixture: &str,
+    symbol_query: &str,
+) {
     for rel in session.rel_paths() {
         insta::assert_yaml_snapshot!(
             name(fixture, &rel, "diagnostics"),
@@ -25,7 +29,7 @@ pub(crate) async fn snapshot_battery(session: &mut EditorSession, fixture: &str)
     }
     insta::assert_yaml_snapshot!(
         name(fixture, "_workspace", "symbols"),
-        session.workspace_symbols("").await
+        session.workspace_symbols(symbol_query).await
     );
 }
 

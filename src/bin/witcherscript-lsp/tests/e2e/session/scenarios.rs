@@ -4,7 +4,7 @@ use super::{EditorSession, WorkspaceFixture};
 #[tokio::test]
 async fn minimal_workspace_battery() {
     let mut session = EditorSession::open(WorkspaceFixture::Minimal).await;
-    snapshot_battery(&mut session, "minimal").await;
+    snapshot_battery(&mut session, "minimal", "Player").await;
 }
 
 #[tokio::test]
@@ -29,7 +29,7 @@ async fn minimal_positional_probes() {
 #[tokio::test]
 async fn base_layering_battery() {
     let mut session = EditorSession::open(WorkspaceFixture::BaseLayering).await;
-    snapshot_battery(&mut session, "base_layering").await;
+    snapshot_battery(&mut session, "base_layering", "Player").await;
 }
 
 #[tokio::test]
@@ -46,7 +46,7 @@ async fn base_layering_resolves_into_base_scripts() {
 #[tokio::test]
 async fn multi_root_battery() {
     let mut session = EditorSession::open(WorkspaceFixture::MultiRoot).await;
-    snapshot_battery(&mut session, "multi_root").await;
+    snapshot_battery(&mut session, "multi_root", "Shared").await;
 }
 
 #[tokio::test]
