@@ -255,6 +255,4 @@ An access modifier (`public`/`protected`/`private`/`final`/...) or function flav
 
 ### 37. Struct property accessed on a temporary
 
-A `Call().Prop` where `Call()` returns a `struct` and `Prop` is one of its properties, e.g. `component.GetLocalPosition().Z`. A returned struct is a temporary; its properties are only readable through a variable. Assign the struct to a local `var` first.
-
-Only a direct function-call receiver fires. An unknown property is left to `unknown_member`; a returned `class` (a reference) is unaffected.
+Reading a property straight off a struct that a function returns, e.g. `component.GetLocalPosition().Z`. The compiler rejects this; assign the returned struct to a local `var` and read the property from that variable instead.
