@@ -19,6 +19,7 @@ static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 impl LocalTempDir {
     pub(crate) fn new(name: &str) -> Self {
         let path = std::env::temp_dir().join(name);
+        // remove_dir_all errors NotFound when absent; create_dir_all below fails loud on any real problem
         std::fs::remove_dir_all(&path).ok();
         std::fs::create_dir_all(&path).expect("mkdir tempdir");
         Self { path }
@@ -31,6 +32,7 @@ impl LocalTempDir {
             .join("target")
             .join("tmp")
             .join(format!("{name}-{}-{id}", std::process::id()));
+        // remove_dir_all errors NotFound when absent; create_dir_all below fails loud on any real problem
         std::fs::remove_dir_all(&path).ok();
         std::fs::create_dir_all(&path).expect("mkdir tempdir");
         Self { path }
