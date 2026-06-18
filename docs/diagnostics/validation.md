@@ -255,6 +255,6 @@ An access modifier (`public`/`protected`/`private`/`final`/...) or function flav
 
 ### 37. Struct property accessed on a temporary
 
-A `Call().Prop` where `Call()` returns a `struct` and `Prop` is one of its properties, e.g. `var z : float = component.GetLocalPosition().Z;`. The compiler rejects this with "Cannot access struct property 'Z'. Parent scope does not come from variable.": a returned struct is a temporary value, and a struct property can only be read through a variable. The fix is to assign the struct to a local `var` first, then read the property from that variable.
+A `Call().Prop` where `Call()` returns a `struct` and `Prop` is one of its properties, e.g. `component.GetLocalPosition().Z`. A returned struct is a temporary; its properties are only readable through a variable. Assign the struct to a local `var` first.
 
-Only a direct function-call receiver is flagged; an unknown property name is left to `unknown_member`, and a returned `class` (a reference, not a value) is unaffected.
+Only a direct function-call receiver fires. An unknown property is left to `unknown_member`; a returned `class` (a reference) is unaffected.
