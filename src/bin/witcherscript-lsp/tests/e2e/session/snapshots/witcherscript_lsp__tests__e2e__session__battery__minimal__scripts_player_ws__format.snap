@@ -2,5 +2,5 @@
 source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
 expression: session.formatting(&rel).await
 ---
-- range: "0:0-15:0"
-  new_text: "class CPlayer {\n\tvar currentWeapon : CWeapon;\n\tvar health : int;\n\n\tfunction Attack() : int {\n\t\treturn currentWeapon.GetDamage();\n\t}\n\n\tfunction TakeDamage(amount : int) {\n\t\thealth -= amount;\n\t}\n}\n"
+- range: "0:0-33:0"
+  new_text: "class CPlayer {\n\tvar currentWeapon : CWeapon;\n\tvar health : int;\n\n\tfunction Attack() : int {\n\t\treturn currentWeapon.GetDamage();\n\t}\n\n\tfunction TakeDamage(amount : int) {\n\t\thealth -= amount;\n\t}\n\n\tfunction ResolveHit(out result : int, optional crit : bool, optional out log : string) {\n\t\tresult = health;\n\t\tif (crit) {\n\t\t\tresult += 1;\n\t\t}\n\t\tlog = \"ok\";\n\t}\n\n\tfunction Tick() {\n\t\tvar result : int;\n\t\tvar log : string;\n\t\tTakeDamage(50);\n\t\tResolveHit(result, true, log);\n\t}\n}\n"

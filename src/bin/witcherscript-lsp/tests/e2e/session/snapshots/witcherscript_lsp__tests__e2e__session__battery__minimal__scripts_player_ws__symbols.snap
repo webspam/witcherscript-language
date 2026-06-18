@@ -4,7 +4,7 @@ expression: session.document_symbols(&rel).await
 ---
 - name: CPlayer
   kind: class
-  range: "0:0-14:1"
+  range: "0:0-32:1"
   selection: "0:6-0:13"
   children:
     - name: currentWeapon
@@ -26,3 +26,11 @@ expression: session.document_symbols(&rel).await
       kind: method
       range: "10:1-13:2"
       selection: "10:10-10:20"
+    - name: ResolveHit
+      kind: method
+      range: "15:1-23:2"
+      selection: "15:10-15:20"
+    - name: Tick
+      kind: method
+      range: "25:1-31:2"
+      selection: "25:10-25:14"
