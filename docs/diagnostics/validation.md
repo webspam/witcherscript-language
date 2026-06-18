@@ -42,6 +42,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 34  | `override_param_count`             | error    | A method override declares a different parameter count than the ancestor's method                  |
 | 35  | `unused_symbol`                    | hint     | An unused local variable, parameter, or private field; rendered faded by editors                   |
 | 36  | `wrapped_method_modifier`          | error    | A modifier or flavour keyword is applied to a `@wrapMethod` function                               |
+| 37  | `struct_property_on_temporary`     | error    | A struct property is accessed on a function's return value instead of through a variable           |
 
 ## Details
 
@@ -251,3 +252,9 @@ An unused local variable, parameter, or `private` field. Emitted at hint severit
 ### 36. Modifier on a wrapped method
 
 An access modifier (`public`/`protected`/`private`/`final`/...) or function flavour keyword (`exec`, `timer`, ...) on a `@wrapMethod`-annotated function. The wrapper inherits the wrapped method's signature, so the compiler rejects any added modifier or flavour. Each offending keyword is flagged separately.
+
+### 37. Struct property accessed on a temporary
+
+A `Call().Prop` where `Call()` returns a `struct` and `Prop` is one of its properties, e.g. `var z : float = component.GetLocalPosition().Z;`. The compiler rejects this with "Cannot access struct property 'Z'. Parent scope does not come from variable.": a returned struct is a temporary value, and a struct property can only be read through a variable. The fix is to assign the struct to a local `var` first, then read the property from that variable.
+
+Only a direct function-call receiver is flagged; an unknown property name is left to `unknown_member`, and a returned `class` (a reference, not a value) is unaffected.
