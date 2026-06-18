@@ -1,0 +1,6 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.formatting(&rel).await
+---
+- range: "0:0-15:0"
+  new_text: "class CPlayer {\n\tvar currentWeapon : CWeapon;\n\tvar health : int;\n\n\tfunction Attack() : int {\n\t\treturn currentWeapon.GetDamage();\n\t}\n\n\tfunction TakeDamage(amount : int) {\n\t\thealth -= amount;\n\t}\n}\n"

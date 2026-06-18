@@ -1,0 +1,6 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.formatting(&rel).await
+---
+- range: "0:0-9:0"
+  new_text: "class CSharedThing {\n\tvar value : int;\n\n\tfunction DoIt() : int {\n\t\treturn value;\n\t}\n}\n"

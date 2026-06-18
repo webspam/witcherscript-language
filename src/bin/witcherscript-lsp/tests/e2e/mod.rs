@@ -14,5 +14,6 @@ mod on_disk_root;
 mod panic_boundary;
 mod rename;
 mod semantic_tokens;
+mod session;
 mod type_definition;
 mod workspace_symbol;

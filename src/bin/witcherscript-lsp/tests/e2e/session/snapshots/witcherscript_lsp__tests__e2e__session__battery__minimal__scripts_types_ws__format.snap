@@ -1,0 +1,6 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.formatting(&rel).await
+---
+- range: "0:0-17:0"
+  new_text: "enum EWeaponType {\n\tWT_Sword,\n\tWT_Axe,\n\tWT_Bow\n}\n\nclass CWeapon {\n\tvar weaponType : EWeaponType;\n\tvar damage : int;\n\n\tfunction GetDamage() : int {\n\t\treturn damage;\n\t}\n}\n"

@@ -1,0 +1,5 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/scenarios.rs
+expression: session.signature_help(rel).await
+---
+~

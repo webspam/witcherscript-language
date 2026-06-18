@@ -1,0 +1,6 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
+expression: session.formatting(&rel).await
+---
+- range: "0:0-7:0"
+  new_text: "class CModPlayer extends CBaseEntity {\n\tfunction Describe() : string {\n\t\treturn this.GetName();\n\t}\n}\n"

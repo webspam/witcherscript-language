@@ -73,7 +73,7 @@ enum CodeLens {
 }
 
 pub(crate) struct LspClientBuilder {
-    root: Option<PathBuf>,
+    roots: Vec<PathBuf>,
     init_options: Option<Value>,
     config_overrides: HashMap<String, Value>,
     code_lens_refresh: CodeLens,
@@ -84,7 +84,7 @@ pub(crate) struct LspClientBuilder {
 impl LspClientBuilder {
     pub(crate) fn new() -> Self {
         Self {
-            root: None,
+            roots: Vec::new(),
             init_options: None,
             config_overrides: HashMap::new(),
             code_lens_refresh: CodeLens::NoRefresh,
@@ -94,7 +94,7 @@ impl LspClientBuilder {
     }
 
     pub(crate) fn root(mut self, dir: &Path) -> Self {
-        self.root = Some(dir.to_path_buf());
+        self.roots.push(dir.to_path_buf());
         self
     }
 
@@ -197,16 +197,20 @@ impl LspClient {
             rpc.set_config_overrides(builder.config_overrides);
         }
 
-        let (root_uri, workspace_folders) = match &builder.root {
-            Some(dir) => {
-                let uri = Url::from_directory_path(dir).expect("workspace root path -> URI");
-                let folder = WorkspaceFolder {
-                    uri: uri.clone(),
-                    name: "fixture".to_string(),
-                };
-                (Some(uri), Some(vec![folder]))
-            }
-            None => (None, None),
+        let (root_uri, workspace_folders) = if builder.roots.is_empty() {
+            (None, None)
+        } else {
+            let folders: Vec<WorkspaceFolder> = builder
+                .roots
+                .iter()
+                .enumerate()
+                .map(|(i, dir)| WorkspaceFolder {
+                    uri: Url::from_directory_path(dir).expect("workspace root path -> URI"),
+                    name: format!("fixture{i}"),
+                })
+                .collect();
+            let root_uri = folders.first().map(|f| f.uri.clone());
+            (root_uri, Some(folders))
         };
 
         // root_uri is deprecated in the LSP but real editors still send it alongside workspace_folders.
