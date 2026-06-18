@@ -1,14 +1,25 @@
+use std::path::Path;
+
 use super::battery::snapshot_battery;
 use super::{EditorSession, WorkspaceFixture};
 
+// Keep generated snapshots in the crate's tests/ tree, not next to sources under src/.
+fn e2e_snapshots() -> insta::Settings {
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/e2e_snapshots"));
+    settings
+}
+
 #[tokio::test]
 async fn minimal_workspace_battery() {
+    let _guard = e2e_snapshots().bind_to_scope();
     let mut session = EditorSession::open(WorkspaceFixture::Minimal).await;
     snapshot_battery(&mut session, "minimal", "Player").await;
 }
 
 #[tokio::test]
 async fn minimal_positional_probes() {
+    let _guard = e2e_snapshots().bind_to_scope();
     let mut session = EditorSession::open(WorkspaceFixture::Minimal).await;
     let rel = "scripts/player.ws";
     insta::assert_yaml_snapshot!("minimal_player_hover", session.hover(rel).await);
@@ -28,12 +39,14 @@ async fn minimal_positional_probes() {
 
 #[tokio::test]
 async fn base_layering_battery() {
+    let _guard = e2e_snapshots().bind_to_scope();
     let mut session = EditorSession::open(WorkspaceFixture::BaseLayering).await;
     snapshot_battery(&mut session, "base_layering", "Player").await;
 }
 
 #[tokio::test]
 async fn base_layering_resolves_into_base_scripts() {
+    let _guard = e2e_snapshots().bind_to_scope();
     let mut session = EditorSession::open(WorkspaceFixture::BaseLayering).await;
     let definition = session.definition("mod/scripts/mod_player.ws").await;
     insta::assert_yaml_snapshot!("base_layering_definition_into_base", definition);
@@ -45,12 +58,14 @@ async fn base_layering_resolves_into_base_scripts() {
 
 #[tokio::test]
 async fn multi_root_battery() {
+    let _guard = e2e_snapshots().bind_to_scope();
     let mut session = EditorSession::open(WorkspaceFixture::MultiRoot).await;
     snapshot_battery(&mut session, "multi_root", "Shared").await;
 }
 
 #[tokio::test]
 async fn multi_root_resolves_across_roots() {
+    let _guard = e2e_snapshots().bind_to_scope();
     let mut session = EditorSession::open(WorkspaceFixture::MultiRoot).await;
     let definition = session.definition("rootB/scripts/b.ws").await;
     insta::assert_yaml_snapshot!("multi_root_definition_across_roots", definition);
@@ -84,12 +99,14 @@ async fn editing_a_file_reports_new_diagnostics() {
 
 #[tokio::test]
 async fn emitter_mod_battery() {
+    let _guard = e2e_snapshots().bind_to_scope();
     let mut session = EditorSession::open(WorkspaceFixture::EmitterMod).await;
     snapshot_battery(&mut session, "emitter_mod", "Emitter").await;
 }
 
 #[tokio::test]
 async fn emitter_mod_resolves_into_base_scripts() {
+    let _guard = e2e_snapshots().bind_to_scope();
     let mut session = EditorSession::open(WorkspaceFixture::EmitterMod).await;
     let definition = session.definition("mod/scripts/probe_lookup.ws").await;
     insta::assert_yaml_snapshot!("emitter_mod_lookup_definition", definition);
@@ -101,6 +118,7 @@ async fn emitter_mod_resolves_into_base_scripts() {
 
 #[tokio::test]
 async fn emitter_mod_positional_probes() {
+    let _guard = e2e_snapshots().bind_to_scope();
     let mut session = EditorSession::open(WorkspaceFixture::EmitterMod).await;
 
     let lookup = "mod/scripts/probe_lookup.ws";
