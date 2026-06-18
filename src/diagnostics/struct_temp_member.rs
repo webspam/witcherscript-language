@@ -1,15 +1,12 @@
-use std::collections::HashMap;
-
 use tree_sitter::Node;
 
 use crate::cst::grammar::member_access_member;
 use crate::cst::kinds;
 use crate::cst::nav::first_named_child;
-use crate::document::ParsedDocument;
-use crate::resolve::{SymbolDb, infer_type_memo};
+use crate::resolve::infer_type_memo;
 use crate::symbols::{AccessLevel, SymbolKind};
 
-use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, collect_single_rule_diagnostics};
+use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic};
 
 pub(crate) struct StructTempMemberRule;
 
@@ -28,13 +25,6 @@ impl CstRule for StructTempMemberRule {
         }
         check_struct_temp_access(node, ctx);
     }
-}
-
-pub fn collect_struct_temp_member_diagnostics(
-    documents: &[(&str, &ParsedDocument)],
-    db: &SymbolDb,
-) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
-    collect_single_rule_diagnostics(&StructTempMemberRule, documents, db)
 }
 
 fn check_struct_temp_access<'tree>(

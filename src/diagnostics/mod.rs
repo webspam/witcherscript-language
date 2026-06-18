@@ -41,7 +41,6 @@ pub use inherited_field::collect_inherited_field_diagnostics;
 pub use override_consistency::collect_override_consistency_diagnostics;
 pub use shadowing::collect_shadowing_diagnostics;
 pub use state_owner::collect_state_owner_diagnostics;
-pub use struct_temp_member::collect_struct_temp_member_diagnostics;
 pub use super_field_access::collect_super_field_access_diagnostics;
 pub use type_mismatch::collect_type_mismatch_diagnostics;
 pub use unknown_method::collect_unknown_method_diagnostics;

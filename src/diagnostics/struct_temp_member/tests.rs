@@ -1,6 +1,7 @@
 use rstest::rstest;
 
-use super::collect_struct_temp_member_diagnostics;
+use super::StructTempMemberRule;
+use crate::diagnostics::collect_single_rule_diagnostics;
 use crate::test_support::TestDb;
 
 #[rstest]
@@ -21,7 +22,7 @@ use crate::test_support::TestDb;
 )]
 fn does_not_fire(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
-    let result = collect_struct_temp_member_diagnostics(&t.search_docs(), &t.db());
+    let result = collect_single_rule_diagnostics(&StructTempMemberRule, &t.search_docs(), &t.db());
     assert!(result.is_empty(), "expected no diagnostics, got {result:?}");
 }
 
@@ -31,7 +32,7 @@ fn flags_property_on_struct_returned_by_call() {
         "struct Vec3 { var Z : float; } function GetVec() : Vec3 {} \
          function Test() { var f : float; f = GetVec().Z; }\n",
     );
-    let result = collect_struct_temp_member_diagnostics(&t.search_docs(), &t.db());
+    let result = collect_single_rule_diagnostics(&StructTempMemberRule, &t.search_docs(), &t.db());
 
     let diags = result
         .get(t.primary_uri())
@@ -49,7 +50,7 @@ fn flags_property_on_chained_method_call() {
          //- /b.ws\nclass Comp { function GetPos() : Vec3 {} }\n\
          //- /c.ws\nfunction Test(c : Comp) { var f : float; f = c.GetPos().Z; }\n",
     );
-    let result = collect_struct_temp_member_diagnostics(&t.search_docs(), &t.db());
+    let result = collect_single_rule_diagnostics(&StructTempMemberRule, &t.search_docs(), &t.db());
 
     let diags = result
         .get("file:///c.ws")
