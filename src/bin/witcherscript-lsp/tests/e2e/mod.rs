@@ -4,6 +4,7 @@ mod completion;
 mod definition;
 mod diagnostics;
 mod document_highlight;
+mod excluded_files;
 mod fixture;
 mod harness;
 mod hover;

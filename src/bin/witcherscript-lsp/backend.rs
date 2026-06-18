@@ -319,10 +319,6 @@ impl Backend {
             return false;
         }
         drop(roots);
-        // The set isn't authoritative until the startup walk has populated it.
-        if !self.initial_index_done.load(Ordering::Acquire) {
-            return false;
-        }
         let canonical = canonical_uri(uri);
         if self.workspace_known_files.lock().contains(&canonical) {
             return false;

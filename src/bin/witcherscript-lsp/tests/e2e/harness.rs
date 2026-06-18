@@ -15,7 +15,7 @@ use lsp_types::{
     DocumentDiagnosticReport, DocumentDiagnosticReportResult, InitializeParams, InitializeResult,
     InitializedParams, PartialResultParams, ServerCapabilities, TextDocumentClientCapabilities,
     TextDocumentIdentifier, Url, WorkDoneProgressParams, WorkspaceClientCapabilities,
-    WorkspaceSymbolParams, WorkspaceSymbolResponse,
+    WorkspaceFolder, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 use serde_json::Value;
 use tokio::io::{DuplexStream, ReadHalf, WriteHalf, split};
@@ -77,7 +77,7 @@ impl LspClient {
 
     // Holding the workspace/configuration reply keeps the server deterministically pre-index until wait_until_indexed().
     pub(crate) async fn spawn_with_held_config() -> Self {
-        Self::spawn_inner(None, CodeLens::NoRefresh, ConfigReplies::Hold).await
+        Self::spawn_inner(None, CodeLens::NoRefresh, ConfigReplies::Hold, None).await
     }
 
     pub(crate) async fn spawn_open_files_scope() -> Self {
@@ -89,12 +89,26 @@ impl LspClient {
 
     // No readiness wait: the post-index codeLens/refresh is the caller's signal, and wait_until_indexed would consume it.
     pub(crate) async fn spawn_with_code_lens_refresh() -> Self {
-        Self::spawn_inner(None, CodeLens::Refresh, ConfigReplies::Answer).await
+        Self::spawn_inner(None, CodeLens::Refresh, ConfigReplies::Answer, None).await
+    }
+
+    // Real on-disk root so the server scans it; the directory's .gitignore then governs exclusion.
+    pub(crate) async fn spawn_in_workspace(root: &std::path::Path) -> Self {
+        let uri = Url::from_directory_path(root).expect("workspace root path -> url");
+        let mut client =
+            Self::spawn_inner(None, CodeLens::NoRefresh, ConfigReplies::Answer, Some(uri)).await;
+        client.wait_until_indexed().await;
+        client
     }
 
     async fn spawn_with(init_options: Option<Value>) -> Self {
-        let mut client =
-            Self::spawn_inner(init_options, CodeLens::NoRefresh, ConfigReplies::Answer).await;
+        let mut client = Self::spawn_inner(
+            init_options,
+            CodeLens::NoRefresh,
+            ConfigReplies::Answer,
+            None,
+        )
+        .await;
         client.wait_until_indexed().await;
         client
     }
@@ -103,6 +117,7 @@ impl LspClient {
         init_options: Option<Value>,
         code_lens_refresh: CodeLens,
         config_replies: ConfigReplies,
+        workspace_root: Option<Url>,
     ) -> Self {
         let (client_io, server_io) = tokio::io::duplex(64 * 1024);
         let (server_read, server_write) = split(server_io);
@@ -157,6 +172,12 @@ impl LspClient {
                     ..ClientCapabilities::default()
                 },
                 initialization_options: init_options,
+                workspace_folders: workspace_root.map(|uri| {
+                    vec![WorkspaceFolder {
+                        uri,
+                        name: "test-workspace".to_string(),
+                    }]
+                }),
                 ..InitializeParams::default()
             })
             .await;
