@@ -61,6 +61,16 @@ async fn multi_root_resolves_across_roots() {
 }
 
 #[tokio::test]
+async fn clean_workspace_has_no_workspace_diagnostics() {
+    let mut session = EditorSession::open(WorkspaceFixture::MultiRoot).await;
+    let diagnostics = session.workspace_diagnostics().await;
+    assert!(
+        diagnostics.is_empty(),
+        "a clean multi-root workspace must report no diagnostics, got {diagnostics:?}"
+    );
+}
+
+#[tokio::test]
 async fn editing_a_file_reports_new_diagnostics() {
     let mut session = EditorSession::open(WorkspaceFixture::Minimal).await;
     let rel = "scripts/types.ws";

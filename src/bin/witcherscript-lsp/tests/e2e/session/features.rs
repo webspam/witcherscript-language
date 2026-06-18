@@ -1,17 +1,18 @@
 use lsp_types::request::{
     Completion, DocumentHighlightRequest, DocumentSymbolRequest, Formatting, GotoDefinition,
     GotoTypeDefinition, HoverRequest, InlayHintRequest, References, SemanticTokensFullRequest,
-    SignatureHelpRequest, WorkspaceSymbolRequest,
+    SignatureHelpRequest, WorkspaceDiagnosticRequest, WorkspaceSymbolRequest,
 };
 use lsp_types::{
-    CompletionParams, CompletionResponse, DocumentFormattingParams, DocumentHighlight,
+    CompletionParams, CompletionResponse, Diagnostic, DocumentFormattingParams, DocumentHighlight,
     DocumentHighlightParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
     FormattingOptions, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
     HoverParams, InlayHint, InlayHintLabel, InlayHintParams, Location, NumberOrString, OneOf,
     PartialResultParams, Position, Range, ReferenceContext, ReferenceParams, SemanticToken,
     SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities, SignatureHelp,
     SignatureHelpParams, TextDocumentIdentifier, TextDocumentPositionParams,
-    WorkDoneProgressParams, WorkspaceSymbolParams, WorkspaceSymbolResponse,
+    WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
+    WorkspaceDocumentDiagnosticReport, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 
 use super::EditorSession;
@@ -26,20 +27,55 @@ impl EditorSession {
     pub(crate) async fn diagnostics(&mut self, rel: &str) -> Vec<DiagSnap> {
         let uri = self.uri_of(rel);
         let diags = self.client.pull_diagnostics(&uri).await;
-        let mut out: Vec<DiagSnap> = diags
-            .into_iter()
-            .map(|d| DiagSnap {
-                range: fmt_range(d.range),
-                severity: severity_name(d.severity),
-                code: d.code.map(|c| match c {
-                    NumberOrString::Number(n) => n.to_string(),
-                    NumberOrString::String(s) => s,
-                }),
-                message: self.workspace.redact_urls(&d.message),
-            })
-            .collect();
+        let mut out: Vec<DiagSnap> = diags.into_iter().map(|d| self.diag_snap(d)).collect();
         out.sort_by(|a, b| (&a.range, &a.message).cmp(&(&b.range, &b.message)));
         out
+    }
+
+    pub(crate) async fn workspace_diagnostics(&mut self) -> Vec<(String, Vec<DiagSnap>)> {
+        let params = WorkspaceDiagnosticParams {
+            identifier: None,
+            previous_result_ids: Vec::new(),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+        };
+        let report = self
+            .client
+            .request_when_ready::<WorkspaceDiagnosticRequest>(params)
+            .await;
+        let WorkspaceDiagnosticReportResult::Report(report) = report else {
+            panic!("server must return a complete workspace diagnostic report, not a partial");
+        };
+        let mut out: Vec<(String, Vec<DiagSnap>)> = report
+            .items
+            .into_iter()
+            .filter_map(|item| match item {
+                WorkspaceDocumentDiagnosticReport::Full(full) => {
+                    let diags: Vec<DiagSnap> = full
+                        .full_document_diagnostic_report
+                        .items
+                        .into_iter()
+                        .map(|d| self.diag_snap(d))
+                        .collect();
+                    (!diags.is_empty()).then(|| (self.workspace.relativize(&full.uri), diags))
+                }
+                WorkspaceDocumentDiagnosticReport::Unchanged(_) => None,
+            })
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
+    fn diag_snap(&self, diagnostic: Diagnostic) -> DiagSnap {
+        DiagSnap {
+            range: fmt_range(diagnostic.range),
+            severity: severity_name(diagnostic.severity),
+            code: diagnostic.code.map(|c| match c {
+                NumberOrString::Number(n) => n.to_string(),
+                NumberOrString::String(s) => s,
+            }),
+            message: self.workspace.redact_urls(&diagnostic.message),
+        }
     }
 
     pub(crate) async fn document_symbols(&mut self, rel: &str) -> Vec<SymbolSnap> {
