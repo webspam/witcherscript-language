@@ -15,6 +15,7 @@ use lsp_types::{
     WorkspaceDocumentDiagnosticReport, WorkspaceSymbolParams, WorkspaceSymbolResponse,
 };
 
+use super::super::semantic_tokens::absolute_tokens;
 use super::EditorSession;
 use super::model::{
     CompletionItemSnap, DiagSnap, HighlightSnap, HintSnap, HoverSnap, SignatureInfoSnap,
@@ -464,27 +465,17 @@ fn symbol_snap(symbol: &DocumentSymbol) -> SymbolSnap {
 }
 
 fn decode_tokens(data: &[SemanticToken], types: &[String], modifiers: &[String]) -> Vec<TokenSnap> {
-    let mut out = Vec::with_capacity(data.len());
-    let mut line = 0u32;
-    let mut start = 0u32;
-    for token in data {
-        if token.delta_line == 0 {
-            start += token.delta_start;
-        } else {
-            line += token.delta_line;
-            start = token.delta_start;
-        }
-        let token_type = types
-            .get(token.token_type as usize)
-            .cloned()
-            .unwrap_or_else(|| format!("type#{}", token.token_type));
-        out.push(TokenSnap {
-            range: format!("{line}:{start}-{line}:{}", start + token.length),
-            token_type,
-            modifiers: decode_modifiers(token.token_modifiers_bitset, modifiers),
-        });
-    }
-    out
+    absolute_tokens(data)
+        .into_iter()
+        .map(|(line, start, length, token_type, bitset)| TokenSnap {
+            range: format!("{line}:{start}-{line}:{}", start + length),
+            token_type: types
+                .get(token_type as usize)
+                .cloned()
+                .unwrap_or_else(|| format!("type#{token_type}")),
+            modifiers: decode_modifiers(bitset, modifiers),
+        })
+        .collect()
 }
 
 fn decode_modifiers(bitset: u32, modifiers: &[String]) -> Vec<String> {

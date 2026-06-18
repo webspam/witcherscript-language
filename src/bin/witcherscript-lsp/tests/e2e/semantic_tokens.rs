@@ -28,7 +28,7 @@ fn semantic_tokens_options(client: &LspClient) -> &lsp_types::SemanticTokensOpti
     }
 }
 
-fn absolute_tokens(tokens: &[SemanticToken]) -> Vec<(u32, u32, u32, u32, u32)> {
+pub(crate) fn absolute_tokens(tokens: &[SemanticToken]) -> Vec<(u32, u32, u32, u32, u32)> {
     let mut out = Vec::with_capacity(tokens.len());
     let mut line = 0u32;
     let mut start = 0u32;
