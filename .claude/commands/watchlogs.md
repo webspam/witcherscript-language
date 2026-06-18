@@ -1,5 +1,6 @@
 ---
 description: Start witcherscript-lsp in TCP listen mode, capture stderr, and stop after N log lines
+disable-model-invocation: true
 ---
 
 # watchlogs
