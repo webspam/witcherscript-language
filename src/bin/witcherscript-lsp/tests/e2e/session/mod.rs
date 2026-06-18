@@ -34,17 +34,21 @@ pub(crate) struct EditorSession {
     workspace: LoadedWorkspace,
 }
 
+fn builder_for(workspace: &LoadedWorkspace) -> LspClientBuilder {
+    let mut builder = LspClientBuilder::new();
+    for root in workspace.workspace_roots() {
+        builder = builder.root(root);
+    }
+    for (section, value) in workspace.config_overrides() {
+        builder = builder.config_override(section, value.clone());
+    }
+    builder
+}
+
 impl EditorSession {
     pub(crate) async fn open(fixture: WorkspaceFixture) -> Self {
         let workspace = LoadedWorkspace::materialize(fixture.dir_name());
-        let mut builder = LspClientBuilder::new();
-        for root in workspace.workspace_roots() {
-            builder = builder.root(root);
-        }
-        for (section, value) in workspace.config_overrides() {
-            builder = builder.config_override(section, value.clone());
-        }
-        let mut client = builder.spawn().await;
+        let mut client = builder_for(&workspace).spawn().await;
         for file in workspace.files() {
             client.open(&file.uri, &file.text).await;
         }
