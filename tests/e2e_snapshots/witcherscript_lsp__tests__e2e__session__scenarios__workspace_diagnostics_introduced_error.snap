@@ -1,0 +1,14 @@
+---
+source: src/bin/witcherscript-lsp/tests/e2e/session/scenarios.rs
+expression: session.workspace_diagnostics().await
+---
+- - scripts/player.ws
+  - - range: "7:23-7:32"
+      severity: error
+      code: unknown_method
+      message: "No method 'GetDamage' on type 'CWeapon'"
+- - scripts/types.ws
+  - - range: "0:15-0:15"
+      severity: error
+      code: "}"
+      message: "Missing }"
