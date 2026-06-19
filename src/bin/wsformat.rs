@@ -147,7 +147,7 @@ enum Status {
     Skipped,
 }
 
-fn process_file(
+fn format_or_check_file(
     parser: &mut TreeSitterParser,
     path: &Path,
     options: FormatOptions,
@@ -208,7 +208,7 @@ fn run() -> Result<i32, Box<dyn Error>> {
             }
         };
         let options = cli.format_options(config.as_ref());
-        match process_file(&mut parser, path, options, cli.check) {
+        match format_or_check_file(&mut parser, path, options, cli.check) {
             Ok(Status::Clean) => {}
             Ok(Status::Changed) => changed += 1,
             Ok(Status::Skipped) => failed += 1,
