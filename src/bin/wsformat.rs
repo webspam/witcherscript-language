@@ -6,6 +6,7 @@ use clap::Parser as ClapParser;
 use tree_sitter::Parser as TreeSitterParser;
 use witcherscript_language::document::parse_document_with_parser;
 use witcherscript_language::files::{collect_witcherscript_files, read_text_file};
+use witcherscript_language::format_config::{self, FormatConfigFile};
 use witcherscript_language::formatter::{FormatOptions, format_document};
 
 #[derive(Debug, ClapParser)]
@@ -20,26 +21,34 @@ struct Cli {
     check: bool,
 
     /// Spaces per indent level (ignored when --use-tabs is set).
-    #[arg(long, default_value_t = 4)]
-    tab_size: u32,
+    #[arg(long)]
+    tab_size: Option<u32>,
 
     /// Indent with tabs instead of spaces.
     #[arg(long)]
     use_tabs: bool,
 
     /// Column the formatter tries to keep lines within.
-    #[arg(long, default_value_t = 100)]
-    line_limit: u32,
+    #[arg(long)]
+    line_limit: Option<u32>,
 }
 
 impl Cli {
-    fn format_options(&self) -> FormatOptions {
-        FormatOptions {
-            tab_size: self.tab_size,
-            use_tabs: self.use_tabs,
-            line_limit: self.line_limit,
-            ..FormatOptions::default()
+    // Precedence: built-in defaults < .wsformat.toml < explicit flags.
+    fn format_options(&self, file: Option<&FormatConfigFile>) -> FormatOptions {
+        let mut options = file.map_or_else(FormatOptions::default, |file| {
+            file.apply_to(FormatOptions::default())
+        });
+        if let Some(tab_size) = self.tab_size {
+            options.tab_size = tab_size;
         }
+        if self.use_tabs {
+            options.use_tabs = true;
+        }
+        if let Some(line_limit) = self.line_limit {
+            options.line_limit = line_limit;
+        }
+        options
     }
 }
 
@@ -118,7 +127,8 @@ fn run() -> Result<i32, Box<dyn Error>> {
     let mut parser = TreeSitterParser::new();
     parser.set_language(&tree_sitter_witcherscript::language())?;
 
-    let options = cli.format_options();
+    let file_config = format_config::load(&std::env::current_dir()?)?;
+    let options = cli.format_options(file_config.as_ref());
     let mut changed = 0usize;
     let mut failed = 0usize;
 

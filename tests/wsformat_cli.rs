@@ -94,3 +94,96 @@ fn use_tabs_flag_indents_with_tabs() -> Result<(), Box<dyn std::error::Error>> {
     file.assert(predicate::str::contains("\tvar x : int;"));
     Ok(())
 }
+
+#[test]
+fn wsformat_toml_in_cwd_is_applied() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+    temp.child(".wsformat.toml")
+        .write_str("use_tabs = true\n")?;
+    let file = temp.child("script.ws");
+    file.write_str(MESSY)?;
+
+    wsformat()
+        .current_dir(temp.path())
+        .arg("script.ws")
+        .assert()
+        .success();
+
+    file.assert(predicate::str::contains("\tvar x : int;"));
+    Ok(())
+}
+
+#[test]
+fn explicit_flag_overrides_config_file() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+    temp.child(".wsformat.toml").write_str("tab_size = 2\n")?;
+    let file = temp.child("script.ws");
+    file.write_str(MESSY)?;
+
+    wsformat()
+        .current_dir(temp.path())
+        .args(["--tab-size", "8"])
+        .arg("script.ws")
+        .assert()
+        .success();
+
+    file.assert(predicate::str::contains("\n        var x : int;"));
+    Ok(())
+}
+
+#[test]
+fn dot_prefixed_config_takes_precedence() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+    temp.child(".wsformat.toml")
+        .write_str("use_tabs = true\n")?;
+    temp.child("wsformat.toml").write_str("tab_size = 2\n")?;
+    let file = temp.child("script.ws");
+    file.write_str(MESSY)?;
+
+    wsformat()
+        .current_dir(temp.path())
+        .arg("script.ws")
+        .assert()
+        .success();
+
+    file.assert(predicate::str::contains("\tvar x : int;"));
+    Ok(())
+}
+
+#[test]
+fn config_is_found_in_an_ancestor_directory() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+    temp.child(".wsformat.toml")
+        .write_str("use_tabs = true\n")?;
+    let nested = temp.child("nested/dir");
+    nested.create_dir_all()?;
+    let file = temp.child("nested/dir/script.ws");
+    file.write_str(MESSY)?;
+
+    wsformat()
+        .current_dir(nested.path())
+        .arg("script.ws")
+        .assert()
+        .success();
+
+    file.assert(predicate::str::contains("\tvar x : int;"));
+    Ok(())
+}
+
+#[test]
+fn malformed_config_fails_without_writing() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+    temp.child(".wsformat.toml")
+        .write_str("tab_size = \"not a number\"\n")?;
+    let file = temp.child("script.ws");
+    file.write_str(MESSY)?;
+
+    wsformat()
+        .current_dir(temp.path())
+        .arg("script.ws")
+        .assert()
+        .failure();
+
+    file.assert(MESSY);
+    Ok(())
+}
