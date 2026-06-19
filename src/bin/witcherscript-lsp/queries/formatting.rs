@@ -34,7 +34,7 @@ impl Backend {
             let formatted = format_document(
                 document.tree.root_node(),
                 &document.source,
-                self.format_options(use_tabs, tab_size),
+                self.format_options(&uri, use_tabs, tab_size),
             );
 
             if formatted == document.source {

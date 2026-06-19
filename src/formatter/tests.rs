@@ -89,3 +89,17 @@ pub(super) fn fmt_limit(source: &str, line_limit: u32) -> String {
         },
     )
 }
+
+#[test]
+fn from_setting_falls_back_to_default_on_unknown() {
+    assert_eq!(
+        AnnotationPlacement::from_setting("ownLine"),
+        AnnotationPlacement::OwnLine,
+        "known wire name maps to its variant"
+    );
+    assert_eq!(
+        AnnotationPlacement::from_setting("ownline"),
+        AnnotationPlacement::Preserve,
+        "unknown setting falls back to default instead of erroring"
+    );
+}

@@ -38,6 +38,12 @@ build:
 release:
     cargo build --release
 
+release-lsp:
+    cargo build --release --bin witcherscript-lsp
+
+release-format:
+    cargo build --release --bin wsformat
+
 # Run criterion library benches (wall-clock, local)
 bench:
     cargo bench --bench lib_parse --bench lib_symbols --bench lib_index --bench lib_resolve --bench lib_completion

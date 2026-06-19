@@ -1,4 +1,6 @@
 use lsp_types::{Position, Url};
+use tracing::warn;
+use witcherscript_language::format_config;
 use witcherscript_language::formatter::FormatOptions;
 
 use crate::backend::Backend;
@@ -24,9 +26,10 @@ pub(crate) struct ReferenceLensData {
 }
 
 impl Backend {
-    fn format_options(&self, use_tabs: bool, tab_size: u32) -> FormatOptions {
+    /// A workspace `.wsformat.toml` takes priority over the editor's own format settings.
+    fn format_options(&self, uri: &Url, use_tabs: bool, tab_size: u32) -> FormatOptions {
         let cfg = self.config.load();
-        FormatOptions {
+        let base = FormatOptions {
             tab_size,
             use_tabs,
             line_limit: cfg.formatter_line_limit,
@@ -34,6 +37,20 @@ impl Backend {
             align_member_colons: cfg.formatter_align_member_colons,
             annotation_placement: cfg.formatter_annotation_placement,
             default_placement: cfg.formatter_default_placement,
+        };
+        let Ok(path) = uri.to_file_path() else {
+            return base;
+        };
+        let Some(dir) = path.parent() else {
+            return base;
+        };
+        match format_config::load(dir) {
+            Ok(Some(file)) => file.apply_to(base),
+            Ok(None) => base,
+            Err(error) => {
+                warn!(error = %error, "ignoring malformed .wsformat.toml; using editor settings");
+                base
+            }
         }
     }
 }

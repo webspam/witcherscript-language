@@ -3,6 +3,7 @@ pub(crate) mod cst;
 pub mod diagnostics;
 pub mod document;
 pub mod files;
+pub mod format_config;
 pub mod formatter;
 pub mod line_index;
 pub mod resolve;
