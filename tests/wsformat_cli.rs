@@ -289,6 +289,29 @@ fn malformed_config_fails_without_writing() -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
+#[test]
+fn malformed_nested_config_skips_its_file_but_run_continues()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+    temp.child("aaa/.wsformat.toml")
+        .write_str("tab_size = \"oops\"\n")?;
+    let bad = temp.child("aaa/bad.ws");
+    bad.write_str(MESSY)?;
+    let good = temp.child("zzz.ws");
+    good.write_str(MESSY)?;
+
+    wsformat()
+        .current_dir(temp.path())
+        .arg(".")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("bad.ws"));
+
+    bad.assert(MESSY);
+    good.assert(FORMATTED);
+    Ok(())
+}
+
 // A subdir config wholly replaces the ancestor's (nearest wins), so reverting a key needs it restated.
 #[test]
 fn subdir_config_reverts_one_key_and_customizes_another() -> Result<(), Box<dyn std::error::Error>>

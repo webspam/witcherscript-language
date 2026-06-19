@@ -199,7 +199,15 @@ fn run() -> Result<i32, Box<dyn Error>> {
     for path in &files {
         // Each file's config comes from its own directory, not the invocation cwd.
         let dir = cwd.join(path.parent().unwrap_or(Path::new("")));
-        let options = cli.format_options(format_config::load(&dir)?.as_ref());
+        let config = match format_config::load(&dir) {
+            Ok(config) => config,
+            Err(error) => {
+                eprintln!("error: {}: {error}", path.display());
+                failed += 1;
+                continue;
+            }
+        };
+        let options = cli.format_options(config.as_ref());
         match process_file(&mut parser, path, options, cli.check) {
             Ok(Status::Clean) => {}
             Ok(Status::Changed) => changed += 1,
