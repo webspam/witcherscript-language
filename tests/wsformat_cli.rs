@@ -312,12 +312,12 @@ fn malformed_nested_config_skips_its_file_but_run_continues()
     Ok(())
 }
 
-// A subdir config wholly replaces the ancestor's (nearest wins), so reverting a key needs it restated.
 #[test]
 fn subdir_config_reverts_one_key_and_customizes_another() -> Result<(), Box<dyn std::error::Error>>
 {
     let temp = assert_fs::TempDir::new()?;
     temp.child(".wsformat.toml").write_str("tab_size = 8\n")?;
+    // Configs do not merge across directories, so the nearer file must restate any key it wants from the ancestor.
     temp.child("sub/.wsformat.toml")
         .write_str("tab_size = 4\ncolon_spacing = \"compact\"\n")?;
     temp.child("script.ws").write_str(MESSY)?;

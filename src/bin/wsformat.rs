@@ -88,7 +88,6 @@ struct Cli {
 }
 
 impl Cli {
-    // Precedence: built-in defaults < .wsformat.toml < explicit flags.
     fn format_options(&self, file: Option<&FormatConfigFile>) -> FormatOptions {
         let mut options = file.map_or_else(FormatOptions::default, |file| {
             file.apply_to(FormatOptions::default())
@@ -227,7 +226,7 @@ fn run() -> Result<i32> {
         }
     }
 
-    // In write mode a reformat is success; only an unprocessable file fails. --check fails on drift.
+    // A reformat is a success when writing, but counts as drift (failure) under --check.
     let exit_code = i32::from(failed > 0 || (cli.check && changed > 0));
     Ok(exit_code)
 }

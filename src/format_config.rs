@@ -78,7 +78,7 @@ impl Error for FormatConfigError {
     }
 }
 
-// Nearest ancestor wins; within a directory `.wsformat.toml` takes precedence over `wsformat.toml`.
+/// Nearest ancestor wins; within a directory `.wsformat.toml` takes precedence over `wsformat.toml`.
 fn discover(start_dir: &Path) -> Option<PathBuf> {
     for dir in start_dir.ancestors() {
         let primary = dir.join(PRIMARY_FILENAME);

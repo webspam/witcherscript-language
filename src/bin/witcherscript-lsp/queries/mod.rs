@@ -26,7 +26,7 @@ pub(crate) struct ReferenceLensData {
 }
 
 impl Backend {
-    // A `.wsformat.toml` beside the document overrides editor settings field-by-field.
+    /// A workspace `.wsformat.toml` takes priority over the editor's own format settings.
     fn format_options(&self, uri: &Url, use_tabs: bool, tab_size: u32) -> FormatOptions {
         let cfg = self.config.load();
         let base = FormatOptions {
