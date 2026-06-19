@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use assert_fs::prelude::*;
+use expect_test::expect;
 use predicates::prelude::*;
 
 const MESSY: &str = "function f(){var x:int;}\n";
@@ -285,6 +286,41 @@ fn malformed_config_fails_without_writing() -> Result<(), Box<dyn std::error::Er
         .failure();
 
     file.assert(MESSY);
+    Ok(())
+}
+
+// A subdir config wholly replaces the ancestor's (nearest wins), so reverting a key needs it restated.
+#[test]
+fn subdir_config_reverts_one_key_and_customizes_another() -> Result<(), Box<dyn std::error::Error>>
+{
+    let temp = assert_fs::TempDir::new()?;
+    temp.child(".wsformat.toml").write_str("tab_size = 8\n")?;
+    temp.child("sub/.wsformat.toml")
+        .write_str("tab_size = 4\ncolon_spacing = \"compact\"\n")?;
+    temp.child("script.ws").write_str(MESSY)?;
+    temp.child("sub/script.ws").write_str(MESSY)?;
+
+    wsformat()
+        .current_dir(temp.path())
+        .arg(".")
+        .assert()
+        .success();
+
+    let ancestor = std::fs::read_to_string(temp.child("script.ws").path())?;
+    let subdir = std::fs::read_to_string(temp.child("sub/script.ws").path())?;
+    expect![[r"
+        --- ancestor (tab_size = 8) ---
+        function f() {
+                var x : int;
+        }
+        --- subdir (tab_size reverted to default 4, colon_spacing compact) ---
+        function f() {
+            var x: int;
+        }
+    "]]
+    .assert_eq(&format!(
+        "--- ancestor (tab_size = 8) ---\n{ancestor}--- subdir (tab_size reverted to default 4, colon_spacing compact) ---\n{subdir}"
+    ));
     Ok(())
 }
 
