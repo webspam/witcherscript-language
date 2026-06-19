@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -195,19 +196,26 @@ fn run() -> Result<i32> {
     let cwd = std::env::current_dir()?;
     let mut changed = 0usize;
     let mut failed = 0usize;
+    let mut options_by_dir: HashMap<PathBuf, FormatOptions> = HashMap::new();
 
     for path in &files {
         // Each file's config comes from its own directory, not the invocation cwd.
         let dir = cwd.join(path.parent().unwrap_or(Path::new("")));
-        let config = match format_config::load(&dir) {
-            Ok(config) => config,
-            Err(error) => {
-                eprintln!("error: {}: {error}", path.display());
-                failed += 1;
-                continue;
-            }
+        let options = if let Some(options) = options_by_dir.get(&dir) {
+            *options
+        } else {
+            let config = match format_config::load(&dir) {
+                Ok(config) => config,
+                Err(error) => {
+                    eprintln!("error: {}: {error}", path.display());
+                    failed += 1;
+                    continue;
+                }
+            };
+            let options = cli.format_options(config.as_ref());
+            options_by_dir.insert(dir.clone(), options);
+            options
         };
-        let options = cli.format_options(config.as_ref());
         match format_or_check_file(&mut parser, path, options, cli.check) {
             Ok(Status::Clean) => {}
             Ok(Status::Changed) => changed += 1,
