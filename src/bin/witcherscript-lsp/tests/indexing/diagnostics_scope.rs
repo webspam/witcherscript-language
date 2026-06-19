@@ -272,6 +272,52 @@ async fn single_file_pull_does_not_evict_other_cached_files() {
     );
 }
 
+fn mentions_unknown_type_cb(diagnostics: &[lsp_types::Diagnostic]) -> bool {
+    diagnostics.iter().any(|d| {
+        d.code
+            == Some(lsp_types::NumberOrString::String(
+                "unknown_type".to_string(),
+            ))
+            && d.message.contains("CB")
+    })
+}
+
+// Without a cross-file subscription, a later definition in another file never evicts A's stale "unknown" diagnostic.
+#[tokio::test]
+async fn single_file_pull_clears_stale_diagnostic_when_other_file_defines_symbol() {
+    let temp = LocalTempDir::new("ws_single_pull_cross_file_stale");
+    let a_text = "class CA {\n  var x : CB;\n}\n";
+    write_script(temp.path(), "A.ws", a_text);
+    write_script(temp.path(), "B.ws", "class CZ {}\n");
+    let a_url = Url::from_file_path(temp.path().join("A.ws")).expect("a url");
+    let b_url = Url::from_file_path(temp.path().join("B.ws")).expect("b url");
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+
+    let a_doc = witcherscript_language::document::parse_document(a_text).expect("parse A");
+
+    let version = backend.state_version.load(Ordering::Acquire);
+    let (initial, _) = backend
+        .compute_diagnostics_for_uri(&a_url, &a_doc, version)
+        .expect("first pull of A");
+    assert!(
+        mentions_unknown_type_cb(&initial),
+        "precondition: A must flag CB as an unknown type before B defines it, got {initial:?}",
+    );
+
+    backend.update_open_document(b_url, "class CB {}\n".to_string());
+
+    let version = backend.state_version.load(Ordering::Acquire);
+    let (after, _) = backend
+        .compute_diagnostics_for_uri(&a_url, &a_doc, version)
+        .expect("re-pull of A");
+    assert!(
+        !mentions_unknown_type_cb(&after),
+        "A's 'unknown type CB' must clear once another file defines CB, got {after:?}",
+    );
+}
+
 #[tokio::test]
 async fn workspace_pull_prunes_cache_entries_for_vanished_files() {
     let temp = LocalTempDir::new("ws_pull_prunes_vanished");
