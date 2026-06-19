@@ -67,13 +67,6 @@ pub enum ColonSpacing {
 }
 
 impl ColonSpacing {
-    pub fn from_setting(value: &str) -> Self {
-        match value {
-            "compact" => Self::Compact,
-            _ => Self::Spaced,
-        }
-    }
-
     pub fn separator(self) -> &'static str {
         match self {
             Self::Spaced => " : ",
