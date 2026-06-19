@@ -8,19 +8,19 @@ use serde::Deserialize;
 use crate::files::read_text_file;
 use crate::formatter::{AnnotationPlacement, ColonSpacing, FormatOptions};
 
-pub const PRIMARY_FILENAME: &str = ".wsformat.toml";
-pub const FALLBACK_FILENAME: &str = "wsformat.toml";
+const PRIMARY_FILENAME: &str = ".wsformat.toml";
+const FALLBACK_FILENAME: &str = "wsformat.toml";
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FormatConfigFile {
-    pub tab_size: Option<u32>,
-    pub use_tabs: Option<bool>,
-    pub line_limit: Option<u32>,
-    pub colon_spacing: Option<String>,
-    pub align_member_colons: Option<bool>,
-    pub annotation_placement: Option<String>,
-    pub default_placement: Option<String>,
+    tab_size: Option<u32>,
+    use_tabs: Option<bool>,
+    line_limit: Option<u32>,
+    colon_spacing: Option<String>,
+    align_member_colons: Option<bool>,
+    annotation_placement: Option<String>,
+    default_placement: Option<String>,
 }
 
 impl FormatConfigFile {
@@ -79,7 +79,7 @@ impl Error for FormatConfigError {
 }
 
 // Nearest ancestor wins; within a directory `.wsformat.toml` takes precedence over `wsformat.toml`.
-pub fn discover(start_dir: &Path) -> Option<PathBuf> {
+fn discover(start_dir: &Path) -> Option<PathBuf> {
     for dir in start_dir.ancestors() {
         let primary = dir.join(PRIMARY_FILENAME);
         if primary.is_file() {
