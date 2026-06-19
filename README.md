@@ -88,7 +88,7 @@ client extension to connect to `127.0.0.1:9257` instead of spawning the binary.
 | Workspace symbols | Project-wide symbol search (open with the editor's "Go to Symbol in Workspace"); fuzzy name match across your project, the base game scripts, and engine builtins, ranked best-first with project results first |
 | Semantic tokens | Full-document semantic highlighting; legend exposed in `initialize` |
 | Inlay hints | Parameter-name labels at call sites (`out` parameters shown as `out name:`); honours the requested range and skips a non-`out` argument that already spells the parameter name. On by default; toggle with `witcherscript.inlayHints` |
-| Document formatting | Pretty-prints whole documents using `witcherscript.formatter.*` settings |
+| Document formatting | Pretty-prints whole documents using `witcherscript.formatter.*` settings or a [`.wsformat.toml`](docs/formatter-config.md) file |
 | Code actions | Quick fixes and code refactorings, such as extract to method, inline variable, and toggling block / inline layout |
 | Code lens | On legacy override files, a "game definition" lens above each top-level symbol that shadows a base game symbol; jumps to the vanilla definition. Gated by `witcherscript.codeLens.overriddenSymbols`. Optionally, an "N references" lens above declarations and class methods; clicking it lists the references. Gated by `witcherscript.codeLens.references` |
 
