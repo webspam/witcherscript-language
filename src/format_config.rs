@@ -1,9 +1,8 @@
-use std::error::Error;
-use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use thiserror::Error;
 
 use crate::files::read_text_file;
 use crate::formatter::{AnnotationPlacement, ColonSpacing, FormatOptions};
@@ -17,10 +16,10 @@ pub struct FormatConfigFile {
     tab_size: Option<u32>,
     use_tabs: Option<bool>,
     line_limit: Option<u32>,
-    colon_spacing: Option<String>,
+    colon_spacing: Option<ColonSpacing>,
     align_member_colons: Option<bool>,
-    annotation_placement: Option<String>,
-    default_placement: Option<String>,
+    annotation_placement: Option<AnnotationPlacement>,
+    default_placement: Option<AnnotationPlacement>,
 }
 
 impl FormatConfigFile {
@@ -29,53 +28,25 @@ impl FormatConfigFile {
             tab_size: self.tab_size.unwrap_or(base.tab_size),
             use_tabs: self.use_tabs.unwrap_or(base.use_tabs),
             line_limit: self.line_limit.unwrap_or(base.line_limit),
-            colon: self
-                .colon_spacing
-                .as_deref()
-                .map_or(base.colon, ColonSpacing::from_setting),
+            colon: self.colon_spacing.unwrap_or(base.colon),
             align_member_colons: self.align_member_colons.unwrap_or(base.align_member_colons),
             annotation_placement: self
                 .annotation_placement
-                .as_deref()
-                .map_or(base.annotation_placement, AnnotationPlacement::from_setting),
-            default_placement: self
-                .default_placement
-                .as_deref()
-                .map_or(base.default_placement, AnnotationPlacement::from_setting),
+                .unwrap_or(base.annotation_placement),
+            default_placement: self.default_placement.unwrap_or(base.default_placement),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum FormatConfigError {
-    Read {
-        path: PathBuf,
-        source: io::Error,
-    },
+    #[error("failed to read {}: {source}", .path.display())]
+    Read { path: PathBuf, source: io::Error },
+    #[error("failed to parse {}: {source}", .path.display())]
     Parse {
         path: PathBuf,
         source: Box<toml::de::Error>,
     },
-}
-
-impl fmt::Display for FormatConfigError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Read { path, source } => write!(f, "failed to read {}: {source}", path.display()),
-            Self::Parse { path, source } => {
-                write!(f, "failed to parse {}: {source}", path.display())
-            }
-        }
-    }
-}
-
-impl Error for FormatConfigError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Read { source, .. } => Some(source),
-            Self::Parse { source, .. } => Some(source.as_ref()),
-        }
-    }
 }
 
 /// Nearest ancestor wins; within a directory `.wsformat.toml` takes precedence over `wsformat.toml`.
@@ -161,6 +132,15 @@ mod tests {
         assert!(
             result.is_err(),
             "an unknown key must error rather than be silently ignored"
+        );
+    }
+
+    #[test]
+    fn misspelled_value_is_rejected() {
+        let result = toml::from_str::<FormatConfigFile>("colon_spacing = \"compcat\"\n");
+        assert!(
+            result.is_err(),
+            "an unknown value must error rather than be silently defaulted"
         );
     }
 }

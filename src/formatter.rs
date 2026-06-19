@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use tree_sitter::Node;
 
 use crate::cst::{fields, kinds};
@@ -19,7 +20,8 @@ pub use switch_action::{
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum AnnotationPlacement {
     #[default]
@@ -56,7 +58,8 @@ impl std::fmt::Display for AnnotationPlacement {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ColonSpacing {
     #[default]
     Spaced,
