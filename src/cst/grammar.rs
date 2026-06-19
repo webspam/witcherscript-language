@@ -21,9 +21,11 @@ pub(crate) fn member_access_member(node: Node) -> Option<Node> {
     })
 }
 
-/// Argument slots of a call. `None` if no args or any slot is empty (`f(a,,b)`), which breaks positional alignment.
-pub(crate) fn arg_slots(call: Node) -> Option<Vec<Node>> {
-    let args = call.child_by_field_name(fields::ARGS)?;
+/// One entry per slot; a `None` entry is an empty slot (`f(a,,b)`), an empty `Vec` is a no-arg call `f()`.
+pub(crate) fn raw_arg_slots(call: Node) -> Vec<Option<Node>> {
+    let Some(args) = call.child_by_field_name(fields::ARGS) else {
+        return Vec::new();
+    };
     let mut slots: Vec<Option<Node>> = Vec::new();
     let mut pending: Option<Node> = None;
     let mut cursor = args.walk();
@@ -36,6 +38,15 @@ pub(crate) fn arg_slots(call: Node) -> Option<Vec<Node>> {
         }
     }
     slots.push(pending.take());
+    slots
+}
+
+/// Argument slots of a call. `None` if no args or any slot is empty (`f(a,,b)`), which breaks positional alignment.
+pub(crate) fn arg_slots(call: Node) -> Option<Vec<Node>> {
+    let slots = raw_arg_slots(call);
+    if slots.is_empty() {
+        return None;
+    }
     slots.into_iter().collect()
 }
 

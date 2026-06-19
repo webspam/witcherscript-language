@@ -43,6 +43,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 35  | `unused_symbol`                    | hint     | An unused local variable, parameter, or private field; rendered faded by editors                   |
 | 36  | `wrapped_method_modifier`          | error    | A modifier or flavour keyword is applied to a `@wrapMethod` function                               |
 | 37  | `struct_property_on_temporary`     | error    | `f().x` accesses a struct property on a function result                                            |
+| 38  | `arg_count_mismatch`               | error    | A call passes too few or too many arguments for the callee's parameters                            |
 
 ## Details
 
@@ -256,3 +257,7 @@ An access modifier (`public`/`protected`/`private`/`final`/...) or function flav
 ### 37. Struct property accessed on a temporary
 
 Reading a property straight off a struct that a function returns, e.g. `component.GetLocalPosition().Z`. The compiler rejects this; assign the returned struct to a local `var` and read the property from that variable instead.
+
+### 38. Argument count mismatch
+
+A function, method, or event call that does not satisfy the callee's parameters: too many arguments, or a non-`optional` parameter with no positional argument. Arguments bind by position, so an `optional` parameter may be omitted or skipped with an empty slot (`F(1, , 3)`); the same empty slot on a required parameter is flagged. Skipped when the callee does not resolve to a callable, so unresolved names and struct constructors are unaffected.
