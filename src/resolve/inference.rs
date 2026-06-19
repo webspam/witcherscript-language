@@ -56,9 +56,7 @@ pub(crate) fn infer_type(
             Some(func) => infer_type(uri, document, db, func, context_byte),
             None => Type::Unknown,
         },
-        kinds::MEMBER_ACCESS_EXPR => {
-            infer_member_access_type(uri, document, db, node, context_byte)
-        }
+        kinds::MEMBER_ACCESS_EXPR => infer_member_access_type(uri, document, db, node),
         kinds::THIS_EXPR => named_or_unknown(current_type_name(document, db, context_byte)),
         kinds::SUPER_EXPR => named_or_unknown(
             enclosing_type_context(document, db, context_byte).and_then(|c| c.base_class),
@@ -238,11 +236,7 @@ fn infer_member_access_type(
     document: &ParsedDocument,
     db: &SymbolDb,
     node: Node,
-    context_byte: usize,
 ) -> Type {
-    let Some(accessor) = first_named_child(node) else {
-        return Type::Unknown;
-    };
     let Some(member) = member_access_member(node) else {
         return Type::Unknown;
     };
@@ -252,19 +246,8 @@ fn infer_member_access_type(
     let Ok(member_name) = member.utf8_text(document.source.as_bytes()) else {
         return Type::Unknown;
     };
-    let Some(container_type) = infer_type(uri, document, db, accessor, context_byte).to_db_string()
-    else {
-        return Type::Unknown;
-    };
-    let def = resolve_document_member(
-        uri,
-        document,
-        &container_type,
-        member_name,
-        AccessLevel::Public,
-    )
-    .or_else(|| db.find_member(&container_type, member_name, AccessLevel::Public));
-    def.and_then(|d| d.symbol.type_annotation)
+    resolve_member_access(uri, document, db, member, member_name)
+        .and_then(|d| d.symbol.type_annotation)
         .unwrap_or(Type::Unknown)
 }
 
