@@ -143,4 +143,13 @@ mod tests {
             "an unknown value must error rather than be silently defaulted"
         );
     }
+
+    #[test]
+    fn misspelled_placement_value_is_rejected() {
+        let result = toml::from_str::<FormatConfigFile>("annotation_placement = \"ownline\"\n");
+        assert!(
+            result.is_err(),
+            "an unknown placement must error rather than be silently defaulted"
+        );
+    }
 }

@@ -20,8 +20,7 @@ pub use switch_action::{
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum AnnotationPlacement {
     #[default]
@@ -31,12 +30,18 @@ pub enum AnnotationPlacement {
 }
 
 impl AnnotationPlacement {
-    pub fn from_setting(value: &str) -> Self {
+    fn from_wire(value: &str) -> Option<Self> {
         match value {
-            "ownLine" => Self::OwnLine,
-            "sameLine" => Self::SameLine,
-            _ => Self::Preserve,
+            "preserve" => Some(Self::Preserve),
+            "ownLine" => Some(Self::OwnLine),
+            "sameLine" => Some(Self::SameLine),
+            _ => None,
         }
+    }
+
+    /// Lenient: untrusted LSP client settings fall back to the default rather than erroring.
+    pub fn from_setting(value: &str) -> Self {
+        Self::from_wire(value).unwrap_or_default()
     }
 
     fn resolve(self, preserve: impl FnOnce() -> bool) -> bool {
@@ -55,6 +60,15 @@ impl std::fmt::Display for AnnotationPlacement {
             Self::OwnLine => write!(f, "ownLine"),
             Self::SameLine => write!(f, "sameLine"),
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for AnnotationPlacement {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Self::from_wire(&value).ok_or_else(|| {
+            serde::de::Error::custom(format!("unknown annotation placement: {value:?}"))
+        })
     }
 }
 
