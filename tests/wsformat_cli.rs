@@ -187,3 +187,23 @@ fn malformed_config_fails_without_writing() -> Result<(), Box<dyn std::error::Er
     file.assert(MESSY);
     Ok(())
 }
+
+#[test]
+fn config_is_resolved_from_the_files_directory_not_cwd() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+    let proj = temp.child("proj");
+    proj.create_dir_all()?;
+    temp.child("proj/.wsformat.toml")
+        .write_str("use_tabs = true\n")?;
+    let file = temp.child("proj/script.ws");
+    file.write_str(MESSY)?;
+
+    wsformat()
+        .current_dir(temp.path())
+        .arg("proj/script.ws")
+        .assert()
+        .success();
+
+    file.assert(predicate::str::contains("\tvar x : int;"));
+    Ok(())
+}

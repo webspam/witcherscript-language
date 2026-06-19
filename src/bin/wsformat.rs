@@ -127,12 +127,14 @@ fn run() -> Result<i32, Box<dyn Error>> {
     let mut parser = TreeSitterParser::new();
     parser.set_language(&tree_sitter_witcherscript::language())?;
 
-    let file_config = format_config::load(&std::env::current_dir()?)?;
-    let options = cli.format_options(file_config.as_ref());
+    let cwd = std::env::current_dir()?;
     let mut changed = 0usize;
     let mut failed = 0usize;
 
     for path in &files {
+        // Each file's config comes from its own directory, not the invocation cwd.
+        let dir = cwd.join(path.parent().unwrap_or(Path::new("")));
+        let options = cli.format_options(format_config::load(&dir)?.as_ref());
         match process_file(&mut parser, path, options, cli.check) {
             Ok(Status::Clean) => {}
             Ok(Status::Changed) => changed += 1,
