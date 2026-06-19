@@ -7,6 +7,7 @@ mod diagnostics;
 mod document_highlight;
 mod excluded_files;
 mod fixture;
+mod format_config;
 mod harness;
 mod hover;
 mod inlay_hints;

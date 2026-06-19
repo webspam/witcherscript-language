@@ -49,7 +49,7 @@ impl Backend {
         let db = handles.db();
         let canonical = canonical_uri(uri);
         let cfg = self.config.load();
-        let options = self.format_options(!cfg.editor_insert_spaces, cfg.editor_tab_size);
+        let options = self.format_options(uri, !cfg.editor_insert_spaces, cfg.editor_tab_size);
         refactor_code_actions(uri, &canonical, document, &db, start..end, options)
     }
 }
