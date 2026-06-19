@@ -145,6 +145,42 @@ fn colon_spacing_flag_overrides_config_file() -> Result<(), Box<dyn std::error::
 }
 
 #[test]
+fn annotation_placement_own_line_splits_annotation() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("script.ws")?;
+    file.write_str("@addField(CClass) public var someField : bool;\n")?;
+
+    wsformat()
+        .args(["--annotation-placement", "ownLine"])
+        .arg(file.path())
+        .assert()
+        .success();
+
+    file.assert(predicate::str::contains(
+        "@addField(CClass)\npublic var someField : bool;",
+    ));
+    Ok(())
+}
+
+#[test]
+fn default_placement_own_line_splits_default() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("script.ws")?;
+    file.write_str(
+        "class C { private const var RESET_TIME : float; default RESET_TIME = 0.750; }\n",
+    )?;
+
+    wsformat()
+        .args(["--default-placement", "ownLine"])
+        .arg(file.path())
+        .assert()
+        .success();
+
+    file.assert(predicate::str::contains(
+        "RESET_TIME : float;\n    default RESET_TIME = 0.750;",
+    ));
+    Ok(())
+}
+
+#[test]
 fn invalid_colon_spacing_value_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("script.ws")?;
     file.write_str(MESSY)?;
