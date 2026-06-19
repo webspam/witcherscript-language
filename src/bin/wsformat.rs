@@ -1,7 +1,7 @@
-use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use anyhow::{Result, anyhow, bail};
 use clap::{Parser as ClapParser, ValueEnum};
 use tree_sitter::Parser as TreeSitterParser;
 use witcherscript_language::document::parse_document_with_parser;
@@ -127,7 +127,7 @@ fn format_source(
     parser: &mut TreeSitterParser,
     source: String,
     options: FormatOptions,
-) -> Result<Outcome, Box<dyn Error>> {
+) -> Result<Outcome> {
     let document = parse_document_with_parser(parser, source)?;
     // Formatting a CST with ERROR nodes can drop source, and in-place write is irreversible.
     if !document.diagnostics.is_empty() {
@@ -152,7 +152,7 @@ fn format_or_check_file(
     path: &Path,
     options: FormatOptions,
     check: bool,
-) -> Result<Status, Box<dyn Error>> {
+) -> Result<Status> {
     let source = read_text_file(path)?;
     match format_source(parser, source, options)? {
         Outcome::Unchanged => Ok(Status::Clean),
@@ -182,11 +182,11 @@ fn main() {
     }
 }
 
-fn run() -> Result<i32, Box<dyn Error>> {
+fn run() -> Result<i32> {
     let cli = Cli::parse();
-    let files = collect_witcherscript_files(&cli.paths, &[])?;
+    let files = collect_witcherscript_files(&cli.paths, &[]).map_err(|e| anyhow!("{e}"))?;
     if files.is_empty() {
-        return Err("no .ws files found".into());
+        bail!("no .ws files found");
     }
 
     let mut parser = TreeSitterParser::new();

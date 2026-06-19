@@ -19,6 +19,7 @@ name = "wsformat"
 path = "src/bin/wsformat.rs"
 
 [dependencies]
+anyhow = "1"
 # default-features = false drops colour, suggestions, env, wrap_help, unicode - smaller binary and fewer deps
 clap = { version = "4.5.51", default-features = false, features = [
     "std",
