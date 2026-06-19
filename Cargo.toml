@@ -54,6 +54,9 @@ iai-callgrind = "0.14"
 rstest = { version = "0.26", default-features = false }
 expect-test = "1.5"
 insta = { version = "1.47", default-features = false, features = ["yaml"] }
+assert_cmd = "2"
+assert_fs = "1"
+predicates = "3"
 
 [[bench]]
 name = "lib_parse"
