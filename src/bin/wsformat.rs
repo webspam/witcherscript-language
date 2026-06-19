@@ -2,12 +2,49 @@ use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use clap::Parser as ClapParser;
+use clap::{Parser as ClapParser, ValueEnum};
 use tree_sitter::Parser as TreeSitterParser;
 use witcherscript_language::document::parse_document_with_parser;
 use witcherscript_language::files::{collect_witcherscript_files, read_text_file};
 use witcherscript_language::format_config::{self, FormatConfigFile};
-use witcherscript_language::formatter::{FormatOptions, format_document};
+use witcherscript_language::formatter::{
+    AnnotationPlacement, ColonSpacing, FormatOptions, format_document,
+};
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum ColonSpacingArg {
+    Spaced,
+    Compact,
+}
+
+impl From<ColonSpacingArg> for ColonSpacing {
+    fn from(arg: ColonSpacingArg) -> Self {
+        match arg {
+            ColonSpacingArg::Spaced => Self::Spaced,
+            ColonSpacingArg::Compact => Self::Compact,
+        }
+    }
+}
+
+// Value names match the `.wsformat.toml` tokens so the CLI and the config file share one vocabulary.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum PlacementArg {
+    Preserve,
+    #[value(name = "ownLine")]
+    OwnLine,
+    #[value(name = "sameLine")]
+    SameLine,
+}
+
+impl From<PlacementArg> for AnnotationPlacement {
+    fn from(arg: PlacementArg) -> Self {
+        match arg {
+            PlacementArg::Preserve => Self::Preserve,
+            PlacementArg::OwnLine => Self::OwnLine,
+            PlacementArg::SameLine => Self::SameLine,
+        }
+    }
+}
 
 #[derive(Debug, ClapParser)]
 #[command(author, version, about = "Format WitcherScript (.ws) files in place.")]
@@ -31,6 +68,22 @@ struct Cli {
     /// Column the formatter tries to keep lines within.
     #[arg(long)]
     line_limit: Option<u32>,
+
+    /// Spacing around `:` in declarations (`x : int` vs `x: int`).
+    #[arg(long)]
+    colon_spacing: Option<ColonSpacingArg>,
+
+    /// Align `:` across consecutive member declarations.
+    #[arg(long)]
+    align_member_colons: bool,
+
+    /// Placement of `@`-annotations relative to the item they annotate.
+    #[arg(long)]
+    annotation_placement: Option<PlacementArg>,
+
+    /// Placement of a trailing `default` relative to its statement.
+    #[arg(long)]
+    default_placement: Option<PlacementArg>,
 }
 
 impl Cli {
@@ -47,6 +100,18 @@ impl Cli {
         }
         if let Some(line_limit) = self.line_limit {
             options.line_limit = line_limit;
+        }
+        if let Some(colon_spacing) = self.colon_spacing {
+            options.colon = colon_spacing.into();
+        }
+        if self.align_member_colons {
+            options.align_member_colons = true;
+        }
+        if let Some(placement) = self.annotation_placement {
+            options.annotation_placement = placement.into();
+        }
+        if let Some(placement) = self.default_placement {
+            options.default_placement = placement.into();
         }
         options
     }

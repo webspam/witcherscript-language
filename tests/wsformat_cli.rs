@@ -96,6 +96,70 @@ fn use_tabs_flag_indents_with_tabs() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn colon_spacing_flag_produces_compact_colons() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("script.ws")?;
+    file.write_str(MESSY)?;
+
+    wsformat()
+        .args(["--colon-spacing", "compact"])
+        .arg(file.path())
+        .assert()
+        .success();
+
+    file.assert(predicate::str::contains("var x: int;"));
+    Ok(())
+}
+
+#[test]
+fn align_member_colons_flag_pads_consecutive_members() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("script.ws")?;
+    file.write_str("class C { var x : int; var someLongName : string; }\n")?;
+
+    wsformat()
+        .arg("--align-member-colons")
+        .arg(file.path())
+        .assert()
+        .success();
+
+    file.assert(predicate::str::contains("var x            : int;"));
+    Ok(())
+}
+
+#[test]
+fn colon_spacing_flag_overrides_config_file() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = assert_fs::TempDir::new()?;
+    temp.child(".wsformat.toml")
+        .write_str("colon_spacing = \"compact\"\n")?;
+    let file = temp.child("script.ws");
+    file.write_str(MESSY)?;
+
+    wsformat()
+        .current_dir(temp.path())
+        .args(["--colon-spacing", "spaced"])
+        .arg("script.ws")
+        .assert()
+        .success();
+
+    file.assert(predicate::str::contains("var x : int;"));
+    Ok(())
+}
+
+#[test]
+fn invalid_colon_spacing_value_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("script.ws")?;
+    file.write_str(MESSY)?;
+
+    wsformat()
+        .args(["--colon-spacing", "snug"])
+        .arg(file.path())
+        .assert()
+        .failure();
+
+    file.assert(MESSY);
+    Ok(())
+}
+
+#[test]
 fn wsformat_toml_in_cwd_is_applied() -> Result<(), Box<dyn std::error::Error>> {
     let temp = assert_fs::TempDir::new()?;
     temp.child(".wsformat.toml")
