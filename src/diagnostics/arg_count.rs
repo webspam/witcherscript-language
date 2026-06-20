@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::grammar::{call_callee, callee_ident, raw_arg_slots};
@@ -9,7 +8,7 @@ use crate::document::ParsedDocument;
 use crate::resolve::{SymbolDb, callee_params};
 use crate::symbols::node_text;
 
-use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, run_rules_on_document};
+use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, collect_single_rule_diagnostics};
 
 pub(crate) struct ArgCountRule;
 
@@ -34,24 +33,7 @@ pub fn collect_arg_count_diagnostics(
     documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
-    let rule = ArgCountRule;
-    let rules: Vec<&dyn CstRule> = vec![&rule];
-    let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
-
-    for (uri, document) in documents {
-        let diagnostics = run_rules_on_document(uri, document, db, &rules);
-        if !diagnostics.is_empty() {
-            debug!(uri = %uri, count = diagnostics.len(), "emitted arg-count diagnostics");
-            result.insert((*uri).to_string(), diagnostics);
-        }
-    }
-
-    trace!(
-        documents = documents.len(),
-        flagged_uris = result.len(),
-        "scanned for argument-count mismatches"
-    );
-    result
+    collect_single_rule_diagnostics(&ArgCountRule, documents, db)
 }
 
 fn check_arg_count<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {

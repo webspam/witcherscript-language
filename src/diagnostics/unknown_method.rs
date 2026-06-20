@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::grammar::{call_callee, member_access_member};
@@ -12,7 +11,7 @@ use crate::symbols::AccessLevel;
 
 use super::{
     CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, access_is_inside_declaring_class,
-    declaring_class_of, run_rules_on_document,
+    collect_single_rule_diagnostics, declaring_class_of,
 };
 
 pub(crate) struct UnknownMethodRule;
@@ -35,29 +34,7 @@ pub fn collect_unknown_method_diagnostics(
     documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
-    let rule = UnknownMethodRule;
-    let rules: Vec<&dyn CstRule> = vec![&rule];
-    let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
-
-    for (uri, document) in documents {
-        let diagnostics = run_rules_on_document(uri, document, db, &rules);
-        if !diagnostics.is_empty() {
-            debug!(
-                uri = %uri,
-                count = diagnostics.len(),
-                "emitted unknown-method diagnostics"
-            );
-            result.insert((*uri).to_string(), diagnostics);
-        }
-    }
-
-    trace!(
-        documents = documents.len(),
-        flagged_uris = result.len(),
-        "scanned for unknown method calls"
-    );
-
-    result
+    collect_single_rule_diagnostics(&UnknownMethodRule, documents, db)
 }
 
 fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {

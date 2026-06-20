@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::grammar::call_callee;
@@ -10,7 +9,7 @@ use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use crate::symbols::SymbolKind;
 
-use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, run_rules_on_document};
+use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, collect_single_rule_diagnostics};
 
 pub(crate) struct WrappedMethodRule;
 
@@ -33,29 +32,7 @@ pub fn collect_wrapped_method_diagnostics(
     documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
-    let rule = WrappedMethodRule;
-    let rules: Vec<&dyn CstRule> = vec![&rule];
-    let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
-
-    for (uri, document) in documents {
-        let diagnostics = run_rules_on_document(uri, document, db, &rules);
-        if !diagnostics.is_empty() {
-            debug!(
-                uri = %uri,
-                count = diagnostics.len(),
-                "emitted wrapped-method diagnostics"
-            );
-            result.insert((*uri).to_string(), diagnostics);
-        }
-    }
-
-    trace!(
-        documents = documents.len(),
-        flagged_uris = result.len(),
-        "scanned for wrapped-method rule"
-    );
-
-    result
+    collect_single_rule_diagnostics(&WrappedMethodRule, documents, db)
 }
 
 fn check_func_decl<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {

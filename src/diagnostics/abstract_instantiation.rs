@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::{fields, kinds};
@@ -8,7 +7,7 @@ use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use crate::symbols::SymbolKind;
 
-use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, run_rules_on_document};
+use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, collect_single_rule_diagnostics};
 
 pub(crate) struct AbstractInstantiationRule;
 
@@ -33,29 +32,7 @@ pub fn collect_abstract_instantiation_diagnostics(
     documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
-    let rule = AbstractInstantiationRule;
-    let rules: Vec<&dyn CstRule> = vec![&rule];
-    let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
-
-    for (uri, document) in documents {
-        let diagnostics = run_rules_on_document(uri, document, db, &rules);
-        if !diagnostics.is_empty() {
-            debug!(
-                uri = %uri,
-                count = diagnostics.len(),
-                "emitted abstract-instantiation diagnostics"
-            );
-            result.insert((*uri).to_string(), diagnostics);
-        }
-    }
-
-    trace!(
-        documents = documents.len(),
-        flagged_uris = result.len(),
-        "scanned for abstract instantiations"
-    );
-
-    result
+    collect_single_rule_diagnostics(&AbstractInstantiationRule, documents, db)
 }
 
 fn check_new_expr<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {
