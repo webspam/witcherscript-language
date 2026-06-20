@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 
-use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::resolve::{SymbolDb, enclosing_state_owner};
 
-use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, run_rules_on_document};
+use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, collect_single_rule_diagnostics};
 
 pub const KIND: &str = "parent_outside_state";
 
@@ -34,24 +33,7 @@ pub fn collect_parent_outside_state_diagnostics(
     documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
-    let rule = ParentOutsideStateRule;
-    let rules: Vec<&dyn CstRule> = vec![&rule];
-    let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
-
-    for (uri, document) in documents {
-        let diagnostics = run_rules_on_document(uri, document, db, &rules);
-        if !diagnostics.is_empty() {
-            debug!(uri = %uri, count = diagnostics.len(), "emitted parent-outside-state diagnostics");
-            result.insert((*uri).to_string(), diagnostics);
-        }
-    }
-
-    trace!(
-        documents = documents.len(),
-        flagged_uris = result.len(),
-        "scanned for parent/virtual_parent outside a state"
-    );
-    result
+    collect_single_rule_diagnostics(&ParentOutsideStateRule, documents, db)
 }
 
 fn check_parent_keyword<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
