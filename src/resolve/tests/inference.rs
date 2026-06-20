@@ -236,3 +236,36 @@ fn virtual_parent_member_call_infers_owner_return_type() {
         "virtualParent resolves to the owner class, the same as parent"
     );
 }
+
+const ARRAY_OF_STRUCTS: &str = concat!(
+    "struct Handle {\n",
+    "    var id : int;\n",
+    "}\n",
+    "struct Aspect {\n",
+    "    var projTemplate : Handle;\n",
+    "}\n",
+    "function F() {\n",
+    "    var aspects : array<Aspect>;\n",
+    "    var fireMode : int;\n",
+    "    var t : Handle;\n",
+    "    t = aspects[fireMode].projTemplate;\n",
+    "}\n",
+);
+
+#[test]
+fn indexing_array_of_structs_yields_element_struct() {
+    assert_eq!(
+        inferred(ARRAY_OF_STRUCTS, "aspects[fireMode]"),
+        Type::Named("Aspect".to_string()),
+        "indexing array<Aspect> must yield the element struct type"
+    );
+}
+
+#[test]
+fn member_access_on_indexed_struct_infers_field_type() {
+    assert_eq!(
+        inferred(ARRAY_OF_STRUCTS, "aspects[fireMode].projTemplate"),
+        Type::Named("Handle".to_string()),
+        "accessing a field on an indexed array element must infer the field's type"
+    );
+}

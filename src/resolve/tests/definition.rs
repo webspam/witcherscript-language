@@ -96,6 +96,13 @@ use crate::test_support::TestDb;
     Some(SymbolKind::Field),
     Some("file:///main.ws")
 )]
+#[case::field_on_indexed_array_element(
+    "struct Aspect {\n  var projTemplate : CName;\n}\n\
+     function F() {\n  var aspects : array<Aspect>;\n  var i : int;\n  aspects[i].$0projTemplate;\n}\n",
+    "projTemplate",
+    Some(SymbolKind::Field),
+    Some("file:///main.ws")
+)]
 fn resolves_definition_at_cursor(
     #[case] fixture: &str,
     #[case] expected_name: &str,

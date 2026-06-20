@@ -294,7 +294,7 @@ pub(super) fn resolve_member_access(
             resolve_document_member(uri, document, &type_name, name, AccessLevel::Public)
                 .or_else(|| db.find_member(&type_name, name, AccessLevel::Public))
         }
-        kinds::FUNC_CALL_EXPR | kinds::MEMBER_ACCESS_EXPR => {
+        kinds::FUNC_CALL_EXPR | kinds::MEMBER_ACCESS_EXPR | kinds::ARRAY_EXPR => {
             let type_name =
                 infer_type(uri, document, db, receiver, ident.start_byte()).to_db_string()?;
             resolve_document_member(uri, document, &type_name, name, AccessLevel::Public)
