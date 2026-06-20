@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use tracing::{debug, trace};
 use tree_sitter::Node;
 
 use crate::cst::grammar::{call_callee, member_access_member};
@@ -9,7 +8,7 @@ use crate::cst::nav::first_named_child;
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 
-use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, run_rules_on_document};
+use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, collect_single_rule_diagnostics};
 
 pub(crate) struct SuperFieldAccessRule;
 
@@ -34,29 +33,7 @@ pub fn collect_super_field_access_diagnostics(
     documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
 ) -> HashMap<String, Vec<WorkspaceDiagnostic>> {
-    let rule = SuperFieldAccessRule;
-    let rules: Vec<&dyn CstRule> = vec![&rule];
-    let mut result: HashMap<String, Vec<WorkspaceDiagnostic>> = HashMap::new();
-
-    for (uri, document) in documents {
-        let diagnostics = run_rules_on_document(uri, document, db, &rules);
-        if !diagnostics.is_empty() {
-            debug!(
-                uri = %uri,
-                count = diagnostics.len(),
-                "emitted super-field-access diagnostics"
-            );
-            result.insert((*uri).to_string(), diagnostics);
-        }
-    }
-
-    trace!(
-        documents = documents.len(),
-        flagged_uris = result.len(),
-        "scanned for super.field accesses"
-    );
-
-    result
+    collect_single_rule_diagnostics(&SuperFieldAccessRule, documents, db)
 }
 
 fn check_super_member<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {
