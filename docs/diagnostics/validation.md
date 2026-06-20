@@ -265,4 +265,4 @@ A function, method, or event call that does not satisfy the callee's parameters:
 
 ### 39. parent / virtual_parent outside a state
 
-`parent` and `virtual_parent` resolve against a state's owner class, so they are only valid inside a state method. A `@wrapMethod` (etc.) targeting a state counts as one.
+`parent` and `virtual_parent` resolve against a state's owner class, so they are only valid inside a state method.
