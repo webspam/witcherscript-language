@@ -108,6 +108,42 @@ fn flags_leading_hole_at_required_position() {
     assert!(diag.message.contains('a'), "got {:?}", diag.message);
 }
 
+/// Byte offset of `needle` in an ASCII single-line fixture equals its line-0 column.
+fn column_of(fixture: &str, needle: &str) -> u32 {
+    u32::try_from(fixture.find(needle).expect("needle present")).expect("fixture fits in u32")
+}
+
+#[test]
+fn too_many_underlines_the_extra_arguments() {
+    let fixture = "function F(a : int) {} function Test() { F(5, 6); }\n";
+    let diag = single_diagnostic(fixture);
+    let extra = column_of(fixture, "6");
+    assert_eq!(diag.range.start.line, 0);
+    assert_eq!(diag.range.start.character, extra);
+    assert_eq!(diag.range.end.character, extra + 1);
+}
+
+#[test]
+fn too_few_points_at_the_closing_paren() {
+    let fixture = "function F(a : int, b : int) {} function Test() { F(5); }\n";
+    let diag = single_diagnostic(fixture);
+    let close = column_of(fixture, "5)") + 1;
+    assert_eq!(diag.range.start.character, close, "zero-width gap at ')'");
+    assert_eq!(diag.range.end.character, close);
+}
+
+#[test]
+fn empty_slot_points_at_the_gap() {
+    let fixture = "function F(a : int, optional b : int) {} function Test() { F(,2); }\n";
+    let diag = single_diagnostic(fixture);
+    let gap = column_of(fixture, ",2");
+    assert_eq!(
+        diag.range.start.character, gap,
+        "zero-width gap at the empty slot"
+    );
+    assert_eq!(diag.range.end.character, gap);
+}
+
 #[test]
 fn does_not_fire_inside_parse_error() {
     let t = TestDb::new("function F(a : int) {} function Test() { do F(); }\n");

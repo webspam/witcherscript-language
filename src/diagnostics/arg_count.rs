@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
-use crate::cst::grammar::{call_callee, callee_ident, raw_arg_slots};
+use crate::cst::grammar::{
+    ArgSlot, arg_slots_with_gaps, call_callee, call_close_paren, callee_ident,
+};
 use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::resolve::{SymbolDb, callee_params};
@@ -38,38 +40,47 @@ pub fn collect_arg_count_diagnostics(
 
 fn check_arg_count<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Option<()> {
     let params = callee_params(ctx.uri, ctx.document, ctx.db, node)?;
-    let slots = raw_arg_slots(node);
+    let slots = arg_slots_with_gaps(node);
     let callee = callee_ident(call_callee(node)?)?;
     let name = node_text(callee, &ctx.document.source);
 
-    let message = if slots.len() > params.len() {
-        format!(
+    let (message, start_byte, end_byte) = if slots.len() > params.len() {
+        let first_extra = &slots[params.len()];
+        // `slots.len() > params.len() >= 0` guarantees at least one slot.
+        let last = slots.last().expect("slots is non-empty");
+        let message = format!(
             "'{name}' takes at most {} argument(s), but {} given",
             params.len(),
             slots.len()
-        )
+        );
+        (message, first_extra.start_byte(), last.end_byte())
     } else {
-        // A required param is unmet if its positional slot is empty (`f(a,,c)`) or absent (too few).
-        let missing: Vec<&str> = params
-            .iter()
-            .enumerate()
-            .filter(|(i, param)| !param.specifiers.is_optional() && !slot_filled(&slots, *i))
-            .map(|(_, param)| param.name.as_str())
-            .collect();
-        if missing.is_empty() {
-            return None;
+        let mut missing: Vec<&str> = Vec::new();
+        let mut first_unmet = None;
+        for (i, param) in params.iter().enumerate() {
+            // A required param is unmet if its positional slot is empty (`f(a,,c)`) or absent (too few).
+            if param.specifiers.is_optional() || slots.get(i).is_some_and(ArgSlot::is_filled) {
+                continue;
+            }
+            first_unmet.get_or_insert(i);
+            missing.push(param.name.as_str());
         }
-        format!(
+        let first_unmet = first_unmet?;
+        let message = format!(
             "'{name}' is missing required argument(s): {}",
             missing.join(", ")
-        )
+        );
+        let gap = match slots.get(first_unmet) {
+            Some(slot) => slot.start_byte(),
+            None => call_close_paren(node)?.start_byte(),
+        };
+        (message, gap, gap)
     };
 
-    let range = ctx.document.line_index.byte_range_to_range(
-        &ctx.document.source,
-        callee.start_byte(),
-        callee.end_byte(),
-    );
+    let range =
+        ctx.document
+            .line_index
+            .byte_range_to_range(&ctx.document.source, start_byte, end_byte);
     ctx.diagnostics.push(WorkspaceDiagnostic {
         kind: "arg_count_mismatch".to_string(),
         message,
@@ -79,10 +90,6 @@ fn check_arg_count<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) ->
         data: None,
     });
     Some(())
-}
-
-fn slot_filled(slots: &[Option<Node>], index: usize) -> bool {
-    matches!(slots.get(index), Some(Some(_)))
 }
 
 #[cfg(test)]
