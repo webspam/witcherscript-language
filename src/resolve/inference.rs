@@ -507,3 +507,11 @@ pub(super) fn enclosing_type_context(
             .and_then(|def| def.symbol.owner_class.clone()),
     })
 }
+
+pub(crate) fn enclosing_state_owner(
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    byte_offset: usize,
+) -> Option<String> {
+    enclosing_type_context(document, db, byte_offset).and_then(|ctx| ctx.owner_class)
+}

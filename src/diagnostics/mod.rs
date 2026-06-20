@@ -15,6 +15,7 @@ mod duplicate_local;
 mod duplicate_symbols;
 mod inherited_field;
 mod override_consistency;
+mod parent_outside_state;
 mod shadowing;
 mod state_owner;
 mod struct_temp_member;
@@ -41,6 +42,7 @@ pub use duplicate_local::collect_duplicate_local_diagnostics;
 pub use duplicate_symbols::collect_duplicate_symbol_diagnostics;
 pub use inherited_field::collect_inherited_field_diagnostics;
 pub use override_consistency::collect_override_consistency_diagnostics;
+pub use parent_outside_state::collect_parent_outside_state_diagnostics;
 pub use shadowing::collect_shadowing_diagnostics;
 pub use state_owner::collect_state_owner_diagnostics;
 pub use super_field_access::collect_super_field_access_diagnostics;
@@ -60,6 +62,7 @@ use annotation_state_target::AnnotationStateTargetRule;
 use arg_count::ArgCountRule;
 use inherited_field::InheritedFieldRule;
 use override_consistency::OverrideConsistencyRule;
+use parent_outside_state::ParentOutsideStateRule;
 use state_owner::StateOwnerRule;
 use struct_temp_member::StructTempMemberRule;
 use super_field_access::SuperFieldAccessRule;
@@ -85,6 +88,7 @@ pub fn collect_cst_diagnostics_for_document(
     let annotation_state_target_rule = AnnotationStateTargetRule;
     let inherited_field_rule = InheritedFieldRule;
     let override_consistency_rule = OverrideConsistencyRule;
+    let parent_outside_state_rule = ParentOutsideStateRule;
     let unused_symbol_rule = UnusedSymbolRule;
     let rules: Vec<&dyn CstRule> = vec![
         &method_rule,
@@ -98,6 +102,7 @@ pub fn collect_cst_diagnostics_for_document(
         &annotation_state_target_rule,
         &inherited_field_rule,
         &override_consistency_rule,
+        &parent_outside_state_rule,
         &unused_symbol_rule,
     ];
     let mut diagnostics = run_rules_on_document(uri, document, db, &rules);

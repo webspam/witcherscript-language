@@ -58,6 +58,7 @@ pub use document_highlight::{HighlightKind, document_highlights};
 pub use edit_plan::{Confidence, EditPlan, Extraction, Splice};
 pub use extract_callable::{extract_function, extract_method};
 pub use extract_var::extract_variable;
+pub(crate) use inference::enclosing_state_owner;
 pub(crate) use inference::infer_type;
 pub(crate) use inference::infer_type_memo;
 pub use inlay_hints::{InlayHintInfo, inlay_hints};
