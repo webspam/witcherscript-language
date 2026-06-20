@@ -26,7 +26,7 @@ use witcherscript_language::diagnostics::{
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::line_index::SourceRange;
-use witcherscript_language::resolve::WorkspaceIndex;
+use witcherscript_language::resolve::{ObservationSet, WorkspaceIndex};
 use witcherscript_language::script_env::ScriptEnvironment;
 
 #[derive(Debug)]
@@ -298,6 +298,23 @@ impl Backend {
         })
     }
 
+    // Both pull paths must register identical subscriptions; a doc diagnosed via only one path is otherwise never evicted on a cross-file change.
+    fn register_cst_subscriptions(
+        &self,
+        loose_uri_strs: &HashSet<String>,
+        new_subscriptions: Vec<(String, ObservationSet)>,
+    ) {
+        let mut loose_subs = self.loose_subscriptions.lock();
+        let mut workspace_subs = self.workspace_subscriptions.lock();
+        for (uri, observations) in new_subscriptions {
+            if loose_uri_strs.contains(&uri) {
+                loose_subs.register(&uri, observations);
+            } else {
+                workspace_subs.register(&uri, observations);
+            }
+        }
+    }
+
     pub(crate) fn compute_diagnostics_for_uri(
         &self,
         uri: &Url,
@@ -325,6 +342,7 @@ impl Backend {
             &compute.cst.by_uri,
             document,
         );
+        self.register_cst_subscriptions(&loose_uri_strs, compute.cst.new_subscriptions);
         let result_id = result_id_for(
             document.parse_version,
             compute.workspace_surface,
@@ -377,17 +395,7 @@ impl Backend {
                 .retain(|uri, _| diag_docs.contains_key(uri));
         }
 
-        {
-            let mut loose_subs = self.loose_subscriptions.lock();
-            let mut workspace_subs = self.workspace_subscriptions.lock();
-            for (uri, observations) in compute.cst.new_subscriptions {
-                if loose_uri_strs.contains(&uri) {
-                    loose_subs.register(&uri, observations);
-                } else {
-                    workspace_subs.register(&uri, observations);
-                }
-            }
-        }
+        self.register_cst_subscriptions(&loose_uri_strs, compute.cst.new_subscriptions);
 
         let mut items: Vec<WorkspaceDocumentDiagnosticReport> = Vec::with_capacity(diag_docs.len());
         let mut emitted: HashSet<String> = HashSet::with_capacity(diag_docs.len());
