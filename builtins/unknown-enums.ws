@@ -1,4 +1,3 @@
-enum EActionMoveAnimationSyncType {}
 enum EAnimationTrajectorySelectorType {}
 enum EAreaClippingMode {}
 enum EAreaEnvironmentPointBlend {}

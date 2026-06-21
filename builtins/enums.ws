@@ -1,3 +1,9 @@
+enum EActionMoveAnimationSyncType {
+    AMAST_None = 0,
+    AMAST_CrossBlendIn = 1,
+    AMAST_CrossBlendOut = 2
+}
+
 enum EActorActionType {
     ActorAction_None = 0,
     ActorAction_Moving = 1,
