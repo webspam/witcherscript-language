@@ -142,3 +142,60 @@ use super::fmt;
 fn blank_line_handling(#[case] input: &str, #[case] expected: Expect) {
     expected.assert_eq(&fmt(input));
 }
+
+// An end-of-line comment must not change which blank lines the formatter keeps or forces.
+#[rstest]
+#[case::top_level_eol_keeps_forced_blank(
+    "function f() {} // eol\nfunction g() {}",
+    expect![[r"
+        function f() {} // eol
+
+        function g() {}
+    "]]
+)]
+#[case::class_callable_eol_keeps_forced_blank(
+    "class C {\n    function a() {} // eol\n    function b() {}\n}",
+    expect![[r"
+        class C {
+            function a() {} // eol
+
+            function b() {}
+        }
+    "]]
+)]
+#[case::func_block_eol_keeps_source_blank(
+    "function f() {\n    a(); // eol\n\n    b();\n}",
+    expect![[r"
+        function f() {
+            a(); // eol
+
+            b();
+        }
+    "]]
+)]
+#[case::func_block_eol_no_spurious_blank(
+    "function f() {\n    a(); // eol\n    b();\n}",
+    expect![[r"
+        function f() {
+            a(); // eol
+            b();
+        }
+    "]]
+)]
+#[case::switch_arm_eol_keeps_source_blank(
+    "function f() {\n    switch (x) {\n        case 1: a(); // eol\n\n        case 2: b();\n    }\n}",
+    expect![[r"
+        function f() {
+            switch (x) {
+                case 1:  a(); // eol
+
+                case 2:  b();
+            }
+        }
+    "]]
+)]
+fn eol_comment_does_not_alter_blank_lines(#[case] input: &str, #[case] expected: Expect) {
+    let output = fmt(input);
+    expected.assert_eq(&output);
+    assert_eq!(output, fmt(&output), "formatting must be idempotent");
+}

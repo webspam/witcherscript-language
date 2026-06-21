@@ -64,6 +64,10 @@ impl Formatter<'_> {
         self.level += 1;
         let mut prev_end_row: Option<usize> = None;
         for (stmt, trailing_semi) in &stmts {
+            // Attach a trailing comment to prev's line before its row is read as the gap target.
+            if let Some(prev) = prev_end_row {
+                self.flush_trailing_comments(prev, stmt.start_byte());
+            }
             let gap_target_row = self.comments[self.comment_cursor..]
                 .iter()
                 .find(|c| c.start_byte() < stmt.start_byte())
