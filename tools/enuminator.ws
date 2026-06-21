@@ -10,8 +10,8 @@ function ToEnumMember(i: int): string {
 function OnConfigUI() {
     var enumName: name = 'EInputKey';
 
-    var i: Uint64 = EnumGetMin(enumName);
-    var max: Uint64 = EnumGetMax(enumName);
+    var i: int = EnumGetMin(enumName);
+    var max: int = EnumGetMax(enumName);
 
     LogChannel('EnuminatorMin', "EnumGetMin(" + enumName + "): " + i);
     LogChannel('EnuminatorMax', "EnumGetMax(" + enumName + "): " + max);
