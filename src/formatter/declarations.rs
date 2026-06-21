@@ -20,21 +20,24 @@ impl Formatter<'_> {
         for child in &children {
             let child_row = child.start_position().row;
             let child_is_comment = child.kind() == kinds::COMMENT;
-            let trailing = child_is_comment && self.is_trailing_comment(prev_node, *child);
+
+            // A trailing comment belongs to the previous decl's line; leave spacing state intact.
+            if child_is_comment && self.is_trailing_comment(prev_node, *child) {
+                self.flush_comments_before(child.end_byte());
+                continue;
+            }
+
             if let Some(prev) = prev_end_row {
                 let source_gap = child_row.saturating_sub(prev);
                 // Consecutive single-line @addField members may sit gaplessly; do not force a blank.
                 let both_add_field = prev_node.is_some_and(|p| self.is_add_field_decl(p))
                     && self.is_add_field_decl(*child);
-                if !trailing
-                    && (source_gap >= 2
-                        || (!both_add_field && !prev_was_comment && !child_is_comment))
-                {
+                if source_gap >= 2 || (!both_add_field && !prev_was_comment && !child_is_comment) {
                     self.nl();
                 }
             }
-            prev_was_comment = child.kind() == kinds::COMMENT;
-            if child.kind() == kinds::COMMENT {
+            prev_was_comment = child_is_comment;
+            if child_is_comment {
                 self.flush_comments_before(child.end_byte());
             } else {
                 self.format_node(*child);
@@ -515,6 +518,14 @@ impl Formatter<'_> {
         while idx < members.len() {
             let member = members[idx];
             let child_row = member.start_position().row;
+
+            // A trailing comment belongs to the previous member's line; leave spacing state intact.
+            if member.kind() == kinds::COMMENT && self.is_trailing_comment(prev_member, member) {
+                self.flush_comments_before(member.end_byte());
+                idx += 1;
+                continue;
+            }
+
             let source_gap = match prev_end_row {
                 Some(prev) => child_row.saturating_sub(prev),
                 None => child_row.saturating_sub(open_row),
@@ -527,8 +538,7 @@ impl Formatter<'_> {
             prev_was_comment = member.kind() == kinds::COMMENT;
 
             if member.kind() == kinds::COMMENT {
-                let trailing = self.is_trailing_comment(prev_member, member);
-                if want_blank && !trailing {
+                if want_blank {
                     self.nl();
                 }
                 self.flush_comments_before(member.end_byte());

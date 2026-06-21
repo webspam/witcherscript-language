@@ -74,6 +74,19 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    // Flush comments trailing `row` before a blank-line decision can strand them onto their own line.
+    pub(super) fn flush_trailing_comments(&mut self, row: usize, byte: usize) {
+        while self
+            .comments
+            .get(self.comment_cursor)
+            .is_some_and(|c| c.start_byte() < byte && c.start_position().row == row)
+        {
+            let comment = self.comments[self.comment_cursor];
+            self.comment_cursor += 1;
+            self.emit_comment(comment);
+        }
+    }
+
     pub(super) fn is_trailing_comment(&self, prev: Option<Node>, comment: Node) -> bool {
         comment_placement(prev, comment) == CommentPlacement::Trailing
     }

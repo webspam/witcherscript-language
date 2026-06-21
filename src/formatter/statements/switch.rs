@@ -122,6 +122,11 @@ impl Formatter<'_> {
             let mut prev: Option<&SwitchArm> = None;
             for (arm, layout) in arms.iter().zip(layouts.iter()) {
                 if let Some(p) = prev {
+                    // Attach a trailing comment to the prev arm before deciding the blank.
+                    if let (Some(end_row), Some(start_byte)) = (arm_end_row(p), arm_start_byte(arm))
+                    {
+                        self.flush_trailing_comments(end_row, start_byte);
+                    }
                     // A comment between arms owns its own row, so it alone is not a blank line.
                     if blank_line_between_arms(p, arm) && !self.comment_between_arms(p, arm) {
                         self.nl();
@@ -246,10 +251,14 @@ impl Formatter<'_> {
     }
 
     fn comment_between_arms(&self, a: &SwitchArm, b: &SwitchArm) -> bool {
-        match (arm_end_byte(a), arm_start_byte(b)) {
-            (Some(e), Some(s)) => comment_in_range(&self.comments, e, s),
-            _ => false,
-        }
+        let (Some(e), Some(s), Some(a_end)) = (arm_end_byte(a), arm_start_byte(b), arm_end_row(a))
+        else {
+            return false;
+        };
+        // Only an own-line comment explains the row gap; a trailing one shares arm a's last row.
+        self.comments
+            .iter()
+            .any(|c| c.start_byte() >= e && c.start_byte() < s && c.start_position().row > a_end)
     }
 }
 
