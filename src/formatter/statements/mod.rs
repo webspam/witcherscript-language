@@ -10,7 +10,7 @@ pub(in crate::formatter) use switch::{SwitchArm, collect_switch_arms};
 
 use super::{
     ChainPart, Formatter, chain_fully_broken, chain_has_break, chain_operator_leads, child_nodes,
-    named_child_nodes, split_binary_chain, try_split_call_args,
+    named_child_nodes, split_binary_chain, splittable_call,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -369,27 +369,9 @@ impl Formatter<'_> {
         if let Some(e) = expr {
             let indent = self.level * self.indent_unit.len();
             if indent + self.render_node(e).len() + 1 > self.line_limit
-                && let Some((prefix, args)) = try_split_call_args(e, self.source)
+                && let Some((func, args)) = splittable_call(e)
             {
-                self.emit(&prefix);
-                self.emit("(\n");
-                self.level += 1;
-                for (idx, arg) in args.iter().enumerate() {
-                    self.emit_indent();
-                    self.emit(arg);
-                    if idx + 1 < args.len() {
-                        self.emit(",");
-                    }
-                    self.nl();
-                }
-                self.level -= 1;
-                self.emit_indent();
-                self.emit(")");
-                let semi = self.child_of_kind(node, ";");
-                if semi.is_some_and(|n| !n.is_missing()) {
-                    self.emit(";");
-                }
-                self.nl();
+                self.emit_wrapped_call(func, args, node);
                 return;
             }
             if !self.try_emit_broken_chain(e, node.kind()) {
@@ -401,5 +383,61 @@ impl Formatter<'_> {
             self.emit(";");
         }
         self.nl();
+    }
+
+    fn emit_wrapped_call(&mut self, func: Node, args: Node, stmt: Node) {
+        let prefix = self.render_node(func);
+        self.emit(&prefix);
+        self.emit("(");
+        self.nl();
+        self.level += 1;
+        self.emit_call_arg_lines(args);
+        self.level -= 1;
+        if !self.out.ends_with('\n') {
+            self.nl();
+        }
+        self.emit_indent();
+        self.emit(")");
+        if self
+            .child_of_kind(stmt, ";")
+            .is_some_and(|n| !n.is_missing())
+        {
+            self.emit(";");
+        }
+        self.nl();
+    }
+
+    // An omitted slot (two adjacent commas) must survive as a lone comma line, not vanish.
+    fn emit_call_arg_lines(&mut self, args: Node) {
+        self.emit_indent();
+        let mut pending_break = false;
+        for child in &child_nodes(args) {
+            match child.kind() {
+                "," => {
+                    if pending_break {
+                        self.break_to_arg_line();
+                    }
+                    self.emit(",");
+                    pending_break = true;
+                }
+                _ => {
+                    if pending_break {
+                        self.break_to_arg_line();
+                        pending_break = false;
+                    }
+                    self.flush_comments_before(child.start_byte());
+                    let frag = self.render_node(*child);
+                    self.emit(&frag);
+                }
+            }
+        }
+    }
+
+    // A trailing comment may have already broken the line; don't double it.
+    fn break_to_arg_line(&mut self) {
+        if !self.out.ends_with('\n') {
+            self.nl();
+        }
+        self.emit_indent();
     }
 }

@@ -202,25 +202,15 @@ pub(super) fn chain_operator_leads(parts: &[ChainPart]) -> bool {
         .is_some_and(|p| p.op_leads)
 }
 
-pub(super) fn try_split_call_args(node: Node, source: &str) -> Option<(String, Vec<String>)> {
+pub(super) fn splittable_call(node: Node) -> Option<(Node, Node)> {
     if node.kind() != kinds::FUNC_CALL_EXPR {
         return None;
     }
     let func = node.child_by_field_name(fields::FUNC)?;
-    let args_node = node.child_by_field_name(fields::ARGS)?;
-    let args: Vec<String> = {
-        let mut cursor = args_node.walk();
-        args_node
-            .children(&mut cursor)
-            .filter(|c| c.kind() != ",")
-            .map(|c| render_expr(c, source))
-            .collect()
-    };
-    if args.len() <= 1 {
-        return None;
-    }
-    let prefix = render_expr(func, source);
-    Some((prefix, args))
+    let args = node.child_by_field_name(fields::ARGS)?;
+    let mut cursor = args.walk();
+    let has_separator = args.children(&mut cursor).any(|c| c.kind() == ",");
+    has_separator.then_some((func, args))
 }
 
 pub(super) use crate::cst::nav::{child_nodes, named_child_nodes};
