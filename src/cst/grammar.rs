@@ -1,7 +1,7 @@
 use tree_sitter::Node;
 
 use crate::cst::ancestors::find_ancestor_of_kind;
-use crate::cst::nav::first_named_child;
+use crate::cst::nav::{first_child_kind, first_named_child};
 use crate::cst::{fields, kinds};
 
 // func_call_expr and member_access_expr tag their key children with grammar
@@ -74,30 +74,24 @@ fn close_slot(pending: Option<Node>, gap: usize) -> ArgSlot {
     }
 }
 
-/// One entry per slot; a `None` entry is an empty slot (`f(a,,b)`), an empty `Vec` is a no-arg call `f()`.
-pub(crate) fn raw_arg_slots(call: Node) -> Vec<Option<Node>> {
-    arg_slots_with_gaps(call)
+/// The `)` that closes a call's argument list, or `None` if a parse error dropped it.
+pub(crate) fn call_close_paren(call: Node) -> Option<Node> {
+    first_child_kind(call, ")")
+}
+
+/// Argument slots of a call. `None` if no args or any slot is empty (`f(a,,b)`), which breaks positional alignment.
+pub(crate) fn arg_slots(call: Node) -> Option<Vec<Node>> {
+    let slots = arg_slots_with_gaps(call);
+    if slots.is_empty() {
+        return None;
+    }
+    slots
         .into_iter()
         .map(|slot| match slot {
             ArgSlot::Filled(node) => Some(node),
             ArgSlot::Empty { .. } => None,
         })
         .collect()
-}
-
-/// The `)` that closes a call's argument list, or `None` if a parse error dropped it.
-pub(crate) fn call_close_paren(call: Node) -> Option<Node> {
-    let mut cursor = call.walk();
-    call.children(&mut cursor).find(|child| child.kind() == ")")
-}
-
-/// Argument slots of a call. `None` if no args or any slot is empty (`f(a,,b)`), which breaks positional alignment.
-pub(crate) fn arg_slots(call: Node) -> Option<Vec<Node>> {
-    let slots = raw_arg_slots(call);
-    if slots.is_empty() {
-        return None;
-    }
-    slots.into_iter().collect()
 }
 
 pub(crate) fn callee_ident(callee: Node) -> Option<Node> {
