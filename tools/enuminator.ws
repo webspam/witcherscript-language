@@ -20,17 +20,17 @@ function OnConfigUI() {
     // Integer overflow protection - see `EDialogActionIcon`
     if (Abs(max - i) > 16384 || max - i > 16384) {
         // Veeeery likely to be bit flags
-        EnuminateBitFlags(i, max, enumName);
+        EnuminateBitFlags(i, max);
     }
     else {
         // Explicitly enumerate enum
-        EnuminateEnum(i, max, enumName);
+        EnuminateEnum(i, max);
     }
 
     wrappedMethod();
 }
 
-function EnuminateBitFlags(i: int, max: int, enumName: name) {
+function EnuminateBitFlags(i: int, max: int) {
     var enumMember: string;
 
     while (i <= max) {
@@ -46,7 +46,7 @@ function EnuminateBitFlags(i: int, max: int, enumName: name) {
     }
 }
 
-function EnuminateEnum(i: int, max: int, enumName: name) {
+function EnuminateEnum(i: int, max: int) {
     var enumMember: string;
 
     for (; i <= max; i += 1) {
