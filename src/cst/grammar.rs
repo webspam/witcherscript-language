@@ -1,7 +1,7 @@
 use tree_sitter::Node;
 
 use crate::cst::ancestors::find_ancestor_of_kind;
-use crate::cst::nav::first_named_child;
+use crate::cst::nav::{first_child_kind, first_named_child};
 use crate::cst::{fields, kinds};
 
 // func_call_expr and member_access_expr tag their key children with grammar
@@ -21,33 +21,77 @@ pub(crate) fn member_access_member(node: Node) -> Option<Node> {
     })
 }
 
-/// One entry per slot; a `None` entry is an empty slot (`f(a,,b)`), an empty `Vec` is a no-arg call `f()`.
-pub(crate) fn raw_arg_slots(call: Node) -> Vec<Option<Node>> {
+/// `Empty` keeps the gap's byte offset (`f(a,,b)`) so a diagnostic can point at the missing arg.
+pub(crate) enum ArgSlot<'tree> {
+    Filled(Node<'tree>),
+    Empty { gap: usize },
+}
+
+impl ArgSlot<'_> {
+    pub(crate) fn is_filled(&self) -> bool {
+        matches!(self, ArgSlot::Filled(_))
+    }
+
+    pub(crate) fn start_byte(&self) -> usize {
+        match self {
+            ArgSlot::Filled(n) => n.start_byte(),
+            ArgSlot::Empty { gap } => *gap,
+        }
+    }
+
+    pub(crate) fn end_byte(&self) -> usize {
+        match self {
+            ArgSlot::Filled(n) => n.end_byte(),
+            ArgSlot::Empty { gap } => *gap,
+        }
+    }
+}
+
+/// One entry per positional slot; an empty `Vec` is a no-arg call `f()`.
+pub(crate) fn arg_slots_with_gaps(call: Node) -> Vec<ArgSlot> {
     let Some(args) = call.child_by_field_name(fields::ARGS) else {
         return Vec::new();
     };
-    let mut slots: Vec<Option<Node>> = Vec::new();
+    let mut slots: Vec<ArgSlot> = Vec::new();
     let mut pending: Option<Node> = None;
     let mut cursor = args.walk();
     for child in args.children(&mut cursor) {
         match child.kind() {
-            "," => slots.push(pending.take()),
+            "," => slots.push(close_slot(pending.take(), child.start_byte())),
             kinds::COMMENT => {}
             _ if child.is_named() => pending = Some(child),
             _ => {}
         }
     }
-    slots.push(pending.take());
+    slots.push(close_slot(pending.take(), args.end_byte()));
     slots
+}
+
+fn close_slot(pending: Option<Node>, gap: usize) -> ArgSlot {
+    match pending {
+        Some(node) => ArgSlot::Filled(node),
+        None => ArgSlot::Empty { gap },
+    }
+}
+
+/// The `)` that closes a call's argument list, or `None` if a parse error dropped it.
+pub(crate) fn call_close_paren(call: Node) -> Option<Node> {
+    first_child_kind(call, ")")
 }
 
 /// Argument slots of a call. `None` if no args or any slot is empty (`f(a,,b)`), which breaks positional alignment.
 pub(crate) fn arg_slots(call: Node) -> Option<Vec<Node>> {
-    let slots = raw_arg_slots(call);
+    let slots = arg_slots_with_gaps(call);
     if slots.is_empty() {
         return None;
     }
-    slots.into_iter().collect()
+    slots
+        .into_iter()
+        .map(|slot| match slot {
+            ArgSlot::Filled(node) => Some(node),
+            ArgSlot::Empty { .. } => None,
+        })
+        .collect()
 }
 
 pub(crate) fn callee_ident(callee: Node) -> Option<Node> {
