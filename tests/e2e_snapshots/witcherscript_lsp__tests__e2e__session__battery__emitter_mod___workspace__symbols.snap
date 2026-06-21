@@ -15,8 +15,8 @@ expression: session.workspace_symbols(symbol_query).await
 - name: EAnimationTrajectorySelectorType
   kind: enum
   location:
-    file: "witcherscript-builtin:/unknown-enums.ws"
-    range: "1:5-1:37"
+    file: "witcherscript-builtin:/enums.ws"
+    range: "52:5-52:37"
 - name: EEmitterKind
   kind: enum
   location:
@@ -25,8 +25,8 @@ expression: session.workspace_symbols(symbol_query).await
 - name: ESoundAmbientDynamicParameter
   kind: enum
   location:
-    file: "witcherscript-builtin:/unknown-enums.ws"
-    range: "38:5-38:34"
+    file: "witcherscript-builtin:/enums.ws"
+    range: "873:5-873:34"
 - name: IEmitterParams
   kind: class
   location:

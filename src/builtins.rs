@@ -24,6 +24,14 @@ static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock
             "witcherscript-builtin:/EShowFlags.ws",
             include_str!("../builtins/EShowFlags.ws"),
         ),
+        (
+            "witcherscript-builtin:/EEnvColorGroup.ws",
+            include_str!("../builtins/EEnvColorGroup.ws"),
+        ),
+        (
+            "witcherscript-builtin:/EEnvManagerModifier.ws",
+            include_str!("../builtins/EEnvManagerModifier.ws"),
+        ),
         (BUILTIN_ENUMS_URI, include_str!("../builtins/enums.ws")),
         (
             BUILTIN_ORPHAN_ENUMS_URI,
@@ -40,10 +48,6 @@ static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock
         (
             "witcherscript-builtin:/unknown-classes.ws",
             include_str!("../builtins/unknown-classes.ws"),
-        ),
-        (
-            "witcherscript-builtin:/unknown-enums.ws",
-            include_str!("../builtins/unknown-enums.ws"),
         ),
         (
             "witcherscript-builtin:/unknown-interfaces.ws",

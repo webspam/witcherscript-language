@@ -17,6 +17,11 @@ expression: session.workspace_symbols(symbol_query).await
   location:
     file: "witcherscript-builtin:/unknown-classes.ws"
     range: "16:6-16:53"
+- name: ECG_FX_LightShaftReflectionLightDawn
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EEnvColorGroup.ws"
+    range: "34:4-34:40"
 - name: SHOW_ApexThresoldLeft
   kind: enum_member
   location:

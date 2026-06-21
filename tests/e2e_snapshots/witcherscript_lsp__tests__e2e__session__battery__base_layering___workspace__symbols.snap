@@ -11,27 +11,27 @@ expression: session.workspace_symbols(symbol_query).await
   kind: enum_member
   location:
     file: "witcherscript-builtin:/enums.ws"
-    range: "404:4-404:27"
+    range: "607:4-607:27"
 - name: EMS_End_PlayerLost
   kind: enum_member
   location:
     file: "witcherscript-builtin:/enums.ws"
-    range: "401:4-401:22"
+    range: "604:4-604:22"
 - name: EMS_End_PlayerWon
   kind: enum_member
   location:
     file: "witcherscript-builtin:/enums.ws"
-    range: "400:4-400:21"
+    range: "603:4-603:21"
 - name: EMS_Wait_PlayerLost
   kind: enum_member
   location:
     file: "witcherscript-builtin:/enums.ws"
-    range: "403:4-403:23"
+    range: "606:4-606:23"
 - name: FLAG_ExcludePlayer
   kind: enum_member
   location:
     file: "witcherscript-builtin:/orphan_enums.ws"
-    range: "13:4-13:22"
+    range: "6:4-6:22"
 - name: IGameplayDLCMounter
   kind: class
   location:
@@ -41,19 +41,19 @@ expression: session.workspace_symbols(symbol_query).await
   kind: enum_member
   location:
     file: "witcherscript-builtin:/enums.ws"
-    range: "470:4-470:13"
+    range: "690:4-690:13"
 - name: TE_FIGHT_PLAYER_ATTACKS
   kind: enum_member
   location:
     file: "witcherscript-builtin:/enums.ws"
-    range: "544:4-544:27"
+    range: "779:4-779:27"
 - name: TE_FIGHT_PLAYER_DIES
   kind: enum_member
   location:
     file: "witcherscript-builtin:/enums.ws"
-    range: "543:4-543:24"
+    range: "778:4-778:24"
 - name: TE_FIGHT_PLAYER_USE_SIGN
   kind: enum_member
   location:
     file: "witcherscript-builtin:/enums.ws"
-    range: "545:4-545:28"
+    range: "780:4-780:28"

@@ -2,6 +2,10 @@
 source: src/bin/witcherscript-lsp/tests/e2e/session/scenarios.rs
 expression: session.completion(signature).await
 ---
+- label: ACM_ClipToNegativeAreas
+  kind: other
+- label: ACM_NoClipping
+  kind: other
 - label: ADIST_Large
   kind: other
 - label: ADIST_Medium
@@ -17,6 +21,22 @@ expression: session.completion(signature).await
 - label: AD_Left
   kind: other
 - label: AD_Right
+  kind: other
+- label: AEPB_CameraAngleAndDistance
+  kind: other
+- label: AEPB_CameraFocusAndDistance
+  kind: other
+- label: AEPB_DistanceOnly
+  kind: other
+- label: AEPT_Additive
+  kind: other
+- label: AEPT_FadeIn
+  kind: other
+- label: AEPT_FadeOut
+  kind: other
+- label: AEPT_SubEnvironment
+  kind: other
+- label: AEPT_Subtractive
   kind: other
 - label: AET_Duration
   kind: other
@@ -34,6 +54,14 @@ expression: session.completion(signature).await
   kind: other
 - label: AIA_Neutral
   kind: other
+- label: ALPHA
+  kind: other
+- label: AMAST_CrossBlendIn
+  kind: other
+- label: AMAST_CrossBlendOut
+  kind: other
+- label: AMAST_None
+  kind: other
 - label: AMST_SyncBeginning
   kind: other
 - label: AMST_SyncEnd
@@ -47,6 +75,22 @@ expression: session.completion(signature).await
 - label: ASR_ReadyFalse
   kind: other
 - label: ASR_ReadyTrue
+  kind: other
+- label: ATST_Blend2
+  kind: other
+- label: ATST_Blend2Direction
+  kind: other
+- label: ATST_Blend3
+  kind: other
+- label: ATST_IK
+  kind: other
+- label: ATST_None
+  kind: other
+- label: ATS_AboveAndBelowTerrain
+  kind: other
+- label: ATS_OnlyAboveTerrain
+  kind: other
+- label: ATS_OnlyBelowTerrain
   kind: other
 - label: ActorAction_Animation
   kind: other
@@ -78,6 +122,8 @@ expression: session.completion(signature).await
   kind: other
 - label: ActorAction_Working
   kind: other
+- label: Add
+  kind: other
 - label: BCS_Air
   kind: other
 - label: BCS_Essence
@@ -99,6 +145,8 @@ expression: session.completion(signature).await
 - label: BCS_Undefined
   kind: other
 - label: BCS_Vitality
+  kind: other
+- label: BLUE
   kind: other
 - label: BQS_NotFound
   kind: other
@@ -200,6 +248,20 @@ expression: session.completion(signature).await
   kind: other
 - label: CDS_WillRes
   kind: other
+- label: CHEAT_Console
+  kind: other
+- label: CHEAT_DebugPages
+  kind: other
+- label: CHEAT_FreeCamera
+  kind: other
+- label: CHEAT_InstantKill
+  kind: other
+- label: CHEAT_MovementOnPhysics
+  kind: other
+- label: CHEAT_Teleport
+  kind: other
+- label: CHEAT_TimeScaling
+  kind: other
 - label: CPS_Animated
   kind: other
 - label: CPS_Count
@@ -264,7 +326,17 @@ expression: session.completion(signature).await
   kind: other
 - label: CTSST_SKIP_IF_THERE_ARE_OTHER_TARGETS
   kind: other
+- label: CT_Linear
+  kind: other
+- label: CT_Segmented
+  kind: other
+- label: CT_Smooth
+  kind: other
+- label: CUSTOM_PRESET_D
+  kind: other
 - label: Chapter
+  kind: other
+- label: Child
   kind: other
 - label: ComboAT_Directional
   kind: other
@@ -348,6 +420,18 @@ expression: session.completion(signature).await
   kind: other
 - label: DialogAction_TimedChoice
   kind: other
+- label: Dwarf
+  kind: other
+- label: EAHG_Custom0
+  kind: other
+- label: EAHG_Custom1
+  kind: other
+- label: EAHG_Custom2
+  kind: other
+- label: EAHG_Custom3
+  kind: other
+- label: EAHG_None
+  kind: other
 - label: EAIASM_ByTag
   kind: other
 - label: EAIASM_ByTagInEncounter
@@ -400,6 +484,130 @@ expression: session.completion(signature).await
   kind: other
 - label: EBAT_SpecialAttack_Light
   kind: other
+- label: ECG_Custom0
+  kind: other
+- label: ECG_Custom1
+  kind: other
+- label: ECG_Custom2
+  kind: other
+- label: ECG_Default
+  kind: other
+- label: ECG_FX_BackgroundCloudsBack
+  kind: other
+- label: ECG_FX_BackgroundCloudsFront
+  kind: other
+- label: ECG_FX_BackgroundHazeBack
+  kind: other
+- label: ECG_FX_BackgroundHazeFront
+  kind: other
+- label: ECG_FX_Blood
+  kind: other
+- label: ECG_FX_Default
+  kind: other
+- label: ECG_FX_Fire
+  kind: other
+- label: ECG_FX_FireFlares
+  kind: other
+- label: ECG_FX_FireLight
+  kind: other
+- label: ECG_FX_Fog
+  kind: other
+- label: ECG_FX_LightShaft
+  kind: other
+- label: ECG_FX_LightShaftInteriorDawn
+  kind: other
+- label: ECG_FX_LightShaftInteriorEvening
+  kind: other
+- label: ECG_FX_LightShaftInteriorNight
+  kind: other
+- label: ECG_FX_LightShaftInteriorNoon
+  kind: other
+- label: ECG_FX_LightShaftReflectionLightDawn
+  kind: other
+- label: ECG_FX_LightShaftReflectionLightEvening
+  kind: other
+- label: ECG_FX_LightShaftReflectionLightNight
+  kind: other
+- label: ECG_FX_LightShaftReflectionLightNoon
+  kind: other
+- label: ECG_FX_LightShaftSpotlightDawn
+  kind: other
+- label: ECG_FX_LightShaftSpotlightEvening
+  kind: other
+- label: ECG_FX_LightShaftSpotlightNight
+  kind: other
+- label: ECG_FX_LightShaftSpotlightNoon
+  kind: other
+- label: ECG_FX_LightShaftSun
+  kind: other
+- label: ECG_FX_MainCloudsBack
+  kind: other
+- label: ECG_FX_MainCloudsFront
+  kind: other
+- label: ECG_FX_MainCloudsMiddle
+  kind: other
+- label: ECG_FX_MainCloudsRim
+  kind: other
+- label: ECG_FX_ScreenParticles
+  kind: other
+- label: ECG_FX_Sky
+  kind: other
+- label: ECG_FX_SkyDawn
+  kind: other
+- label: ECG_FX_SkyNight
+  kind: other
+- label: ECG_FX_SkyNoon
+  kind: other
+- label: ECG_FX_SkyRain
+  kind: other
+- label: ECG_FX_SkySunset
+  kind: other
+- label: ECG_FX_Smoke
+  kind: other
+- label: ECG_FX_SmokeExplosion
+  kind: other
+- label: ECG_FX_Trails
+  kind: other
+- label: ECG_FX_Water
+  kind: other
+- label: ECG_LightsDawn
+  kind: other
+- label: ECG_LightsDefault
+  kind: other
+- label: ECG_LightsEvening
+  kind: other
+- label: ECG_LightsNight
+  kind: other
+- label: ECG_LightsNoon
+  kind: other
+- label: ECurveInterpolationMode_Automatic
+  kind: other
+- label: ECurveInterpolationMode_Linear
+  kind: other
+- label: ECurveInterpolationMode_Manual
+  kind: other
+- label: ECurveManualMode_Bezier
+  kind: other
+- label: ECurveManualMode_BezierSymmetric
+  kind: other
+- label: ECurveManualMode_BezierSymmetricDirection
+  kind: other
+- label: ECurveRelativeMode_CurrentTransform
+  kind: other
+- label: ECurveRelativeMode_InitialTransform
+  kind: other
+- label: ECurveRelativeMode_None
+  kind: other
+- label: ECurveType_EngineTransform
+  kind: other
+- label: ECurveType_EulerAngles
+  kind: other
+- label: ECurveType_Float
+  kind: other
+- label: ECurveType_Uninitialized
+  kind: other
+- label: ECurveType_Vector
+  kind: other
 - label: EDM_Easy
   kind: other
 - label: EDM_Hard
@@ -409,6 +617,38 @@ expression: session.completion(signature).await
 - label: EDM_Medium
   kind: other
 - label: EDM_NotSet
+  kind: other
+- label: EDPP_AllowAntialiasing
+  kind: other
+- label: EDPP_AllowBloom
+  kind: other
+- label: EDPP_AllowCloudsShadow
+  kind: other
+- label: EDPP_AllowColorMod
+  kind: other
+- label: EDPP_AllowDOF
+  kind: other
+- label: EDPP_AllowEnvProbeUpdate
+  kind: other
+- label: EDPP_AllowGlobalFog
+  kind: other
+- label: EDPP_AllowSSAO
+  kind: other
+- label: EDPP_AllowVignette
+  kind: other
+- label: EDPP_AllowWaterShader
+  kind: other
+- label: EDPP_DisableTonemapping
+  kind: other
+- label: EDPP_DisplayMode
+  kind: other
+- label: EDPP_EnableGlobalLightingTrajectory
+  kind: other
+- label: EDPP_EnableInstantAdaptation
+  kind: other
+- label: EDPP_ForceCutsceneDofMode
+  kind: other
+- label: EDPP_Gamma
   kind: other
 - label: EGAM_Aggressive
   kind: other
@@ -430,6 +670,12 @@ expression: session.completion(signature).await
   kind: other
 - label: EGEF_FocusModeHighlight
   kind: other
+- label: EJCT_EP1
+  kind: other
+- label: EJCT_EP2
+  kind: other
+- label: EJCT_Vanilla
+  kind: other
 - label: EK_Bell
   kind: other
 - label: EK_Chime
@@ -437,6 +683,108 @@ expression: session.completion(signature).await
 - label: EK_Drum
   kind: other
 - label: EK_None
+  kind: other
+- label: EMM_Bloom
+  kind: other
+- label: EMM_ComplexityEnvProbes
+  kind: other
+- label: EMM_DecomposedAmbient
+  kind: other
+- label: EMM_DecomposedDiffuse
+  kind: other
+- label: EMM_DecomposedLightingAmbient
+  kind: other
+- label: EMM_DecomposedLightingReflection
+  kind: other
+- label: EMM_DecomposedReflection
+  kind: other
+- label: EMM_DecomposedSpecular
+  kind: other
+- label: EMM_Depth
+  kind: other
+- label: EMM_DimmersSurface
+  kind: other
+- label: EMM_DimmersVolume
+  kind: other
+- label: EMM_GBuffAlbedo
+  kind: other
+- label: EMM_GBuffAlbedoNormalized
+  kind: other
+- label: EMM_GBuffNormalsViewSpace
+  kind: other
+- label: EMM_GBuffNormalsWorldSpace
+  kind: other
+- label: EMM_GBuffRoughness
+  kind: other
+- label: EMM_GBuffSpecularity
+  kind: other
+- label: EMM_GBuffTranslucency
+  kind: other
+- label: EMM_GBuffVelocity
+  kind: other
+- label: EMM_HBIL
+  kind: other
+- label: EMM_HitProxies
+  kind: other
+- label: EMM_InteriorsFactor
+  kind: other
+- label: EMM_InteriorsVolume
+  kind: other
+- label: EMM_LightsOverlay
+  kind: other
+- label: EMM_LightsOverlayDensity
+  kind: other
+- label: EMM_LinearAll
+  kind: other
+- label: EMM_LocalReflections
+  kind: other
+- label: EMM_MAX
+  kind: other
+- label: EMM_MaskDimmers
+  kind: other
+- label: EMM_MaskInterior
+  kind: other
+- label: EMM_MaskSSAO
+  kind: other
+- label: EMM_MaskShadow
+  kind: other
+- label: EMM_None
+  kind: other
+- label: EMM_RayTracingBufferColor
+  kind: other
+- label: EMM_RayTracingBufferMetadataAlpha
+  kind: other
+- label: EMM_RayTracingBufferMetadataBlue
+  kind: other
+- label: EMM_RayTracingBufferMetadataGreen
+  kind: other
+- label: EMM_RayTracingBufferMetadataRed
+  kind: other
+- label: EMM_RayTracingBufferNormalized
+  kind: other
+- label: EMM_RayTracingColor
+  kind: other
+- label: EMM_SSSR
+  kind: other
+- label: EMM_ScreenSpaceAmbientOcclusionMask
+  kind: other
+- label: EMM_Stencil0
+  kind: other
+- label: EMM_Stencil1
+  kind: other
+- label: EMM_Stencil2
+  kind: other
+- label: EMM_Stencil3
+  kind: other
+- label: EMM_Stencil4
+  kind: other
+- label: EMM_Stencil5
+  kind: other
+- label: EMM_Stencil6
+  kind: other
+- label: EMM_Stencil7
+  kind: other
+- label: EMM_StencilMix
   kind: other
 - label: EMS_End
   kind: other
@@ -470,7 +818,31 @@ expression: session.completion(signature).await
   kind: other
 - label: ENavigationReachability_FullTest
   kind: other
+- label: EPD_Back
+  kind: other
+- label: EPD_Front
+  kind: other
 - label: EQQF_IMPACT
+  kind: other
+- label: ESADP_None
+  kind: other
+- label: ESPCT_Exp1
+  kind: other
+- label: ESPCT_Exp3
+  kind: other
+- label: ESPCT_InversedSCurve
+  kind: other
+- label: ESPCT_Linear
+  kind: other
+- label: ESPCT_Log1
+  kind: other
+- label: ESPCT_Log3
+  kind: other
+- label: ESPCT_ReciprocalOfSineCurve
+  kind: other
+- label: ESPCT_SCurve
+  kind: other
+- label: ESPCT_Sine
   kind: other
 - label: ET_Boat_B
   kind: other
@@ -514,6 +886,8 @@ expression: session.completion(signature).await
   kind: other
 - label: EVT_Undefined
   kind: other
+- label: Elf
+  kind: other
 - label: FLAG_Attitude_Friendly
   kind: other
 - label: FLAG_Attitude_Hostile
@@ -535,6 +909,26 @@ expression: session.completion(signature).await
 - label: FMV_Interactive
   kind: other
 - label: FMV_None
+  kind: other
+- label: FP_Close150m
+  kind: other
+- label: FP_CrazyClose20m
+  kind: other
+- label: FP_CustomValue
+  kind: other
+- label: FP_DefaultEnv
+  kind: other
+- label: FP_EvenCloser30m
+  kind: other
+- label: FP_Far1000m
+  kind: other
+- label: FP_Medium600m
+  kind: other
+- label: FP_MoreFar1500m
+  kind: other
+- label: FP_VeryClose40m
+  kind: other
+- label: FP_VeryFar2000m
   kind: other
 - label: FinisherLeft
   kind: other
@@ -599,6 +993,22 @@ expression: session.completion(signature).await
 - label: GET_TriggerRemoved
   kind: other
 - label: GET_Unknown
+  kind: other
+- label: GICT_Custom0
+  kind: other
+- label: GICT_Custom1
+  kind: other
+- label: GICT_Custom2
+  kind: other
+- label: GICT_Custom3
+  kind: other
+- label: GICT_Custom4
+  kind: other
+- label: GICT_HasDrawableComponents
+  kind: other
+- label: GICT_IsInteractive
+  kind: other
+- label: GREEN
   kind: other
 - label: GTFX_MultiFeedback
   kind: other
@@ -1282,6 +1692,14 @@ expression: session.completion(signature).await
   kind: other
 - label: IP_Prio_9
   kind: other
+- label: InventoryItemClass_Common
+  kind: other
+- label: InventoryItemClass_Epic
+  kind: other
+- label: InventoryItemClass_Magic
+  kind: other
+- label: InventoryItemClass_Rare
+  kind: other
 - label: JS_Active
   kind: other
 - label: JS_Failed
@@ -1289,6 +1707,14 @@ expression: session.completion(signature).await
 - label: JS_Inactive
   kind: other
 - label: JS_Success
+  kind: other
+- label: LM_Cutscene
+  kind: other
+- label: LM_Dialog
+  kind: other
+- label: LM_GameplayLock
+  kind: other
+- label: LM_MiniGame
   kind: other
 - label: LOAD_Error
   kind: other
@@ -1301,6 +1727,8 @@ expression: session.completion(signature).await
 - label: LOAD_NotInitialized
   kind: other
 - label: LOAD_ReadyToLoad
+  kind: other
+- label: LOD
   kind: other
 - label: LSCM_None
   kind: other
@@ -1324,9 +1752,23 @@ expression: session.completion(signature).await
   kind: other
 - label: MFA_REPLAN
   kind: other
+- label: MSIB_Default
+  kind: other
+- label: MSIB_EvenLessImportant
+  kind: other
+- label: MSIB_EvenMoreImportant
+  kind: other
+- label: MSIB_LessImportant
+  kind: other
+- label: MSIB_MoreImportant
+  kind: other
 - label: MT_AbsSpeed
   kind: other
+- label: MT_Dynamic
+  kind: other
 - label: MT_FastRun
+  kind: other
+- label: MT_KeyFramed
   kind: other
 - label: MT_Run
   kind: other
@@ -1340,7 +1782,23 @@ expression: session.completion(signature).await
   kind: other
 - label: MT_normal
   kind: other
+- label: MVT_DestructionMesh
+  kind: other
+- label: MVT_SkinnedMesh
+  kind: other
+- label: MVT_StaticMesh
+  kind: other
+- label: Man
+  kind: other
+- label: Manual
+  kind: other
+- label: Modulate
+  kind: other
+- label: Monster
+  kind: other
 - label: MonsterHunt
+  kind: other
+- label: Multiply
   kind: other
 - label: NGP_CantLoad
   kind: other
@@ -1358,6 +1816,24 @@ expression: session.completion(signature).await
   kind: other
 - label: NGP_WrongGameVersion
   kind: other
+- label: NP_Close10cm
+  kind: other
+- label: NP_CustomValue
+  kind: other
+- label: NP_DefaultEnv
+  kind: other
+- label: NP_Extreme240cm
+  kind: other
+- label: NP_Far60cm
+  kind: other
+- label: NP_Further40cm
+  kind: other
+- label: NP_Medium25cm
+  kind: other
+- label: NP_VeryClose5cm
+  kind: other
+- label: NP_VeryFar120cm
+  kind: other
 - label: NS_Fly
   kind: other
 - label: NS_Guarded
@@ -1372,6 +1848,8 @@ expression: session.completion(signature).await
   kind: other
 - label: NS_Wounded
   kind: other
+- label: None
+  kind: other
 - label: OT_Actor
   kind: other
 - label: OT_Camera
@@ -1383,6 +1861,12 @@ expression: session.completion(signature).await
 - label: OT_None
   kind: other
 - label: OT_Player
+  kind: other
+- label: OnContact
+  kind: other
+- label: OnDistance
+  kind: other
+- label: Overwrite
   kind: other
 - label: PAO_Pause
   kind: other
@@ -1397,6 +1881,20 @@ expression: session.completion(signature).await
 - label: PCM_Backward
   kind: other
 - label: PCM_Forward
+  kind: other
+- label: PLC_Disabled
+  kind: other
+- label: PLC_Dynamic
+  kind: other
+- label: PLC_Immediate
+  kind: other
+- label: PLC_Static
+  kind: other
+- label: PLC_StaticMetaobstacle
+  kind: other
+- label: PLC_StaticWalkable
+  kind: other
+- label: PLC_Walkable
   kind: other
 - label: PM_Camera_FOV
   kind: other
@@ -1444,6 +1942,8 @@ expression: session.completion(signature).await
   kind: other
 - label: QMFT_ShowOnly
   kind: other
+- label: RED
+  kind: other
 - label: RESTORE_DLCRequired
   kind: other
 - label: RESTORE_DataCorrupted
@@ -1468,9 +1968,33 @@ expression: session.completion(signature).await
   kind: other
 - label: RMT_None
   kind: other
+- label: RPl_Background
+  kind: other
+- label: RPl_Scene
+  kind: other
+- label: Random
+  kind: other
+- label: SCO_Cloud
+  kind: other
+- label: SCO_Conflict
+  kind: other
+- label: SCO_Deleting
+  kind: other
+- label: SCO_Downloading
+  kind: other
 - label: SCO_Local
   kind: other
+- label: SCO_Synced
+  kind: other
 - label: SCO_Uploading
+  kind: other
+- label: SCT_Color
+  kind: other
+- label: SCT_ColorScaled
+  kind: other
+- label: SCT_Float
+  kind: other
+- label: SCT_Vector
   kind: other
 - label: SGT_AutoSave
   kind: other
@@ -2006,6 +2530,12 @@ expression: session.completion(signature).await
   kind: other
 - label: SRT_TowardsOtherEntity
   kind: other
+- label: SR_Left
+  kind: other
+- label: SR_Nearest
+  kind: other
+- label: SR_Right
+  kind: other
 - label: SSST_Accept
   kind: other
 - label: SSST_Highlight
@@ -2021,6 +2551,28 @@ expression: session.completion(signature).await
 - label: Side
   kind: other
 - label: Story
+  kind: other
+- label: TCM_DXTAlpha
+  kind: other
+- label: TCM_DXTAlphaLinear
+  kind: other
+- label: TCM_DXTNoAlpha
+  kind: other
+- label: TCM_None
+  kind: other
+- label: TCM_Normals
+  kind: other
+- label: TCM_NormalsGloss
+  kind: other
+- label: TCM_NormalsHigh
+  kind: other
+- label: TCM_QualityColor
+  kind: other
+- label: TCM_QualityR
+  kind: other
+- label: TCM_QualityRG
+  kind: other
+- label: TCM_RGBE
   kind: other
 - label: TE_ELIXIR_USED
   kind: other
@@ -2136,6 +2688,34 @@ expression: session.completion(signature).await
   kind: other
 - label: TICK_PrePhysicsPost
   kind: other
+- label: TRF_AlphaGrayscale
+  kind: other
+- label: TRF_Grayscale
+  kind: other
+- label: TRF_HDR
+  kind: other
+- label: TRF_HDRGrayscale
+  kind: other
+- label: TRF_TrueColor
+  kind: other
+- label: TSG_Clouds
+  kind: other
+- label: TSG_Max
+  kind: other
+- label: TSG_Scene
+  kind: other
+- label: TSG_Sky
+  kind: other
+- label: TS_Box
+  kind: other
+- label: TS_None
+  kind: other
+- label: TS_Sphere
+  kind: other
+- label: Tangents
+  kind: other
+- label: Timed
+  kind: other
 - label: TreasureHunt
   kind: other
 - label: UI_Apple
@@ -2180,6 +2760,12 @@ expression: session.completion(signature).await
   kind: other
 - label: VMT_TeleportAndMount
   kind: other
+- label: WPI_Anywhere
+  kind: other
+- label: WPI_Nearby
+  kind: other
+- label: WPI_Precise
+  kind: other
 - label: WST_Silver
   kind: other
 - label: WST_Steel
@@ -2193,6 +2779,10 @@ expression: session.completion(signature).await
 - label: WTF_Frost
   kind: other
 - label: WTF_None
+  kind: other
+- label: Witcher
+  kind: other
+- label: Woman
   kind: other
 - label: "false"
   kind: keyword

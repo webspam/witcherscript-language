@@ -17,5 +17,8 @@ class CStorySceneChoiceLineActionScripted {}
 class CStorySceneChoiceLineActionScriptedContentGuard {}
 class CStorySceneControlPart {}
 class DeferredDataBuffer {}
+class EngineQsTransform {}
+class EngineTransform {}
+class EntityHandle {}
 class TagList {}
 class Vector2 {}

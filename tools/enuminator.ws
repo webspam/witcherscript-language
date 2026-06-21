@@ -2,40 +2,42 @@
 // Game must be started with args: `-net -debugscripts`
 
 // Replace all (2) instances of `EInputKey` with the enum to enumerate.
-function ToEnumMember(i : int) : string {
-    return "" + (EInputKey) i;
+function ToEnumMember(i: int): string {
+    return "" + (EInputKey)i;
 }
 
 @wrapMethod(CR4IngameMenu)
 function OnConfigUI() {
-    var enumName : name = 'EInputKey';
+    var enumName: name = 'EInputKey';
 
-    var i : Uint64 = EnumGetMin(enumName);
-    var max : Uint64 = EnumGetMax(enumName);
+    var i: int = EnumGetMin(enumName);
+    var max: int = EnumGetMax(enumName);
 
     LogChannel('EnuminatorMin', "EnumGetMin(" + enumName + "): " + i);
     LogChannel('EnuminatorMax', "EnumGetMax(" + enumName + "): " + max);
 
+    LogChannel('EnuminatorMax', "enum " + enumName + "{");
     // Do not refactor to modulo; can't handle large ints: e.g. (0x40000000 % 2) returns `21`
     // Integer overflow protection - see `EDialogActionIcon`
     if (Abs(max - i) > 16384 || max - i > 16384) {
         // Veeeery likely to be bit flags
-        EnuminateBitFlags(i, max, enumName);
+        EnuminateBitFlags(i, max);
     }
     else {
         // Explicitly enumerate enum
-        EnuminateEnum(i, max, enumName);
+        EnuminateEnum(i, max);
     }
+    LogChannel('EnuminatorMax', "}");
 
     wrappedMethod();
 }
 
-function EnuminateBitFlags(i : int, max : int, enumName : name) {
-    var enumMember : string;
+function EnuminateBitFlags(i: int, max: int) {
+    var enumMember: string;
 
     while (i <= max) {
         enumMember = ToEnumMember(i);
-        if (enumMember != "") LogChannel('Enuminator', enumMember + " = " + i);
+        if (enumMember != "") LogChannel('Enuminator', enumMember + " = " + i + ",");
 
         // Integer overflow protection - see `EDialogActionIcon`
         if (i < -1073741824) i = -1073741824;
@@ -46,11 +48,11 @@ function EnuminateBitFlags(i : int, max : int, enumName : name) {
     }
 }
 
-function EnuminateEnum(i : int, max : int, enumName : name) {
-    var enumMember : string;
+function EnuminateEnum(i: int, max: int) {
+    var enumMember: string;
 
     for (; i <= max; i += 1) {
         enumMember = ToEnumMember(i);
-        if (enumMember != "") LogChannel('Enuminator', enumMember + " = " + i);
+        if (enumMember != "") LogChannel('Enuminator', enumMember + " = " + i + ",");
     }
 }
