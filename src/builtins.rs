@@ -28,6 +28,10 @@ static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock
             "witcherscript-builtin:/EEnvColorGroup.ws",
             include_str!("../builtins/EEnvColorGroup.ws"),
         ),
+        (
+            "witcherscript-builtin:/EEnvManagerModifier.ws",
+            include_str!("../builtins/EEnvManagerModifier.ws"),
+        ),
         (BUILTIN_ENUMS_URI, include_str!("../builtins/enums.ws")),
         (
             BUILTIN_ORPHAN_ENUMS_URI,
