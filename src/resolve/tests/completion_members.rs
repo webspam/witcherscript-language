@@ -53,6 +53,31 @@ fn completion_after_dot_returns_public_members() {
 }
 
 #[test]
+fn completes_partial_member_when_next_line_unterminated() {
+    // Missing `;` makes tree-sitter glue `x.Ab` onto the next line's call.
+    let t = TestDb::new(concat!(
+        "class CPlayer {\n",
+        "  public function AbortSign() {}\n",
+        "}\n",
+        "function Test() {\n",
+        "  var x : CPlayer;\n",
+        "  x.Ab$0\n",
+        "  x.AbortSign();\n",
+        "}\n",
+    ));
+    let (uri, pos) = t.cursor();
+    let members = completion_members(&uri, t.doc_for(&uri), &t.db(), pos);
+    let names: Vec<&str> = members
+        .iter()
+        .map(|(_, d)| d.symbol.name.as_str())
+        .collect();
+    assert!(
+        names.contains(&"AbortSign"),
+        "partial member completion should offer AbortSign, got {names:?}"
+    );
+}
+
+#[test]
 fn completion_includes_inherited_members() {
     let t = TestDb::new(concat!(
         "//- /a.ws\n",

@@ -4,7 +4,7 @@ use crate::line_index::SourcePosition;
 use crate::symbols::AccessLevel;
 
 use super::super::Definition;
-use super::super::ast::{find_ancestor_of_kind, first_named_child, nodes_at_offset};
+use super::super::ast::{find_ancestor_of_kind, first_named_child, significant_node_before_byte};
 use super::super::inference::{enclosing_type_context, infer_type};
 use super::super::symbol_db::SymbolDb;
 
@@ -28,17 +28,15 @@ fn completion_members_inner(
         .position_to_byte(&document.source, position)?;
 
     let root = document.tree.root_node();
-    let access_node = nodes_at_offset(root, byte_offset)
-        .into_iter()
-        .find_map(|n| {
-            find_ancestor_of_kind(
-                n,
-                &[
-                    kinds::MEMBER_ACCESS_EXPR,
-                    kinds::INCOMPLETE_MEMBER_ACCESS_EXPR,
-                ],
-            )
-        })?;
+    // Anchor left of the cursor; a missing `;` glues the partial access onto the next statement.
+    let anchor = significant_node_before_byte(root, document.source.as_bytes(), byte_offset)?;
+    let access_node = find_ancestor_of_kind(
+        anchor,
+        &[
+            kinds::MEMBER_ACCESS_EXPR,
+            kinds::INCOMPLETE_MEMBER_ACCESS_EXPR,
+        ],
+    )?;
 
     let expr = first_named_child(access_node)?;
     let context_byte = expr.start_byte();
