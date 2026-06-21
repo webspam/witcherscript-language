@@ -42,7 +42,4 @@ enum ETextureRawFormat {}
 enum ETransparencySortGroup {}
 enum ETriggerShape {}
 enum EWorkPlacementImportance {}
-enum EngineQsTransform {}
-enum EngineTransform {}
-enum EntityHandle {}
 enum eQuestObjectiveType {}
