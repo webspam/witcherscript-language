@@ -50,10 +50,6 @@ static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock
             include_str!("../builtins/unknown-classes.ws"),
         ),
         (
-            "witcherscript-builtin:/unknown-enums.ws",
-            include_str!("../builtins/unknown-enums.ws"),
-        ),
-        (
             "witcherscript-builtin:/unknown-interfaces.ws",
             include_str!("../builtins/unknown-interfaces.ws"),
         ),

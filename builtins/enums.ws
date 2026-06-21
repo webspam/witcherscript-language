@@ -50,6 +50,14 @@ enum EAnimationManualSyncType {
     AMST_SyncMatchEvents = 2
 }
 
+enum EAnimationTrajectorySelectorType {
+    ATST_None = 0,
+    ATST_IK = 1,
+    ATST_Blend2 = 2,
+    ATST_Blend3 = 3,
+    ATST_Blend2Direction = 4
+}
+
 enum EArbitratorPriorities {
     BTAP_Unavailable = -1,
     BTAP_BelowIdle = 16,
@@ -63,6 +71,31 @@ enum EArbitratorPriorities {
     BTAP_AboveCombat = 86,
     BTAP_AboveCombat2 = 91,
     BTAP_FullCutscene = 95
+}
+
+enum EAreaClippingMode {
+    ACM_NoClipping = 0,
+    ACM_ClipToNegativeAreas = 1
+}
+
+enum EAreaEnvironmentPointBlend {
+    AEPB_DistanceOnly = 0,
+    AEPB_CameraFocusAndDistance = 1,
+    AEPB_CameraAngleAndDistance = 2
+}
+
+enum EAreaEnvironmentPointType {
+    AEPT_FadeOut = 0,
+    AEPT_FadeIn = 1,
+    AEPT_Additive = 2,
+    AEPT_Subtractive = 3,
+    AEPT_SubEnvironment = 4
+}
+
+enum EAreaTerrainSide {
+    ATS_AboveAndBelowTerrain = 0,
+    ATS_OnlyAboveTerrain = 1,
+    ATS_OnlyBelowTerrain = 2
 }
 
 enum EAsyncCheckResult {
@@ -161,6 +194,11 @@ enum ECharacterDefenseStats {
     CDS_DoTBleedingDamageRes = 18
 }
 
+enum ECharacterImportance {
+    // Main Character = 0,
+    // Side Character = 1,
+}
+
 enum ECharacterPhysicsState {
     CPS_Simulated = 0,
     CPS_Animated = 1,
@@ -168,6 +206,16 @@ enum ECharacterPhysicsState {
     CPS_Swimming = 3,
     CPS_Ragdoll = 4,
     CPS_Count = 5
+}
+
+enum ECheats {
+    CHEAT_Console = 0,
+    CHEAT_FreeCamera = 1,
+    CHEAT_DebugPages = 2,
+    CHEAT_InstantKill = 3,
+    CHEAT_Teleport = 4,
+    CHEAT_MovementOnPhysics = 5,
+    CHEAT_TimeScaling = 6
 }
 
 enum ECollisionSides {
@@ -209,6 +257,68 @@ enum EComboAttackType {
     ComboAT_Directional = 1,
     ComboAT_Restart = 2,
     ComboAT_Stop = 3
+}
+
+enum ECurveBaseType {
+    CT_Linear = 0,
+    CT_Smooth = 1,
+    CT_Segmented = 2
+}
+
+enum ECurveInterpolationMode {
+    ECurveInterpolationMode_Linear = 0,
+    ECurveInterpolationMode_Automatic = 1,
+    ECurveInterpolationMode_Manual = 2
+}
+
+enum ECurveManualMode {
+    ECurveManualMode_Bezier = 0,
+    ECurveManualMode_BezierSymmetricDirection = 1,
+    ECurveManualMode_BezierSymmetric = 2
+}
+
+enum ECurveRelativeMode {
+    ECurveRelativeMode_None = 0,
+    ECurveRelativeMode_InitialTransform = 1,
+    ECurveRelativeMode_CurrentTransform = 2
+}
+
+enum ECurveType {
+    ECurveType_Uninitialized = 0,
+    ECurveType_Float = 1,
+    ECurveType_Vector = 2,
+    ECurveType_EngineTransform = 3,
+    ECurveType_EulerAngles = 4
+}
+
+enum EDebugPostProcess {
+    EDPP_Gamma = 0,
+    EDPP_EnableInstantAdaptation = 1,
+    EDPP_EnableGlobalLightingTrajectory = 2,
+    EDPP_AllowEnvProbeUpdate = 4,
+    EDPP_AllowBloom = 5,
+    EDPP_AllowColorMod = 6,
+    EDPP_AllowAntialiasing = 7,
+    EDPP_AllowGlobalFog = 8,
+    EDPP_AllowDOF = 9,
+    EDPP_AllowSSAO = 10,
+    EDPP_AllowCloudsShadow = 11,
+    EDPP_AllowVignette = 12,
+    EDPP_DisableTonemapping = 13,
+    EDPP_ForceCutsceneDofMode = 14,
+    EDPP_AllowWaterShader = 15,
+    EDPP_DisplayMode = 16
+}
+
+enum EDestroyWay {
+    Random = 0,
+    Timed = 1,
+    OnContact = 2,
+    OnDistance = 3
+}
+
+enum EDestructionPreset {
+    CUSTOM_PRESET_D = 0
 }
 
 enum EDialogActionIcon {
@@ -268,6 +378,14 @@ enum EEntityGameplayEffectFlags {
     EGEF_CatViewHiglight = 2
 }
 
+enum EEnvAutoHideGroup {
+    EAHG_None = 0,
+    EAHG_Custom0 = 1,
+    EAHG_Custom1 = 2,
+    EAHG_Custom2 = 3,
+    EAHG_Custom3 = 4
+}
+
 enum EExplorationType {
     ET_Jump = 0,
     ET_Ladder = 1,
@@ -287,6 +405,19 @@ enum EExplorationType {
     ET_Boat_Passenger_B = 15
 }
 
+enum EFarPlaneDistance {
+    FP_CrazyClose20m = 0,
+    FP_EvenCloser30m = 1,
+    FP_VeryClose40m = 2,
+    FP_Close150m = 3,
+    FP_Medium600m = 4,
+    FP_DefaultEnv = 5,
+    FP_Far1000m = 6,
+    FP_MoreFar1500m = 7,
+    FP_VeryFar2000m = 8,
+    FP_CustomValue = 9
+}
+
 enum EFinisherSide {
     FinisherLeft = 0,
     FinisherRight = 1
@@ -296,6 +427,16 @@ enum EFocusModeVisibility {
     FMV_None = 0,
     FMV_Interactive = 1,
     FMV_Clue = 2
+}
+
+enum EGameplayInfoCacheType {
+    GICT_IsInteractive = 0,
+    GICT_HasDrawableComponents = 1,
+    GICT_Custom0 = 2,
+    GICT_Custom1 = 3,
+    GICT_Custom2 = 4,
+    GICT_Custom3 = 5,
+    GICT_Custom4 = 6
 }
 
 enum EGlobalEventCategory {
@@ -348,6 +489,28 @@ enum EGwintDifficultyMode {
     EGDM_Hard = 2
 }
 
+enum EHairColorizeMode {
+    None = 0,
+    LOD = 1,
+    Tangents = 2
+    // Mesh Normal = 3,
+    // Hair Normal = 4,
+}
+
+enum EHairStrandBlendModeType {
+    Overwrite = 0,
+    Multiply = 1,
+    Add = 2,
+    Modulate = 3
+}
+
+enum EHairTextureChannel {
+    RED = 0,
+    GREEN = 1,
+    BLUE = 2,
+    ALPHA = 3
+}
+
 enum EInteractionPriority {
     IP_Max_Unpushable = -2,
     IP_NotSet = -1,
@@ -377,6 +540,19 @@ enum EInventoryEventType {
     IET_InventoryRebalanced = 5
 }
 
+enum EInventoryItemClass {
+    InventoryItemClass_Common = 1,
+    InventoryItemClass_Magic = 2,
+    InventoryItemClass_Rare = 3,
+    InventoryItemClass_Epic = 4
+}
+
+enum EJournalContentType {
+    EJCT_Vanilla = 0,
+    EJCT_EP1 = 1,
+    EJCT_EP2 = 2
+}
+
 enum EJournalStatus {
     JS_Inactive = 0,
     JS_Active = 1,
@@ -400,6 +576,27 @@ enum ELoadGameResult {
     LOAD_MissingContent = 5
 }
 
+enum ELookAtMode {
+    LM_Dialog = 1,
+    LM_Cutscene = 2,
+    LM_MiniGame = 4,
+    LM_GameplayLock = 8
+}
+
+enum EMeshShadowImportanceBias {
+    MSIB_EvenLessImportant = -2,
+    MSIB_LessImportant = -1,
+    MSIB_Default = 0,
+    MSIB_MoreImportant = 1,
+    MSIB_EvenMoreImportant = 2
+}
+
+enum EMeshVertexType {
+    MVT_StaticMesh = 0,
+    MVT_SkinnedMesh = 1,
+    MVT_DestructionMesh = 2
+}
+
 enum EMinigameState {
     EMS_None = 2,
     EMS_Init = 4,
@@ -410,6 +607,11 @@ enum EMinigameState {
     EMS_Wait_PlayerLost = 128,
     EMS_End_PlayerForfeited = 256,
     EMS_End = 368
+}
+
+enum EMotionType {
+    MT_Dynamic = 0,
+    MT_KeyFramed = 1
 }
 
 enum EMountType {
@@ -443,6 +645,18 @@ enum ENavigationReachabilityTestType {
     ENavigationReachability_Any = 0,
     ENavigationReachability_All = 1,
     ENavigationReachability_FullTest = 2
+}
+
+enum ENearPlaneDistance {
+    NP_VeryClose5cm = 0,
+    NP_Close10cm = 1,
+    NP_DefaultEnv = 2,
+    NP_Medium25cm = 3,
+    NP_Further40cm = 4,
+    NP_Far60cm = 5,
+    NP_VeryFar120cm = 6,
+    NP_Extreme240cm = 7,
+    NP_CustomValue = 8
 }
 
 enum ENewGamePlusStatus {
@@ -482,6 +696,16 @@ enum EOrientationTarget {
     OT_None = 5
 }
 
+enum EPathLibCollision {
+    PLC_Disabled = 0,
+    PLC_Static = 1,
+    PLC_StaticWalkable = 2,
+    PLC_StaticMetaobstacle = 3,
+    PLC_Dynamic = 4,
+    PLC_Walkable = 5,
+    PLC_Immediate = 6
+}
+
 enum EPersistanceMode {
     PM_DontPersist = 0,
     PM_SaveStateOnly = 1,
@@ -499,6 +723,11 @@ enum EPropertyAnimationOperation {
 enum EPropertyCurveMode {
     PCM_Forward = 0,
     PCM_Backward = 1
+}
+
+enum EPushingDirection {
+    EPD_Front = 0,
+    EPD_Back = 1
 }
 
 enum EQuestManageFastTravelOperation {
@@ -578,12 +807,27 @@ enum ER4TelemetryEvents {
     TE_UNKNOWN = 50
 }
 
+enum ERenderingPlane {
+    RPl_Scene = 0,
+    RPl_Background = 1
+}
+
 enum ERidingManagerTask {
     RMT_None = 0,
     RMT_MountHorse = 1,
     RMT_DismountHorse = 2,
     RMT_MountBoat = 3,
     RMT_DismountBoat = 4
+}
+
+enum ESaveComboStatus {
+    SCO_Deleting = 10,
+    SCO_Local = 20,
+    SCO_Cloud = 30,
+    SCO_Synced = 40,
+    SCO_Conflict = 50,
+    SCO_Uploading = 60,
+    SCO_Downloading = 80
 }
 
 enum ESaveGameType {
@@ -604,6 +848,45 @@ enum ESessionRestoreResult {
     RESTORE_WrongGameVersion = 6
 }
 
+enum ESimpleCurveType {
+    SCT_Float = 0,
+    SCT_Vector = 1,
+    SCT_Color = 2,
+    SCT_ColorScaled = 3
+}
+
+enum ESkeletonType {
+    Man = 0,
+    Woman = 1,
+    Witcher = 2,
+    Dwarf = 3,
+    Elf = 4,
+    Child = 5,
+    Monster = 6
+}
+
+enum ESlideRotation {
+    SR_Nearest = 0,
+    SR_Right = 1,
+    SR_Left = 2
+}
+
+enum ESoundAmbientDynamicParameter {
+    ESADP_None = 0
+}
+
+enum ESoundParameterCurveType {
+    ESPCT_Log3 = 0,
+    ESPCT_Sine = 1,
+    ESPCT_Log1 = 2,
+    ESPCT_InversedSCurve = 3,
+    ESPCT_Linear = 4,
+    ESPCT_SCurve = 5,
+    ESPCT_Exp1 = 6,
+    ESPCT_ReciprocalOfSineCurve = 7,
+    ESPCT_Exp3 = 8
+}
+
 enum ESpawnTreeSpawnVisibility {
     STSV_SPAWN_HIDEN = 0,
     STSV_SPAWN_ALWAYS = 1,
@@ -616,9 +899,42 @@ enum EStorySceneSignalType {
     SSST_Skip = 2
 }
 
+enum ESwitchOperation {
+    SO_TurnOn = 0,
+    SO_TurnOff = 1,
+    SO_Toggle = 2,
+    SO_Reset = 3,
+    SO_Enable = 4,
+    SO_Disable = 5,
+    SO_Lock = 6,
+    SO_Unlock = 7
+}
+
 enum ESyncRotationUsingRefBoneType {
     SRT_TowardsOtherEntity = 0,
     SRT_ToMatchOthersRotation = 1
+}
+
+enum ETextureCompression {
+    TCM_None = 0,
+    TCM_DXTNoAlpha = 1,
+    TCM_DXTAlpha = 2,
+    TCM_RGBE = 3,
+    TCM_Normals = 4,
+    TCM_NormalsHigh = 5,
+    TCM_NormalsGloss = 6,
+    TCM_DXTAlphaLinear = 8,
+    TCM_QualityR = 9,
+    TCM_QualityRG = 10,
+    TCM_QualityColor = 11
+}
+
+enum ETextureRawFormat {
+    TRF_TrueColor = 0,
+    TRF_Grayscale = 1,
+    TRF_HDR = 2,
+    TRF_AlphaGrayscale = 3,
+    TRF_HDRGrayscale = 4
 }
 
 enum ETickGroup {
@@ -628,6 +944,19 @@ enum ETickGroup {
     TICK_PostPhysics = 3,
     TICK_PostPhysicsPost = 4,
     TICK_PostUpdateTransform = 5
+}
+
+enum ETransparencySortGroup {
+    TSG_Sky = 0,
+    TSG_Clouds = 1,
+    TSG_Scene = 2,
+    TSG_Max = 3
+}
+
+enum ETriggerShape {
+    TS_None = 0,
+    TS_Sphere = 1,
+    TS_Box = 2
 }
 
 enum EUsableItemType {
@@ -674,6 +1003,12 @@ enum EVehicleType {
 enum EWitcherSwordType {
     WST_Silver = 0,
     WST_Steel = 1
+}
+
+enum EWorkPlacementImportance {
+    WPI_Anywhere = 0,
+    WPI_Nearby = 1,
+    WPI_Precise = 2
 }
 
 enum EWoundTypeFlags {
@@ -745,6 +1080,13 @@ enum eGwintType {
     GwintType_FriendlyEffect = 512,
     GwintType_OffensiveEffect = 1024,
     GwintType_GlobalEffect = 2048
+}
+
+enum eQuestObjectiveType {
+    Manual = 0
+    // Kill count = 1,
+    // Inventory Count = 2,
+    // Hunting List = 3,
 }
 
 enum eQuestType {
