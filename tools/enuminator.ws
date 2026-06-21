@@ -16,6 +16,7 @@ function OnConfigUI() {
     LogChannel('EnuminatorMin', "EnumGetMin(" + enumName + "): " + i);
     LogChannel('EnuminatorMax', "EnumGetMax(" + enumName + "): " + max);
 
+    LogChannel('EnuminatorMax', "enum " + enumName + "{");
     // Do not refactor to modulo; can't handle large ints: e.g. (0x40000000 % 2) returns `21`
     // Integer overflow protection - see `EDialogActionIcon`
     if (Abs(max - i) > 16384 || max - i > 16384) {
@@ -26,6 +27,7 @@ function OnConfigUI() {
         // Explicitly enumerate enum
         EnuminateEnum(i, max);
     }
+    LogChannel('EnuminatorMax', "}");
 
     wrappedMethod();
 }
@@ -35,7 +37,7 @@ function EnuminateBitFlags(i: int, max: int) {
 
     while (i <= max) {
         enumMember = ToEnumMember(i);
-        if (enumMember != "") LogChannel('Enuminator', enumMember + " = " + i);
+        if (enumMember != "") LogChannel('Enuminator', enumMember + " = " + i + ",");
 
         // Integer overflow protection - see `EDialogActionIcon`
         if (i < -1073741824) i = -1073741824;
@@ -51,6 +53,6 @@ function EnuminateEnum(i: int, max: int) {
 
     for (; i <= max; i += 1) {
         enumMember = ToEnumMember(i);
-        if (enumMember != "") LogChannel('Enuminator', enumMember + " = " + i);
+        if (enumMember != "") LogChannel('Enuminator', enumMember + " = " + i + ",");
     }
 }
