@@ -31,7 +31,7 @@ expression: session.workspace_symbols(symbol_query).await
   kind: enum_member
   location:
     file: "witcherscript-builtin:/orphan_enums.ws"
-    range: "13:4-13:22"
+    range: "6:4-6:22"
 - name: IGameplayDLCMounter
   kind: class
   location:
