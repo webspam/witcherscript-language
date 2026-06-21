@@ -15,7 +15,6 @@ enum EDebugPostProcess {}
 enum EDestroyWay {}
 enum EDestructionPreset {}
 enum EEnvAutoHideGroup {}
-enum EEnvColorGroup {}
 enum EEnvManagerModifier {}
 enum EFarPlaneDistance {}
 enum EGameplayInfoCacheType {}
