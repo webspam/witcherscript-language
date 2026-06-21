@@ -413,6 +413,9 @@ impl Formatter<'_> {
         let mut pending_break = false;
         for child in &child_nodes(args) {
             match child.kind() {
+                // Flush, don't render: the cursor emits the comment once and consumes it, so the
+                // end-of-statement sweep can't print it again.
+                kinds::COMMENT => self.flush_comments_before(child.end_byte()),
                 "," => {
                     if pending_break {
                         self.break_to_arg_line();

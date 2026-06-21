@@ -66,3 +66,26 @@ fn wrapped_call_keeps_skipped_arg() {
         "skipped-arg wrap should be idempotent"
     );
 }
+
+#[test]
+fn wrapped_call_does_not_duplicate_skipped_arg_comment() {
+    let src = "function F() { someVar.LongCall(arg1aaaaaaaaaa, arg2aaaaaaaaaa, arg3aaaaaaaaaa, , // optional arg\narg4aaaaaaaaaa); }";
+    let output = fmt_limit(src, 40);
+    expect![[r"
+        function F() {
+            someVar.LongCall(
+                arg1aaaaaaaaaa,
+                arg2aaaaaaaaaa,
+                arg3aaaaaaaaaa,
+                , // optional arg
+                arg4aaaaaaaaaa
+            );
+        }
+    "]]
+    .assert_eq(&output);
+    assert_eq!(
+        output,
+        fmt_limit(&output, 40),
+        "commented skipped-arg wrap should be idempotent"
+    );
+}
