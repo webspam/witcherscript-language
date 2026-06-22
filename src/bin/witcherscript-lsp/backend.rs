@@ -136,6 +136,8 @@ pub(crate) struct Backend {
     pub(crate) client_supports_inlay_hint_refresh: Arc<AtomicBool>,
     // Mutex not ArcSwap: edit queue with version-checked insert/remove.
     pub(crate) pending_edits: Arc<Mutex<HashMap<Url, PendingEdit>>>,
+    // ts_subtree_make_mut reads ref_count non-atomically; serializes copy/edit/incremental-parse across threads.
+    pub(crate) tree_pipeline: Arc<Mutex<()>>,
     pub(crate) edit_notify: Arc<tokio::sync::Notify>,
     pub(crate) edit_writer_spawned: Arc<AtomicBool>,
     // Raised by every view-relevant swap; the refresher coalesces these (single-permit Notify folds a burst).
@@ -242,6 +244,7 @@ impl Backend {
             client_supports_semantic_tokens_refresh: Arc::new(AtomicBool::new(false)),
             client_supports_inlay_hint_refresh: Arc::new(AtomicBool::new(false)),
             pending_edits: Arc::new(Mutex::new(HashMap::new())),
+            tree_pipeline: Arc::new(Mutex::new(())),
             edit_notify: Arc::new(tokio::sync::Notify::new()),
             edit_writer_spawned: Arc::new(AtomicBool::new(false)),
             views_dirty: Arc::new(tokio::sync::Notify::new()),
