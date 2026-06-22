@@ -61,6 +61,7 @@ impl Backend {
         let started_at = Instant::now();
         trace!(op = "did_change", uri = %uri, "start");
 
+        let _tree_guard = self.tree_pipeline.lock();
         let Some((mut source, mut line_index, mut prior_tree)) = self.latest_edit_state(&uri)
         else {
             // VS Code replays did_change for restored dirty editors before did_open.

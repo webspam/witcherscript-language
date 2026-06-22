@@ -44,6 +44,7 @@ impl Backend {
         uri: &Url,
         snap: &Compilation,
     ) -> Option<Arc<ParsedDocument>> {
+        let _tree_guard = self.tree_pipeline.lock();
         let pending = self.pending_edits.lock().get(uri).cloned();
         let Some(edit) = pending else {
             return snap.documents.get(uri).cloned();
@@ -126,12 +127,14 @@ impl Backend {
                 let queued = uris.len();
                 let join = tokio::task::spawn_blocking(move || {
                     for uri in uris {
+                        let tree_guard = backend.tree_pipeline.lock();
                         // Keep the entry until publish so a racing did_change sees it via latest_edit_state.
                         let Some(edit) = backend.clone_pending_for(&uri) else {
                             continue;
                         };
                         let processed_target = edit.target_parse_version;
                         backend.process_pending_edit(uri.clone(), edit);
+                        drop(tree_guard);
                         let mut pending = backend.pending_edits.lock();
                         if let Some(current) = pending.get(&uri)
                             && current.target_parse_version == processed_target
