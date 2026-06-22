@@ -12,17 +12,21 @@ alias serve := lsp-listen
 default:
     @just --list
 
-# Format Rust code, run clippy & tests - optimised for agents
-test: fmt clippy
+# Format Rust code, run clippy fix & tests - optimised for agents
+test: fmt clippy-fix
     cargo nextest run
 
 # Format all Rust code
 fmt:
     cargo fmt --all
 
-# Run clippy
+# Clippy check
 clippy:
     cargo clippy --all-targets --all-features
+
+# Clippy fix
+clippy-fix:
+    cargo clippy --fix --all-targets --all-features
 
 # Run CI checks - skips clippy pedantic
 ci:
