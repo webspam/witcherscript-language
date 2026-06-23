@@ -373,8 +373,11 @@ impl Formatter<'_> {
         if let Some(e) = expr {
             let indent = self.level * self.indent_unit.len();
             if indent + self.render_node(e).len() + 1 > self.line_limit
-                && let Some((func, args)) = splittable_call(e)
+                && let Some((lead, func, args)) = self.splittable_stmt_call(e)
             {
+                if let Some(lead) = lead {
+                    self.emit(&lead);
+                }
                 self.emit_wrapped_call(func, args, node);
                 return;
             }
@@ -387,6 +390,24 @@ impl Formatter<'_> {
             self.emit(";");
         }
         self.nl();
+    }
+
+    fn splittable_stmt_call<'tree>(
+        &self,
+        e: Node<'tree>,
+    ) -> Option<(Option<String>, Node<'tree>, Node<'tree>)> {
+        if let Some((func, args)) = splittable_call(e) {
+            return Some((None, func, args));
+        }
+        if e.kind() != kinds::ASSIGN_OP_EXPR {
+            return None;
+        }
+        let rhs = e.child_by_field_name(fields::RIGHT)?;
+        let (func, args) = splittable_call(rhs)?;
+        let lhs = e.child_by_field_name(fields::LEFT)?;
+        let op = e.child_by_field_name(fields::OP)?;
+        let lead = format!("{} {} ", self.render_node(lhs), self.render_node(op));
+        Some((Some(lead), func, args))
     }
 
     fn emit_wrapped_call(&mut self, func: Node, args: Node, stmt: Node) {

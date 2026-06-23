@@ -25,6 +25,27 @@ fn long_call_stmt_splits_args() {
 }
 
 #[test]
+fn long_assignment_call_splits_args() {
+    let src = "function F() { spawnedSpotlight = theGame.CreateEntity(template, parentEntity.GetWorldPosition(), parentEntity.GetWorldRotation()); }";
+    let output = fmt_limit(src, 80);
+    expect![[r"
+        function F() {
+            spawnedSpotlight = theGame.CreateEntity(
+                template,
+                parentEntity.GetWorldPosition(),
+                parentEntity.GetWorldRotation()
+            );
+        }
+    "]]
+    .assert_eq(&output);
+    assert_eq!(
+        output,
+        fmt_limit(&output, 80),
+        "split assignment call should be idempotent"
+    );
+}
+
+#[test]
 fn short_call_stmt_stays_inline() {
     expect![[r"
         function F() {
