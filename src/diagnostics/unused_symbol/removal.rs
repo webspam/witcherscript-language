@@ -61,3 +61,46 @@ fn push_if_targeted(out: &mut Vec<Range<usize>>, source: &str, node: Node<'_>, n
         out.push(delete_statement(source, node.byte_range()).range);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fmt::Write;
+
+    use super::*;
+    use crate::cst::nav::decl_name_idents;
+    use crate::document::parse_document;
+
+    fn find_local_var_decl(node: Node<'_>) -> Option<Node<'_>> {
+        if node.kind() == kinds::LOCAL_VAR_DECL_STMT {
+            return Some(node);
+        }
+        let mut cursor = node.walk();
+        node.children(&mut cursor).find_map(find_local_var_decl)
+    }
+
+    #[test]
+    fn removes_each_name_from_a_gnarly_grouped_declaration() {
+        let src = "\
+function F() {
+    var a,
+   b
+     ,c,
+    d
+    ,e,
+      f
+       : int;
+}
+";
+        let doc = parse_document(src).expect("gnarly declaration parses");
+        let decl = find_local_var_decl(doc.tree.root_node()).expect("a local var declaration");
+
+        let mut report = String::new();
+        for ident in decl_name_idents(decl) {
+            let name = ident.utf8_text(src.as_bytes()).expect("name is utf-8");
+            let mut edited = src.to_string();
+            edited.replace_range(separator(ident), "");
+            let _ = writeln!(report, "=== remove `{name}` ===\n{edited}");
+        }
+        insta::assert_snapshot!(report);
+    }
+}

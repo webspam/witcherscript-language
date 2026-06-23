@@ -1,0 +1,63 @@
+---
+source: src/diagnostics/unused_symbol/removal.rs
+expression: report
+---
+=== remove `a` ===
+function F() {
+    var b
+     ,c,
+    d
+    ,e,
+      f
+       : int;
+}
+
+=== remove `b` ===
+function F() {
+    var a,
+   c,
+    d
+    ,e,
+      f
+       : int;
+}
+
+=== remove `c` ===
+function F() {
+    var a,
+   b
+     ,d
+    ,e,
+      f
+       : int;
+}
+
+=== remove `d` ===
+function F() {
+    var a,
+   b
+     ,c,
+    e,
+      f
+       : int;
+}
+
+=== remove `e` ===
+function F() {
+    var a,
+   b
+     ,c,
+    d
+    ,f
+       : int;
+}
+
+=== remove `f` ===
+function F() {
+    var a,
+   b
+     ,c,
+    d
+    ,e
+       : int;
+}
