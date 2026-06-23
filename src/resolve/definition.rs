@@ -264,7 +264,12 @@ pub(super) fn resolve_self_keyword(
         .find_map(|n| {
             find_ancestor_of_kind(
                 n,
-                &[kinds::THIS_EXPR, kinds::SUPER_EXPR, kinds::PARENT_EXPR],
+                &[
+                    kinds::THIS_EXPR,
+                    kinds::SUPER_EXPR,
+                    kinds::PARENT_EXPR,
+                    kinds::VIRTUAL_PARENT_EXPR,
+                ],
             )
         })?;
 
@@ -293,7 +298,7 @@ pub(super) fn resolve_self_keyword(
             resolve_document_top_level(uri, document, base_name)
                 .or_else(|| db.find_top_level(base_name))
         }
-        kinds::PARENT_EXPR => {
+        kinds::PARENT_EXPR | kinds::VIRTUAL_PARENT_EXPR => {
             let owner_name = current_type.owner_class.as_deref()?;
             resolve_document_top_level(uri, document, owner_name)
                 .or_else(|| db.find_top_level(owner_name))

@@ -26,6 +26,16 @@ use crate::test_support::TestDb;
     "B",
     SymbolKind::Class
 )]
+#[case::parent_keyword_resolves_to_owner(
+    "class Owner {}\nstate S in Owner {\n function Test() {\n  $0parent.Foo();\n }\n}\n",
+    "Owner",
+    SymbolKind::Class
+)]
+#[case::virtual_parent_keyword_resolves_to_owner(
+    "class Owner {}\nstate S in Owner {\n function Test() {\n  virtual_$0parent.Foo();\n }\n}\n",
+    "Owner",
+    SymbolKind::Class
+)]
 fn keyword_resolves_to_class(
     #[case] fixture: &str,
     #[case] expected_name: &str,
