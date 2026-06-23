@@ -8,10 +8,10 @@ use crate::line_index::SourcePosition;
 use crate::symbols::{Symbol, SymbolKind};
 use crate::types::Type;
 
-use super::Definition;
 use super::ast::{nodes_at_offset, significant_node_before_byte};
-use super::definition::resolve_definition_at_byte;
+use super::definition::{all_declarations_of, resolve_definition_at_byte};
 use super::symbol_db::SymbolDb;
+use super::{Definition, MEMBER_INJECTING_ANNOTATIONS};
 
 #[derive(Debug, Clone)]
 pub struct SignatureHelpInfo {
@@ -328,4 +328,33 @@ pub fn hover_text(definition: &Definition, db: &SymbolDb, colon: ColonSpacing) -
     }
 
     lines.join("\n")
+}
+
+/// Merged across a method's declarations: `@wrapMethod` docs append to the base, `@replaceMethod` replaces it.
+pub fn hover_doc(definition: &Definition, db: &SymbolDb) -> Option<String> {
+    let mut base: Option<&str> = None;
+    let mut replacement: Option<&str> = None;
+    let mut wraps: Vec<&str> = Vec::new();
+    let declarations = all_declarations_of(definition, db);
+    for declaration in &declarations {
+        let Some(doc) = declaration.symbol.doc_comment.as_deref() else {
+            continue;
+        };
+        match injecting_annotation(&declaration.symbol) {
+            Some("replaceMethod") => replacement = Some(doc),
+            Some("wrapMethod") => wraps.push(doc),
+            _ => base = Some(doc),
+        }
+    }
+    let mut parts: Vec<&str> = replacement.or(base).into_iter().collect();
+    parts.extend(wraps);
+    (!parts.is_empty()).then(|| parts.join("\n\n"))
+}
+
+fn injecting_annotation(symbol: &Symbol) -> Option<&str> {
+    symbol
+        .annotations
+        .iter()
+        .map(|annotation| annotation.name.as_str())
+        .find(|name| MEMBER_INJECTING_ANNOTATIONS.contains(name))
 }

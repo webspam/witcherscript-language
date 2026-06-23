@@ -68,7 +68,7 @@ pub use name_context::{NameContext, classify_ident_context};
 pub use overrides::{OverriddenSymbol, overridden_top_level};
 pub use references::find_references;
 pub use signature::{
-    SignatureHelpInfo, hover_text, render_parameters, render_signature, signature_help,
+    SignatureHelpInfo, hover_doc, hover_text, render_parameters, render_signature, signature_help,
 };
 pub use subscription_registry::SubscriptionRegistry;
 pub use symbol_db::{FilteredBaseCatalogs, SymbolDb};
