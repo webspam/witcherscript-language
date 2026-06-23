@@ -104,6 +104,56 @@ fn incomplete_annotated_member_extracts_no_symbols() {
     );
 }
 
+#[rstest]
+#[case::single_line(
+    "// Heals the player.\nfunction Heal() {}\n",
+    "Heal",
+    Some("Heals the player.")
+)]
+#[case::multiple_lines(
+    "// First line.\n// Second line.\nfunction Heal() {}\n",
+    "Heal",
+    Some("First line.\nSecond line.")
+)]
+#[case::empty_line_becomes_paragraph(
+    "// First line.\n//\n// Second line.\nfunction Heal() {}\n",
+    "Heal",
+    Some("First line.\n\nSecond line.")
+)]
+#[case::blank_line_detaches("// Detached.\n\nfunction Heal() {}\n", "Heal", None)]
+#[case::trailing_comment_on_preceding_line(
+    "function First() {} // not Heal's doc\nfunction Heal() {}\n",
+    "Heal",
+    None
+)]
+#[case::above_annotation(
+    "// Adds a boost.\n@addMethod(CPlayer)\nfunction Boost() {}\n",
+    "Boost",
+    Some("Adds a boost.")
+)]
+#[case::block_comment("/* Block doc. */\nfunction Heal() {}\n", "Heal", Some("Block doc."))]
+#[case::no_comment("function Heal() {}\n", "Heal", None)]
+fn doc_comment_attaches_only_directly_above(
+    #[case] source: &str,
+    #[case] symbol_name: &str,
+    #[case] expected: Option<&str>,
+) {
+    let t = TestDb::new(source);
+    let symbol = t
+        .primary_doc()
+        .symbols
+        .all()
+        .iter()
+        .find(|s| s.name == symbol_name)
+        .unwrap_or_else(|| panic!("symbol '{symbol_name}' must be extracted"))
+        .clone();
+    assert_eq!(
+        symbol.doc_comment.as_deref(),
+        expected,
+        "doc comment for '{symbol_name}'"
+    );
+}
+
 #[test]
 fn autobind_decl_is_extracted_as_a_field() {
     let t = TestDb::new("class C {\n  private autobind theInput : CInputManager = single;\n}\n");

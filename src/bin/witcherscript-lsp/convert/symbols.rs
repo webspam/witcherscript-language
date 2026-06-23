@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use lsp_types::{DocumentSymbol, Location, OneOf, Url, WorkspaceSymbol};
 use witcherscript_language::formatter::ColonSpacing;
-use witcherscript_language::resolve::{Definition, SymbolDb, hover_text};
+use witcherscript_language::resolve::{Definition, SymbolDb, hover_doc, hover_text};
 use witcherscript_language::symbols::{DocumentSymbols, SymbolId, SymbolKind};
 
 use super::positions::lsp_range;
@@ -77,6 +77,9 @@ pub(crate) fn hover_markdown(
         "```witcherscript\n{}\n```",
         hover_text(definition, db, colon)
     );
+    if let Some(doc) = hover_doc(definition, db) {
+        write!(markdown, "\n\n{doc}").unwrap();
+    }
     write!(
         markdown,
         "\n\nDefined in {}",

@@ -3,4 +3,4 @@ source: src/bin/witcherscript-lsp/tests/e2e/session/scenarios.rs
 expression: session.hover(lookup).await
 ---
 range: "15:17-15:38"
-value: "```witcherscript\n(method) CEmitterManager.CreateTunerFromParams(params : CEmitterParams, host : CWorldEntity) : IEmitterTuner\n```\n\nDefined in [manager.ws:16](file:///WORKSPACE/mod/scripts/manager.ws#L16)"
+value: "```witcherscript\n(method) CEmitterManager.CreateTunerFromParams(params : CEmitterParams, host : CWorldEntity) : IEmitterTuner\n```\n\nPicks a concrete tuner for the params kind and initialises it on the host.\n\nDefined in [manager.ws:16](file:///WORKSPACE/mod/scripts/manager.ws#L16)"

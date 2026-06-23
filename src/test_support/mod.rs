@@ -132,6 +132,7 @@ pub fn script_env(name: &str, type_name: &str) -> ScriptEnvironment {
             annotations: Vec::new(),
             access: AccessLevel::Public,
             specifiers: Specifiers::default(),
+            doc_comment: None,
         },
     }])
 }

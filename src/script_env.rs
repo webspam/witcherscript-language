@@ -216,6 +216,7 @@ fn global_symbol(
         annotations: Vec::new(),
         access: AccessLevel::Public,
         specifiers: Specifiers::default(),
+        doc_comment: None,
     }
 }
 

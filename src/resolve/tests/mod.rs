@@ -23,6 +23,7 @@ mod extract_access;
 mod extract_func;
 mod extract_method;
 mod extract_var;
+mod hover;
 mod index;
 mod inference;
 mod inheritance;
