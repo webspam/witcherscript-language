@@ -41,10 +41,10 @@ pub use completion::{
     ExpressionCompletions, OverrideBody, OverrideCompletion, StatementCompletions,
     annotation_arg_completions, annotation_name_completions, class_body_keyword_completions,
     class_header_keyword_completions, completion_members, default_or_hint_member_completions,
-    expression_completions, extends_completions, merged_global_completions,
-    new_lifetime_completions, new_type_completions, override_completions, position_in_comment,
-    script_body_completions, state_owner_completions, statement_completions, type_completions,
-    type_completions_arc,
+    expression_completions, extends_completions, member_completion_replace_range,
+    merged_global_completions, new_lifetime_completions, new_type_completions,
+    override_completions, position_in_comment, script_body_completions, state_owner_completions,
+    statement_completions, type_completions, type_completions_arc,
 };
 pub use completion_catalog::{
     CompletionCatalog, global_catalog_changed, merge_ws_base, merge_ws_base_three,

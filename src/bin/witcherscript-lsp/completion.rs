@@ -2,8 +2,9 @@ use std::time::Instant;
 
 use async_lsp::{ErrorCode, ResponseError};
 use lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse,
-    CompletionTriggerKind, Documentation, InsertTextFormat, MarkupContent, MarkupKind, Url,
+    CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse, CompletionTextEdit,
+    CompletionTriggerKind, Documentation, InsertTextFormat, MarkupContent, MarkupKind, Range,
+    TextEdit, Url,
 };
 use tracing::{debug, trace};
 use witcherscript_language::files::canonical_uri;
@@ -12,9 +13,9 @@ use witcherscript_language::resolve::{
     BUILTIN_TYPE_COMPLETIONS, Definition, OverrideBody, SymbolDb, annotation_arg_completions,
     annotation_name_completions, class_body_keyword_completions, class_header_keyword_completions,
     completion_members, default_or_hint_member_completions, expression_completions,
-    extends_completions, new_lifetime_completions, new_type_completions, override_completions,
-    position_in_comment, render_signature, script_body_completions, state_owner_completions,
-    statement_completions, type_completions_arc,
+    extends_completions, member_completion_replace_range, new_lifetime_completions,
+    new_type_completions, override_completions, position_in_comment, render_signature,
+    script_body_completions, state_owner_completions, statement_completions, type_completions_arc,
 };
 use witcherscript_language::symbols::SymbolKind;
 
@@ -43,6 +44,20 @@ fn sorted_completion_item(
 ) -> CompletionItem {
     let mut item = completion_item(def, db, origin, colon);
     item.sort_text = Some(format!("{}_{}", tier, def.symbol.name));
+    item
+}
+
+fn anchor_member_item(
+    mut item: CompletionItem,
+    range: Option<Range>,
+    name: &str,
+) -> CompletionItem {
+    let Some(range) = range else {
+        return item;
+    };
+    let new_text = item.insert_text.take().unwrap_or_else(|| name.to_owned());
+    item.text_edit = Some(CompletionTextEdit::Edit(TextEdit { range, new_text }));
+    item.filter_text = Some(name.to_owned());
     item
 }
 
@@ -101,10 +116,14 @@ impl Backend {
                 break 'body Ok(None);
             }
 
+            let member_range = member_completion_replace_range(document, pos).map(lsp_range);
             let member_items: Vec<CompletionItem> =
                 completion_members(&canonical, document, &db, pos)
                     .iter()
-                    .map(|(tier, def)| sorted_completion_item(&db, &uri, def, *tier, colon))
+                    .map(|(tier, def)| {
+                        let item = sorted_completion_item(&db, &uri, def, *tier, colon);
+                        anchor_member_item(item, member_range, &def.symbol.name)
+                    })
                     .collect();
             trace!(
                 op = "completion",

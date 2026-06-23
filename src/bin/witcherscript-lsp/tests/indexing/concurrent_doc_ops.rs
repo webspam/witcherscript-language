@@ -4,12 +4,13 @@ use std::sync::atomic::Ordering;
 
 use async_lsp::ErrorCode;
 use lsp_types::{
-    CompletionContext, CompletionParams, CompletionResponse, CompletionTriggerKind,
-    DidChangeTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
-    DocumentDiagnosticReportResult, DocumentFormattingParams, FormattingOptions,
-    PartialResultParams, Position, Range, SemanticTokensParams, TextDocumentContentChangeEvent,
-    TextDocumentIdentifier, TextDocumentPositionParams, Url, VersionedTextDocumentIdentifier,
-    WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
+    CompletionContext, CompletionItem, CompletionParams, CompletionResponse, CompletionTextEdit,
+    CompletionTriggerKind, DidChangeTextDocumentParams, DocumentDiagnosticParams,
+    DocumentDiagnosticReport, DocumentDiagnosticReportResult, DocumentFormattingParams,
+    FormattingOptions, PartialResultParams, Position, Range, SemanticTokensParams,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentPositionParams, Url,
+    VersionedTextDocumentIdentifier, WorkDoneProgressParams, WorkspaceDiagnosticParams,
+    WorkspaceDiagnosticReportResult,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens;
 
@@ -556,6 +557,99 @@ fn completion_reflects_queued_edit_instead_of_bailing() {
         labels.contains(&"DoThing".to_string()),
         "completion must resolve members from the queued dot edit, got {labels:?}",
     );
+}
+
+fn invoked_completion_params(uri: &Url, line: u32, character: u32) -> CompletionParams {
+    CompletionParams {
+        text_document_position: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: Position { line, character },
+        },
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+        context: Some(CompletionContext {
+            trigger_kind: CompletionTriggerKind::INVOKED,
+            trigger_character: None,
+        }),
+    }
+}
+
+#[rstest::rstest]
+#[case::sync_semicolon(false, true)]
+#[case::sync_no_semicolon(false, false)]
+#[case::queued_semicolon(true, true)]
+#[case::queued_no_semicolon(true, false)]
+fn member_completions_work_despite_semicolon(#[case] queued: bool, #[case] semicolon: bool) {
+    let backend = make_backend();
+    backend.edit_writer_spawned.store(queued, Ordering::Release);
+
+    let stmt = if semicolon {
+        "    if (e) e;\n"
+    } else {
+        "    if (e) e\n"
+    };
+    let uri: Url = "file:///testFile.ws".parse().unwrap();
+    backend._did_open(open_params(
+        &uri,
+        &format!(
+            concat!(
+                "class CExample {{\n",
+                "    public function DoThing() : void {{}}\n",
+                "}}\n",
+                "function Test() {{\n",
+                "    var e : CExample;\n",
+                "{}",
+                "}}\n",
+            ),
+            stmt
+        ),
+    ));
+
+    // Column 12 is right after `e`.
+    for (i, ch) in (0u32..).zip(".d".chars()) {
+        let insert_col = 12 + i;
+        let col = insert_col + 1;
+        backend._did_change(change_params(
+            &uri,
+            2,
+            (5, insert_col),
+            (5, insert_col),
+            &ch.to_string(),
+        ));
+
+        let resp = backend
+            ._completion(invoked_completion_params(&uri, 5, col))
+            .expect("completion must succeed")
+            .expect("a member access must produce completions");
+        let items: Vec<CompletionItem> = match resp {
+            CompletionResponse::Array(items) => items,
+            CompletionResponse::List(list) => list.items,
+        };
+        let ctx = format!("queued={queued} semicolon={semicolon} col={col}");
+        let do_thing = items
+            .iter()
+            .find(|i| i.label == "DoThing")
+            .unwrap_or_else(|| {
+                let got: Vec<&String> = items.iter().map(|i| &i.label).collect();
+                panic!("{ctx}: must offer member DoThing, got {got:?}");
+            });
+        assert_eq!(
+            do_thing.filter_text.as_deref(),
+            Some("DoThing"),
+            "{ctx}: member must filter on the bare name",
+        );
+        let Some(CompletionTextEdit::Edit(edit)) = &do_thing.text_edit else {
+            panic!("{ctx}: member must carry an explicit replace edit");
+        };
+        assert_eq!(
+            edit.range.start,
+            Position {
+                line: 5,
+                character: 13
+            },
+            "{ctx}: edit must start right after the `.`, not before it",
+        );
+    }
 }
 
 fn workspace_diagnostic_params() -> WorkspaceDiagnosticParams {

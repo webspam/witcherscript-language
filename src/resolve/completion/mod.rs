@@ -17,7 +17,7 @@ pub use body_script::script_body_completions;
 pub use comment::position_in_comment;
 pub use globals::merged_global_completions;
 pub use headers::class_header_keyword_completions;
-pub use members::completion_members;
+pub use members::{completion_members, member_completion_replace_range};
 pub use new_expr::{new_lifetime_completions, new_type_completions};
 pub use types::{
     OverrideBody, OverrideCompletion, annotation_arg_completions, annotation_name_completions,
