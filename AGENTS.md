@@ -28,7 +28,7 @@ Start with [architecture.md](docs/agents/architecture.md) for the source file tr
 
 ## Build and test
 
-Use justfile recipes, not hand-rolled cargo commands: `just build`, and `just test` (fmt + clippy + nextest in one). The test inventory and fixtures are in [docs/agents/testing.md](docs/agents/testing.md).
+Use justfile recipes, not hand-rolled cargo commands: `just build`, and `just precommit` (fmt + clippy + nextest in one). The test inventory and fixtures are in [docs/agents/testing.md](docs/agents/testing.md).
 
 IMPORTANT: When adding a new grammar construct or validation rule, add or update a fixture file and a targeted unit test.
 
@@ -38,7 +38,7 @@ Commit each logical change as a separate commit as soon as it is complete - do n
 
 Before committing:
 
-1. Run `just test` and confirm all tests pass (runs fmt and clippy automatically).
+1. Run `just precommit` and confirm all tests pass (runs fmt and clippy automatically).
 
 ### Commit messages
 

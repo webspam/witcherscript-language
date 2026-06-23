@@ -25,7 +25,7 @@ Semantic versioning (`MAJOR.MINOR.PATCH`):
 3. Verify the build is clean:
 
    ```
-   just test
+   just precommit
    ```
 
 4. Stage only `Cargo.toml` and `Cargo.lock`, and commit:

@@ -35,7 +35,7 @@ Annotation lines are stripped before parsing, so positions reference the *stripp
 ## Running tests
 
 ```
-just test      # cargo fmt + cargo clippy + cargo nextest run
+just precommit # cargo fmt + cargo clippy + cargo nextest run
 just ci        # cargo fmt --check + cargo clippy -D warnings + cargo nextest run
 ```
 

@@ -162,7 +162,7 @@ cross-file go-to-definition lookups.
 ## Tests
 
 ```
-just test
+just precommit
 ```
 
 Tests run via [cargo-nextest](https://nexte.st). Install with
