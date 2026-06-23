@@ -29,6 +29,7 @@ fn env(names_and_types: &[(&str, &str)]) -> ScriptEnvironment {
                 annotations: Vec::new(),
                 access: AccessLevel::Public,
                 specifiers: Specifiers::default(),
+                doc_comment: None,
             },
         })
         .collect();

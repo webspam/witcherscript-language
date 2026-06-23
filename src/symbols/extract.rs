@@ -6,6 +6,7 @@ use crate::cst::{fields, kinds};
 use crate::line_index::LineIndex;
 use crate::types::Type;
 
+use super::doc::doc_comment_above;
 use super::types::{
     AccessLevel, Annotation, DocumentSymbols, FuncFlavour, Specifier, Specifiers, Symbol, SymbolId,
     SymbolKind,
@@ -455,6 +456,7 @@ impl<'a> SymbolExtractor<'a> {
             annotations: spec.annotations,
             access: spec.access,
             specifiers: spec.specifiers,
+            doc_comment: doc_comment_above(node, self.source, self.line_index),
         })
     }
 

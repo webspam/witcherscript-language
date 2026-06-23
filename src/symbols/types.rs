@@ -255,6 +255,7 @@ pub struct Symbol {
     pub annotations: Vec<Annotation>,
     pub access: AccessLevel,
     pub specifiers: Specifiers,
+    pub doc_comment: Option<String>,
 }
 
 impl Symbol {
