@@ -154,6 +154,13 @@ impl WorkspaceIndex {
             .map(|(_, base)| base.clone())
     }
 
+    pub fn direct_subclasses_of(&self, base: &str) -> impl Iterator<Item = &str> {
+        self.subclasses_by_name
+            .get(base)
+            .into_iter()
+            .flat_map(|derived| derived.iter().map(|(_, name)| name.as_str()))
+    }
+
     pub(crate) fn find_symbol_at_selection(
         &self,
         uri: &str,

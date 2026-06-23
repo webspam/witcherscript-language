@@ -27,6 +27,8 @@ pub struct WorkspaceIndex {
     top_level_by_name: HashMap<String, Vec<Definition>>,
     enum_member_by_name: HashMap<String, Vec<Definition>>,
     superclass_by_name: HashMap<String, Vec<(String, String)>>,
+    // Reverse direction, needed because virtualParent dispatches down to subclasses.
+    subclasses_by_name: HashMap<String, Vec<(String, String)>>,
     states_by_owner: HashMap<String, HashMap<String, Vec<Definition>>>,
     // Forward index: the synthetic name `OwnerStateS` cannot be reverse-split into owner + state.
     state_backing_by_name: HashMap<String, (String, String)>,
