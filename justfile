@@ -2,6 +2,7 @@ set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
 
 alias b := build
 alias r := release
+alias p := precommit
 alias t := test
 alias f := fmt
 alias c := clippy
@@ -12,21 +13,27 @@ alias serve := lsp-listen
 default:
     @just --list
 
-# Format Rust code, run clippy fix & tests - optimised for agents
-test: fmt clippy-fix
-    cargo nextest run
-
 # Format all Rust code
 fmt:
     cargo fmt --all
 
 # Clippy check
 clippy:
-    cargo clippy --all-targets --all-features
+    cargo clippy --all-targets --all-features -- -D warnings
 
-# Clippy fix
+# Clippy fix - allow dirty/staged
 clippy-fix:
-    cargo clippy --fix --all-targets --all-features
+    cargo clippy --fix --allow-dirty --allow-staged --all-targets --all-features -- -D warnings
+
+# Run tests
+test:
+    cargo nextest run
+    @echo "Agent reminder: run 'just precommit' before committing (fmt, clippy, tests)"
+
+# Pre-commit check for agents: format, clippy fix, then tests
+precommit: fmt clippy
+    cargo nextest run
+    @echo "Agent reminder: if clippy errors occurred, use 'just clippy-fix'"
 
 # Run CI checks - skips clippy pedantic
 ci:
