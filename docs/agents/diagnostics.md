@@ -32,7 +32,7 @@ Each rule module owns its `#[cfg(test)] mod tests`.
 
 `ParseDiagnostic` carries a `kind` tag, message, tree-sitter `Point`s (`start`/`end`, 0-indexed), a `byte_range`, and a `snippet` of the source line. It has **no** severity field; severity is decided at LSP-conversion time. `start.row + 1` is the 1-indexed display line.
 
-`WorkspaceDiagnostic` carries its own `Severity`, an already-UTF-16 `SourceRange` (from `Symbol.selection_range`, or converted by the rule via `LineIndex::byte_range_to_range`), a `Vec<RelatedLocation>` (the `relatedInformation` list), and optional `data` (`base_script_conflict` uses it to drive its code action).
+`WorkspaceDiagnostic` carries its own `Severity`, an already-UTF-16 `SourceRange` (from `Symbol.selection_range`, or converted by the rule via `LineIndex::byte_range_to_range`), a `Vec<RelatedLocation>` (the `relatedInformation` list), and optional `data` (`base_script_conflict` and `unused_symbol` use it to drive their code actions).
 
 ## Syntactic pass
 
@@ -59,6 +59,7 @@ In `src/bin/witcherscript-lsp/convert/diagnostics.rs`. Every diagnostic carries 
 - `lsp_diagnostics` converts a document's `ParseDiagnostic`s, mapping `byte_range` through `LineIndex`; severity is `ERROR` for all except `ternary_cond_expr` (`WARNING`).
 - `lsp_workspace_diagnostic` uses the `WorkspaceDiagnostic`'s own `Severity`, attaches the `Unnecessary` tag for `unused_symbol` (so editors fade it), and passes through `related` and `data`.
 - `base_script_conflict_code_actions` turns a `base_script_conflict`'s `data` into an "add to legacyScriptDirectories" quick fix.
+- `remove_unused_code_actions` turns an `unused_symbol`'s `data` (`removeRanges` + `noun`, computed in `unused_symbol/removal.rs`) into a "Remove unused param/var/field" quick fix that deletes the binding (plus comma/whitespace, and a field's dangling `default`/`hint` entries). Appended last in the code-action handler.
 
 ## format_tree
 

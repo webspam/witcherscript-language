@@ -14,6 +14,7 @@ pub(crate) use completions::{
 };
 pub(crate) use diagnostics::{
     base_script_conflict_code_actions, lsp_diagnostics, lsp_workspace_diagnostic,
+    remove_unused_code_actions,
 };
 pub(crate) use file_ops::{
     created_files_to_watched, deleted_files_to_watched, renamed_files_to_watched, workspace_roots,

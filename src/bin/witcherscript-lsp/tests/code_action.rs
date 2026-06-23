@@ -1,10 +1,14 @@
-use lsp_types::{CodeActionKind, CodeActionOrCommand, Diagnostic, NumberOrString, Range, Url};
+use lsp_types::{
+    CodeActionKind, CodeActionOrCommand, Diagnostic, NumberOrString, Position, Range, Url,
+};
 use rstest::rstest;
 use serde_json::json;
 use witcherscript_language::formatter::FormatOptions;
 use witcherscript_language::test_support::TestDb;
 
-use crate::convert::{base_script_conflict_code_actions, refactor_code_actions};
+use crate::convert::{
+    base_script_conflict_code_actions, refactor_code_actions, remove_unused_code_actions,
+};
 
 fn diag(code: Option<&str>, data: Option<serde_json::Value>) -> Diagnostic {
     Diagnostic {
@@ -94,6 +98,83 @@ fn no_quickfix_when_not_applicable(
     #[case] data: Option<serde_json::Value>,
 ) {
     let actions = base_script_conflict_code_actions(&[diag(code, data)], &[]);
+    assert!(
+        actions.is_empty(),
+        "expected no code actions, got {actions:?}"
+    );
+}
+
+fn remove_range(start: (u32, u32), end: (u32, u32)) -> serde_json::Value {
+    json!({
+        "start": { "line": start.0, "character": start.1 },
+        "end": { "line": end.0, "character": end.1 },
+    })
+}
+
+#[test]
+fn emits_remove_unused_quickfix() {
+    let uri = Url::parse("file:///main.ws").unwrap();
+    let data = json!({
+        "removeRanges": [remove_range((0, 10), (0, 19))],
+        "noun": "param",
+    });
+    let actions = remove_unused_code_actions(&uri, &[diag(Some("unused_symbol"), Some(data))]);
+    assert_eq!(actions.len(), 1);
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    assert_eq!(action.title, "Remove unused param");
+    assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
+    assert_eq!(action.diagnostics.as_ref().map(std::vec::Vec::len), Some(1));
+    let edits = action
+        .edit
+        .as_ref()
+        .and_then(|e| e.changes.as_ref())
+        .and_then(|c| c.get(&uri))
+        .expect("quickfix carries an edit for the document");
+    assert_eq!(edits.len(), 1, "one deletion");
+    assert_eq!(edits[0].new_text, "", "the range is deleted");
+    assert_eq!(
+        edits[0].range,
+        Range::new(Position::new(0, 10), Position::new(0, 19))
+    );
+}
+
+#[test]
+fn remove_unused_deletes_every_range() {
+    let uri = Url::parse("file:///main.ws").unwrap();
+    let data = json!({
+        "removeRanges": [remove_range((1, 2), (1, 21)), remove_range((2, 2), (2, 16))],
+        "noun": "field",
+    });
+    let actions = remove_unused_code_actions(&uri, &[diag(Some("unused_symbol"), Some(data))]);
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        panic!("expected a CodeAction, got {:?}", actions[0]);
+    };
+    assert_eq!(action.title, "Remove unused field");
+    let edits = action
+        .edit
+        .as_ref()
+        .and_then(|e| e.changes.as_ref())
+        .and_then(|c| c.get(&uri))
+        .expect("quickfix carries edits");
+    assert_eq!(
+        edits.len(),
+        2,
+        "field plus its dangling default are both deleted"
+    );
+}
+
+#[rstest]
+#[case::unrelated_code(Some("duplicate_symbol"), Some(json!({ "removeRanges": [], "noun": "x" })))]
+#[case::no_code(None, Some(json!({ "removeRanges": [], "noun": "x" })))]
+#[case::unused_without_data(Some("unused_symbol"), None)]
+fn no_remove_unused_action_when_not_applicable(
+    #[case] code: Option<&str>,
+    #[case] data: Option<serde_json::Value>,
+) {
+    let uri = Url::parse("file:///main.ws").unwrap();
+    let actions = remove_unused_code_actions(&uri, &[diag(code, data)]);
     assert!(
         actions.is_empty(),
         "expected no code actions, got {actions:?}"

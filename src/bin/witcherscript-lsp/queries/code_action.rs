@@ -6,7 +6,10 @@ use tracing::trace;
 use witcherscript_language::files::canonical_uri;
 
 use crate::backend::{Backend, Result};
-use crate::convert::{base_script_conflict_code_actions, refactor_code_actions, source_position};
+use crate::convert::{
+    base_script_conflict_code_actions, refactor_code_actions, remove_unused_code_actions,
+    source_position,
+};
 
 impl Backend {
     pub(crate) fn _code_action(
@@ -22,6 +25,11 @@ impl Backend {
         if params.context.trigger_kind != Some(CodeActionTriggerKind::AUTOMATIC) {
             actions.extend(self.refactor_actions(&uri, params.range));
         }
+        // Remove-unused is the lowest-priority fix, so it always trails the rest of the list.
+        actions.extend(remove_unused_code_actions(
+            &uri,
+            &params.context.diagnostics,
+        ));
         trace!(
             op = "code_action",
             uri = %uri,

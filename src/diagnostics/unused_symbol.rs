@@ -6,10 +6,13 @@ use tree_sitter::Node;
 use crate::cst::literals::is_constant_literal;
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
+use crate::line_index::SourceRange;
 use crate::resolve::{Definition, SymbolDb, find_references};
 use crate::symbols::{AccessLevel, Symbol, SymbolKind};
 
 use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, collect_single_rule_diagnostics};
+
+mod removal;
 
 pub const KIND: &str = "unused_symbol";
 
@@ -117,16 +120,28 @@ fn emit_param_dims<'tree>(
             let list: Vec<String> = unused.iter().map(|(_, n)| format!("'{n}'")).collect();
             format!("Parameters {} are never used", list.join(", "))
         };
-        push_dim(ctx, node.start_byte(), node.end_byte(), message);
+        let noun = if unused.len() == 1 { "param" } else { "params" };
+        let remove = vec![removal::separator(&ctx.document.source, node)];
+        push_unused(
+            ctx,
+            node.start_byte(),
+            node.end_byte(),
+            remove,
+            noun,
+            message,
+        );
         return;
     }
 
     // Only some names dead; the group shares specifiers and type, so each fades on its own.
     for (ident, name) in unused {
-        push_dim(
+        let remove = vec![removal::separator(&ctx.document.source, *ident)];
+        push_unused(
             ctx,
             ident.start_byte(),
             ident.end_byte(),
+            remove,
+            "param",
             format!("Parameter '{name}' is never used"),
         );
     }
@@ -139,6 +154,8 @@ fn emit_var_decl_dims<'tree>(
     ctx: &mut CstRuleCtx<'_, 'tree>,
 ) {
     let (singular, plural) = var_decl_nouns(node.kind());
+    let is_field = node.kind() == kinds::MEMBER_VAR_DECL;
+    let (remove_singular, remove_plural) = remove_nouns(node.kind());
 
     if unused.len() == names.len() {
         let literal_init = node
@@ -155,7 +172,17 @@ fn emit_var_decl_dims<'tree>(
             let list: Vec<String> = unused.iter().map(|(_, n)| format!("'{n}'")).collect();
             format!("{plural} {} are never used", list.join(", "))
         };
-        push_dim(ctx, node.start_byte(), end, message);
+        let noun = if unused.len() == 1 {
+            remove_singular
+        } else {
+            remove_plural
+        };
+        let mut remove = vec![removal::statement(&ctx.document.source, node)];
+        if is_field {
+            let names: Vec<&str> = unused.iter().map(|(_, n)| n.as_str()).collect();
+            remove.extend(removal::field_defaults(&ctx.document.source, node, &names));
+        }
+        push_unused(ctx, node.start_byte(), end, remove, noun, message);
         return;
     }
 
@@ -164,12 +191,29 @@ fn emit_var_decl_dims<'tree>(
             Some(comma) if comma.kind() == "," => comma.end_byte(),
             _ => ident.end_byte(),
         };
-        push_dim(
+        let mut remove = vec![removal::separator(&ctx.document.source, *ident)];
+        if is_field {
+            remove.extend(removal::field_defaults(
+                &ctx.document.source,
+                node,
+                &[name.as_str()],
+            ));
+        }
+        push_unused(
             ctx,
             ident.start_byte(),
             end,
+            remove,
+            remove_singular,
             format!("{singular} '{name}' is never used"),
         );
+    }
+}
+
+fn remove_nouns(kind: &str) -> (&'static str, &'static str) {
+    match kind {
+        kinds::LOCAL_VAR_DECL_STMT => ("var", "vars"),
+        _ => ("field", "fields"),
     }
 }
 
@@ -232,18 +276,29 @@ fn is_referenced(
     })
 }
 
-fn push_dim(ctx: &mut CstRuleCtx<'_, '_>, start: usize, end: usize, message: String) {
-    let range = ctx
-        .document
-        .line_index
-        .byte_range_to_range(&ctx.document.source, start, end);
+fn push_unused(
+    ctx: &mut CstRuleCtx<'_, '_>,
+    start: usize,
+    end: usize,
+    remove: Vec<Range<usize>>,
+    noun: &'static str,
+    message: String,
+) {
+    let line_index = &ctx.document.line_index;
+    let source = &ctx.document.source;
+    let range = line_index.byte_range_to_range(source, start, end);
+    let remove_ranges: Vec<SourceRange> = remove
+        .iter()
+        .map(|r| line_index.byte_range_to_range(source, r.start, r.end))
+        .collect();
+    let data = serde_json::json!({ "removeRanges": remove_ranges, "noun": noun });
     ctx.diagnostics.push(WorkspaceDiagnostic {
         kind: KIND.to_string(),
         message,
         severity: Severity::Hint,
         range,
         related: Vec::new(),
-        data: None,
+        data: Some(data),
     });
 }
 

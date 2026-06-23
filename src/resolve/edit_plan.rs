@@ -54,7 +54,7 @@ pub(super) fn apply_splices(text: &str, splices: &[Splice]) -> String {
     applied
 }
 
-pub(super) fn delete_statement(source: &str, stmt: Range<usize>) -> Splice {
+pub(crate) fn delete_statement(source: &str, stmt: Range<usize>) -> Splice {
     let bytes = source.as_bytes();
     let mut start = stmt.start;
     while start > 0 && matches!(bytes[start - 1], b' ' | b'\t') {
