@@ -52,6 +52,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item target/release/witcherscript-check.exe $stage/
           Copy-Item target/release/witcherscript-lsp.exe   $stage/
+          Copy-Item target/release/wsformat.exe            $stage/
           Copy-Item README.md  $stage/
           Copy-Item LICENSE*   $stage/ -ErrorAction SilentlyContinue
           Compress-Archive -Path "$stage/*" -DestinationPath $zipPath -Force
