@@ -1,9 +1,12 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, Command, Diagnostic,
-    DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, NumberOrString, Url,
+    DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, NumberOrString,
+    Range, TextEdit, Url, WorkspaceEdit,
 };
+use serde::Deserialize;
 use witcherscript_language::diagnostics::{
     BASE_SCRIPT_CONFLICT_KIND, Severity, UNUSED_SYMBOL_KIND, WorkspaceDiagnostic,
 };
@@ -105,6 +108,54 @@ pub(crate) fn base_script_conflict_code_actions(
         }));
     }
     actions
+}
+
+#[derive(Deserialize)]
+struct RemoveUnusedData {
+    #[serde(rename = "removeRanges")]
+    remove_ranges: Vec<Range>,
+    noun: String,
+}
+
+pub(crate) fn remove_unused_code_actions(
+    uri: &Url,
+    diagnostics: &[Diagnostic],
+) -> Vec<CodeActionOrCommand> {
+    diagnostics
+        .iter()
+        .filter_map(|diagnostic| remove_unused_action(uri, diagnostic))
+        .collect()
+}
+
+fn remove_unused_action(uri: &Url, diagnostic: &Diagnostic) -> Option<CodeActionOrCommand> {
+    if !is_unused_symbol(diagnostic) {
+        return None;
+    }
+    let data: RemoveUnusedData = serde_json::from_value(diagnostic.data.clone()?).ok()?;
+    let edits: Vec<TextEdit> = data
+        .remove_ranges
+        .into_iter()
+        .map(|range| TextEdit {
+            range,
+            new_text: String::new(),
+        })
+        .collect();
+    let mut changes = HashMap::new();
+    changes.insert(uri.clone(), edits);
+    Some(CodeActionOrCommand::CodeAction(CodeAction {
+        title: format!("Remove unused {}", data.noun),
+        kind: Some(CodeActionKind::QUICKFIX),
+        diagnostics: Some(vec![diagnostic.clone()]),
+        edit: Some(WorkspaceEdit {
+            changes: Some(changes),
+            ..WorkspaceEdit::default()
+        }),
+        ..CodeAction::default()
+    }))
+}
+
+fn is_unused_symbol(diagnostic: &Diagnostic) -> bool {
+    matches!(&diagnostic.code, Some(NumberOrString::String(code)) if code == UNUSED_SYMBOL_KIND)
 }
 
 fn is_base_script_conflict(diagnostic: &Diagnostic) -> bool {

@@ -60,6 +60,54 @@ async fn returns_quickfix_for_base_script_conflict() {
 }
 
 #[tokio::test]
+async fn returns_remove_unused_quickfix() {
+    let uri: Url = "file:///main.ws".parse().unwrap();
+    let mut client = LspClient::spawn().await;
+    client.open(&uri, "function F(foo : int) {}\n").await;
+
+    let diagnostic = Diagnostic {
+        range: Range::new(Position::new(0, 10), Position::new(0, 19)),
+        code: Some(NumberOrString::String("unused_symbol".to_string())),
+        data: Some(json!({
+            "removeRanges": [{
+                "start": { "line": 0, "character": 10 },
+                "end": { "line": 0, "character": 19 },
+            }],
+            "noun": "param",
+        })),
+        ..Diagnostic::default()
+    };
+    let params = CodeActionParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        range: diagnostic.range,
+        context: CodeActionContext {
+            diagnostics: vec![diagnostic],
+            ..CodeActionContext::default()
+        },
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    };
+
+    let response = client
+        .request::<CodeActionRequest>(params)
+        .await
+        .expect("expected a code action response");
+    let CodeActionOrCommand::CodeAction(action) = response.last().expect("at least one action")
+    else {
+        panic!("expected a CodeAction, got {:?}", response.last());
+    };
+    assert_eq!(action.title, "Remove unused param");
+    assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
+    let edits = action
+        .edit
+        .as_ref()
+        .and_then(|e| e.changes.as_ref())
+        .and_then(|c| c.get(&uri))
+        .expect("quickfix carries an edit");
+    assert_eq!(edits[0].new_text, "");
+}
+
+#[tokio::test]
 async fn offers_collapse_rewrite_on_a_block_switch() {
     let uri: Url = "file:///main.ws".parse().unwrap();
     let mut client = LspClient::spawn().await;

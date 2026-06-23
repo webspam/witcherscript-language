@@ -1,6 +1,6 @@
 use tree_sitter::Point;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct SourcePosition {
     pub line: u32,
     pub character: u32,
@@ -16,7 +16,7 @@ impl SourcePosition {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct SourceRange {
     pub start: SourcePosition,
     pub end: SourcePosition,

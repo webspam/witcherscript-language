@@ -56,6 +56,7 @@ pub use definition::{
 };
 pub use document_highlight::{HighlightKind, document_highlights};
 pub use edit_plan::{Confidence, EditPlan, Extraction, Splice};
+pub(crate) use edit_plan::{delete_statement, remove_list_entry};
 pub use extract_callable::{extract_function, extract_method};
 pub use extract_var::extract_variable;
 pub(crate) use inference::enclosing_state_owner;
