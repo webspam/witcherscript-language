@@ -185,7 +185,39 @@ pub fn resolve_all_definitions(
     {
         return vec![primary];
     }
-    all_declarations_of(&primary, db)
+    let mut defs = all_declarations_of(&primary, db);
+    let overrides = virtual_parent_overrides_at(document, db, ident);
+    if overrides.is_empty() {
+        return defs;
+    }
+    defs.extend(overrides);
+    dedup_definitions(defs)
+}
+
+fn virtual_parent_overrides_at(
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    ident: Node,
+) -> Vec<Definition> {
+    let Some(member_access) = ident
+        .parent()
+        .filter(|p| p.kind() == kinds::MEMBER_ACCESS_EXPR)
+    else {
+        return Vec::new();
+    };
+    let receiver = first_named_child(member_access);
+    if receiver.is_none_or(|r| r.kind() != kinds::VIRTUAL_PARENT_EXPR || r.id() == ident.id()) {
+        return Vec::new();
+    }
+    let Ok(name) = ident.utf8_text(document.source.as_bytes()) else {
+        return Vec::new();
+    };
+    let Some(owner) =
+        enclosing_type_context(document, db, ident.start_byte()).and_then(|c| c.owner_class)
+    else {
+        return Vec::new();
+    };
+    db.virtual_parent_member_overrides(&owner, name)
 }
 
 fn resolution_ident(document: &ParsedDocument, byte_offset: usize) -> Option<Node<'_>> {

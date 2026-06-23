@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
 
@@ -241,6 +241,60 @@ impl SymbolDb<'_> {
             Some(elem) => substitute_in_definition(def, container, elem),
             None => def,
         })
+    }
+
+    /// Each subclass override `virtual_parent.name` could dispatch to, since the runtime type may be any descendant of the owner.
+    pub(crate) fn virtual_parent_member_overrides(
+        &self,
+        owner: &str,
+        name: &str,
+    ) -> Vec<Definition> {
+        self.transitive_subclasses(owner)
+            .iter()
+            .filter_map(|subclass| self.direct_member(subclass, name))
+            .collect()
+    }
+
+    fn direct_member(&self, container: &str, name: &str) -> Option<Definition> {
+        self.workspace
+            .direct_member_of(container, name, AccessLevel::Public)
+            .or_else(|| {
+                self.shadowed_base()
+                    .direct_member_of(container, name, AccessLevel::Public)
+            })
+            .or_else(|| {
+                self.builtins
+                    .and_then(|b| b.direct_member_of(container, name, AccessLevel::Public))
+            })
+    }
+
+    fn transitive_subclasses(&self, owner: &str) -> Vec<String> {
+        let mut found: Vec<String> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut stack: Vec<String> = vec![owner.to_string()];
+        while let Some(base) = stack.pop() {
+            for sub in self.direct_subclasses(&base) {
+                if seen.insert(sub.clone()) {
+                    stack.push(sub.clone());
+                    found.push(sub);
+                }
+            }
+        }
+        found
+    }
+
+    fn direct_subclasses(&self, base: &str) -> Vec<String> {
+        // Only class names are returned and suppressed file filtering happens during member lookup
+        self.workspace
+            .direct_subclasses_of(base)
+            .chain(self.base.direct_subclasses_of(base))
+            .chain(
+                self.builtins
+                    .into_iter()
+                    .flat_map(|b| b.direct_subclasses_of(base)),
+            )
+            .map(str::to_string)
+            .collect()
     }
 
     // Class-body declarations only, never annotation overlays: the methods a `@wrapMethod` can wrap.

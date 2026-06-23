@@ -144,3 +144,61 @@ fn virtual_parent_member_resolves_against_the_owner_class() {
     assert_eq!(def.symbol.kind, SymbolKind::Method);
     assert_eq!(def.symbol.name, "OwnerPing");
 }
+
+fn owning_classes(defs: &[crate::resolve::Definition]) -> Vec<&str> {
+    let mut classes: Vec<&str> = defs
+        .iter()
+        .map(|d| d.symbol.container_name.as_deref().unwrap_or(""))
+        .collect();
+    classes.sort_unstable();
+    classes
+}
+
+// virtualParent dispatches to the runtime class, so go-to-definition must list both the owner's
+// method and every subclass override: https://github.com/webspam/witcherscript-language/issues/114
+#[test]
+fn virtual_parent_goto_lists_owner_and_subclass_overrides() {
+    use crate::resolve::resolve_all_definitions;
+    let t = TestDb::new(
+        "class BaseClass {\n    function IsAPotato() : bool { return false; }\n}\nclass SomeClass extends BaseClass {\n    function IsAPotato() : bool { return true; }\n}\nstate Potato in BaseClass {\n    function M() {\n        virtual_parent.$0IsAPotato();\n    }\n}\n",
+    );
+    let (uri, pos) = t.cursor();
+    let defs = resolve_all_definitions(&uri, t.doc_for(&uri), &t.db(), pos);
+    assert_eq!(
+        owning_classes(&defs),
+        ["BaseClass", "SomeClass"],
+        "virtualParent go-to-def should reach the owner and its subclass override"
+    );
+}
+
+// A subclass two levels below the owner is still a possible runtime type.
+#[test]
+fn virtual_parent_goto_includes_transitive_subclass_override() {
+    use crate::resolve::resolve_all_definitions;
+    let t = TestDb::new(
+        "class A {\n    function Ping() {}\n}\nclass B extends A {}\nclass C extends B {\n    function Ping() {}\n}\nstate S in A {\n    function M() {\n        virtual_parent.$0Ping();\n    }\n}\n",
+    );
+    let (uri, pos) = t.cursor();
+    let defs = resolve_all_definitions(&uri, t.doc_for(&uri), &t.db(), pos);
+    assert_eq!(
+        owning_classes(&defs),
+        ["A", "C"],
+        "the override two levels down must be listed; the non-overriding middle class must not"
+    );
+}
+
+// `parent` is static, so it must stay a single owner target even when subclasses override.
+#[test]
+fn parent_goto_does_not_list_subclass_overrides() {
+    use crate::resolve::resolve_all_definitions;
+    let t = TestDb::new(
+        "class BaseClass {\n    function IsAPotato() : bool { return false; }\n}\nclass SomeClass extends BaseClass {\n    function IsAPotato() : bool { return true; }\n}\nstate Potato in BaseClass {\n    function M() {\n        parent.$0IsAPotato();\n    }\n}\n",
+    );
+    let (uri, pos) = t.cursor();
+    let defs = resolve_all_definitions(&uri, t.doc_for(&uri), &t.db(), pos);
+    assert_eq!(
+        owning_classes(&defs),
+        ["BaseClass"],
+        "parent dispatches statically to the owner only"
+    );
+}
