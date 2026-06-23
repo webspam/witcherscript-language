@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use super::body_model::{BodyModel, Declaration, LocalId, ReachDef, Stability};
-use super::edit_plan::{Confidence, EditPlan, Splice, delete_statement};
+use super::edit_plan::{Confidence, EditPlan, Splice, delete_statement, remove_list_entry};
 
 pub enum InlineScope {
     AllUsages,
@@ -202,24 +202,15 @@ fn inline_single_read(range: &Range<usize>, plan: &InlinePlan) -> Option<Inlinin
 }
 
 fn remove_binding(source: &str, decl: &Declaration) -> Splice {
-    match decl.names.as_slice() {
-        [_] => delete_statement(source, decl.stmt.clone()),
-        _ => remove_name_from_list(decl.target_index, &decl.names),
+    if decl.names.len() == 1 {
+        return delete_statement(source, decl.stmt.clone());
     }
-}
-
-fn remove_name_from_list(index: usize, names: &[Range<usize>]) -> Splice {
-    let target = &names[index];
-    // Account for the comma we need to remove
-    let range = if index == 0 {
-        target.start..names[1].start
-    } else {
-        names[index - 1].end..target.end
-    };
-    Splice {
-        range,
-        text: String::new(),
-    }
+    let i = decl.target_index;
+    remove_list_entry(
+        &decl.names[i],
+        i.checked_sub(1).map(|p| &decl.names[p]),
+        decl.names.get(i + 1),
+    )
 }
 
 fn substituted_text(

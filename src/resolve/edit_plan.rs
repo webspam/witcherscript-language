@@ -84,6 +84,23 @@ pub(crate) fn delete_statement(source: &str, stmt: Range<usize>) -> Splice {
     }
 }
 
+// Span to the neighbour's boundary, not just the comma, so a multi-line entry collapses instead of orphaning its prefix.
+pub(crate) fn remove_list_entry(
+    target: &Range<usize>,
+    prev: Option<&Range<usize>>,
+    next: Option<&Range<usize>>,
+) -> Splice {
+    let range = match (prev, next) {
+        (_, Some(next)) => target.start..next.start,
+        (Some(prev), None) => prev.end..target.end,
+        (None, None) => target.clone(),
+    };
+    Splice {
+        range,
+        text: String::new(),
+    }
+}
+
 // Where `original` lands after the edits apply: shift it past every edit that ends at or before it.
 pub(super) fn applied_offset(edits: &[Splice], original: usize) -> usize {
     edits
@@ -120,5 +137,47 @@ pub(super) fn insert_and_replace(
         },
         name,
         cursor,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn remove(
+        source: &str,
+        target: Range<usize>,
+        prev: Option<Range<usize>>,
+        next: Option<Range<usize>>,
+    ) -> String {
+        let splice = remove_list_entry(&target, prev.as_ref(), next.as_ref());
+        let mut out = source.to_string();
+        out.replace_range(splice.range, &splice.text);
+        out
+    }
+
+    #[test]
+    fn removing_first_entry_takes_the_following_comma() {
+        assert_eq!(remove("a, b", 0..1, None, Some(3..4)), "b");
+    }
+
+    #[test]
+    fn removing_last_entry_takes_the_preceding_comma() {
+        assert_eq!(remove("a, b", 3..4, Some(0..1), None), "a");
+    }
+
+    #[test]
+    fn removing_a_middle_entry_leaves_a_well_formed_list() {
+        assert_eq!(remove("a, b, c", 3..4, Some(0..1), Some(6..7)), "a, c");
+    }
+
+    #[test]
+    fn removing_a_sole_entry_touches_only_itself() {
+        assert_eq!(remove("a", 0..1, None, None), "");
+    }
+
+    #[test]
+    fn removing_a_multiline_entry_collapses_instead_of_orphaning() {
+        assert_eq!(remove("a,\n    b", 0..1, None, Some(7..8)), "b");
     }
 }

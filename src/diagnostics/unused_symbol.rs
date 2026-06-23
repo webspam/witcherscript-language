@@ -121,7 +121,7 @@ fn emit_param_dims<'tree>(
             format!("Parameters {} are never used", list.join(", "))
         };
         let noun = if unused.len() == 1 { "param" } else { "params" };
-        let remove = vec![removal::separator(&ctx.document.source, node)];
+        let remove = vec![removal::separator(node)];
         push_unused(
             ctx,
             node.start_byte(),
@@ -135,7 +135,7 @@ fn emit_param_dims<'tree>(
 
     // Only some names dead; the group shares specifiers and type, so each fades on its own.
     for (ident, name) in unused {
-        let remove = vec![removal::separator(&ctx.document.source, *ident)];
+        let remove = vec![removal::separator(*ident)];
         push_unused(
             ctx,
             ident.start_byte(),
@@ -191,7 +191,7 @@ fn emit_var_decl_dims<'tree>(
             Some(comma) if comma.kind() == "," => comma.end_byte(),
             _ => ident.end_byte(),
         };
-        let mut remove = vec![removal::separator(&ctx.document.source, *ident)];
+        let mut remove = vec![removal::separator(*ident)];
         if is_field {
             remove.extend(removal::field_defaults(
                 &ctx.document.source,

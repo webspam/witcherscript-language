@@ -3,17 +3,20 @@ use std::ops::Range;
 use tree_sitter::Node;
 
 use crate::cst::{fields, kinds};
-use crate::resolve::delete_statement;
+use crate::resolve::{delete_statement, remove_list_entry};
 
-// Drop the adjacent comma too, else removing one name leaves a stray separator.
-pub(super) fn separator(source: &str, node: Node<'_>) -> Range<usize> {
-    if let Some(comma) = node.next_sibling().filter(|n| n.kind() == ",") {
-        return node.start_byte()..consume_horizontal_ws(source, comma.end_byte());
-    }
-    if let Some(comma) = node.prev_sibling().filter(|n| n.kind() == ",") {
-        return comma.start_byte()..node.end_byte();
-    }
-    node.byte_range()
+pub(super) fn separator(node: Node<'_>) -> Range<usize> {
+    let prev = node
+        .prev_sibling()
+        .filter(|n| n.kind() == ",")
+        .and_then(|comma| comma.prev_sibling())
+        .map(|n| n.byte_range());
+    let next = node
+        .next_sibling()
+        .filter(|n| n.kind() == ",")
+        .and_then(|comma| comma.next_sibling())
+        .map(|n| n.byte_range());
+    remove_list_entry(&node.byte_range(), prev.as_ref(), next.as_ref()).range
 }
 
 pub(super) fn statement(source: &str, node: Node<'_>) -> Range<usize> {
@@ -57,12 +60,4 @@ fn push_if_targeted(out: &mut Vec<Range<usize>>, source: &str, node: Node<'_>, n
     if names.contains(&name) {
         out.push(delete_statement(source, node.byte_range()).range);
     }
-}
-
-fn consume_horizontal_ws(source: &str, mut end: usize) -> usize {
-    let bytes = source.as_bytes();
-    while end < bytes.len() && matches!(bytes[end], b' ' | b'\t') {
-        end += 1;
-    }
-    end
 }
