@@ -1,3 +1,5 @@
+use rstest::rstest;
+
 use super::super::{hover_doc, resolve_definition};
 use crate::test_support::TestDb;
 
@@ -8,19 +10,17 @@ fn doc_at_cursor(source: &str) -> Option<String> {
     hover_doc(&def, &t.db())
 }
 
-#[test]
-fn plain_function_doc_is_its_own_comment() {
-    let doc = doc_at_cursor(concat!(
+#[rstest]
+#[case::plain_function_is_its_own_comment(
+    concat!(
         "// Heals the player.\n",
         "function Heal() {}\n",
         "function test() { He$0al(); }\n",
-    ));
-    assert_eq!(doc.as_deref(), Some("Heals the player."));
-}
-
-#[test]
-fn wrap_method_doc_appends_to_base() {
-    let doc = doc_at_cursor(concat!(
+    ),
+    Some("Heals the player.")
+)]
+#[case::wrap_method_appends_to_base(
+    concat!(
         "//- /base.ws\n",
         "class Foo {\n",
         "  // Base behaviour.\n",
@@ -34,13 +34,11 @@ fn wrap_method_doc_appends_to_base() {
         "  var f : Foo;\n",
         "  f.b$0ar();\n",
         "}\n",
-    ));
-    assert_eq!(doc.as_deref(), Some("Base behaviour.\n\nWrap behaviour."));
-}
-
-#[test]
-fn replace_method_doc_replaces_base() {
-    let doc = doc_at_cursor(concat!(
+    ),
+    Some("Base behaviour.\n\nWrap behaviour.")
+)]
+#[case::replace_method_replaces_base(
+    concat!(
         "//- /base.ws\n",
         "class Foo {\n",
         "  // Base behaviour.\n",
@@ -54,6 +52,9 @@ fn replace_method_doc_replaces_base() {
         "  var f : Foo;\n",
         "  f.b$0ar();\n",
         "}\n",
-    ));
-    assert_eq!(doc.as_deref(), Some("Replacement behaviour."));
+    ),
+    Some("Replacement behaviour.")
+)]
+fn method_doc_merges_across_declarations(#[case] source: &str, #[case] expected: Option<&str>) {
+    assert_eq!(doc_at_cursor(source).as_deref(), expected);
 }
