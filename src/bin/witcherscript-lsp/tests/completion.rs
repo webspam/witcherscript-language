@@ -42,6 +42,23 @@ fn annotation_name_items_reopen_suggestions_for_class_name() {
 }
 
 #[test]
+fn script_body_annotation_items_do_not_reinsert_the_at_sign() {
+    use crate::convert::script_body_item;
+
+    for label in ["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"] {
+        let item = script_body_item(label);
+        let insert = item
+            .insert_text
+            .as_deref()
+            .unwrap_or_else(|| panic!("{label} should carry insert_text"));
+        assert!(
+            !insert.starts_with('@'),
+            "{label} must not re-insert the @ (the typed trigger @ stays), got {insert:?}"
+        );
+    }
+}
+
+#[test]
 fn completion_item_method_has_method_kind() {
     use lsp_types::CompletionItemKind;
     use witcherscript_language::resolve::completion_members;
