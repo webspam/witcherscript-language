@@ -33,6 +33,15 @@ fn annotation_name_items_reopen_suggestions_for_class_name() {
             "{} must not re-insert the @ (would double it), got {insert:?}",
             item.label
         );
+        let filter = item
+            .filter_text
+            .as_deref()
+            .unwrap_or_else(|| panic!("{} should carry filter_text", item.label));
+        assert!(
+            !filter.starts_with('@'),
+            "{} filter must drop the @ so it still matches once you type past it, got {filter:?}",
+            item.label
+        );
         assert!(
             insert.ends_with("($1)"),
             "{} must land the cursor in empty parens, got {insert:?}",

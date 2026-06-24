@@ -256,8 +256,7 @@ pub(crate) fn keyword_snippet_item(label: &str, snippet: &str) -> CompletionItem
 
 pub(crate) fn annotation_name_items() -> Vec<CompletionItem> {
     [
-        // Insert without the leading `@`; the typed trigger `@` stays, else the client renders `@@`.
-        // Empty `$1`, not `${1:ClassName}`, so the re-triggered suggest lists classes unfiltered.
+        // VS Code special-cases the `@` character, so it has to be omitted from the snippet
         ("@wrapMethod", "wrapMethod($1)"),
         ("@addMethod", "addMethod($1)"),
         ("@replaceMethod", "replaceMethod($1)"),
@@ -266,7 +265,8 @@ pub(crate) fn annotation_name_items() -> Vec<CompletionItem> {
     .iter()
     .map(|(label, snippet)| CompletionItem {
         label: label.to_string(),
-        filter_text: Some(label.to_string()),
+        // `@` falls outside the client's filter range, so filter_text must omit it
+        filter_text: Some(label.trim_start_matches('@').to_string()),
         kind: Some(CompletionItemKind::KEYWORD),
         insert_text: Some(snippet.to_string()),
         insert_text_format: Some(InsertTextFormat::SNIPPET),
