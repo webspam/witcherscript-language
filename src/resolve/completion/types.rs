@@ -143,20 +143,20 @@ fn takes_class_arg(annotation: Node, source: &str) -> bool {
 
 fn is_inside_annotation_parens(annotation: Node, byte_offset: usize) -> bool {
     let mut cursor = annotation.walk();
-    let mut saw_open = false;
+    let mut open_end = None;
     for child in annotation.children(&mut cursor) {
         match child.kind() {
-            "(" => saw_open = true,
+            "(" => open_end = Some(child.end_byte()),
             ")" => {
-                if byte_offset <= child.start_byte() {
-                    return saw_open;
-                }
-                return false;
+                return open_end.is_some_and(|open_end| {
+                    open_end <= byte_offset && byte_offset <= child.start_byte()
+                });
             }
             _ => {}
         }
     }
-    saw_open
+    // Incomplete statement e.g. `@wrapMethod(` with no `)` yet
+    open_end.is_some_and(|open_end| open_end <= byte_offset)
 }
 
 /// Which method body the override inserts. `@wrapMethod` calls `wrappedMethod`; `@replaceMethod` does not.
