@@ -23,6 +23,62 @@ fn trigger_context(trigger_character: &str) -> CompletionContext {
 }
 
 #[tokio::test]
+async fn typing_at_sign_completes_annotation_without_doubling_it() {
+    let uri: lsp_types::Url = "file:///main.ws".parse().unwrap();
+    let at = lsp_types::Position {
+        line: 0,
+        character: 0,
+    };
+    let mut client = LspClient::spawn().await;
+    client.open(&uri, "").await;
+    client
+        .notify::<lsp_types::notification::DidChangeTextDocument>(
+            lsp_types::DidChangeTextDocumentParams {
+                text_document: lsp_types::VersionedTextDocumentIdentifier {
+                    uri: uri.clone(),
+                    version: 2,
+                },
+                content_changes: vec![lsp_types::TextDocumentContentChangeEvent {
+                    range: Some(lsp_types::Range { start: at, end: at }),
+                    range_length: None,
+                    text: "@".to_string(),
+                }],
+            },
+        )
+        .await;
+    let resp = client
+        .request::<Completion>(CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                position: lsp_types::Position {
+                    line: 0,
+                    character: 1,
+                },
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: Some(trigger_context("@")),
+        })
+        .await
+        .expect("completion response");
+
+    let item = items_of(resp)
+        .into_iter()
+        .find(|i| i.label == "@addField")
+        .expect("@addField offered when typing @");
+    assert!(
+        item.text_edit.is_none(),
+        "must not use a replace-range that deletes the typed @, got {:?}",
+        item.text_edit
+    );
+    assert_eq!(
+        item.insert_text.as_deref(),
+        Some("addField($1)"),
+        "insert text must exclude the leading @, else the typed @ doubles it"
+    );
+}
+
+#[tokio::test]
 async fn completion_after_dot_returns_class_method() {
     let f = Fixture::parse(concat!(
         "class CExample {\n",
