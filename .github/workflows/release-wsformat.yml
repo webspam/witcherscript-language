@@ -50,9 +50,9 @@ jobs:
           $notes | Out-File -FilePath notes.md -Encoding utf8
           gh release create "wsformat-$($env:VERSION)" `
             --title "wsformat $($env:VERSION)" `
-            --draft `
             --notes-file notes.md `
             --latest=false `
+            --target $env:SOURCE_SHA `
             "wsformat-$($env:VERSION)-windows-x64.zip"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
