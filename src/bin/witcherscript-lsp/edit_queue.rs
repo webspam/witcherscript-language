@@ -11,7 +11,6 @@ use witcherscript_language::document::{
 use witcherscript_language::line_index::LineIndex;
 
 use crate::backend::Backend;
-use crate::compilation::Compilation;
 
 #[derive(Debug, Clone)]
 pub(crate) struct PendingEdit {
@@ -39,15 +38,11 @@ impl Backend {
     }
 
     // A queued edit holds the latest source but an edited-not-reparsed tree, so reparse it.
-    pub(crate) fn latest_parsed_document(
-        &self,
-        uri: &Url,
-        snap: &Compilation,
-    ) -> Option<Arc<ParsedDocument>> {
+    pub(crate) fn latest_parsed_document(&self, uri: &Url) -> Option<Arc<ParsedDocument>> {
         let _tree_guard = self.tree_pipeline.lock();
         let pending = self.pending_edits.lock().get(uri).cloned();
         let Some(edit) = pending else {
-            return snap.documents.get(uri).cloned();
+            return self.snapshot().documents.get(uri).cloned();
         };
         let mut parser = Parser::new();
         if let Err(err) = parser.set_language(&tree_sitter_witcherscript::language()) {

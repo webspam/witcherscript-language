@@ -59,7 +59,13 @@ impl Backend {
             return;
         }
         let started_at = Instant::now();
-        trace!(op = "did_change", uri = %uri, "start");
+        trace!(
+            op = "did_change",
+            uri = %uri,
+            version = params.text_document.version,
+            changes = params.content_changes.len(),
+            "start",
+        );
 
         let _tree_guard = self.tree_pipeline.lock();
         let Some((mut source, mut line_index, mut prior_tree)) = self.latest_edit_state(&uri)
@@ -71,6 +77,15 @@ impl Backend {
 
         let mut prior_tree_valid = true;
         for change in params.content_changes {
+            let text_preview: String = change.text.chars().take(64).collect();
+            trace!(
+                op = "did_change",
+                uri = %uri,
+                range = ?change.range,
+                text_len = change.text.len(),
+                text = ?text_preview,
+                "raw content change",
+            );
             let range = change
                 .range
                 .map(|r| source_range(source_position(r.start), source_position(r.end)));

@@ -23,8 +23,7 @@ use crate::backend::{Backend, Result};
 use crate::convert::{
     CompletionItemData, annotation_name_items, builtin_type_item, class_body_kw_item,
     completion_item, hover_markdown, keyword_snippet_item, lsp_range, replace_method_snippet,
-    script_body_item, source_position, source_range, this_super_item, type_completion_item,
-    wrap_method_snippet,
+    script_body_item, source_position, this_super_item, type_completion_item, wrap_method_snippet,
 };
 
 fn triggered_by_dot(params: &CompletionParams) -> bool {
@@ -87,7 +86,7 @@ impl Backend {
         let result: Result<Option<CompletionResponse>> = 'body: {
             let snap = self.snapshot();
             // A typed `.` arrives as a queued edit; parse it now so completion sees the dot, not the stale tree.
-            let Some(document_arc) = self.latest_parsed_document(&uri, &snap) else {
+            let Some(document_arc) = self.latest_parsed_document(&uri) else {
                 trace!(op = "completion", "no document for uri");
                 break 'body Ok(None);
             };
@@ -159,11 +158,8 @@ impl Backend {
                 )));
             }
 
-            if let Some(at_pos) = annotation_name_completions(document, pos) {
-                let replace_range = lsp_range(source_range(at_pos, pos));
-                break 'body Ok(Some(CompletionResponse::Array(annotation_name_items(
-                    replace_range,
-                ))));
+            if annotation_name_completions(document, pos).is_some() {
+                break 'body Ok(Some(CompletionResponse::Array(annotation_name_items())));
             }
 
             if let Some(ov) = override_completions(document, &db, pos) {

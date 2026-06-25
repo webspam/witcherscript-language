@@ -1,7 +1,6 @@
 use lsp_types::{
-    Command, CompletionItem, CompletionItemKind, CompletionTextEdit, InsertTextFormat,
-    ParameterInformation, ParameterLabel, Range, SignatureHelp, SignatureInformation, TextEdit,
-    Url,
+    Command, CompletionItem, CompletionItemKind, InsertTextFormat, ParameterInformation,
+    ParameterLabel, SignatureHelp, SignatureInformation, Url,
 };
 use witcherscript_language::formatter::ColonSpacing;
 use witcherscript_language::resolve::{
@@ -226,10 +225,10 @@ pub(crate) fn script_body_item(keyword: &str) -> CompletionItem {
         "enum" => (Some("enum ${1:Name} {\n\t$0\n}"), "0"),
         "function" => (Some("function ${1:Name}($2) {\n\t$0\n}"), "0"),
         "var" => (Some("var ${1:name} : ${2:Type};"), "0"),
-        "@addField" => (Some("@addField(${1:ClassName})"), "0"),
-        "@addMethod" => (Some("@addMethod(${1:ClassName})"), "0"),
-        "@wrapMethod" => (Some("@wrapMethod(${1:ClassName})"), "0"),
-        "@replaceMethod" => (Some("@replaceMethod(${1:ClassName})"), "0"),
+        "@addField" => (Some("addField(${1})"), "0"),
+        "@addMethod" => (Some("addMethod(${1})"), "0"),
+        "@wrapMethod" => (Some("wrapMethod(${1})"), "0"),
+        "@replaceMethod" => (Some("replaceMethod(${1})"), "0"),
         _ => (None, "1"),
     };
     let filter_text = keyword.strip_prefix('@').map(str::to_string);
@@ -255,27 +254,24 @@ pub(crate) fn keyword_snippet_item(label: &str, snippet: &str) -> CompletionItem
     }
 }
 
-pub(crate) fn annotation_name_items(replace_range: Range) -> Vec<CompletionItem> {
+pub(crate) fn annotation_name_items() -> Vec<CompletionItem> {
     [
-        // Empty tabstop, not `${1:ClassName}`: the cursor lands in empty parens so the
-        // re-triggered suggest opens an unfiltered class list instead of filtering on a placeholder word.
-        ("@wrapMethod", "@wrapMethod($1)"),
-        ("@addMethod", "@addMethod($1)"),
-        ("@replaceMethod", "@replaceMethod($1)"),
-        ("@addField", "@addField($1)"),
+        // VS Code special-cases the `@` character, so it has to be omitted from the snippet
+        ("@wrapMethod", "wrapMethod($1)"),
+        ("@addMethod", "addMethod($1)"),
+        ("@replaceMethod", "replaceMethod($1)"),
+        ("@addField", "addField($1)"),
     ]
     .iter()
     .map(|(label, snippet)| CompletionItem {
         label: label.to_string(),
-        filter_text: Some(label.to_string()),
+        // `@` falls outside the client's filter range, so filter_text must omit it
+        filter_text: Some(label.trim_start_matches('@').to_string()),
         kind: Some(CompletionItemKind::KEYWORD),
-        text_edit: Some(CompletionTextEdit::Edit(TextEdit {
-            range: replace_range,
-            new_text: snippet.to_string(),
-        })),
+        insert_text: Some(snippet.to_string()),
         insert_text_format: Some(InsertTextFormat::SNIPPET),
         sort_text: Some(format!("0_{label}")),
-        // Cursor lands on the class-name placeholder; reopen suggestions there.
+        // Cursor lands in the empty parens; reopen suggestions for the class name there.
         command: Some(Command {
             title: "Suggest class name".to_string(),
             command: "editor.action.triggerSuggest".to_string(),

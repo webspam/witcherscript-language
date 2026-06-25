@@ -6,11 +6,8 @@ use crate::convert::completion_item;
 #[test]
 fn annotation_name_items_reopen_suggestions_for_class_name() {
     use crate::convert::annotation_name_items;
-    use lsp_types::Range;
 
-    use lsp_types::CompletionTextEdit;
-
-    let items = annotation_name_items(Range::default());
+    let items = annotation_name_items();
     assert!(
         !items.is_empty(),
         "annotation name items should be produced"
@@ -22,14 +19,50 @@ fn annotation_name_items_reopen_suggestions_for_class_name() {
             "{} should reopen suggestions for its class-name argument",
             item.label
         );
-        let Some(CompletionTextEdit::Edit(edit)) = &item.text_edit else {
-            panic!("{} should insert via a text edit", item.label);
-        };
         assert!(
-            edit.new_text.ends_with("($1)"),
-            "{} must land the cursor in empty parens (no placeholder word to filter on), got {:?}",
-            item.label,
-            edit.new_text
+            item.text_edit.is_none(),
+            "{} must insert via insert_text, not a replace-range that deletes the typed @",
+            item.label
+        );
+        let insert = item
+            .insert_text
+            .as_deref()
+            .unwrap_or_else(|| panic!("{} should carry insert_text", item.label));
+        assert!(
+            !insert.starts_with('@'),
+            "{} must not re-insert the @ (would double it), got {insert:?}",
+            item.label
+        );
+        let filter = item
+            .filter_text
+            .as_deref()
+            .unwrap_or_else(|| panic!("{} should carry filter_text", item.label));
+        assert!(
+            !filter.starts_with('@'),
+            "{} filter must drop the @ so it still matches once you type past it, got {filter:?}",
+            item.label
+        );
+        assert!(
+            insert.ends_with("($1)"),
+            "{} must land the cursor in empty parens, got {insert:?}",
+            item.label
+        );
+    }
+}
+
+#[test]
+fn script_body_annotation_items_do_not_reinsert_the_at_sign() {
+    use crate::convert::script_body_item;
+
+    for label in ["@addField", "@addMethod", "@wrapMethod", "@replaceMethod"] {
+        let item = script_body_item(label);
+        let insert = item
+            .insert_text
+            .as_deref()
+            .unwrap_or_else(|| panic!("{label} should carry insert_text"));
+        assert!(
+            !insert.starts_with('@'),
+            "{label} must not re-insert the @ (the typed trigger @ stays), got {insert:?}"
         );
     }
 }

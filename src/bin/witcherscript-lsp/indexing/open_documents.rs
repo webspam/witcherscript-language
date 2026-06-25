@@ -299,7 +299,7 @@ impl Backend {
         snap: &Arc<Compilation>,
     ) -> Option<(Definition, Arc<ParsedDocument>)> {
         // A queued edit isn't in the snapshot yet; resolve against it so rename sees just-applied text.
-        let document = self.latest_parsed_document(uri, snap)?;
+        let document = self.latest_parsed_document(uri)?;
         let handles = self.db_handles_for_with_snapshot(uri, snap);
         let db = handles.db();
         let definition = resolve_definition(

@@ -103,6 +103,23 @@ fn annotation_arg_completions_empty_outside_annotation() {
     );
 }
 
+// `@` typed before an existing `@wrapMethod(Class)` lands the cursor on its ident, before the `(`.
+#[test]
+fn annotation_arg_completions_empty_on_ident_before_open_paren() {
+    let t = TestDb::new("class CPlayer {}\n@$0@wrapMethod(CPlayer)\nfunction foo() {}\n");
+    let (_uri, pos) = t.cursor();
+    let completions = annotation_arg_completions(t.primary_doc(), &t.db(), pos);
+
+    assert!(
+        completions.is_empty(),
+        "starting a new annotation before an existing one must not offer class args, got {:?}",
+        completions
+            .iter()
+            .map(|d| d.symbol.name.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn annotation_arg_completions_empty_after_closing_paren() {
     let t = TestDb::new("@wrapMethod(CPlayer) $0\n");
