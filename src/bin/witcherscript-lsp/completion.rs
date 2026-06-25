@@ -86,7 +86,7 @@ impl Backend {
         let result: Result<Option<CompletionResponse>> = 'body: {
             let snap = self.snapshot();
             // A typed `.` arrives as a queued edit; parse it now so completion sees the dot, not the stale tree.
-            let Some(document_arc) = self.latest_parsed_document(&uri, &snap) else {
+            let Some(document_arc) = self.latest_parsed_document(&uri) else {
                 trace!(op = "completion", "no document for uri");
                 break 'body Ok(None);
             };

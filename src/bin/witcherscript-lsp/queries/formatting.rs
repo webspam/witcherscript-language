@@ -26,7 +26,7 @@ impl Backend {
 
             // Include a queued edit: clients don't retry formatting on CONTENT_MODIFIED, so
             // bailing would silently apply nothing instead of formatting the just-typed text.
-            let Some(document_arc) = self.latest_parsed_document(&uri, &self.snapshot()) else {
+            let Some(document_arc) = self.latest_parsed_document(&uri) else {
                 break 'body Ok(None);
             };
             let document = document_arc.as_ref();

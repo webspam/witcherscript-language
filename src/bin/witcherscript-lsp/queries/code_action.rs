@@ -41,7 +41,7 @@ impl Backend {
 
     fn refactor_actions(&self, uri: &Url, range: Range) -> CodeActionResponse {
         let snap = self.snapshot();
-        let Some(document_arc) = self.latest_parsed_document(uri, &snap) else {
+        let Some(document_arc) = self.latest_parsed_document(uri) else {
             return Vec::new();
         };
         let document = document_arc.as_ref();
