@@ -77,13 +77,12 @@ impl Backend {
 
         let mut prior_tree_valid = true;
         for change in params.content_changes {
-            let text_preview: String = change.text.chars().take(64).collect();
             trace!(
                 op = "did_change",
                 uri = %uri,
                 range = ?change.range,
                 text_len = change.text.len(),
-                text = ?text_preview,
+                text = ?change.text.chars().take(64).collect::<String>(),
                 "raw content change",
             );
             let range = change
