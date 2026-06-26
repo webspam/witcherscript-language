@@ -1,4 +1,5 @@
 mod builtin_source;
+mod close_drift;
 mod code_action;
 mod code_lens;
 mod completion;
