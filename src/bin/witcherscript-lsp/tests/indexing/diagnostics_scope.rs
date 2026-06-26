@@ -196,6 +196,34 @@ async fn closing_edited_file_bumps_state_version() {
 }
 
 #[tokio::test]
+async fn closing_buffer_that_outgrew_disk_caches_the_resolved_version() {
+    let temp = LocalTempDir::new("ws_close_relocates_stale_cache");
+    let short = "class CFoo {}\n";
+    let path = write_script(temp.path(), "Foo.ws", short);
+    let url = Url::from_file_path(&path).expect("path -> url");
+    let canonical = witcherscript_language::files::canonical_uri(&url);
+
+    let backend = make_backend_with(DiagnosticsScope::Workspace);
+    index_dir(&backend, temp.path()).await;
+
+    let long = "class CFoo {\n  private var unusedLongIdentifier : int;\n}\n";
+    backend.update_open_document(url.clone(), long.to_string());
+    std::fs::write(&path, long).expect("disk catches up to the buffer");
+
+    backend._did_close(close_params(&url));
+
+    let snap = backend.snapshot();
+    let cached = snap
+        .workspace_documents
+        .get(&canonical)
+        .expect("a closed workspace file stays cached");
+    assert_eq!(
+        cached.source, long,
+        "close must leave the cache at the indexed version",
+    );
+}
+
+#[tokio::test]
 async fn body_only_reindex_keeps_subscriber_cache_entries() {
     let temp = LocalTempDir::new("ws_body_reindex_keeps_subscribers");
     write_script(
