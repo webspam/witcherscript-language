@@ -100,6 +100,15 @@ impl CompilationBuilder {
         )
     }
 
+    pub(crate) fn base_scripts_documents_mut(
+        &mut self,
+    ) -> &mut HashMap<String, Arc<ParsedDocument>> {
+        cow_clone_mut(
+            &mut self.base_scripts_documents,
+            &self.base.base_scripts_documents,
+        )
+    }
+
     // Borrow both fields at once; Rust's method-call borrow checker cannot prove the
     // index and docs slots are disjoint when accessed through separate `*_mut` methods.
     pub(crate) fn workspace_index_and_docs_mut(

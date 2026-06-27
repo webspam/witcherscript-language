@@ -128,10 +128,37 @@ impl Backend {
             None
         };
 
-        if let (Some(prior), Some(disk)) = (prior_source, disk_text.as_deref())
-            && prior == disk
-        {
-            debug!(op = "reindex_closed_file", uri = %uri, "unedited buffer; skipped reindex");
+        let unedited = matches!(
+            (prior_source, disk_text.as_deref()),
+            (Some(prior), Some(disk)) if prior == disk
+        );
+
+        if unedited {
+            // No reparse needed; refresh the cache only if it is older than the buffer.
+            let snap = self.snapshot();
+            let open_doc = snap.documents.get(uri).cloned();
+            let cache = if is_base {
+                &snap.base_scripts_documents
+            } else {
+                &snap.workspace_documents
+            };
+            let stale = match (open_doc.as_deref(), cache.get(&canonical)) {
+                (Some(open), Some(cached)) => open.source != cached.source,
+                (Some(_), None) => true,
+                (None, _) => false,
+            };
+            self.publish_compilation(|builder| {
+                builder.documents_mut().remove(uri);
+                if let (true, Some(document)) = (stale, open_doc) {
+                    let docs = if is_base {
+                        builder.base_scripts_documents_mut()
+                    } else {
+                        builder.workspace_documents_mut()
+                    };
+                    docs.insert(canonical.clone(), document);
+                }
+            });
+            debug!(op = "reindex_closed_file", uri = %uri, stale, "unedited buffer");
             return false;
         }
 
@@ -144,6 +171,7 @@ impl Backend {
 
         let mut changed: Vec<ObservedKey> = Vec::new();
         self.publish_compilation(|builder| {
+            builder.documents_mut().remove(uri);
             if is_base {
                 // Base-script changes feed no invalidation (see the is_base guard below), so drop the changed keys.
                 let (index, docs) = builder.base_scripts_index_and_docs_mut();
