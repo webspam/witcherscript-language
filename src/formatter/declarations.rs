@@ -275,11 +275,10 @@ impl Formatter<'_> {
         let mut prev = run_start + stride - 1;
         let mut scan = run_start + stride;
         while scan < members.len() {
-            let gap = members[scan]
-                .start_position()
-                .row
-                .saturating_sub(members[prev].end_position().row);
-            if gap >= 2 {
+            if blank_line_between_rows(
+                members[prev].end_position().row,
+                members[scan].start_position().row,
+            ) {
                 break;
             }
             if members[scan].kind() == kinds::COMMENT {
