@@ -74,9 +74,7 @@ impl WorkspaceIndex {
                             .remove(&state_backing_class_name(owner, &sym.name));
                     }
                 }
-                if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field)
-                    && let Some(target) = sym.annotation_target_class()
-                {
+                if let Some(target) = sym.annotation_target_class_safe() {
                     retain_and_prune_nested(
                         &mut self.annotated_members_by_type,
                         target,
@@ -95,9 +93,7 @@ impl WorkspaceIndex {
 
     pub(super) fn insert_into_indices(&mut self, uri: &str, symbols: &[Symbol]) {
         for sym in symbols {
-            if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field)
-                && let Some(target) = sym.annotation_target_class()
-            {
+            if let Some(target) = sym.annotation_target_class_safe() {
                 self.annotated_members_by_type
                     .entry(target.to_string())
                     .or_default()
