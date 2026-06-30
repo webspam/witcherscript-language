@@ -152,4 +152,55 @@ mod tests {
             "an unknown placement must error rather than be silently defaulted"
         );
     }
+
+    mod discover {
+        use assert_fs::prelude::*;
+
+        use super::super::{FALLBACK_FILENAME, PRIMARY_FILENAME, discover};
+
+        #[test]
+        fn prefers_primary_over_fallback_in_same_dir() {
+            let temp = assert_fs::TempDir::new().unwrap();
+            temp.child(PRIMARY_FILENAME).write_str("").unwrap();
+            temp.child(FALLBACK_FILENAME).write_str("").unwrap();
+
+            let found = discover(temp.path()).expect("a config is present");
+            assert!(
+                found.ends_with(PRIMARY_FILENAME),
+                "primary filename must win, got {found:?}"
+            );
+        }
+
+        #[test]
+        fn finds_config_in_an_ancestor_dir() {
+            let temp = assert_fs::TempDir::new().unwrap();
+            temp.child("a/b").create_dir_all().unwrap();
+            temp.child(PRIMARY_FILENAME).write_str("").unwrap();
+
+            let found = discover(temp.child("a/b").path()).expect("ancestor config is found");
+            assert_eq!(
+                found.as_path(),
+                temp.child(PRIMARY_FILENAME).path(),
+                "must find the config two dirs up"
+            );
+        }
+
+        #[test]
+        fn closer_ancestor_wins() {
+            let temp = assert_fs::TempDir::new().unwrap();
+            temp.child("a/b").create_dir_all().unwrap();
+            temp.child(PRIMARY_FILENAME).write_str("").unwrap();
+            temp.child("a")
+                .child(PRIMARY_FILENAME)
+                .write_str("")
+                .unwrap();
+
+            let found = discover(temp.child("a/b").path()).expect("config is found");
+            assert_eq!(
+                found.as_path(),
+                temp.child("a").child(PRIMARY_FILENAME).path(),
+                "the closer ancestor's config must win"
+            );
+        }
+    }
 }

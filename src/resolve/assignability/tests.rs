@@ -28,10 +28,14 @@ fn implicit_primitive_casts_match_compiler() {
         (Primitive::Byte, Primitive::Float),
         (Primitive::Int, Primitive::Float),
         (Primitive::Int, Primitive::Byte),
+        (Primitive::Byte, Primitive::Bool),
         (Primitive::Int, Primitive::Bool),
         (Primitive::Float, Primitive::Bool),
         (Primitive::String, Primitive::Bool),
         (Primitive::Bool, Primitive::String),
+        (Primitive::Byte, Primitive::String),
+        (Primitive::Int, Primitive::String),
+        (Primitive::Float, Primitive::String),
         (Primitive::Name, Primitive::String),
     ] {
         assert_eq!(

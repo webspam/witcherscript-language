@@ -76,6 +76,38 @@ use crate::test_support::{TestDb, def_names};
     "class CFoo {}\nfunction F() {\n  a($0);\n}\n",
     &[], true,
 )]
+#[case::paren_arith_expr_is_not_a_cast(
+    "class CFoo {}\nfunction F() {\n  var x : float = ((a + b$0) / 3);\n}\n",
+    &[], true,
+)]
+#[case::paren_member_call_is_not_a_cast(
+    "class CFoo {}\nfunction F() {\n  ((a.Abs($0))*10);\n}\n",
+    &[], true,
+)]
+#[case::cast_parenthesized_operand_is_value_slot(
+    "class CFoo {}\nfunction F() {\n  var r : int = (int)(a$0 + b);\n}\n",
+    &[], true,
+)]
+#[case::paren_before_juxtaposed_operand_is_not_a_cast(
+    "class CFoo {}\nfunction F() {\n  (a + b$0)\n  foo();\n}\n",
+    &[], true,
+)]
+#[case::cursor_past_cast_close_paren(
+    "class W3PlayerWitcher {}\nfunction F() {\n  (W3PlayerWitcher)$0thePlayer;\n}\n",
+    &[], true,
+)]
+#[case::ternary_colon_is_not_a_type_annotation(
+    "class CFoo {}\nfunction F() {\n  var c : bool;\n  var r : int = c ? 1 : $0;\n}\n",
+    &[], true,
+)]
+#[case::switch_case_colon_is_not_a_type_annotation(
+    "class CFoo {}\nfunction F() {\n  var x : int;\n  switch (x) {\n    case 1: $0\n  }\n}\n",
+    &[], true,
+)]
+#[case::switch_default_colon_is_not_a_type_annotation(
+    "class CFoo {}\nfunction F() {\n  var x : int;\n  switch (x) {\n    default: $0\n  }\n}\n",
+    &[], true,
+)]
 fn type_completions_at_cursor(
     #[case] fixture: &str,
     #[case] required: &[&str],

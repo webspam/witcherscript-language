@@ -57,3 +57,59 @@ fn if_branch_of(if_stmt: Node, node: Node) -> Option<IfBranch> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+    use tree_sitter::Node;
+
+    use super::mutually_exclusive_branches;
+    use crate::document::parse_document;
+
+    const SRC: &str = "\
+function F() {
+  if (c) {
+    aBody;
+    aBody2;
+  } else {
+    bElse;
+  }
+  cAfter;
+  if (d) {
+    if (e) {
+      xInner;
+    } else {
+      yInner;
+    }
+    zOuter;
+  }
+}
+";
+
+    fn node_at<'t>(root: Node<'t>, needle: &str) -> Node<'t> {
+        let off = SRC.find(needle).expect("needle present");
+        root.descendant_for_byte_range(off, off + 1)
+            .expect("node at needle")
+    }
+
+    #[rstest]
+    #[case::if_versus_else("aBody", "bElse", true)]
+    #[case::same_branch("aBody", "aBody2", false)]
+    #[case::no_shared_if("aBody", "cAfter", false)]
+    #[case::nested_if_else("xInner", "yInner", true)]
+    #[case::outer_body_versus_inner_else("zOuter", "yInner", false)]
+    #[case::separate_top_level_ifs("aBody", "xInner", false)]
+    fn detects_mutually_exclusive_branches(
+        #[case] a: &str,
+        #[case] b: &str,
+        #[case] expected: bool,
+    ) {
+        let doc = parse_document(SRC).expect("fixture parses");
+        let root = doc.tree.root_node();
+        assert_eq!(
+            mutually_exclusive_branches(node_at(root, a), node_at(root, b)),
+            expected,
+            "{a} vs {b}"
+        );
+    }
+}

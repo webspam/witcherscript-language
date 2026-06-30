@@ -71,7 +71,29 @@ fn starts_new_word(chars: &[char], i: usize) -> bool {
 mod tests {
     use rstest::rstest;
 
-    use super::receiver_name;
+    use super::{lowercase_first, receiver_name, suffixed_unique};
+
+    #[rstest]
+    #[case::empty("", "")]
+    #[case::capitalized("Foo", "foo")]
+    #[case::already_lower("foo", "foo")]
+    #[case::single_char("X", "x")]
+    fn lowercase_first_lowercases_only_initial(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(
+            lowercase_first(input),
+            expected,
+            "lowercase_first({input:?})"
+        );
+    }
+
+    #[rstest]
+    #[case::free(&[], "x")]
+    #[case::first_collision(&["x"], "x1")]
+    #[case::runs_until_free(&["x", "x1", "x2"], "x3")]
+    fn suffixed_unique_appends_lowest_free_suffix(#[case] taken: &[&str], #[case] expected: &str) {
+        let got = suffixed_unique("x", |candidate| taken.contains(&candidate));
+        assert_eq!(got, expected, "taken={taken:?}");
+    }
 
     #[rstest]
     #[case::cr4_player("CR4Player", "r4Player")]
