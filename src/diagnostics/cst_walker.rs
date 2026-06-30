@@ -10,8 +10,8 @@ use tree_sitter::Node;
 use crate::cst::kinds;
 use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::document::ParsedDocument;
-use crate::resolve::{Definition, ObservationSet, SymbolDb, annotation_target_class};
-use crate::symbols::SymbolKind;
+use crate::resolve::{Definition, ObservationSet, SymbolDb};
+use crate::symbols::{Symbol, SymbolKind};
 
 use super::WorkspaceDiagnostic;
 
@@ -83,7 +83,7 @@ pub(crate) fn declaring_class_of(def: &Definition) -> Option<&str> {
     def.symbol
         .container_name
         .as_deref()
-        .or_else(|| annotation_target_class(&def.symbol))
+        .or_else(|| def.symbol.annotation_target_class())
 }
 
 pub(crate) fn access_is_inside_declaring_class<'tree>(
@@ -106,7 +106,7 @@ pub(crate) fn access_is_inside_declaring_class<'tree>(
         &[SymbolKind::Function, SymbolKind::Method, SymbolKind::Event],
     );
     callable
-        .and_then(annotation_target_class)
+        .and_then(Symbol::annotation_target_class)
         .is_some_and(|target| target == declarer)
 }
 

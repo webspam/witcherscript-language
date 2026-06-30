@@ -16,7 +16,7 @@ use super::inference::{
 };
 use super::name_context::classify_ident_context;
 use super::symbol_db::SymbolDb;
-use super::{Definition, annotation_target_class, dedup_definitions};
+use super::{Definition, dedup_definitions};
 
 pub fn resolve_definition(
     uri: &str,
@@ -263,16 +263,16 @@ pub(super) fn all_declarations_of(definition: &Definition, db: &SymbolDb) -> Vec
 
 pub(super) fn logical_member(symbol: &Symbol) -> Option<(String, String)> {
     match symbol.kind {
-        SymbolKind::Field if symbol.container.is_none() => {
-            annotation_target_class(symbol).map(|t| (t.to_string(), symbol.name.clone()))
-        }
+        SymbolKind::Field if symbol.container.is_none() => symbol
+            .annotation_target_class()
+            .map(|t| (t.to_string(), symbol.name.clone())),
         SymbolKind::Method | SymbolKind::Field => symbol
             .container_name
             .as_deref()
             .map(|cn| (cn.to_string(), symbol.name.clone())),
-        SymbolKind::Function if symbol.container.is_none() => {
-            annotation_target_class(symbol).map(|t| (t.to_string(), symbol.name.clone()))
-        }
+        SymbolKind::Function if symbol.container.is_none() => symbol
+            .annotation_target_class()
+            .map(|t| (t.to_string(), symbol.name.clone())),
         _ => None,
     }
 }
