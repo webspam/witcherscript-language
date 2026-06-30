@@ -258,6 +258,9 @@ pub struct Symbol {
     pub doc_comment: Option<String>,
 }
 
+const MEMBER_INJECTING_ANNOTATIONS: &[&str] =
+    &["addMethod", "wrapMethod", "replaceMethod", "addField"];
+
 impl Symbol {
     pub fn display_detail(&self) -> Option<String> {
         match (self.base_class.as_deref(), self.owner_class.as_deref()) {
@@ -266,6 +269,30 @@ impl Symbol {
             (None, Some(o)) => Some(format!("in {o}")),
             (None, None) => None,
         }
+    }
+
+    /// `Some(class)` means this symbol is an injected member of `class`, never a top-level global.
+    pub(crate) fn annotation_target_class(&self) -> Option<&str> {
+        self.injecting_annotation()
+            .and_then(|a| a.argument.as_deref())
+    }
+
+    /// Ignores annotations for invalid targets
+    pub(crate) fn annotation_target_class_safe(&self) -> Option<&str> {
+        if !matches!(self.kind, SymbolKind::Function | SymbolKind::Field) {
+            return None;
+        }
+        self.annotation_target_class()
+    }
+
+    pub(crate) fn injecting_annotation_name(&self) -> Option<&str> {
+        self.injecting_annotation().map(|a| a.name.as_str())
+    }
+
+    fn injecting_annotation(&self) -> Option<&Annotation> {
+        self.annotations
+            .iter()
+            .find(|a| MEMBER_INJECTING_ANNOTATIONS.contains(&a.name.as_str()))
     }
 }
 
@@ -397,6 +424,7 @@ impl DocumentSymbols {
 
         for sym in &self.symbols {
             match sym.container {
+                None if sym.annotation_target_class_safe().is_some() => {}
                 None => {
                     self.top_level_by_name
                         .entry(sym.name.clone())

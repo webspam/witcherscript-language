@@ -126,6 +126,25 @@ fn resolves_definition_at_cursor(
 #[case::unknown_receiver_does_not_fall_back(
     "class Example {\n  public function Initialize() {\n    typo.$0Initialize();\n  }\n}\n"
 )]
+#[case::addfield_not_a_bare_global_same_file(
+    "class CPlayer {}\n\
+     @addField(CPlayer) public var boost : int;\n\
+     function Caller() {\n  $0boost = 1;\n}\n"
+)]
+#[case::addfield_not_a_bare_global_cross_file(
+    "//- /a.ws\n\
+     class CPlayer {}\n\
+     @addField(CPlayer) public var boost : int;\n\
+     //- /caller.ws\n\
+     function Caller() {\n  $0boost = 1;\n}\n"
+)]
+#[case::addmethod_not_a_bare_global_call(
+    "//- /a.ws\n\
+     class CPlayer {}\n\
+     @addMethod(CPlayer) function Boost() {}\n\
+     //- /caller.ws\n\
+     function Caller() {\n  $0Boost();\n}\n"
+)]
 fn resolve_yields_none(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     let (uri, pos) = t.cursor();
