@@ -178,7 +178,11 @@ mod tests {
             temp.child(PRIMARY_FILENAME).write_str("").unwrap();
 
             let found = discover(temp.child("a/b").path()).expect("ancestor config is found");
-            assert_eq!(found.as_path(), temp.child(PRIMARY_FILENAME).path());
+            assert_eq!(
+                found.as_path(),
+                temp.child(PRIMARY_FILENAME).path(),
+                "must find the config two dirs up"
+            );
         }
 
         #[test]
@@ -194,7 +198,8 @@ mod tests {
             let found = discover(temp.child("a/b").path()).expect("config is found");
             assert_eq!(
                 found.as_path(),
-                temp.child("a").child(PRIMARY_FILENAME).path()
+                temp.child("a").child(PRIMARY_FILENAME).path(),
+                "the closer ancestor's config must win"
             );
         }
     }

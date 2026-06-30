@@ -71,5 +71,9 @@ fn position_to_byte_none_when_line_out_of_range() {
         line: 9,
         character: 0,
     };
-    assert_eq!(index.position_to_byte(source, pos), None);
+    assert_eq!(
+        index.position_to_byte(source, pos),
+        None,
+        "a line past the last must not resolve to a byte"
+    );
 }
