@@ -9,8 +9,8 @@ pub(in crate::formatter) use if_stmt::{block_single_stmt, body_expandable, chain
 pub(in crate::formatter) use switch::{SwitchArm, collect_switch_arms};
 
 use super::{
-    ChainPart, Formatter, chain_fully_broken, chain_has_break, chain_operator_leads, child_nodes,
-    named_child_nodes, split_binary_chain, splittable_call,
+    ChainPart, Formatter, blank_line_between_rows, chain_fully_broken, chain_has_break,
+    chain_operator_leads, child_nodes, named_child_nodes, split_binary_chain, splittable_call,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,12 +68,9 @@ impl Formatter<'_> {
             if let Some(prev) = prev_end_row {
                 self.flush_trailing_comments(prev, stmt.start_byte());
             }
-            let gap_target_row = self.comments[self.comment_cursor..]
-                .iter()
-                .find(|c| c.start_byte() < stmt.start_byte())
-                .map_or_else(|| stmt.start_position().row, |c| c.start_position().row);
+            prev_end_row = self.flush_own_line_comments(stmt.start_byte(), prev_end_row);
             if let Some(prev) = prev_end_row
-                && gap_target_row.saturating_sub(prev) >= 2
+                && blank_line_between_rows(prev, stmt.start_position().row)
             {
                 self.nl();
             }
@@ -92,6 +89,27 @@ impl Formatter<'_> {
         if trailing_nl {
             self.nl();
         }
+    }
+
+    // Per-comment gap handling so a blank after a comment survives like one between statements.
+    fn flush_own_line_comments(
+        &mut self,
+        byte: usize,
+        mut prev_end_row: Option<usize>,
+    ) -> Option<usize> {
+        while let Some(comment) = self.comments.get(self.comment_cursor).copied() {
+            if comment.start_byte() >= byte {
+                break;
+            }
+            if let Some(prev) = prev_end_row
+                && blank_line_between_rows(prev, comment.start_position().row)
+            {
+                self.nl();
+            }
+            self.flush_comments_before(comment.end_byte());
+            prev_end_row = Some(comment.end_position().row);
+        }
+        prev_end_row
     }
 
     // Emit a statement that is a direct child of a func_block. For error/malformed nodes the

@@ -107,6 +107,40 @@ use super::fmt;
         }
     "]]
 )]
+#[case::blank_after_comment_in_body_preserved(
+    "function F() {\n    a();\n    // note\n\n    b();\n}",
+    expect![[r"
+        function F() {
+            a();
+            // note
+
+            b();
+        }
+    "]]
+)]
+#[case::multiple_blanks_after_comment_in_body_condensed(
+    "function F() {\n    a();\n    // note\n\n\n\n    b();\n}",
+    expect![[r"
+        function F() {
+            a();
+            // note
+
+            b();
+        }
+    "]]
+)]
+#[case::blank_between_comments_in_body_preserved(
+    "function F() {\n    a();\n    // first\n\n    // second\n    b();\n}",
+    expect![[r"
+        function F() {
+            a();
+            // first
+
+            // second
+            b();
+        }
+    "]]
+)]
 #[case::top_level_comment_hugging_next_decl_keeps_no_blank(
     "function f() {}\n// note\nfunction g() {}",
     expect![[r"
