@@ -8,10 +8,10 @@ use crate::document::ParsedDocument;
 use crate::symbols::{AccessLevel, Symbol, SymbolKind};
 use crate::types::{Primitive, Type};
 
+use super::Definition;
 use super::ast::first_named_child;
 use super::name_context::NameContext;
 use super::symbol_db::SymbolDb;
-use super::{Definition, annotation_target_class};
 
 #[derive(Debug, Clone)]
 pub(super) struct TypeContext {
@@ -498,7 +498,7 @@ pub(super) fn enclosing_type_context(
     if callable.container.is_some() || callable.kind != SymbolKind::Function {
         return None;
     }
-    let target = annotation_target_class(callable)?;
+    let target = callable.annotation_target_class()?;
     Some(TypeContext {
         name: target.to_string(),
         base_class: db.superclass_of(target),

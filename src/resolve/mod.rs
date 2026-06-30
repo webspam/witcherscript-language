@@ -99,17 +99,6 @@ pub struct Definition {
     pub symbol: Symbol,
 }
 
-const MEMBER_INJECTING_ANNOTATIONS: &[&str] =
-    &["addMethod", "wrapMethod", "replaceMethod", "addField"];
-
-pub(crate) fn annotation_target_class(symbol: &Symbol) -> Option<&str> {
-    symbol
-        .annotations
-        .iter()
-        .find(|a| MEMBER_INJECTING_ANNOTATIONS.contains(&a.name.as_str()))
-        .and_then(|a| a.argument.as_deref())
-}
-
 pub(super) fn dedup_by_name(defs: impl Iterator<Item = Definition>) -> Vec<Definition> {
     let mut seen: std::collections::HashMap<String, Definition> = std::collections::HashMap::new();
     for def in defs {

@@ -8,10 +8,10 @@ use crate::line_index::SourcePosition;
 use crate::symbols::{Symbol, SymbolKind};
 use crate::types::Type;
 
+use super::Definition;
 use super::ast::{nodes_at_offset, significant_node_before_byte};
 use super::definition::{all_declarations_of, resolve_definition_at_byte};
 use super::symbol_db::SymbolDb;
-use super::{Definition, MEMBER_INJECTING_ANNOTATIONS};
 
 #[derive(Debug, Clone)]
 pub struct SignatureHelpInfo {
@@ -340,7 +340,7 @@ pub fn hover_doc(definition: &Definition, db: &SymbolDb) -> Option<String> {
         let Some(doc) = declaration.symbol.doc_comment.as_deref() else {
             continue;
         };
-        match injecting_annotation(&declaration.symbol) {
+        match declaration.symbol.injecting_annotation_name() {
             Some("replaceMethod") => replacement = Some(doc),
             Some("wrapMethod") => wraps.push(doc),
             _ => base = Some(doc),
@@ -349,12 +349,4 @@ pub fn hover_doc(definition: &Definition, db: &SymbolDb) -> Option<String> {
     let mut parts: Vec<&str> = replacement.or(base).into_iter().collect();
     parts.extend(wraps);
     (!parts.is_empty()).then(|| parts.join("\n\n"))
-}
-
-fn injecting_annotation(symbol: &Symbol) -> Option<&str> {
-    symbol
-        .annotations
-        .iter()
-        .map(|annotation| annotation.name.as_str())
-        .find(|name| MEMBER_INJECTING_ANNOTATIONS.contains(name))
 }

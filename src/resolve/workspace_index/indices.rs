@@ -4,7 +4,6 @@ use std::hash::Hash;
 
 use crate::symbols::{Symbol, SymbolKind};
 
-use super::super::annotation_target_class;
 use super::super::state_classes::state_backing_class_name;
 use super::{Definition, WorkspaceIndex};
 
@@ -75,9 +74,7 @@ impl WorkspaceIndex {
                             .remove(&state_backing_class_name(owner, &sym.name));
                     }
                 }
-                if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field)
-                    && let Some(target) = annotation_target_class(&sym)
-                {
+                if let Some(target) = sym.annotation_target_class_safe() {
                     retain_and_prune_nested(
                         &mut self.annotated_members_by_type,
                         target,
@@ -96,6 +93,18 @@ impl WorkspaceIndex {
 
     pub(super) fn insert_into_indices(&mut self, uri: &str, symbols: &[Symbol]) {
         for sym in symbols {
+            if let Some(target) = sym.annotation_target_class_safe() {
+                self.annotated_members_by_type
+                    .entry(target.to_string())
+                    .or_default()
+                    .entry(sym.name.clone())
+                    .or_default()
+                    .push(Definition {
+                        uri: uri.to_string(),
+                        symbol: sym.clone(),
+                    });
+                continue;
+            }
             if sym.container.is_none() {
                 self.top_level_by_name
                     .entry(sym.name.clone())
@@ -131,19 +140,6 @@ impl WorkspaceIndex {
                     self.state_backing_by_name
                         .entry(state_backing_class_name(owner, &sym.name))
                         .or_insert_with(|| (owner.clone(), sym.name.clone()));
-                }
-                if matches!(sym.kind, SymbolKind::Function | SymbolKind::Field)
-                    && let Some(target) = annotation_target_class(sym)
-                {
-                    self.annotated_members_by_type
-                        .entry(target.to_string())
-                        .or_default()
-                        .entry(sym.name.clone())
-                        .or_default()
-                        .push(Definition {
-                            uri: uri.to_string(),
-                            symbol: sym.clone(),
-                        });
                 }
             } else if let Some(cn) = &sym.container_name {
                 self.member_by_type
