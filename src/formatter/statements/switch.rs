@@ -3,7 +3,9 @@ use tree_sitter::Node;
 use crate::cst::{fields, kinds};
 
 use super::super::action::LayoutCtx;
-use super::super::{Formatter, SwitchToggle, child_nodes, comment_in_range};
+use super::super::{
+    Formatter, SwitchToggle, blank_line_between_rows, child_nodes, comment_in_range,
+};
 
 // Spaces between aligned switch-arm columns (label -> statement -> break).
 const SWITCH_CELL_GAP: usize = 2;
@@ -90,7 +92,7 @@ fn arm_end_byte(arm: &SwitchArm) -> Option<usize> {
 
 fn blank_line_between_arms(a: &SwitchArm, b: &SwitchArm) -> bool {
     match (arm_end_row(a), arm_start_row(b)) {
-        (Some(end), Some(start)) => start.saturating_sub(end) >= 2,
+        (Some(end), Some(start)) => blank_line_between_rows(end, start),
         _ => false,
     }
 }
