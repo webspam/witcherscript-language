@@ -9,8 +9,8 @@ pub(in crate::formatter) use if_stmt::{block_single_stmt, body_expandable, chain
 pub(in crate::formatter) use switch::{SwitchArm, collect_switch_arms};
 
 use super::{
-    ChainPart, Formatter, chain_fully_broken, chain_has_break, chain_operator_leads, child_nodes,
-    named_child_nodes, split_binary_chain, splittable_call,
+    ChainPart, Formatter, blank_line_between_rows, chain_fully_broken, chain_has_break,
+    chain_operator_leads, child_nodes, named_child_nodes, split_binary_chain, splittable_call,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,7 +70,7 @@ impl Formatter<'_> {
             }
             prev_end_row = self.flush_own_line_comments(stmt.start_byte(), prev_end_row);
             if let Some(prev) = prev_end_row
-                && stmt.start_position().row.saturating_sub(prev) >= 2
+                && blank_line_between_rows(prev, stmt.start_position().row)
             {
                 self.nl();
             }
@@ -102,7 +102,7 @@ impl Formatter<'_> {
                 break;
             }
             if let Some(prev) = prev_end_row
-                && comment.start_position().row.saturating_sub(prev) >= 2
+                && blank_line_between_rows(prev, comment.start_position().row)
             {
                 self.nl();
             }

@@ -264,6 +264,11 @@ pub(super) fn is_expr_node(kind: &str) -> bool {
     )
 }
 
+/// If two lines are more than one row apart, there's a blank line between them.
+pub(super) fn blank_line_between_rows(prev: usize, next: usize) -> bool {
+    next.saturating_sub(prev) >= 2
+}
+
 pub(super) fn comment_in_range(comments: &[Node], lo: usize, hi: usize) -> bool {
     comments
         .iter()

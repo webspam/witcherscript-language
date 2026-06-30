@@ -2,7 +2,9 @@ use tree_sitter::Node;
 
 use crate::cst::kinds;
 
-use super::{Formatter, child_nodes, is_alignable_field, is_bodiless_callable};
+use super::{
+    Formatter, blank_line_between_rows, child_nodes, is_alignable_field, is_bodiless_callable,
+};
 
 const DEFAULT_GAP: &str = "  ";
 
@@ -28,11 +30,12 @@ impl Formatter<'_> {
             }
 
             if let Some(prev) = prev_end_row {
-                let source_gap = child_row.saturating_sub(prev);
                 // Consecutive single-line @addField members may sit gaplessly; do not force a blank.
                 let both_add_field = prev_node.is_some_and(|p| self.is_add_field_decl(p))
                     && self.is_add_field_decl(*child);
-                if source_gap >= 2 || (!both_add_field && !prev_was_comment && !child_is_comment) {
+                if blank_line_between_rows(prev, child_row)
+                    || (!both_add_field && !prev_was_comment && !child_is_comment)
+                {
                     self.nl();
                 }
             }
@@ -526,14 +529,10 @@ impl Formatter<'_> {
                 continue;
             }
 
-            let source_gap = match prev_end_row {
-                Some(prev) => child_row.saturating_sub(prev),
-                None => child_row.saturating_sub(open_row),
-            };
             let is_callable = matches!(member.kind(), kinds::FUNC_DECL | kinds::EVENT_DECL);
             let both_bodiless =
                 is_bodiless_callable(member) && prev_member.is_some_and(is_bodiless_callable);
-            let want_blank = source_gap >= 2
+            let want_blank = blank_line_between_rows(prev_end_row.unwrap_or(open_row), child_row)
                 || (is_callable && prev_end_row.is_some() && !prev_was_comment && !both_bodiless);
             prev_was_comment = member.kind() == kinds::COMMENT;
 
