@@ -4,6 +4,7 @@ use tree_sitter::Node;
 
 use crate::cst::ancestors::{find_ancestor_of_kind, has_ancestor_of_kind};
 use crate::cst::kinds;
+use crate::cst::nav::first_child_kind;
 use crate::document::ParsedDocument;
 use crate::line_index::SourcePosition;
 use crate::symbols::SymbolKind;
@@ -56,13 +57,33 @@ fn type_completions_inner(
             .and_then(|n| significant_node_before_byte(root, source, n.start_byte()))
             .is_some_and(is_type_annotation_boundary)
         // Gate 3: cursor already inside a type_annot subtree (generic type args, clean parses)
-        || nodes.iter().any(|n| has_ancestor_of_kind(*n, &[kinds::TYPE_ANNOT]));
+        || nodes.iter().any(|n| has_ancestor_of_kind(*n, &[kinds::TYPE_ANNOT]))
+        // Gate 4: cursor in the type slot of a cast `(T)expr`, complete or in-progress
+        || nodes.iter().any(|n| in_cast_type_slot(*n, byte_offset));
 
     if !in_type_context {
         return None;
     }
 
     Some(db.merged_types_catalog())
+}
+
+/// A cast still being typed recovers as a `nested_expr`, not a `cast_expr`; check both.
+fn in_cast_type_slot(node: Node, byte_offset: usize) -> bool {
+    let close = match find_ancestor_of_kind(node, &[kinds::CAST_EXPR]) {
+        Some(cast) => first_child_kind(cast, ")"),
+        None => find_ancestor_of_kind(node, &[kinds::NESTED_EXPR]).and_then(cast_recovery_paren),
+    };
+    close.is_some_and(|paren| byte_offset <= paren.start_byte())
+}
+
+/// The cast's `)` is recovered into an ERROR child once an operand follows the parens.
+fn cast_recovery_paren(group: Node) -> Option<Node> {
+    let mut cursor = group.walk();
+    let error = group
+        .children(&mut cursor)
+        .find(|c| c.kind() == kinds::ERROR)?;
+    first_child_kind(error, ")")
 }
 
 pub fn annotation_name_completions(
