@@ -36,6 +36,46 @@ use crate::test_support::{TestDb, def_names};
     "class CMyType {}\nfunction F() {\n  var z : A : B : CMyType$0;\n  var w : int;\n}\n",
     &[], false,
 )]
+#[case::cast_empty_parens(
+    "class W3PlayerWitcher {}\nfunction F() {\n  var w : W3PlayerWitcher = ($0)thePlayer;\n}\n",
+    &["W3PlayerWitcher"], false,
+)]
+#[case::cast_partial_mid_type(
+    "class W3PlayerWitcher {}\nfunction F() {\n  var w : W3PlayerWitcher = (W3$0PlayerWitcher)thePlayer;\n}\n",
+    &["W3PlayerWitcher"], false,
+)]
+#[case::cast_cursor_at_type_end(
+    "class W3PlayerWitcher {}\nfunction F() {\n  var w : W3PlayerWitcher = (W3PlayerWitche$0)thePlayer;\n}\n",
+    &["W3PlayerWitcher"], false,
+)]
+#[case::cast_keyword_like_partial(
+    "class CFoo {}\nfunction F() {\n  var w : CFoo = (in$0) thePlayer;\n}\n",
+    &["CFoo"], false,
+)]
+#[case::cast_nested_empty_parens(
+    "class CFoo {}\nfunction F() {\n  (($0)someVar);\n}\n",
+    &["CFoo"], false,
+)]
+#[case::cast_in_arithmetic(
+    "class CFoo {}\nfunction F() {\n  var r : int = (int)a + ($0)b;\n}\n",
+    &["CFoo"], false,
+)]
+#[case::cast_value_slot_is_not_a_type(
+    "class W3PlayerWitcher {}\nfunction F() {\n  var w : W3PlayerWitcher = (W3PlayerWitcher)the$0Player;\n}\n",
+    &[], true,
+)]
+#[case::cast_recovery_value_slot_is_not_a_type(
+    "class CFoo {}\nfunction F() {\n  var w : CFoo = ()the$0Player;\n}\n",
+    &[], true,
+)]
+#[case::paren_expr_is_not_a_cast(
+    "class CFoo {}\nfunction F() {\n  ($0);\n}\n",
+    &[], true,
+)]
+#[case::call_argument_is_not_a_cast(
+    "class CFoo {}\nfunction F() {\n  a($0);\n}\n",
+    &[], true,
+)]
 fn type_completions_at_cursor(
     #[case] fixture: &str,
     #[case] required: &[&str],
