@@ -113,6 +113,36 @@ impl Backend {
         }
     }
 
+    fn removals_for_deleted_trees(
+        &self,
+        tree_dirs: &[PathBuf],
+        open_canonical: &HashSet<String>,
+    ) -> HashSet<String> {
+        let under = |uri: &str| uri_within_any(uri, tree_dirs) && !open_canonical.contains(uri);
+        let mut dropped: HashSet<String> = self
+            .workspace_known_files
+            .lock()
+            .iter()
+            .filter(|uri| under(uri))
+            .cloned()
+            .collect();
+        dropped.extend(
+            self.snapshot()
+                .workspace_documents
+                .keys()
+                .filter(|uri| under(uri))
+                .cloned(),
+        );
+        if !dropped.is_empty() {
+            trace!(
+                dirs = ?tree_dirs,
+                files = dropped.len(),
+                "watched directories deleted; removing indexed files under them",
+            );
+        }
+        dropped
+    }
+
     pub(crate) fn apply_watched_file_events(&self, events: Vec<FileEvent>) {
         let started_at = Instant::now();
         let event_count = events.len();
@@ -184,30 +214,7 @@ impl Backend {
         }
 
         if !tree_dirs.is_empty() {
-            let under =
-                |uri: &str| uri_within_any(uri, &tree_dirs) && !open_canonical.contains(uri);
-            let mut dropped: HashSet<String> = self
-                .workspace_known_files
-                .lock()
-                .iter()
-                .filter(|uri| under(uri))
-                .cloned()
-                .collect();
-            dropped.extend(
-                self.snapshot()
-                    .workspace_documents
-                    .keys()
-                    .filter(|uri| under(uri))
-                    .cloned(),
-            );
-            if !dropped.is_empty() {
-                trace!(
-                    dirs = ?tree_dirs,
-                    files = dropped.len(),
-                    "watched directories deleted; removing indexed files under them",
-                );
-            }
-            removals.extend(dropped);
+            removals.extend(self.removals_for_deleted_trees(&tree_dirs, &open_canonical));
         }
 
         let had_updates = !updates.is_empty();
