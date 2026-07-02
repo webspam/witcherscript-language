@@ -5,7 +5,7 @@ use std::time::Instant;
 use lsp_types::request::RegisterCapability;
 use lsp_types::{
     DidChangeWatchedFilesRegistrationOptions, FileChangeType, FileEvent, FileSystemWatcher,
-    GlobPattern, Registration, RegistrationParams,
+    GlobPattern, Registration, RegistrationParams, WatchKind,
 };
 use tracing::{debug, trace, warn};
 use witcherscript_language::document::parse_document;
@@ -39,6 +39,7 @@ pub(crate) fn event_touches_legacy_dir(event: &FileEvent, legacy_dirs: &[PathBuf
 pub(crate) enum WatchedEvent {
     Upsert { canonical: String, path: PathBuf },
     Remove { canonical: String },
+    RemoveTree { canonical: String },
 }
 
 pub(crate) fn classify_watched_event(
@@ -48,6 +49,11 @@ pub(crate) fn classify_watched_event(
 ) -> Option<WatchedEvent> {
     let path = event.uri.to_file_path().ok()?;
     if !is_witcherscript_file(&path) {
+        if event.typ == FileChangeType::DELETED {
+            return Some(WatchedEvent::RemoveTree {
+                canonical: canonical_uri(&event.uri),
+            });
+        }
         return None;
     }
     let canonical = canonical_uri(&event.uri);
@@ -78,6 +84,11 @@ impl Backend {
                 FileSystemWatcher {
                     glob_pattern: GlobPattern::String(format!("**/{MANIFEST_FILENAME}")),
                     kind: None,
+                },
+                // Deleted folder emits one event for the folder path - only ** sees it
+                FileSystemWatcher {
+                    glob_pattern: GlobPattern::String("**".to_string()),
+                    kind: Some(WatchKind::Delete),
                 },
             ],
         };
@@ -126,6 +137,7 @@ impl Backend {
         let mut updates: Vec<(String, witcherscript_language::document::ParsedDocument)> =
             Vec::new();
         let mut removals: Vec<String> = Vec::new();
+        let mut tree_prefixes: Vec<String> = Vec::new();
         let mut legacy_map_refresh = false;
 
         for event in ws_events {
@@ -162,7 +174,48 @@ impl Backend {
                         legacy_map_refresh = true;
                     }
                 }
+                WatchedEvent::RemoveTree { canonical } => {
+                    let contains_legacy_dir = event
+                        .uri
+                        .to_file_path()
+                        .ok()
+                        .is_some_and(|p| legacy_dirs.iter().any(|dir| dir.starts_with(&p)));
+                    if touches_legacy || contains_legacy_dir {
+                        legacy_map_refresh = true;
+                    }
+                    tree_prefixes.push(canonical);
+                }
             }
+        }
+
+        if !tree_prefixes.is_empty() {
+            let indexed: Vec<String> = {
+                let known = self.workspace_known_files.lock();
+                let snap = self.snapshot();
+                known
+                    .iter()
+                    .chain(snap.workspace_documents.keys())
+                    .cloned()
+                    .collect()
+            };
+            let mut dropped: HashSet<String> = HashSet::new();
+            for prefix in &tree_prefixes {
+                let prefix_slash = format!("{}/", prefix.trim_end_matches('/'));
+                let under_prefix = indexed
+                    .iter()
+                    .filter(|uri| uri.starts_with(&prefix_slash) && !open_canonical.contains(*uri));
+                let before = dropped.len();
+                dropped.extend(under_prefix.cloned());
+                let count = dropped.len() - before;
+                if count > 0 {
+                    trace!(
+                        prefix = %prefix,
+                        files = count,
+                        "watched directory deleted; removing indexed files under it",
+                    );
+                }
+            }
+            removals.extend(dropped);
         }
 
         let had_updates = !updates.is_empty();
