@@ -48,8 +48,9 @@ pub(crate) fn classify_watched_event(
     filter: &ExcludeFilter,
 ) -> Option<WatchedEvent> {
     let path = event.uri.to_file_path().ok()?;
+    // Assume we are only watching scripts and directories
     if !is_witcherscript_file(&path) {
-        if event.typ == FileChangeType::DELETED {
+        if event.typ == FileChangeType::DELETED && !filter.matches(&path) {
             return Some(WatchedEvent::RemoveTree { path });
         }
         return None;

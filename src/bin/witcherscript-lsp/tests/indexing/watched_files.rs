@@ -158,6 +158,21 @@ fn deleted_directory_event_returns_remove_tree() {
 }
 
 #[test]
+fn deleted_excluded_tree_is_skipped() {
+    let url = Url::from_file_path(workspace_root().join("vendor/cache")).expect("dir uri builds");
+    let filter = ExcludeFilter::new(&[workspace_root()], &["vendor/**".to_string()]);
+    let decision = classify_watched_event(
+        &event(url.as_str(), FileChangeType::DELETED),
+        &HashSet::new(),
+        &filter,
+    );
+    assert_eq!(
+        decision, None,
+        "a deleted path under an excluded tree must not trigger a removal scan"
+    );
+}
+
+#[test]
 fn directory_delete_drops_indexed_files_under_it() {
     let temp = LocalTempDir::new("ws_dir_delete_prefix");
     let backend = make_backend();
