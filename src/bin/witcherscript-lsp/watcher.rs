@@ -184,20 +184,22 @@ impl Backend {
         }
 
         if !tree_dirs.is_empty() {
-            let indexed: Vec<String> = {
-                let known = self.workspace_known_files.lock();
-                let snap = self.snapshot();
-                known
-                    .iter()
-                    .chain(snap.workspace_documents.keys())
-                    .cloned()
-                    .collect()
-            };
-            let dropped: HashSet<String> = indexed
+            let under =
+                |uri: &str| uri_within_any(uri, &tree_dirs) && !open_canonical.contains(uri);
+            let mut dropped: HashSet<String> = self
+                .workspace_known_files
+                .lock()
                 .iter()
-                .filter(|uri| uri_within_any(uri, &tree_dirs) && !open_canonical.contains(*uri))
+                .filter(|uri| under(uri))
                 .cloned()
                 .collect();
+            dropped.extend(
+                self.snapshot()
+                    .workspace_documents
+                    .keys()
+                    .filter(|uri| under(uri))
+                    .cloned(),
+            );
             if !dropped.is_empty() {
                 trace!(
                     dirs = ?tree_dirs,
