@@ -278,7 +278,7 @@ impl Backend {
         if cst.cancelled {
             return None;
         }
-        debug!(
+        trace!(
             op = "run_pull_compute",
             docs = diag_docs.len(),
             cache_hits = cst.stats.hits,
@@ -446,7 +446,7 @@ impl Backend {
             previous.keys().filter(|k| !emitted.contains(k.as_str())),
         ));
 
-        debug!(
+        trace!(
             op = "compute_workspace_diagnostic_report",
             version,
             items = items.len(),
