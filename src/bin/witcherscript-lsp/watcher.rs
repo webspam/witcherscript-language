@@ -10,12 +10,11 @@ use lsp_types::{
 use tracing::{debug, trace, warn};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::files::{
-    ExcludeFilter, canonical_uri, is_witcherscript_file, read_text_file,
+    ExcludeFilter, canonical_uri, is_witcherscript_file, read_text_file, uri_within_any,
 };
 
 use crate::backend::Backend;
 use crate::project_manifest::MANIFEST_FILENAME;
-use crate::text_sync::uri_within_any;
 
 fn event_is_manifest(event: &FileEvent) -> bool {
     event

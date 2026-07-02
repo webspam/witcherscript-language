@@ -17,6 +17,13 @@ pub fn canonical_uri(uri: &Url) -> String {
         .map_or_else(|| uri.to_string(), |u| u.to_string())
 }
 
+pub fn uri_within_any(uri: &str, dirs: &[PathBuf]) -> bool {
+    let Some(path) = Url::parse(uri).ok().and_then(|u| u.to_file_path().ok()) else {
+        return false;
+    };
+    dirs.iter().any(|dir| path.starts_with(dir))
+}
+
 pub fn build_overrides(root: &Path, exclude_globs: &[String]) -> Result<Override, ignore::Error> {
     let mut builder = OverrideBuilder::new(root);
     for glob in exclude_globs {

@@ -3,22 +3,16 @@ use std::time::Instant;
 
 use lsp_types::{
     DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, Url,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams,
 };
 use tracing::{error, trace};
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::document::apply_content_change;
+use witcherscript_language::files::uri_within_any;
 use witcherscript_language::line_index::LineIndex;
 
 use crate::backend::Backend;
 use crate::convert::{source_position, source_range};
-
-pub(crate) fn uri_within_any(uri: &str, dirs: &[PathBuf]) -> bool {
-    let Some(path) = Url::parse(uri).ok().and_then(|u| u.to_file_path().ok()) else {
-        return false;
-    };
-    dirs.iter().any(|dir| path.starts_with(dir))
-}
 
 impl Backend {
     pub(crate) fn _did_open(&self, params: DidOpenTextDocumentParams) {
