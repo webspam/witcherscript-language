@@ -13,7 +13,7 @@ use witcherscript_language::line_index::LineIndex;
 use crate::backend::Backend;
 use crate::convert::{source_position, source_range};
 
-fn uri_within_any(uri: &str, dirs: &[PathBuf]) -> bool {
+pub(crate) fn uri_within_any(uri: &str, dirs: &[PathBuf]) -> bool {
     let Some(path) = Url::parse(uri).ok().and_then(|u| u.to_file_path().ok()) else {
         return false;
     };
