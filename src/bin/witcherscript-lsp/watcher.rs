@@ -10,7 +10,7 @@ use lsp_types::{
 use tracing::{debug, trace, warn};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::files::{
-    ExcludeFilter, canonical_uri, is_witcherscript_file, read_text_file, uri_within_any,
+    ExcludeFilter, any_dir_contains_uri, canonical_uri, is_witcherscript_file, read_text_file,
 };
 
 use crate::backend::Backend;
@@ -118,7 +118,8 @@ impl Backend {
         tree_dirs: &[PathBuf],
         open_canonical: &HashSet<String>,
     ) -> HashSet<String> {
-        let under = |uri: &str| uri_within_any(uri, tree_dirs) && !open_canonical.contains(uri);
+        let under =
+            |uri: &str| any_dir_contains_uri(uri, tree_dirs) && !open_canonical.contains(uri);
         let mut dropped: HashSet<String> = self
             .workspace_known_files
             .lock()

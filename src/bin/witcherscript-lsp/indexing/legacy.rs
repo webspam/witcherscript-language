@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use lsp_types::Url;
 use witcherscript_language::document::ParsedDocument;
-use witcherscript_language::files::{canonical_uri, uri_within_any};
+use witcherscript_language::files::{any_dir_contains_uri, canonical_uri};
 
 use crate::backend::Backend;
 
@@ -108,7 +108,7 @@ impl Backend {
             .workspace_index
             .documents()
             .map(|(uri, _)| uri.to_string())
-            .filter(|uri| uri_within_any(uri, &legacy_dirs))
+            .filter(|uri| any_dir_contains_uri(uri, &legacy_dirs))
             .collect()
     }
 
@@ -131,7 +131,7 @@ impl Backend {
 
     pub(crate) fn refresh_legacy_override_maps_if_legacy_uri(&self, uri: &Url) {
         let legacy_dirs = self.effective_legacy_dirs();
-        if uri_within_any(uri.as_str(), &legacy_dirs) {
+        if any_dir_contains_uri(uri.as_str(), &legacy_dirs) {
             self.refresh_legacy_override_maps();
         }
     }
@@ -150,7 +150,7 @@ impl Backend {
                 if current.contains(*uri) || open_canonical.contains(*uri) {
                     return false;
                 }
-                uri_within_any(uri, &legacy_dirs)
+                any_dir_contains_uri(uri, &legacy_dirs)
             })
             .cloned()
             .collect();

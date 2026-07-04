@@ -8,7 +8,7 @@ use lsp_types::{
 use tracing::{error, trace};
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::document::apply_content_change;
-use witcherscript_language::files::uri_within_any;
+use witcherscript_language::files::any_dir_contains_uri;
 use witcherscript_language::line_index::LineIndex;
 
 use crate::backend::Backend;
@@ -31,7 +31,7 @@ impl Backend {
         let legacy_dirs = self.effective_legacy_dirs();
         let reindexed = self.update_open_document(uri.clone(), params.text_document.text);
         // A reused (byte-identical) open changes no override map, and already notified internally.
-        if reindexed && uri_within_any(uri.as_str(), &legacy_dirs) {
+        if reindexed && any_dir_contains_uri(uri.as_str(), &legacy_dirs) {
             self.refresh_legacy_override_maps();
         }
         self.publish_legacy_script_status();
@@ -224,7 +224,7 @@ impl Backend {
                     .base
                     .workspace_documents
                     .keys()
-                    .filter(|uri| uri_within_any(uri, &removed))
+                    .filter(|uri| any_dir_contains_uri(uri, &removed))
                     .cloned()
                     .collect();
                 let docs = builder.workspace_documents_mut();

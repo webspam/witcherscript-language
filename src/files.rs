@@ -17,7 +17,7 @@ pub fn canonical_uri(uri: &Url) -> String {
         .map_or_else(|| uri.to_string(), |u| u.to_string())
 }
 
-pub fn uri_within_any(uri: &str, dirs: &[PathBuf]) -> bool {
+pub fn any_dir_contains_uri(uri: &str, dirs: &[PathBuf]) -> bool {
     let Some(path) = Url::parse(uri).ok().and_then(|u| u.to_file_path().ok()) else {
         return false;
     };
