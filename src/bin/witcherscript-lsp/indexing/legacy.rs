@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use lsp_types::Url;
 use witcherscript_language::document::ParsedDocument;
-use witcherscript_language::files::canonical_uri;
+use witcherscript_language::files::{any_dir_contains_uri, canonical_uri};
 
 use crate::backend::Backend;
 
@@ -98,13 +98,6 @@ impl Backend {
         changed
     }
 
-    fn uri_under_legacy_dirs(uri: &str, legacy_dirs: &[PathBuf]) -> bool {
-        Url::parse(uri)
-            .ok()
-            .and_then(|u| u.to_file_path().ok())
-            .is_some_and(|path| legacy_dirs.iter().any(|dir| path.starts_with(dir)))
-    }
-
     // Pairing must see open legacy overrides; those live in workspace_index, not workspace_documents.
     fn legacy_uris_in_workspace_index(&self) -> Vec<String> {
         let legacy_dirs = self.effective_legacy_dirs();
@@ -115,7 +108,7 @@ impl Backend {
             .workspace_index
             .documents()
             .map(|(uri, _)| uri.to_string())
-            .filter(|uri| Self::uri_under_legacy_dirs(uri, &legacy_dirs))
+            .filter(|uri| any_dir_contains_uri(uri, &legacy_dirs))
             .collect()
     }
 
@@ -138,7 +131,7 @@ impl Backend {
 
     pub(crate) fn refresh_legacy_override_maps_if_legacy_uri(&self, uri: &Url) {
         let legacy_dirs = self.effective_legacy_dirs();
-        if Self::uri_under_legacy_dirs(uri.as_str(), &legacy_dirs) {
+        if any_dir_contains_uri(uri.as_str(), &legacy_dirs) {
             self.refresh_legacy_override_maps();
         }
     }
@@ -157,7 +150,7 @@ impl Backend {
                 if current.contains(*uri) || open_canonical.contains(*uri) {
                     return false;
                 }
-                Self::uri_under_legacy_dirs(uri, &legacy_dirs)
+                any_dir_contains_uri(uri, &legacy_dirs)
             })
             .cloned()
             .collect();

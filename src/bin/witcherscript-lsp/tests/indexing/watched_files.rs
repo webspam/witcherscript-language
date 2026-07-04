@@ -1,9 +1,11 @@
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use lsp_types::{FileChangeType, FileEvent, Url};
-use witcherscript_language::files::ExcludeFilter;
+use witcherscript_language::files::{ExcludeFilter, canonical_uri};
 
+use super::legacy_helpers::write_script;
+use crate::tests::support::{LocalTempDir, make_backend};
 use crate::watcher::{WatchedEvent, classify_watched_event};
 
 fn event(uri: &str, typ: FileChangeType) -> FileEvent {
@@ -139,6 +141,90 @@ fn skips_event_for_non_ws_extension() {
         &no_filter(),
     );
     assert_eq!(decision, None);
+}
+
+#[test]
+fn deleted_directory_event_returns_remove_tree() {
+    let url = Url::from_file_path(workspace_root().join("pack")).expect("dir uri builds");
+    let decision = classify_watched_event(
+        &event(url.as_str(), FileChangeType::DELETED),
+        &HashSet::new(),
+        &no_filter(),
+    );
+    assert!(
+        matches!(decision, Some(WatchedEvent::RemoveTree { .. })),
+        "a deleted directory must classify as a tree removal, got {decision:?}"
+    );
+}
+
+#[test]
+fn deleted_excluded_tree_is_skipped() {
+    let url = Url::from_file_path(workspace_root().join("vendor/cache")).expect("dir uri builds");
+    let filter = ExcludeFilter::new(&[workspace_root()], &["vendor/**".to_string()]);
+    let decision = classify_watched_event(
+        &event(url.as_str(), FileChangeType::DELETED),
+        &HashSet::new(),
+        &filter,
+    );
+    assert_eq!(
+        decision, None,
+        "a deleted path under an excluded tree must not trigger a removal scan"
+    );
+}
+
+#[test]
+fn directory_delete_drops_indexed_files_under_it() {
+    let temp = LocalTempDir::new("ws_dir_delete_prefix");
+    let backend = make_backend();
+    backend.set_workspace_roots(vec![temp.path().to_path_buf()]);
+
+    let nested = write_script(temp.path(), "pack/sub/A.ws", "class CA {}\n");
+    let direct = write_script(temp.path(), "pack/B.ws", "class CB {}\n");
+    let outside = write_script(temp.path(), "other/C.ws", "class CC {}\n");
+    let file_event = |path: &Path, typ| FileEvent {
+        uri: Url::from_file_path(path).expect("path -> url"),
+        typ,
+    };
+    backend.apply_watched_file_events(vec![
+        file_event(&nested, FileChangeType::CREATED),
+        file_event(&direct, FileChangeType::CREATED),
+        file_event(&outside, FileChangeType::CREATED),
+    ]);
+    let canon = |path: &Path| canonical_uri(&Url::from_file_path(path).expect("path -> url"));
+    assert!(
+        backend
+            .snapshot()
+            .workspace_documents
+            .contains_key(&canon(&nested)),
+        "sanity: upserted file must be indexed before the directory delete"
+    );
+
+    std::fs::remove_dir_all(temp.path().join("pack")).expect("delete pack dir");
+    backend.apply_watched_file_events(vec![file_event(
+        &temp.path().join("pack"),
+        FileChangeType::DELETED,
+    )]);
+
+    let snap = backend.snapshot();
+    assert!(
+        !snap.workspace_documents.contains_key(&canon(&nested)),
+        "nested file under deleted directory must leave the index"
+    );
+    assert!(
+        !snap.workspace_documents.contains_key(&canon(&direct)),
+        "direct child of deleted directory must leave the index"
+    );
+    assert!(
+        snap.workspace_documents.contains_key(&canon(&outside)),
+        "file outside the deleted directory must remain indexed"
+    );
+    assert!(
+        !backend
+            .workspace_known_files
+            .lock()
+            .contains(&canon(&nested)),
+        "known-files bookkeeping must drop files under the deleted directory"
+    );
 }
 
 #[test]

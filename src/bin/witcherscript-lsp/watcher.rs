@@ -5,12 +5,12 @@ use std::time::Instant;
 use lsp_types::request::RegisterCapability;
 use lsp_types::{
     DidChangeWatchedFilesRegistrationOptions, FileChangeType, FileEvent, FileSystemWatcher,
-    GlobPattern, Registration, RegistrationParams,
+    GlobPattern, Registration, RegistrationParams, WatchKind,
 };
 use tracing::{debug, trace, warn};
 use witcherscript_language::document::parse_document;
 use witcherscript_language::files::{
-    ExcludeFilter, canonical_uri, is_witcherscript_file, read_text_file,
+    ExcludeFilter, any_dir_contains_uri, canonical_uri, is_witcherscript_file, read_text_file,
 };
 
 use crate::backend::Backend;
@@ -39,6 +39,7 @@ pub(crate) fn event_touches_legacy_dir(event: &FileEvent, legacy_dirs: &[PathBuf
 pub(crate) enum WatchedEvent {
     Upsert { canonical: String, path: PathBuf },
     Remove { canonical: String },
+    RemoveTree { path: PathBuf },
 }
 
 pub(crate) fn classify_watched_event(
@@ -47,7 +48,11 @@ pub(crate) fn classify_watched_event(
     filter: &ExcludeFilter,
 ) -> Option<WatchedEvent> {
     let path = event.uri.to_file_path().ok()?;
+    // Assume we are only watching scripts and directories
     if !is_witcherscript_file(&path) {
+        if event.typ == FileChangeType::DELETED && !filter.matches(&path) {
+            return Some(WatchedEvent::RemoveTree { path });
+        }
         return None;
     }
     let canonical = canonical_uri(&event.uri);
@@ -79,6 +84,11 @@ impl Backend {
                     glob_pattern: GlobPattern::String(format!("**/{MANIFEST_FILENAME}")),
                     kind: None,
                 },
+                // Deleted folder emits one event for the folder path - only ** sees it
+                FileSystemWatcher {
+                    glob_pattern: GlobPattern::String("**".to_string()),
+                    kind: Some(WatchKind::Delete),
+                },
             ],
         };
         let registration = Registration {
@@ -101,6 +111,37 @@ impl Backend {
                 "failed to register file watcher; workspace index may go stale on external file changes"
             );
         }
+    }
+
+    fn removals_for_deleted_trees(
+        &self,
+        tree_dirs: &[PathBuf],
+        open_canonical: &HashSet<String>,
+    ) -> HashSet<String> {
+        let under =
+            |uri: &str| any_dir_contains_uri(uri, tree_dirs) && !open_canonical.contains(uri);
+        let mut dropped: HashSet<String> = self
+            .workspace_known_files
+            .lock()
+            .iter()
+            .filter(|uri| under(uri))
+            .cloned()
+            .collect();
+        dropped.extend(
+            self.snapshot()
+                .workspace_documents
+                .keys()
+                .filter(|uri| under(uri))
+                .cloned(),
+        );
+        if !dropped.is_empty() {
+            trace!(
+                dirs = ?tree_dirs,
+                files = dropped.len(),
+                "watched directories deleted; removing indexed files under them",
+            );
+        }
+        dropped
     }
 
     pub(crate) fn apply_watched_file_events(&self, events: Vec<FileEvent>) {
@@ -126,6 +167,7 @@ impl Backend {
         let mut updates: Vec<(String, witcherscript_language::document::ParsedDocument)> =
             Vec::new();
         let mut removals: Vec<String> = Vec::new();
+        let mut tree_dirs: Vec<PathBuf> = Vec::new();
         let mut legacy_map_refresh = false;
 
         for event in ws_events {
@@ -162,7 +204,18 @@ impl Backend {
                         legacy_map_refresh = true;
                     }
                 }
+                WatchedEvent::RemoveTree { path } => {
+                    let contains_legacy_dir = legacy_dirs.iter().any(|dir| dir.starts_with(&path));
+                    if touches_legacy || contains_legacy_dir {
+                        legacy_map_refresh = true;
+                    }
+                    tree_dirs.push(path);
+                }
             }
+        }
+
+        if !tree_dirs.is_empty() {
+            removals.extend(self.removals_for_deleted_trees(&tree_dirs, &open_canonical));
         }
 
         let had_updates = !updates.is_empty();

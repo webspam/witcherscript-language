@@ -3,22 +3,16 @@ use std::time::Instant;
 
 use lsp_types::{
     DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidChangeWorkspaceFoldersParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, Url,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams,
 };
 use tracing::{error, trace};
 use witcherscript_language::builtins::builtin_source;
 use witcherscript_language::document::apply_content_change;
+use witcherscript_language::files::any_dir_contains_uri;
 use witcherscript_language::line_index::LineIndex;
 
 use crate::backend::Backend;
 use crate::convert::{source_position, source_range};
-
-fn uri_within_any(uri: &str, dirs: &[PathBuf]) -> bool {
-    let Some(path) = Url::parse(uri).ok().and_then(|u| u.to_file_path().ok()) else {
-        return false;
-    };
-    dirs.iter().any(|dir| path.starts_with(dir))
-}
 
 impl Backend {
     pub(crate) fn _did_open(&self, params: DidOpenTextDocumentParams) {
@@ -37,7 +31,7 @@ impl Backend {
         let legacy_dirs = self.effective_legacy_dirs();
         let reindexed = self.update_open_document(uri.clone(), params.text_document.text);
         // A reused (byte-identical) open changes no override map, and already notified internally.
-        if reindexed && uri_within_any(uri.as_str(), &legacy_dirs) {
+        if reindexed && any_dir_contains_uri(uri.as_str(), &legacy_dirs) {
             self.refresh_legacy_override_maps();
         }
         self.publish_legacy_script_status();
@@ -230,7 +224,7 @@ impl Backend {
                     .base
                     .workspace_documents
                     .keys()
-                    .filter(|uri| uri_within_any(uri, &removed))
+                    .filter(|uri| any_dir_contains_uri(uri, &removed))
                     .cloned()
                     .collect();
                 let docs = builder.workspace_documents_mut();
