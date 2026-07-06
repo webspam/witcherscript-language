@@ -2,4 +2,7 @@
 source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
 expression: session.diagnostics(&rel).await
 ---
-[]
+- range: "102:36-102:95"
+  severity: error
+  code: cast_in_var_init
+  message: Type casts are not allowed in local variable initializers
