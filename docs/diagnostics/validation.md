@@ -45,6 +45,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 37  | `struct_property_on_temporary`     | error    | `f().x` accesses a struct property on a function result                                            |
 | 38  | `arg_count_mismatch`               | error    | A call passes too few or too many arguments for the callee's parameters                            |
 | 39  | `parent_outside_state`             | error    | `parent` / `virtual_parent` used outside a state method                                            |
+| 40  | `cast_in_var_init`                 | error    | An explicit cast appears anywhere in a local `var` initializer                                     |
 
 ## Details
 
@@ -266,3 +267,7 @@ A function, method, or event call that does not satisfy the callee's parameters:
 ### 39. parent / virtual_parent outside a state
 
 `parent` and `virtual_parent` resolve against a state's owner class, so they are only valid inside a state method.
+
+### 40. Cast in a local var initializer
+
+An explicit cast in a local `var` initializer, e.g. `var spot : CSpot = (CSpot)target;`

@@ -23,6 +23,10 @@ use crate::test_support::TestDb;
 #[case::accepts_ident_default_in_block(
     "class C {\n  var e : int;\n  defaults {\n    e = SOME_ENUM_MEMBER;\n  }\n}\n"
 )]
+#[case::accepts_cast_assigned_after_var_decl(
+    "function F() {\n  var spot : CSpot;\n  spot = (CSpot)target;\n}\n"
+)]
+#[case::accepts_non_cast_initializer("function F() {\n  var n : int = 1 + 2;\n}\n")]
 fn does_not_fire(#[case] source: &str) {
     let t = TestDb::new(source);
     let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
@@ -49,6 +53,35 @@ fn reports_access_modifier_on_struct_property(#[case] source: &str, #[case] keyw
         &source[d.byte_range.clone()],
         keyword,
         "diagnostic should underline only the {keyword} keyword"
+    );
+}
+
+#[rstest]
+#[case::bare_cast_of_ident("(CSpot)target", &["(CSpot)target"])]
+#[case::bare_cast_of_call(
+    "(CAudioComponent)host.GetComponentByName('X')",
+    &["(CAudioComponent)host.GetComponentByName('X')"]
+)]
+#[case::bare_cast_of_parenthesized("(int)(a + b)", &["(int)(a + b)"])]
+#[case::cast_left_of_binary("(int)x + 1", &["(int)x"])]
+#[case::cast_inside_parens("(a + (CSpot)b)", &["(CSpot)b"])]
+#[case::multiple_casts_buried_deep(
+    "f((int)a, (name)b) + ((CSpot)c).count * (float)d",
+    &["(int)a", "(name)b", "(CSpot)c", "(float)d"]
+)]
+fn reports_cast_in_var_init(#[case] init: &str, #[case] expected_casts: &[&str]) {
+    let source = format!("function F() {{\n  var v : CSpot = {init};\n}}\n");
+    let t = TestDb::new(&source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), &source);
+
+    let underlined: Vec<&str> = diagnostics
+        .iter()
+        .filter(|d| d.kind == "cast_in_var_init")
+        .map(|d| &source[d.byte_range.clone()])
+        .collect();
+    assert_eq!(
+        underlined, expected_casts,
+        "every cast in the initializer should be flagged and underlined"
     );
 }
 

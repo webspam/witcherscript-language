@@ -53,6 +53,7 @@ pub use unused_symbol::{KIND as UNUSED_SYMBOL_KIND, collect_unused_symbol_diagno
 pub use wrapped_method::collect_wrapped_method_diagnostics;
 
 use crate::cst::ancestors::find_ancestor_of_kind;
+use crate::cst::descendants::collect_descendants_of_kind;
 use crate::cst::walk::{CstVisitor, Visit, walk};
 use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
@@ -275,6 +276,9 @@ impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
         if node.kind() == kinds::STRUCT_DEF {
             collect_struct_prop_access_modifiers(node, self.source, &mut self.diagnostics);
         }
+        if node.kind() == kinds::LOCAL_VAR_DECL_STMT {
+            collect_cast_in_var_init(node, self.source, &mut self.diagnostics);
+        }
         Visit::Children
     }
 }
@@ -348,6 +352,22 @@ fn collect_non_constant_default(
             source,
             "non_constant_default",
             "'default' values must be compile-time constants; calls and 'new' are not",
+        ));
+    }
+}
+
+fn collect_cast_in_var_init(decl: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>) {
+    let Some(init_value) = decl.child_by_field_name(fields::INIT_VALUE) else {
+        return;
+    };
+    let mut casts = Vec::new();
+    collect_descendants_of_kind(init_value, &[kinds::CAST_EXPR], &mut casts);
+    for cast in casts {
+        diagnostics.push(syntax_diagnostic(
+            cast,
+            source,
+            "cast_in_var_init",
+            "Type casts are not allowed in local variable initializers",
         ));
     }
 }
