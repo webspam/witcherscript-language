@@ -27,6 +27,10 @@ use crate::test_support::TestDb;
     "function F() {\n  var spot : CSpot;\n  spot = (CSpot)target;\n}\n"
 )]
 #[case::accepts_non_cast_initializer("function F() {\n  var n : int = 1 + 2;\n}\n")]
+#[case::accepts_primitive_cast_initializer("function F() {\n  var n : int = (int)x;\n}\n")]
+#[case::accepts_nested_primitive_cast_initializer(
+    "function F() {\n  var n : int = (int)(bool)(string)x;\n}\n"
+)]
 fn does_not_fire(#[case] source: &str) {
     let t = TestDb::new(source);
     let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
@@ -57,17 +61,20 @@ fn reports_access_modifier_on_struct_property(#[case] source: &str, #[case] keyw
 }
 
 #[rstest]
-#[case::bare_cast_of_ident("(CSpot)target", &["(CSpot)target"])]
-#[case::bare_cast_of_call(
+#[case::class_cast_of_ident("(CSpot)target", &["(CSpot)target"])]
+#[case::class_cast_of_call(
     "(CAudioComponent)host.GetComponentByName('X')",
     &["(CAudioComponent)host.GetComponentByName('X')"]
 )]
-#[case::bare_cast_of_parenthesized("(int)(a + b)", &["(int)(a + b)"])]
-#[case::cast_left_of_binary("(int)x + 1", &["(int)x"])]
-#[case::cast_inside_parens("(a + (CSpot)b)", &["(CSpot)b"])]
-#[case::multiple_casts_buried_deep(
-    "f((int)a, (name)b) + ((CSpot)c).count * (float)d",
-    &["(int)a", "(name)b", "(CSpot)c", "(float)d"]
+#[case::pascal_alias_int("(Int32)x", &["(Int32)x"])]
+#[case::pascal_alias_name("(CName)x", &["(CName)x"])]
+#[case::enum_cast("(ELightShadowCastingMode)x", &["(ELightShadowCastingMode)x"])]
+#[case::struct_cast("(Vector)vec", &["(Vector)vec"])]
+#[case::class_cast_inside_parens("(a + (CSpot)b)", &["(CSpot)b"])]
+#[case::inner_class_cast_only("(int)((CSpot)c).count", &["(CSpot)c"])]
+#[case::primitives_skipped_non_primitives_flagged(
+    "f((int)a, (Vector)b) + ((CSpot)c).count * (float)d",
+    &["(Vector)b", "(CSpot)c"]
 )]
 fn reports_cast_in_var_init(#[case] init: &str, #[case] expected_casts: &[&str]) {
     let source = format!("function F() {{\n  var v : CSpot = {init};\n}}\n");

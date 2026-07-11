@@ -356,6 +356,9 @@ fn collect_non_constant_default(
     }
 }
 
+// The compiler accepts only these spellings as a cast target; aliases like `Int32`/`CName` are rejected.
+const PRIMITIVE_CAST_TARGETS: &[&str] = &["bool", "byte", "int", "float", "name", "string"];
+
 fn collect_cast_in_var_init(decl: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>) {
     let Some(init_value) = decl.child_by_field_name(fields::INIT_VALUE) else {
         return;
@@ -363,13 +366,22 @@ fn collect_cast_in_var_init(decl: Node, source: &str, diagnostics: &mut Vec<Pars
     let mut casts = Vec::new();
     collect_descendants_of_kind(init_value, &[kinds::CAST_EXPR], &mut casts);
     for cast in casts {
+        if cast_targets_primitive(cast, source) {
+            continue;
+        }
         diagnostics.push(syntax_diagnostic(
             cast,
             source,
             "cast_in_var_init",
-            "Type casts are not allowed in local variable initializers",
+            "Only casts to primitive types are allowed in local variable initializers",
         ));
     }
+}
+
+fn cast_targets_primitive(cast: Node, source: &str) -> bool {
+    cast.child_by_field_name(fields::TYPE)
+        .and_then(|target| target.utf8_text(source.as_bytes()).ok())
+        .is_some_and(|name| PRIMITIVE_CAST_TARGETS.contains(&name))
 }
 
 fn collect_late_local_vars_in_block(
