@@ -3,9 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use lsp_types::{
-    DidCloseTextDocumentParams, PartialResultParams, PreviousResultId, TextDocumentIdentifier, Url,
-    WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
-    WorkspaceDocumentDiagnosticReport,
+    DidCloseTextDocumentParams, TextDocumentIdentifier, Url, WorkspaceDocumentDiagnosticReport,
 };
 
 use super::legacy_helpers::write_script;

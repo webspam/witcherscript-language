@@ -1,6 +1,3 @@
-use witcherscript_language::document::parse_document;
-use witcherscript_language::resolve::WorkspaceIndex;
-
 use crate::tests::support::LocalTempDir;
 
 #[test]
