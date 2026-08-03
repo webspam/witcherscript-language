@@ -108,7 +108,7 @@ impl LoadedWorkspace {
 
     // Workspace-relative, forward-slashed identity; an URL outside the tree is tagged so a leak is visible, not silently nondeterministic.
     pub(crate) fn relativize(&self, url: &Url) -> String {
-        let Ok(path) = url.to_file_path() else {
+        let (Ok(path), "file") = (url.to_file_path(), url.scheme()) else {
             return url.as_str().to_string();
         };
         let path_str = path.to_string_lossy().replace('\\', "/");
