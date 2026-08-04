@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::result::Result;
 use std::sync::Arc;
 
 use lsp_types::Url;
@@ -80,11 +82,24 @@ pub(crate) fn build_index_segments(
     segments
 }
 
+fn find_mods_dir_ci(game_dir: &Path) -> Option<PathBuf> {
+    Some(game_dir.join("Mods"))
+        .filter(|it| it.is_dir())
+        .or_else(|| {
+            fs::read_dir(game_dir)
+                .ok()?
+                .filter_map(Result::ok)
+                .find(|e| e.file_name().eq_ignore_ascii_case("Mods") && e.path().is_dir())
+                .map(|e| e.path())
+        })
+}
+
 // modSharedImports ships replacement scripts, so it is indexed as a legacy
 // script dir rather than a base overlay.
 pub(crate) fn mod_shared_imports_dir(game_dir: &Path) -> Option<PathBuf> {
-    let msi = game_dir.join(r"Mods/modSharedImports");
-    msi.is_dir().then_some(msi)
+    find_mods_dir_ci(game_dir)
+        .map(|it| it.join("modSharedImports"))
+        .filter(|it| it.is_dir())
 }
 
 pub(crate) fn index_open_document(

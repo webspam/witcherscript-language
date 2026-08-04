@@ -107,6 +107,17 @@ fn mod_shared_imports_dir_detects_present_dir() {
 }
 
 #[test]
+fn mod_shared_imports_dir_detects_present_uppercase_dir() {
+    let temp = LocalTempDir::new("ws_test_msi_detect_uppercsae");
+    let msi = temp.path().join("MODS").join("modSharedImports");
+    std::fs::create_dir_all(&msi).expect("mkdir mods");
+    assert_eq!(
+        crate::indexing::mod_shared_imports_dir(temp.path()).as_deref(),
+        Some(msi.as_path())
+    );
+}
+
+#[test]
 fn mod_shared_imports_dir_none_when_absent() {
     let game_dir = std::env::temp_dir().join("ws_test_msi_absent");
     std::fs::remove_dir_all(game_dir.join("Mods")).ok();
