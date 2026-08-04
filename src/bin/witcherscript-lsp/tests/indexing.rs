@@ -51,7 +51,7 @@ fn base_scripts_dir_derives_from_game_directory() {
     backend.update_config(|c| c.game_directory = Some(game_dir.clone()));
     assert_eq!(
         backend.base_scripts_dir(),
-        Some(game_dir.join(r"content\content0\scripts")),
+        Some(game_dir.join(r"content/content0/scripts")),
         "without an override the scripts subpath is appended to the game directory"
     );
 }

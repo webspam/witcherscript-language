@@ -83,7 +83,7 @@ pub(crate) fn build_index_segments(
 // modSharedImports ships replacement scripts, so it is indexed as a legacy
 // script dir rather than a base overlay.
 pub(crate) fn mod_shared_imports_dir(game_dir: &Path) -> Option<PathBuf> {
-    let msi = game_dir.join(r"Mods\modSharedImports");
+    let msi = game_dir.join(r"Mods/modSharedImports");
     msi.is_dir().then_some(msi)
 }
 

@@ -45,7 +45,7 @@ use crate::semantic_tokens_cache::CachedSemanticTokens;
 
 pub(crate) type Result<T> = std::result::Result<T, ResponseError>;
 
-const BASE_SCRIPTS_SUBDIR: &str = r"content\content0\scripts";
+const BASE_SCRIPTS_SUBDIR: &str = r"content/content0/scripts";
 
 // The diagnosed set excludes read-only base scripts, so it cannot reuse merge_documents.
 pub(crate) fn diagnostics_document_set<'a>(
