@@ -109,12 +109,27 @@ fn mod_shared_imports_dir_detects_present_dir() {
 }
 
 #[test]
+#[cfg(windows)]
 fn mod_shared_imports_dir_detects_present_uppercase_dir() {
     let temp = LocalTempDir::new("ws_test_msi_detect_uppercase");
     let msi = temp.path().join("MODS").join("modSharedImports");
     std::fs::create_dir_all(&msi).expect("mkdir mods");
     assert_eq!(
         crate::indexing::mod_shared_imports_dir(temp.path()).as_deref(),
+        // on case-insensitive filesystems we find the default path
+        Some(temp.path().join("Mods").join("modSharedImports").as_path())
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn mod_shared_imports_dir_detects_present_uppercase_dir() {
+    let temp = LocalTempDir::new("ws_test_msi_detect_uppercase");
+    let msi = temp.path().join("MODS").join("modSharedImports");
+    std::fs::create_dir_all(&msi).expect("mkdir mods");
+    assert_eq!(
+        crate::indexing::mod_shared_imports_dir(temp.path()).as_deref(),
+        // on case-sensitive filesystems we find the actual path
         Some(msi.as_path())
     );
 }
