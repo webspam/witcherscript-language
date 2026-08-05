@@ -108,7 +108,7 @@ fn mod_shared_imports_dir_detects_present_dir() {
 
 #[test]
 fn mod_shared_imports_dir_detects_present_uppercase_dir() {
-    let temp = LocalTempDir::new("ws_test_msi_detect_uppercsae");
+    let temp = LocalTempDir::new("ws_test_msi_detect_uppercase");
     let msi = temp.path().join("MODS").join("modSharedImports");
     std::fs::create_dir_all(&msi).expect("mkdir mods");
     assert_eq!(
