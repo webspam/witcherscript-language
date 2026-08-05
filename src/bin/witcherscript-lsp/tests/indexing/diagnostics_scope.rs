@@ -3,9 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use lsp_types::{
-    DidCloseTextDocumentParams, PartialResultParams, PreviousResultId, TextDocumentIdentifier, Url,
-    WorkDoneProgressParams, WorkspaceDiagnosticParams, WorkspaceDiagnosticReportResult,
-    WorkspaceDocumentDiagnosticReport,
+    DidCloseTextDocumentParams, TextDocumentIdentifier, Url, WorkspaceDocumentDiagnosticReport,
 };
 
 use super::legacy_helpers::write_script;
@@ -586,6 +584,11 @@ async fn workspace_pull_explicitly_clears_files_that_left_the_diagnosed_set() {
 #[cfg(windows)]
 #[tokio::test]
 async fn workspace_pull_matches_previous_result_ids_in_client_uri_form() {
+    use lsp_types::{
+        PartialResultParams, PreviousResultId, WorkDoneProgressParams, WorkspaceDiagnosticParams,
+        WorkspaceDiagnosticReportResult,
+    };
+
     let temp = LocalTempDir::new("ws_canonicalize_previous");
     let path = write_script(temp.path(), "Bad.ws", "class CBad {\n");
     let url = Url::from_file_path(&path).expect("path -> url");
