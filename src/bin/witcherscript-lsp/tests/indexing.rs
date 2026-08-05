@@ -6,6 +6,8 @@ fn opening_a_workspace_indexed_file_does_not_self_conflict() {
     use crate::indexing::index_open_document;
     use lsp_types::Url;
     use witcherscript_language::diagnostics::collect_duplicate_symbol_diagnostics;
+    use witcherscript_language::document::parse_document;
+    use witcherscript_language::resolve::WorkspaceIndex;
 
     let document = parse_document("function Foo() {}\n").expect("document should parse");
     let mut index = WorkspaceIndex::default();
