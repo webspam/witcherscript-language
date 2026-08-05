@@ -53,7 +53,7 @@ fn base_scripts_dir_derives_from_game_directory() {
     backend.update_config(|c| c.game_directory = Some(game_dir.clone()));
     assert_eq!(
         backend.base_scripts_dir(),
-        Some(game_dir.join(r"content\content0\scripts")),
+        Some(game_dir.join(r"content/content0/scripts")),
         "without an override the scripts subpath is appended to the game directory"
     );
 }
@@ -104,6 +104,32 @@ fn mod_shared_imports_dir_detects_present_dir() {
     std::fs::create_dir_all(&msi).expect("mkdir mods");
     assert_eq!(
         crate::indexing::mod_shared_imports_dir(temp.path()).as_deref(),
+        Some(msi.as_path())
+    );
+}
+
+#[test]
+#[cfg(windows)]
+fn mod_shared_imports_dir_detects_present_uppercase_dir() {
+    let temp = LocalTempDir::new("ws_test_msi_detect_uppercase");
+    let msi = temp.path().join("MODS").join("modSharedImports");
+    std::fs::create_dir_all(&msi).expect("mkdir mods");
+    assert_eq!(
+        crate::indexing::mod_shared_imports_dir(temp.path()).as_deref(),
+        // on case-insensitive filesystems we find the default path
+        Some(temp.path().join("Mods").join("modSharedImports").as_path())
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn mod_shared_imports_dir_detects_present_uppercase_dir() {
+    let temp = LocalTempDir::new("ws_test_msi_detect_uppercase");
+    let msi = temp.path().join("MODS").join("modSharedImports");
+    std::fs::create_dir_all(&msi).expect("mkdir mods");
+    assert_eq!(
+        crate::indexing::mod_shared_imports_dir(temp.path()).as_deref(),
+        // on case-sensitive filesystems we find the actual path
         Some(msi.as_path())
     );
 }

@@ -194,7 +194,7 @@ impl Backend {
         }
 
         if let Some(gd) = &game_dir_opt {
-            let env = parse_script_environment(&gd.join(r"bin\redscripts.ini"));
+            let env = parse_script_environment(&gd.join(r"bin/redscripts.ini"));
             self.publish_compilation(|builder| {
                 *builder.script_env_mut() = env;
             });
