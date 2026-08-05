@@ -54,8 +54,6 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - uses: taiki-e/install-action@bafb217ce243dd135aa0204d91238f387d005863 # just
-
       - name: Fetch dependencies (locked)
         run: cargo fetch --locked
 
@@ -63,7 +61,7 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy
-        run: just clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings -A clippy::pedantic
 
   test:
     name: Test (${{ matrix.os }})
@@ -81,10 +79,9 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
 
       - uses: taiki-e/install-action@2a864fa5714510ad0573d2f22ecd17bce6156699 # nextest
-      - uses: taiki-e/install-action@bafb217ce243dd135aa0204d91238f387d005863 # just
 
       - name: Test
-        run: just test
+        run: cargo nextest run
 
   bench:
     name: Bench (iai-callgrind)
