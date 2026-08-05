@@ -35,8 +35,7 @@ Annotation lines are stripped before parsing, so positions reference the *stripp
 ## Running tests
 
 ```
-just precommit # cargo fmt + cargo clippy + cargo nextest run
-just ci        # cargo fmt --check + cargo clippy -D warnings + cargo nextest run
+just precommit # runs fmt, clippy, and tests
 ```
 
 - After changing an output formatter (hover markdown, snippet, diagnostic message): `UPDATE_EXPECT=1 cargo test` rewrites stale `expect![[]]` literals.

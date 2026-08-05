@@ -35,12 +35,6 @@ precommit: fmt clippy
     cargo nextest run
     @echo "Agent reminder: if clippy errors occurred, use 'just clippy-fix'"
 
-# Run CI checks - skips clippy pedantic
-ci:
-    cargo fmt --all -- --check
-    cargo clippy --all-targets --all-features -- -D warnings -A clippy::pedantic
-    cargo nextest run
-
 # Build dev binary
 build:
     cargo build
