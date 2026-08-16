@@ -43,8 +43,10 @@ pub fn member_completion_replace_range(
         .position_to_byte(&document.source, position)?;
     let access_node = member_access_node_at(document, byte_offset)?;
     let (start, end) = match member_access_member(access_node) {
-        Some(member) => (member.start_byte(), member.end_byte()),
-        None => (byte_offset, byte_offset),
+        Some(member) if member.start_byte() <= byte_offset => {
+            (member.start_byte(), member.end_byte())
+        }
+        _ => (byte_offset, byte_offset),
     };
     Some(
         document
