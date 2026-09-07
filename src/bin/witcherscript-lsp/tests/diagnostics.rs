@@ -41,6 +41,23 @@ fn ternary_diagnostic_maps_to_warning() {
 }
 
 #[test]
+fn hex_default_diagnostic_maps_to_warning() {
+    let t = TestDb::new("class C {\n  var x : int;\n  default x = 0x1;\n}\n");
+    let diagnostics = lsp_diagnostics(t.primary_doc());
+
+    let hex = diagnostics
+        .iter()
+        .find(|d| {
+            d.code
+                == Some(lsp_types::NumberOrString::String(
+                    "hex_default_zero".to_string(),
+                ))
+        })
+        .expect("expected a hex_default_zero diagnostic");
+    assert_eq!(hex.severity, Some(lsp_types::DiagnosticSeverity::WARNING));
+}
+
+#[test]
 fn signature_help_response_maps_label_offsets_and_active_parameter() {
     let info = SignatureHelpInfo {
         label: "Find(name : string, range : float)".to_string(),

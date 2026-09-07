@@ -19,6 +19,9 @@ use crate::test_support::TestDb;
 #[case::accepts_event_returning_value("class C {\n  event OnHit() {\n    return true;\n  }\n}\n")]
 #[case::accepts_bare_return_in_function("class C {\n  function F() {\n    return;\n  }\n}\n")]
 #[case::accepts_literal_default("class C {\n  var x : int;\n  default x = -1;\n}\n")]
+#[case::accepts_hex_literal_outside_default("function F() {\n  var x : int;\n  x = 0x1;\n}\n")]
+#[case::accepts_zero_hex_default("class C {\n  var x : int;\n  default x = 0x0;\n}\n")]
+#[case::accepts_padded_zero_hex_default("class C {\n  var x : int;\n  default x = 0x00000000;\n}\n")]
 #[case::accepts_name_literal_default("class C {\n  var n : name;\n  default n = 'Some';\n}\n")]
 #[case::accepts_ident_default_in_block(
     "class C {\n  var e : int;\n  defaults {\n    e = SOME_ENUM_MEMBER;\n  }\n}\n"
@@ -195,6 +198,29 @@ fn reports_non_constant_default(#[case] source: &str, #[case] underlined: &str) 
         &source[d.byte_range.clone()],
         underlined,
         "diagnostic should underline the value expression"
+    );
+}
+
+#[rstest]
+#[case::default_stmt("class C {\n  var x : int;\n  default x = 0x1;\n}\n", "0x1")]
+#[case::defaults_block(
+    "class C {\n  var x : int;\n  defaults {\n    x = 0xFF;\n  }\n}\n",
+    "0xFF"
+)]
+fn reports_hex_default_zero(#[case] source: &str, #[case] underlined: &str) {
+    let t = TestDb::new(source);
+    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
+
+    let found = diagnostics.iter().find(|d| d.kind == "hex_default_zero");
+    assert!(
+        found.is_some(),
+        "expected hex_default_zero diagnostic, got: {diagnostics:#?}"
+    );
+    let d = found.unwrap();
+    assert_eq!(
+        &source[d.byte_range.clone()],
+        underlined,
+        "diagnostic should underline the hex literal"
     );
 }
 

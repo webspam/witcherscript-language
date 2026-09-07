@@ -269,6 +269,7 @@ impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
             kinds::MEMBER_DEFAULT_VAL | kinds::MEMBER_DEFAULT_VAL_BLOCK_ASSIGN
         ) {
             collect_non_constant_default(node, self.source, &mut self.diagnostics);
+            collect_hex_default(node, self.source, &mut self.diagnostics);
         }
         if node.kind() == kinds::FUNC_BLOCK {
             collect_late_local_vars_in_block(node, self.source, &mut self.diagnostics);
@@ -354,6 +355,25 @@ fn collect_non_constant_default(
             "'default' values must be compile-time constants; calls and 'new' are not",
         ));
     }
+}
+
+fn collect_hex_default(default_val: Node, source: &str, diagnostics: &mut Vec<ParseDiagnostic>) {
+    let Some(value) = default_val.child_by_field_name(fields::VALUE) else {
+        return;
+    };
+    if value.kind() != kinds::LITERAL_HEX {
+        return;
+    }
+    let digits = &source[value.byte_range()][2..];
+    if digits.bytes().all(|b| b == b'0') {
+        return;
+    }
+    diagnostics.push(syntax_diagnostic(
+        value,
+        source,
+        "hex_default_zero",
+        "Hex notation in a class 'default' always sets the field to 0. Use normal decimal values.",
+    ));
 }
 
 // The compiler accepts only these spellings as a cast target; aliases like `Int32`/`CName` are rejected.

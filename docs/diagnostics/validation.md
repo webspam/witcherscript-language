@@ -46,6 +46,7 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 38  | `arg_count_mismatch`               | error    | A call passes too few or too many arguments for the callee's parameters                            |
 | 39  | `parent_outside_state`             | error    | `parent` / `virtual_parent` used outside a state method                                            |
 | 40  | `cast_in_var_init`                 | error    | A cast to a non-primitive type appears anywhere in a local `var` initializer                       |
+| 41  | `hex_default_zero`                 | warning  | A hex value in a class `default`, which always evaluates to 0                                      |
 
 ## Details
 
@@ -271,3 +272,7 @@ A function, method, or event call that does not satisfy the callee's parameters:
 ### 40. Cast in a local var initializer
 
 An explicit cast to a non-primitive type in a local `var` initializer, e.g. `var spot : CSpot = (CSpot)target;`
+
+### 41. Hex literal in a default value
+
+A hex literal in a `default` value. The compiler evaluates it to `0`.
