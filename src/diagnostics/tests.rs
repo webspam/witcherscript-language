@@ -21,7 +21,9 @@ use crate::test_support::TestDb;
 #[case::accepts_literal_default("class C {\n  var x : int;\n  default x = -1;\n}\n")]
 #[case::accepts_hex_literal_outside_default("function F() {\n  var x : int;\n  x = 0x1;\n}\n")]
 #[case::accepts_zero_hex_default("class C {\n  var x : int;\n  default x = 0x0;\n}\n")]
-#[case::accepts_padded_zero_hex_default("class C {\n  var x : int;\n  default x = 0x00000000;\n}\n")]
+#[case::accepts_padded_zero_hex_default(
+    "class C {\n  var x : int;\n  default x = 0x00000000;\n}\n"
+)]
 #[case::accepts_name_literal_default("class C {\n  var n : name;\n  default n = 'Some';\n}\n")]
 #[case::accepts_ident_default_in_block(
     "class C {\n  var e : int;\n  defaults {\n    e = SOME_ENUM_MEMBER;\n  }\n}\n"
