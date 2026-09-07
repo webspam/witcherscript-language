@@ -39,7 +39,7 @@ Each rule module owns its `#[cfg(test)] mod tests`.
 `collect_diagnostics(root, source)` runs `SyntaxDiagnostics` (a `CstVisitor`) in a single walk that always descends - missing tokens are often anonymous and must still be visited. `SyntaxDiagnostics::enter` appends a `ParseDiagnostic` for each match on the current node:
 
 - tree-sitter `is_error()` / `is_missing()` nodes (`Syntax error`, or `Missing {kind}`);
-- `incomplete_member_access_expr`, `ternary_cond_expr`, `string_linefeed`, `int_overflow` (int/hex literal past 32 bits), `event_return_not_void`, `event_bare_return`, `non_constant_default`, and `struct_property_access_modifier`;
+- `incomplete_member_access_expr`, `ternary_cond_expr`, `string_linefeed`, `int_overflow` (int/hex literal past 32 bits), `event_return_not_void`, `event_bare_return`, `non_constant_default`, `hex_default_zero`, and `struct_property_access_modifier`;
 - inside a `func_block`, a `local_var_decl_stmt` that appears after any executable statement (`late_local_var_decl`). `comment` and `nop` are not executable; the rule fires only inside `func_block`.
 
 Each emitted code, message, and severity is listed in [../diagnostics/validation.md](../diagnostics/validation.md).
@@ -56,7 +56,7 @@ The LSP serves diagnostics by pull (`textDocument/diagnostic` per URI, `workspac
 
 In `src/bin/witcherscript-lsp/convert/diagnostics.rs`. Every diagnostic carries `code = kind` and `source = "witcherscript"`.
 
-- `lsp_diagnostics` converts a document's `ParseDiagnostic`s, mapping `byte_range` through `LineIndex`; severity is `ERROR` for all except `ternary_cond_expr` (`WARNING`).
+- `lsp_diagnostics` converts a document's `ParseDiagnostic`s, mapping `byte_range` through `LineIndex`; severity is `ERROR` for all except `ternary_cond_expr` and `hex_default_zero` (`WARNING`).
 - `lsp_workspace_diagnostic` uses the `WorkspaceDiagnostic`'s own `Severity`, attaches the `Unnecessary` tag for `unused_symbol` (so editors fade it), and passes through `related` and `data`.
 - `base_script_conflict_code_actions` turns a `base_script_conflict`'s `data` into an "add to legacyScriptDirectories" quick fix.
 - `remove_unused_code_actions` turns an `unused_symbol`'s `data` (`removeRanges` + `noun`, computed in `unused_symbol/removal.rs`) into a "Remove unused param/var/field" quick fix that deletes the binding (plus comma/whitespace, and a field's dangling `default`/`hint` entries). Appended last in the code-action handler.

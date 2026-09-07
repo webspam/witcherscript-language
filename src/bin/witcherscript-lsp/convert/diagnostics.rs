@@ -25,7 +25,7 @@ pub(crate) fn lsp_diagnostics(document: &ParsedDocument) -> Vec<Diagnostic> {
                 diagnostic.byte_range.end,
             )),
             severity: Some(match diagnostic.kind.as_str() {
-                "ternary_cond_expr" => DiagnosticSeverity::WARNING,
+                "ternary_cond_expr" | "hex_default_zero" => DiagnosticSeverity::WARNING,
                 _ => DiagnosticSeverity::ERROR,
             }),
             code: Some(lsp_types::NumberOrString::String(diagnostic.kind.clone())),
