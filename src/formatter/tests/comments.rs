@@ -279,6 +279,59 @@ fn line_comment_before_brace_never_swallows_brace(#[case] input: &str) {
     );
 }
 
+// #326: Comment position changed by formatter
+#[test]
+fn line_comment_inside_split_if_condition_stays_between_operands() {
+    let src = "function f() {\n    if (\n        thePlayer &&\n        thePlayer.IsAlive() &&\n        // thePlayer.IsInCombat() &&\n        thePlayer.IsGuarded() &&\n        thePlayer.IsLockedToTarget()\n    ) {\n        thePlayer.DisplayHudMessage(\"HUD message\");\n    }\n}\n";
+    let output = fmt(src);
+    expect![[r#"
+        function f() {
+            if (
+                thePlayer &&
+                thePlayer.IsAlive() &&
+                // thePlayer.IsInCombat() &&
+                thePlayer.IsGuarded() &&
+                thePlayer.IsLockedToTarget()
+            ) {
+                thePlayer.DisplayHudMessage("HUD message");
+            }
+        }
+    "#]]
+    .assert_eq(&output);
+    assert_eq!(output, fmt(&output), "formatting must be idempotent");
+}
+
+#[test]
+fn split_if_condition_comment_never_reaches_block_brace() {
+    let src = "function f() {\n    if (\n        a &&\n        // note\n        b &&\n        c\n    ) {\n        doThing();\n    }\n}\n";
+    let output = fmt(src);
+    assert!(
+        !output.contains("// note\n    {") && !output.contains("// note {"),
+        "condition comment must not migrate to the block brace, got:\n{output}"
+    );
+}
+
+#[test]
+fn split_if_condition_multiple_comments_keep_operands_between() {
+    let src = "function f() {\n    if (\n        a &&\n        // first\n        b &&\n        // second\n        c\n    ) {\n        doThing();\n    }\n}\n";
+    let output = fmt(src);
+    expect![[r"
+        function f() {
+            if (
+                a &&
+                // first
+                b &&
+                // second
+                c
+            ) {
+                doThing();
+            }
+        }
+    "]]
+    .assert_eq(&output);
+    assert_eq!(output, fmt(&output), "formatting must be idempotent");
+}
+
 #[test]
 fn comment_between_stmts_no_blank_inserted() {
     let src = "function f() {\n    a();\n    // mid\n    b();\n}\n";
