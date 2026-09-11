@@ -135,6 +135,7 @@ fn render_expr(node: Node, source: &str) -> String {
 
 pub(super) struct ChainPart {
     pub fragment: String,
+    pub start_byte: usize,
     pub op: Option<&'static str>,
     // The author put a newline between this operand and the next one in the source.
     pub break_after: bool,
@@ -173,6 +174,7 @@ fn collect_chain_parts(node: Node, source: &str, parts: &mut Vec<ChainPart>) {
     }
     parts.push(ChainPart {
         fragment: render_expr(node, source),
+        start_byte: node.start_byte(),
         op: None,
         break_after: false,
         op_leads: false,

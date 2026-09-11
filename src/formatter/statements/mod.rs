@@ -184,18 +184,20 @@ impl Formatter<'_> {
         let indent = self.level * self.indent_unit.len();
         let cond_line = indent + keyword_open.len() + self.render_node(c).len() + 1;
         if cond_line > self.line_limit || chain_fully_broken(&parts) {
-            self.emit_condition_split(keyword_open, &parts);
+            self.emit_condition_split(keyword_open, c, &parts);
             return true;
         }
         false
     }
 
-    fn emit_condition_split(&mut self, keyword_open: &str, parts: &[ChainPart]) {
+    fn emit_condition_split(&mut self, keyword_open: &str, cond: Node, parts: &[ChainPart]) {
         self.emit_indent();
         self.emit(keyword_open);
         self.nl();
         self.level += 1;
         for part in parts {
+            // Do not move interleaved comments
+            self.flush_comments_before(part.start_byte);
             self.emit_indent();
             self.emit(&part.fragment);
             if let Some(op) = part.op {
@@ -205,6 +207,9 @@ impl Formatter<'_> {
             self.nl();
         }
         self.level -= 1;
+        if let Some(close) = close_paren_after(cond) {
+            self.flush_comments_before(close.start_byte());
+        }
         self.emit_indent();
         self.emit(")");
     }
@@ -486,4 +491,12 @@ impl Formatter<'_> {
         }
         self.emit_indent();
     }
+}
+
+fn close_paren_after(cond: Node) -> Option<Node> {
+    let parent = cond.parent()?;
+    let mut cursor = parent.walk();
+    parent
+        .children(&mut cursor)
+        .find(|n| n.kind() == ")" && n.start_byte() >= cond.end_byte())
 }
