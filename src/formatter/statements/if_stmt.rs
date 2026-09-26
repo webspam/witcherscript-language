@@ -29,7 +29,7 @@ impl Formatter<'_> {
         let trailing = else_body
             .filter(|eb| {
                 self.else_placement
-                    .resolve(|| self.else_same_line_in_source(&body, eb))
+                    .resolve(|| self.else_same_line_in_source(body, eb))
             })
             .map(|_| 0);
 
@@ -98,7 +98,7 @@ impl Formatter<'_> {
         }
     }
 
-    fn else_same_line_in_source(&self, prev: &Option<Node>, else_node: &Node) -> bool {
+    fn else_same_line_in_source(&self, prev: Option<Node>, else_node: &Node) -> bool {
         prev.or_else(|| else_node.prev_sibling())
             .is_some_and(|prev_node| prev_node.end_position().row == else_node.start_position().row)
     }
