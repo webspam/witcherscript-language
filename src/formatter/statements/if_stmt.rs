@@ -26,8 +26,15 @@ impl Formatter<'_> {
         let body = node.child_by_field_name(fields::BODY);
         let else_body = node.child_by_field_name(fields::ELSE);
 
+        let trailing = else_body
+            .filter(|eb| {
+                self.else_placement
+                    .resolve(|| self.else_same_line_in_source(&body, eb))
+            })
+            .map(|_| 0);
+
         if self.emit_split_keyword_cond("if (", cond, COND_THEN_BLOCK) {
-            self.emit_stmt_body(body, BodyLayout::ForceBlock);
+            self.emit_stmt_body_trailing(body, BodyLayout::ForceBlock, trailing);
         } else {
             self.emit_indent();
             self.emit("if (");
@@ -35,12 +42,24 @@ impl Formatter<'_> {
                 self.format_keyword_cond(c, COND_THEN_BLOCK);
             }
             self.emit(")");
-            self.emit_stmt_body(body, layout);
+            self.emit_stmt_body_trailing(body, layout, trailing);
         }
 
         if let Some(eb) = else_body {
+            let indent = match trailing {
+                None => true,
+                _ if self.out.ends_with("} ") => false,
+                _ => {
+                    // there's no block, don't cuddle the else
+                    self.out.pop();
+                    self.nl();
+                    true
+                }
+            };
             self.flush_comments_before(eb.start_byte());
-            self.emit_indent();
+            if indent {
+                self.emit_indent();
+            }
             self.emit("else");
             self.emit_else_clause(eb, layout);
         }
@@ -77,6 +96,11 @@ impl Formatter<'_> {
                 indent + ELSE_OPEN + self.text(eb).len() > self.line_limit
             }
         }
+    }
+
+    fn else_same_line_in_source(&self, prev: &Option<Node>, else_node: &Node) -> bool {
+        prev.or_else(|| else_node.prev_sibling())
+            .is_some_and(|prev_node| prev_node.end_position().row == else_node.start_position().row)
     }
 
     fn if_link_overflows(&self, node: Node, open: usize) -> bool {

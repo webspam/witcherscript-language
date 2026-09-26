@@ -37,6 +37,7 @@ impl Backend {
             align_member_colons: cfg.formatter_align_member_colons,
             annotation_placement: cfg.formatter_annotation_placement,
             default_placement: cfg.formatter_default_placement,
+            else_placement: cfg.formatter_else_placement,
         };
         let Ok(path) = uri.to_file_path() else {
             return base;
