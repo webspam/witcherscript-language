@@ -2,10 +2,11 @@
 
 ## Repository overview
 
-This is a Rust crate (`witcherscript-language`) that produces two binaries:
+This is a Rust crate (`witcherscript-language`). Binaries:
 
 - `witcherscript-check` - CLI syntax validator (`src/main.rs`)
 - `witcherscript-lsp` - LSP server (`src/bin/witcherscript-lsp/`)
+- `wsformat` - CLI formatter (`src/bin/wsformat.rs`)
 
 ## Detail docs
 
@@ -29,20 +30,6 @@ Start with [architecture.md](docs/agents/architecture.md) for the source file tr
 ## Build and test
 
 Use justfile recipes, not hand-rolled cargo commands: `just build`, and `just precommit` (fmt + clippy + nextest in one). The test inventory and fixtures are in [docs/agents/testing.md](docs/agents/testing.md).
-
-IMPORTANT: When adding a new grammar construct or validation rule, add or update a fixture file and a targeted unit test.
-
-## Committing changes
-
-Commit each logical change as a separate commit as soon as it is complete - do not accumulate unrelated edits into a single commit. This keeps `git bisect` useful and makes the history easy to read.
-
-Before committing:
-
-1. Run `just precommit` and confirm all tests pass (runs fmt and clippy automatically).
-
-### Commit messages
-
-IMPORTANT: The first part of the commit message should be HUMAN RELATABLE. DO NOT just write which part of the code you changed; instead, what actual problem is it fixing / what goal is it achieving?
 
 ## Code style
 
