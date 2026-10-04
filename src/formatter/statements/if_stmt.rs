@@ -46,18 +46,15 @@ impl Formatter<'_> {
         }
 
         if let Some(eb) = else_body {
-            let indent = match trailing {
-                None => true,
-                _ if self.out.ends_with("} ") => false,
-                _ => {
-                    // there's no block, don't cuddle the else
-                    self.out.pop();
-                    self.nl();
-                    true
-                }
-            };
             self.flush_comments_before(eb.start_byte());
-            if indent {
+            if trailing.is_some() && !self.out.ends_with("} ") {
+                // there's no block or there are comments in between, don't cuddle the else
+                if self.out.ends_with(" ") {
+                    self.out.pop();
+                }
+                self.nl();
+            }
+            if self.out.ends_with("\n") {
                 self.emit_indent();
             }
             self.emit("else");
