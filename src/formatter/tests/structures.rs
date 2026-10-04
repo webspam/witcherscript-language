@@ -8,8 +8,7 @@ use super::fmt;
     function F() {
         if (x) {
             a();
-        }
-        else {
+        } else {
             b();
         }
     }
