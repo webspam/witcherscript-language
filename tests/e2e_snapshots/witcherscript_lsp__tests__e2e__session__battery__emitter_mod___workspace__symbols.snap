@@ -26,7 +26,12 @@ expression: session.workspace_symbols(symbol_query).await
   kind: enum
   location:
     file: "witcherscript-builtin:/enums.ws"
-    range: "873:5-873:34"
+    range: "900:5-900:34"
+- name: FLAG_WindEmitters
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/enums.ws"
+    range: "856:4-856:21"
 - name: IEmitterParams
   kind: class
   location:

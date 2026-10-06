@@ -822,7 +822,23 @@ expression: session.completion(signature).await
   kind: other
 - label: EPD_Front
   kind: other
+- label: EQQF_BLOCKING_HIT
+  kind: other
+- label: EQQF_DISTANCE
+  kind: other
 - label: EQQF_IMPACT
+  kind: other
+- label: EQQF_MESH_BOTH_SIDES
+  kind: other
+- label: EQQF_NORMAL
+  kind: other
+- label: EQQF_NO_INITIAL_OVERLAP
+  kind: other
+- label: EQQF_PRECISE_SWEEP
+  kind: other
+- label: EQQF_TOUCHING_HIT
+  kind: other
+- label: EQQF_UV
   kind: other
 - label: ESADP_None
   kind: other
@@ -898,11 +914,19 @@ expression: session.completion(signature).await
   kind: other
 - label: FLAG_ExcludeTarget
   kind: other
+- label: FLAG_NotVehicles
+  kind: other
 - label: FLAG_OnlyActors
   kind: other
 - label: FLAG_OnlyAliveActors
   kind: other
+- label: FLAG_PathLibTest
+  kind: other
 - label: FLAG_TestLineOfSight
+  kind: other
+- label: FLAG_Vehicles
+  kind: other
+- label: FLAG_WindEmitters
   kind: other
 - label: FMV_Clue
   kind: other
@@ -1010,11 +1034,15 @@ expression: session.completion(signature).await
   kind: other
 - label: GREEN
   kind: other
+- label: GTFX_Feedback
+  kind: other
 - label: GTFX_MultiFeedback
   kind: other
 - label: GTFX_MultiVibration
   kind: other
 - label: GTFX_Off
+  kind: other
+- label: GTFX_SlopeFeedback
   kind: other
 - label: GTFX_Vibration
   kind: other
@@ -1896,9 +1924,49 @@ expression: session.completion(signature).await
   kind: other
 - label: PLC_Walkable
   kind: other
+- label: PM_AddChar_Appearance
+  kind: other
+- label: PM_AddCharacter_Filtering
+  kind: other
+- label: PM_Appearance
+  kind: other
+- label: PM_Blackbars
+  kind: other
 - label: PM_Camera_FOV
   kind: other
+- label: PM_Camera_Location
+  kind: other
+- label: PM_Camera_Noclip
+  kind: other
+- label: PM_Camera_Preset
+  kind: other
 - label: PM_Camera_Tilt
+  kind: other
+- label: PM_Char_EnableGravity
+  kind: other
+- label: PM_Char_FacialExpression
+  kind: other
+- label: PM_Char_LookAtCamera
+  kind: other
+- label: PM_Char_Pose
+  kind: other
+- label: PM_Char_PoseCategory
+  kind: other
+- label: PM_Char_ResetButtons
+  kind: other
+- label: PM_Char_SlotSelector
+  kind: other
+- label: PM_Char_SnapCamera
+  kind: other
+- label: PM_Char_TempSelector
+  kind: other
+- label: PM_Char_Transform_CloseFar
+  kind: other
+- label: PM_Char_Transform_LeftRight
+  kind: other
+- label: PM_Char_Transform_Rotate
+  kind: other
+- label: PM_Char_Transform_UpDown
   kind: other
 - label: PM_ChromaticAberration
   kind: other
@@ -1914,21 +1982,87 @@ expression: session.completion(signature).await
   kind: other
 - label: PM_DontPersist
   kind: other
+- label: PM_EnvDef
+  kind: other
 - label: PM_Exposure
+  kind: other
+- label: PM_Filter
   kind: other
 - label: PM_Grain
   kind: other
+- label: PM_Hide_AddCharacters
+  kind: other
+- label: PM_Hide_NPCs
+  kind: other
 - label: PM_Highlights
   kind: other
+- label: PM_Light_Brightness
+  kind: other
+- label: PM_Light_Hue
+  kind: other
+- label: PM_Light_Luminance
+  kind: other
+- label: PM_Light_Range
+  kind: other
+- label: PM_Light_ResetButtons
+  kind: other
+- label: PM_Light_Saturation
+  kind: other
+- label: PM_Light_Shadow
+  kind: other
+- label: PM_Light_SlotSelector
+  kind: other
+- label: PM_Light_SnapCamera
+  kind: other
+- label: PM_Light_State
+  kind: other
+- label: PM_Logo
+  kind: other
+- label: PM_Mask
+  kind: other
+- label: PM_Max
+  kind: other
+- label: PM_NPC_Filtering
+  kind: other
 - label: PM_Persist
+  kind: other
+- label: PM_PhotoAspectRatio
+  kind: other
+- label: PM_Prop_EnableGravity
+  kind: other
+- label: PM_Prop_Filtering
+  kind: other
+- label: PM_Prop_ResetButtons
+  kind: other
+- label: PM_Prop_SlotSelector
+  kind: other
+- label: PM_Prop_SnapCamera
+  kind: other
+- label: PM_Prop_TempSelector
+  kind: other
+- label: PM_Prop_Transform_CloseFar
+  kind: other
+- label: PM_Prop_Transform_LeftRight
+  kind: other
+- label: PM_Prop_Transform_Rotate
+  kind: other
+- label: PM_Prop_Transform_UpDown
   kind: other
 - label: PM_Saturation
   kind: other
 - label: PM_SaveStateOnly
   kind: other
+- label: PM_Selected_NPC
+  kind: other
 - label: PM_Temperature
   kind: other
+- label: PM_TimeOfDay
+  kind: other
+- label: PM_UI_Thirds
+  kind: other
 - label: PM_Vignette
+  kind: other
+- label: PM_Weather
   kind: other
 - label: ProbeTunerLookup
   kind: function

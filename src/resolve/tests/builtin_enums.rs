@@ -62,24 +62,6 @@ fn enum_members_appear_in_enum_member_globals() {
 }
 
 #[test]
-fn orphan_member_bucket_is_excluded_from_type_completions() {
-    let t = TestDb::new("").with_builtins_index();
-    let db = t.db();
-    assert!(
-        !db.all_types()
-            .iter()
-            .any(|d| d.symbol.name == "WLSP_TooHardBasket"),
-        "the synthetic orphan-member bucket enum must not appear in all_types()"
-    );
-    assert!(
-        db.all_enum_members()
-            .iter()
-            .any(|d| d.symbol.name == "FLAG_OnlyActors"),
-        "orphan enum members must still appear in all_enum_members()"
-    );
-}
-
-#[test]
 fn goto_definition_on_enum_member_resolves_into_builtin_file() {
     let t = TestDb::new(concat!(
         "function Test() {\n",
