@@ -140,6 +140,18 @@ enum EBaseCharacterStats {
     BCS_Undefined = 10
 }
 
+enum EBatchQueryQueryFlag {
+    EQQF_IMPACT = 1,
+    EQQF_NORMAL = 2,
+    EQQF_DISTANCE = 4,
+    EQQF_UV = 8,
+    EQQF_NO_INITIAL_OVERLAP = 16,
+    EQQF_TOUCHING_HIT = 32,
+    EQQF_BLOCKING_HIT = 64,
+    EQQF_MESH_BOTH_SIDES = 128,
+    EQQF_PRECISE_SWEEP = 256
+}
+
 enum EBatchQueryState {
     BQS_NotFound = 0,
     BQS_NotReady = 1,
@@ -838,6 +850,21 @@ enum ESaveGameType {
     SGT_CheckPoint = 5
 }
 
+enum EScriptQueryFlags {
+    FLAG_ExcludePlayer = 1,
+    FLAG_OnlyActors = 2,
+    FLAG_OnlyAliveActors = 4,
+    FLAG_WindEmitters = 8,
+    FLAG_Vehicles = 16,
+    FLAG_ExcludeTarget = 32,
+    FLAG_Attitude_Neutral = 64,
+    FLAG_Attitude_Friendly = 128,
+    FLAG_Attitude_Hostile = 256,
+    FLAG_PathLibTest = 4096,
+    FLAG_NotVehicles = 8192,
+    FLAG_TestLineOfSight = 16384
+}
+
 enum ESessionRestoreResult {
     RESTORE_Success = 0,
     RESTORE_DataCorrupted = 1,
@@ -1017,6 +1044,16 @@ enum EWoundTypeFlags {
     WTF_Explosion = 2,
     WTF_Frost = 4,
     WTF_All = 7
+}
+
+enum GamepadTriggerEffectMode {
+    GTFX_Off = 0,
+    GTFX_Feedback = 1,
+    GTFX_SlopeFeedback = 2,
+    GTFX_MultiFeedback = 3,
+    GTFX_Vibration = 4,
+    GTFX_MultiVibration = 5,
+    GTFX_Weapon = 6
 }
 
 enum eGwintEffect {

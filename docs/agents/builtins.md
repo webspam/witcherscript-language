@@ -4,9 +4,7 @@
 
 WitcherScript has engine-magic types - `array<T>`, a fixed set of engine enums, and a handful of engine classes - that have no declaration anywhere in user code or shipped game scripts. The LSP synthesises their definitions so that completion, hover, and go-to-definition work on them. Of these, only `array<T>` needs special handling in code (generic element-type substitution); the rest flow through the normal symbol pipeline.
 
-`builtins/enums.ws` holds most of the engine enums; two large ones get their own file (`builtins/EInputKey.ws`, `builtins/EShowFlags.ws`). Each enum is a global type and each of its values is a global symbol, used by bare name (`AD_Back`, not `EAttackDirection.AD_Back`). Both flow through the normal symbol pipeline once the files are parsed into the builtins index - no enum-specific Rust logic.
-
-`builtins/orphan_enums.ws` collects engine enum values whose enclosing enum is unknown, under one catch-all enum. That catch-all is not a real type, so it is hidden from type completion (see Guardrails).
+`builtins/enums.ws` holds most of the engine enums; large ones get their own file (e.g. `builtins/EInputKey.ws`, `builtins/EShowFlags.ws`). Each enum is a global type and each of its values is a global symbol, used by bare name (`AD_Back`, not `EAttackDirection.AD_Back`). Both flow through the normal symbol pipeline once the files are parsed into the builtins index - no enum-specific Rust logic.
 
 Engine classes get one file each, named after the class (`builtins/CR4HudModule.ws`, `builtins/CGuiObject.ws`); the synthetic URI matches the file name. They are rows in the `BUILTIN_SOURCES` table in `src/builtins.rs`.
 
@@ -24,7 +22,7 @@ Tests opt in via `SymbolDb::new(&ws, &base).with_builtins(&builtins)`; existing 
 
 - `prepare_rename` and `rename` reject any symbol whose URI is a builtin URI (`builtin_source(uri).is_some()`).
 - `rename_changes` filters out reference sites that land inside a builtin file - same shape as the base-scripts guard.
-- `SymbolDb::all_types()` includes builtin enums and classes (real, usable types) but excludes whatever `is_non_type_builtin()` flags - `array` (only valid as `array<T>`) and the orphan catch-all enum - since neither can be written as a plain type name. `all_enum_members()` still includes every builtin enum value, the orphan ones included.
+- `SymbolDb::all_types()` includes builtin enums and classes (real, usable types) but excludes whatever `is_non_type_builtin()` flags - `array` (only valid as `array<T>`) - since it cannot be written as a plain type name. `all_enum_members()` still includes every builtin enum value.
 
 ## Adding a new built-in
 

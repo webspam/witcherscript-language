@@ -8,7 +8,6 @@ use crate::types::native_type_names;
 
 pub const BUILTIN_ARRAY_URI: &str = "witcherscript-builtin:/array.ws";
 pub const BUILTIN_ENUMS_URI: &str = "witcherscript-builtin:/enums.ws";
-pub const BUILTIN_ORPHAN_ENUMS_URI: &str = "witcherscript-builtin:/orphan_enums.ws";
 pub const BUILTIN_NATIVE_TYPES_URI: &str = "witcherscript-builtin:/native-types.ws";
 
 pub const GENERIC_ELEMENT_PLACEHOLDER: &str = "T";
@@ -32,11 +31,11 @@ static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock
             "witcherscript-builtin:/EEnvManagerModifier.ws",
             include_str!("../builtins/EEnvManagerModifier.ws"),
         ),
-        (BUILTIN_ENUMS_URI, include_str!("../builtins/enums.ws")),
         (
-            BUILTIN_ORPHAN_ENUMS_URI,
-            include_str!("../builtins/orphan_enums.ws"),
+            "witcherscript-builtin:/PhotomodeParameterId.ws",
+            include_str!("../builtins/PhotomodeParameterId.ws"),
         ),
+        (BUILTIN_ENUMS_URI, include_str!("../builtins/enums.ws")),
         (
             "witcherscript-builtin:/CR4HudModule.ws",
             include_str!("../builtins/CR4HudModule.ws"),
@@ -70,9 +69,9 @@ static NATIVE_TYPES_SOURCE: LazyLock<String> = LazyLock::new(|| {
     })
 });
 
-/// `array` (only valid as `array<T>`) and the orphan-member bucket (a synthetic enum) are not bare-writable type names, so their types must stay out of type completion.
+/// `array` (only valid as `array<T>`) is not a bare-writable type name, so its type must stay out of type completion.
 pub fn is_non_type_builtin(uri: &str) -> bool {
-    uri == BUILTIN_ARRAY_URI || uri == BUILTIN_ORPHAN_ENUMS_URI
+    uri == BUILTIN_ARRAY_URI
 }
 
 static BUILTINS: LazyLock<(WorkspaceIndex, Arc<[Definition]>)> = LazyLock::new(|| {
