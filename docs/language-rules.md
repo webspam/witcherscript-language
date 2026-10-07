@@ -190,7 +190,6 @@ Precedence, tightest first:
 - `new Class in <lifetimeObject>`
 - Receivers: `this` (enclosing type), `super` (base), `parent`/`virtual_parent` (state owner)
 - `super` is valid only for method (`super.M()`)
-- Ternary `cond ? a: b` always yields `0`/`false`/`void`; rewrite as `if`/`else`
 
 ## Inheritance and overrides
 
