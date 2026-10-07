@@ -226,15 +226,6 @@ impl<'tree> CstVisitor<'tree> for SyntaxDiagnostics<'_> {
                 "Incomplete member access: expected identifier after '.'",
             ));
         }
-        if node.kind() == kinds::TERNARY_COND_EXPR {
-            self.diagnostics.push(syntax_diagnostic(
-                node,
-                self.source,
-                "ternary_cond_expr",
-                "Ternary expression is not supported: WitcherScript parses `cond ? a : b` \
-                 but always evaluates it to 0 / false / void",
-            ));
-        }
         if node.kind() == kinds::LITERAL_STRING && self.source[node.byte_range()].contains('\n') {
             self.diagnostics.push(syntax_diagnostic(
                 node,

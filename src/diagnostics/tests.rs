@@ -252,22 +252,6 @@ fn reports_local_vars_after_statements() {
 }
 
 #[test]
-fn reports_ternary_expression() {
-    let source = "function Pick() {\n  var x : int;\n  x = true ? 1 : 2;\n}\n";
-    let t = TestDb::new(source);
-    let diagnostics = collect_diagnostics(t.primary_doc().tree.root_node(), source);
-
-    let ternary = diagnostics.iter().find(|d| d.kind == "ternary_cond_expr");
-    assert!(
-        ternary.is_some(),
-        "expected ternary_cond_expr diagnostic, got: {diagnostics:#?}"
-    );
-    let d = ternary.unwrap();
-    assert_eq!(d.start.row, 2);
-    assert_eq!(d.start.row, d.end.row);
-}
-
-#[test]
 fn reports_incomplete_member_access() {
     let source = "class C extends CR4Player {\n  var x : W3AbilityManager;\n  function F() {\n    x = super.\n  }\n}\n";
     let t = TestDb::new(source);

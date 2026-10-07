@@ -19,34 +19,33 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 11  | `unknown_identifier`               | error    | Bare identifier doesn't resolve                                                                    |
 | 12  | `missing_wrapped_method`           | error    | `@wrapMethod` body has no `wrappedMethod(...)` call                                                |
 | 13  | `duplicate_wrapped_method`         | error    | More than one `wrappedMethod(...)` call in a `@wrapMethod` body                                    |
-| 14  | `ternary_cond_expr`                | warning  | `cond ? a : b` always evaluates to 0 / false / void                                                |
-| 15  | `abstract_instantiation`           | error    | `new T` on an abstract class                                                                       |
-| 16  | `super_field_access`               | error    | `super.x` used outside of a method call                                                            |
-| 17  | `private_member_access`            | error    | Private field or method accessed from outside its declaring class                                  |
-| 18  | `type_used_as_value`               | error    | Type name (class, struct, enum, native type) used in a value position                              |
-| 19  | `type_mismatch`                    | error    | A value's type is not assignable to the target slot                                                |
-| 20  | `string_as_name_default`           | info     | A `name`/`CName` field default uses a string literal where a name literal is intended              |
-| 21  | `native_instantiation`             | error    | `new T` on a native engine type (`CBehTreeVal*`), which cannot be instantiated                     |
-| 22  | `native_default_coercion`          | info     | A native engine type (`CBehTreeVal*`) `default` uses a non-exact primitive (accepted, but coerced) |
-| 23  | `struct_property_access_modifier`  | error    | An accessibility modifier (`private`/`protected`/`public`) is applied to a struct property         |
-| 24  | `state_owner_not_statemachine`     | warning  | `state X in Owner` where `Owner` is a class missing the `statemachine` keyword                     |
-| 25  | `state_owner_not_class`            | error    | `state X in Owner` where `Owner` resolves to something that is not a class (e.g. a struct or enum) |
-| 26  | `string_linefeed`                  | error    | A string literal contains a linefeed                                                               |
-| 27  | `int_overflow`                     | error    | An integer literal overflows a 32-bit int                                                          |
-| 28  | `event_return_not_void`            | error    | An event declares a return type other than `void`                                                  |
-| 29  | `event_bare_return`                | error    | A bare `return;` inside an event body                                                              |
-| 30  | `non_constant_default`             | error    | A `default` value is a call or `new` expression                                                    |
-| 31  | `annotation_targets_backing_class` | error    | A modding annotation targets a state's backing class name instead of the short state name          |
-| 32  | `duplicate_inherited_field`        | error    | A field redeclares a field inherited from an ancestor                                              |
-| 33  | `override_weaker_access`           | error    | A method override has weaker access than the ancestor's method                                     |
-| 34  | `override_param_count`             | error    | A method override declares a different parameter count than the ancestor's method                  |
-| 35  | `unused_symbol`                    | hint     | An unused local variable, parameter, or private field; rendered faded by editors                   |
-| 36  | `wrapped_method_modifier`          | error    | A modifier or flavour keyword is applied to a `@wrapMethod` function                               |
-| 37  | `struct_property_on_temporary`     | error    | `f().x` accesses a struct property on a function result                                            |
-| 38  | `arg_count_mismatch`               | error    | A call passes too few or too many arguments for the callee's parameters                            |
-| 39  | `parent_outside_state`             | error    | `parent` / `virtual_parent` used outside a state method                                            |
-| 40  | `cast_in_var_init`                 | error    | A cast to a non-primitive type appears anywhere in a local `var` initializer                       |
-| 41  | `hex_default_zero`                 | warning  | A hex value in a class `default`, which always evaluates to 0                                      |
+| 14  | `abstract_instantiation`           | error    | `new T` on an abstract class                                                                       |
+| 15  | `super_field_access`               | error    | `super.x` used outside of a method call                                                            |
+| 16  | `private_member_access`            | error    | Private field or method accessed from outside its declaring class                                  |
+| 17  | `type_used_as_value`               | error    | Type name (class, struct, enum, native type) used in a value position                              |
+| 18  | `type_mismatch`                    | error    | A value's type is not assignable to the target slot                                                |
+| 19  | `string_as_name_default`           | info     | A `name`/`CName` field default uses a string literal where a name literal is intended              |
+| 20  | `native_instantiation`             | error    | `new T` on a native engine type (`CBehTreeVal*`), which cannot be instantiated                     |
+| 21  | `native_default_coercion`          | info     | A native engine type (`CBehTreeVal*`) `default` uses a non-exact primitive (accepted, but coerced) |
+| 22  | `struct_property_access_modifier`  | error    | An accessibility modifier (`private`/`protected`/`public`) is applied to a struct property         |
+| 23  | `state_owner_not_statemachine`     | warning  | `state X in Owner` where `Owner` is a class missing the `statemachine` keyword                     |
+| 24  | `state_owner_not_class`            | error    | `state X in Owner` where `Owner` resolves to something that is not a class (e.g. a struct or enum) |
+| 25  | `string_linefeed`                  | error    | A string literal contains a linefeed                                                               |
+| 26  | `int_overflow`                     | error    | An integer literal overflows a 32-bit int                                                          |
+| 27  | `event_return_not_void`            | error    | An event declares a return type other than `void`                                                  |
+| 28  | `event_bare_return`                | error    | A bare `return;` inside an event body                                                              |
+| 29  | `non_constant_default`             | error    | A `default` value is a call or `new` expression                                                    |
+| 30  | `annotation_targets_backing_class` | error    | A modding annotation targets a state's backing class name instead of the short state name          |
+| 31  | `duplicate_inherited_field`        | error    | A field redeclares a field inherited from an ancestor                                              |
+| 32  | `override_weaker_access`           | error    | A method override has weaker access than the ancestor's method                                     |
+| 33  | `override_param_count`             | error    | A method override declares a different parameter count than the ancestor's method                  |
+| 34  | `unused_symbol`                    | hint     | An unused local variable, parameter, or private field; rendered faded by editors                   |
+| 35  | `wrapped_method_modifier`          | error    | A modifier or flavour keyword is applied to a `@wrapMethod` function                               |
+| 36  | `struct_property_on_temporary`     | error    | `f().x` accesses a struct property on a function result                                            |
+| 37  | `arg_count_mismatch`               | error    | A call passes too few or too many arguments for the callee's parameters                            |
+| 38  | `parent_outside_state`             | error    | `parent` / `virtual_parent` used outside a state method                                            |
+| 39  | `cast_in_var_init`                 | error    | A cast to a non-primitive type appears anywhere in a local `var` initializer                       |
+| 40  | `hex_default_zero`                 | warning  | A hex value in a class `default`, which always evaluates to 0                                      |
 
 ## Details
 
@@ -126,33 +125,29 @@ A `@wrapMethod`-annotated function whose body does not contain a bare `wrappedMe
 
 Every bare `wrappedMethod(...)` call after the first inside the same `@wrapMethod` body. Only the first call is expanded by the compiler.
 
-### 14. Ternary expression
-
-The grammar accepts `cond ? a : b`, but the compiler always evaluates it to `0` / `false` / `void`. Flagged so the construct is rewritten as an `if` / `else` before it silently returns wrong values.
-
-### 15. Abstract class instantiation
+### 14. Abstract class instantiation
 
 `new T` where `T` is a class declared with the `abstract` specifier. Abstract classes cannot be instantiated directly.
 
-### 16. `super.` outside a method call
+### 15. `super.` outside a method call
 
 `super.x` used as a field access (read, assignment target, or anywhere other than the callee of a `(...)` call).
 
 The compiler only resolves the `super.` qualifier for method dispatch. Inherited `protected` and `public` fields (and `private` ones from a `protected`/`public`-typed view of the base) are reachable on `this` without the qualifier; `super.` itself is reserved for explicitly dispatching to a base-class method.
 
-### 17. Private member access
+### 16. Private member access
 
 `receiver.member` or `receiver.method()` where `member` / `method` is declared `private` on a type, accessed from code outside that declaring type. Access from inside the declaring class, struct, or state is allowed.
 
 `default` and `hint` blocks intentionally allow private inherited fields and are not affected.
 
-### 18. Type used as value
+### 17. Type used as value
 
 A bare identifier that resolves to a `class`, `struct`, `enum`, or native type declaration but appears where a value is expected, e.g. `EnumGetMin(ESomeEnum)` or `var x : int; x = MyClass;`. Also fires when a type name is called like a function, e.g. `ESomeEnum()`, except struct constructor calls (`StructName(a, b, ...)`).
 
 Type-position uses (`extends T`, `: T` annotations, `new T in owner`, `(T) value` casts, `@addMethod(T)` annotations) are unaffected. Enum _members_ used as values are also unaffected; only the enum's own name triggers the rule.
 
-### 19. Type mismatch
+### 18. Type mismatch
 
 A value flowing into a typed slot whose type is not assignable to the slot's type. Covers direct assignments (`x = value`), compound assignments (`x += value`, ...) on a primitive left-hand side, local `var` initializers (`var x : T = value`), function/method call arguments matched positionally against the callee's parameters, `return` values against the enclosing function's return type, and `default x = value;` / `defaults { x = value; }` field defaults.
 
@@ -185,94 +180,94 @@ The native types `CBehTreeValBool`, `CBehTreeValInt`, `CBehTreeValFloat`, `CBehT
 
 These five are modelled as a distinct `NativeType` kind, not classes: they take no object-to-bool / to-string / `NULL` casts and cannot be `new`-instantiated (see `native_instantiation`).
 
-### 20. String literal as a name default
+### 19. String literal as a name default
 
 A `name`/`CName` field default whose value is a double-quoted string literal, e.g. `default someVar = "Swimming";`. The compiler accepts this as a compile-time constant `name`, so it is not a type error here (unlike a `var` initializer or an assignment, where `string` -> `name` is reported as `type_mismatch`). It is surfaced at info level because a name literal (`'Swimming'`) is the intended form.
 
-### 21. Native type instantiation
+### 20. Native type instantiation
 
 A `new T` expression where `T` is a native engine type (`CBehTreeValBool`, `CBehTreeValInt`, `CBehTreeValFloat`, `CBehTreeValString`, `CBehTreeValCName`). These are C++ value types with no script constructor, so they cannot be instantiated from WitcherScript; a value reaches them only through a `default` initializer or a native `out` parameter.
 
-### 22. Native default coercion
+### 21. Native default coercion
 
 A `CBehTreeVal*` `default` whose value is a primitive other than the type's exact one (e.g. `default someBool = 5;` on a `CBehTreeValBool`). The engine accepts any primitive constant here, so it is not an error; it is info-level because the value is coerced rather than an exact match. `CBehTreeValFloat` treats both `int` and `float` as exact.
 
-### 23. Accessibility modifier on a struct property
+### 22. Accessibility modifier on a struct property
 
 A `private`, `protected`, or `public` specifier applied to a property declared inside a `struct`, e.g. `struct S { private var x : int; }`. The diagnostic underlines the offending keyword. Unlike most rules in this list it is purely syntactic, so the `witcherscript-check` CLI reports it as well.
 
-### 24. State owner is not a state machine
+### 23. State owner is not a state machine
 
 A `state X in Owner` declaration where `Owner` resolves to a `class` (in the workspace or a base script) that lacks the `statemachine` keyword. Only a state machine can host states, so the mod compiler rejects this.
 
 The keyword is not inherited: each owner class must carry `statemachine` itself, so a state targeting a subclass of a state machine is still flagged.
 
-### 25. State owner is not a class
+### 24. State owner is not a class
 
 A `state X in Owner` declaration where `Owner` resolves to something that is not a class - a struct, enum, function, or another state. States can only be declared in a state machine class, so this is an error rather than a warning.
 
-Rules 24 and 25 share one scan path: every `state` declaration's owner is resolved once and routed to whichever applies. An owner that does not resolve to any known symbol is left to the `unknown_type` rule.
+Rules 23 and 24 share one scan path: every `state` declaration's owner is resolved once and routed to whichever applies. An owner that does not resolve to any known symbol is left to the `unknown_type` rule.
 
-### 26. String literal containing a linefeed
+### 25. String literal containing a linefeed
 
 A double-quoted string literal that spans more than one line. The grammar tokenises it, but the compiler rejects any string containing a linefeed. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
 
-### 27. Integer literal overflow
+### 26. Integer literal overflow
 
 A decimal or hex integer literal whose value does not fit a 32-bit int (the compiler's "static integer overflow"). An adjacent sign is part of the literal, so `-2147483648` is in range; a spaced `- 2147483648` is a unary minus applied to an out-of-range literal and is flagged. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
 
-### 28. Event return type is not void
+### 27. Event return type is not void
 
-An `event` declared with an explicit return type other than `void`. The conventional form omits the return type entirely, which is also accepted; the only permitted explicit suffix is `void`. The return type is otherwise ignored by the compiler (a `return` inside an event must still yield `bool` - see rule 29). Purely syntactic, so the `witcherscript-check` CLI reports it as well.
+An `event` declared with an explicit return type other than `void`. The conventional form omits the return type entirely, which is also accepted; the only permitted explicit suffix is `void`. The return type is otherwise ignored by the compiler (a `return` inside an event must still yield `bool` - see rule 28). Purely syntactic, so the `witcherscript-check` CLI reports it as well.
 
-### 29. Bare return in an event
+### 28. Bare return in an event
 
 A `return;` with no value inside an event body, at any nesting depth. Events return `bool`, so the compiler rejects this with "Unable to convert from 'void' to 'Bool'". A bare `return;` in a plain function is fine. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
 
-### 30. Non-constant default value
+### 29. Non-constant default value
 
 A `default x = ...;` or `defaults { x = ...; }` value that is a function/constructor call or a `new` expression (e.g. `default v = Vector(0, 0, 0);`). The compiler only accepts compile-time constants here. Literals, signed literals, and bare identifiers (possible enum members) are allowed; only call and `new` expressions are flagged, so a parenthesised call slips through. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
 
-### 31. Annotation targets a state's backing class
+### 30. Annotation targets a state's backing class
 
 A `@wrapMethod` / `@replaceMethod` / `@addMethod` / `@addField` whose argument is the engine-synthesised backing class name of a state (e.g. `@wrapMethod(CR4PlayerStateSwimming)`). The mod compiler only matches annotations against the short state name (`@wrapMethod(Swimming)`); the message suggests that spelling and links to the state declaration.
 
-### 32. Duplicate inherited field
+### 31. Duplicate inherited field
 
 A class or state field whose name is already a field anywhere up the inheritance chain (including base scripts and any access level - the compiler rejects the redeclaration even for private ancestor fields). Method names may be reused; only field-over-field redeclarations fire. `@addField` declarations are exempt.
 
-### 33. Override with weaker access
+### 32. Override with weaker access
 
 A class or state method whose name matches a class-body method up the inheritance chain, declared with weaker (more accessible) access than the ancestor's; default accessibility is `public`. Mirrors the compiler error "Function 'X' cannot have a weaker access modifier than in ancestor class 'Y'". Annotated (`@wrapMethod` etc.) functions and events are exempt.
 
-### 34. Override parameter count mismatch
+### 33. Override parameter count mismatch
 
-A class or state method whose name matches a class-body method up the inheritance chain but declares a different number of parameters. Mirrors the compiler error "Function 'X' takes N parameter(s) which is inconsistent with base function (M)". Optional parameters count; parameter types are not compared. Shares rule 33's scan and exemptions.
+A class or state method whose name matches a class-body method up the inheritance chain but declares a different number of parameters. Mirrors the compiler error "Function 'X' takes N parameter(s) which is inconsistent with base function (M)". Optional parameters count; parameter types are not compared. Shares rule 32's scan and exemptions.
 
-### 35. Unused symbol
+### 34. Unused symbol
 
 An unused local variable, parameter, or `private` field. Emitted at hint severity with the LSP `Unnecessary` tag, so editors fade the declaration. An assignment counts as a use. `@addField` declarations are exempt.
 
-### 36. Modifier on a wrapped method
+### 35. Modifier on a wrapped method
 
 An access modifier (`public`/`protected`/`private`/`final`/...) or function flavour keyword (`exec`, `timer`, ...) on a `@wrapMethod`-annotated function. The wrapper inherits the wrapped method's signature, so the compiler rejects any added modifier or flavour. Each offending keyword is flagged separately.
 
-### 37. Struct property accessed on a temporary
+### 36. Struct property accessed on a temporary
 
 Reading a property straight off a struct that a function returns, e.g. `component.GetLocalPosition().Z`. The compiler rejects this; assign the returned struct to a local `var` and read the property from that variable instead.
 
-### 38. Argument count mismatch
+### 37. Argument count mismatch
 
 A function, method, or event call that does not satisfy the callee's parameters: too many arguments, or a non-`optional` parameter with no positional argument. Arguments bind by position, so an `optional` parameter may be omitted or skipped with an empty slot (`F(1, , 3)`); the same empty slot on a required parameter is flagged. Skipped when the callee does not resolve to a callable, so unresolved names and struct constructors are unaffected.
 
-### 39. parent / virtual_parent outside a state
+### 38. parent / virtual_parent outside a state
 
 `parent` and `virtual_parent` resolve against a state's owner class, so they are only valid inside a state method.
 
-### 40. Cast in a local var initializer
+### 39. Cast in a local var initializer
 
 An explicit cast to a non-primitive type in a local `var` initializer, e.g. `var spot : CSpot = (CSpot)target;`
 
-### 41. Hex literal in a default value
+### 40. Hex literal in a default value
 
 A hex literal in a `default` value. The compiler evaluates it to `0`.

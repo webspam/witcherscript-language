@@ -21,26 +21,6 @@ fn maps_core_diagnostics_to_lsp_diagnostics() {
 }
 
 #[test]
-fn ternary_diagnostic_maps_to_warning() {
-    let t = TestDb::new("function Pick() {\n var x : int;\n x = true ? 1 : 2;\n}\n");
-    let diagnostics = lsp_diagnostics(t.primary_doc());
-
-    let ternary = diagnostics
-        .iter()
-        .find(|d| {
-            d.code
-                == Some(lsp_types::NumberOrString::String(
-                    "ternary_cond_expr".to_string(),
-                ))
-        })
-        .expect("expected a ternary_cond_expr diagnostic");
-    assert_eq!(
-        ternary.severity,
-        Some(lsp_types::DiagnosticSeverity::WARNING)
-    );
-}
-
-#[test]
 fn hex_default_diagnostic_maps_to_warning() {
     let t = TestDb::new("class C {\n  var x : int;\n  default x = 0x1;\n}\n");
     let diagnostics = lsp_diagnostics(t.primary_doc());
