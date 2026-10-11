@@ -11,6 +11,7 @@ mod line_breaking;
 mod structures;
 mod switch;
 mod switch_action;
+mod ternary;
 
 use super::{AnnotationPlacement, ColonSpacing, FormatOptions};
 

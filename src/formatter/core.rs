@@ -209,6 +209,7 @@ impl<'a> Formatter<'a> {
             }
             kinds::SWITCH_STMT => self.format_switch_stmt(node),
             kinds::EXPR_STMT => self.format_expr_stmt(node),
+            kinds::TERNARY_COND_EXPR => self.format_ternary(node),
             _ if is_expr_node(node.kind()) => self.format_children(node),
             _ => self.format_children(node),
         }
@@ -246,8 +247,8 @@ impl<'a> Formatter<'a> {
             }
             if child.child_count() == 0 {
                 self.emit_verbatim(*child);
-            } else if !self.try_emit_broken_chain(*child, node.kind()) {
-                self.format_node(*child);
+            } else {
+                self.format_operand(*child, node.kind());
             }
             prev = Some(*child);
         }

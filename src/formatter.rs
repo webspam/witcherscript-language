@@ -2,10 +2,12 @@ use serde::Deserialize;
 use tree_sitter::Node;
 
 use crate::cst::{fields, kinds};
+use expressions::OverflowWrapTarget;
 
 mod action;
 mod core;
 mod declarations;
+mod expressions;
 mod if_action;
 mod signatures;
 mod statements;
@@ -114,28 +116,8 @@ impl Default for FormatOptions {
     }
 }
 
-fn render_expr(node: Node, source: &str) -> String {
-    Formatter {
-        source,
-        indent_unit: String::new(),
-        level: 0,
-        out: String::new(),
-        suppress_next_indent: false,
-        line_limit: usize::MAX,
-        colon: ColonSpacing::Spaced,
-        align_member_colons: false,
-        annotation_placement: AnnotationPlacement::Preserve,
-        default_placement: AnnotationPlacement::Preserve,
-        colon_align_col: None,
-        comments: Vec::new(),
-        comment_cursor: 0,
-    }
-    .render_node(node)
-}
-
-pub(super) struct ChainPart {
-    pub fragment: String,
-    pub start_byte: usize,
+pub(super) struct ChainPart<'t> {
+    pub operand: Node<'t>,
     pub op: Option<&'static str>,
     // The author put a newline between this operand and the next one in the source.
     pub break_after: bool,
@@ -143,7 +125,7 @@ pub(super) struct ChainPart {
     pub op_leads: bool,
 }
 
-fn collect_chain_parts(node: Node, source: &str, parts: &mut Vec<ChainPart>) {
+fn collect_chain_parts<'t>(node: Node<'t>, parts: &mut Vec<ChainPart<'t>>) {
     if node.kind() == kinds::BINARY_OP_EXPR
         && let Some(op_node) = node.child_by_field_name(fields::OP)
     {
@@ -162,28 +144,27 @@ fn collect_chain_parts(node: Node, source: &str, parts: &mut Vec<ChainPart>) {
                 node.child_by_field_name(fields::RIGHT),
             )
         {
-            collect_chain_parts(left, source, parts);
+            collect_chain_parts(left, parts);
             if let Some(last) = parts.last_mut() {
                 last.op = Some(op);
                 last.break_after = right.start_position().row > left.end_position().row;
                 last.op_leads = op_node.start_position().row > left.end_position().row;
             }
-            collect_chain_parts(right, source, parts);
+            collect_chain_parts(right, parts);
             return;
         }
     }
     parts.push(ChainPart {
-        fragment: render_expr(node, source),
-        start_byte: node.start_byte(),
+        operand: node,
         op: None,
         break_after: false,
         op_leads: false,
     });
 }
 
-pub(super) fn split_binary_chain(node: Node, source: &str) -> Vec<ChainPart> {
+pub(super) fn split_binary_chain(node: Node) -> Vec<ChainPart> {
     let mut parts = Vec::new();
-    collect_chain_parts(node, source, &mut parts);
+    collect_chain_parts(node, &mut parts);
     parts
 }
 
@@ -314,6 +295,7 @@ pub fn format_document(root: Node, source: &str, options: FormatOptions) -> Stri
         colon_align_col: None,
         comments: collect_comments(root),
         comment_cursor: 0,
+        overflow_wrap_target: None,
     };
     f.format_node(root);
     f.flush_comments_before(usize::MAX);
@@ -341,4 +323,5 @@ struct Formatter<'a> {
     // Source-ordered comments; the sweep emits each just before the next node past it.
     comments: Vec<Node<'a>>,
     comment_cursor: usize,
+    overflow_wrap_target: Option<OverflowWrapTarget>,
 }

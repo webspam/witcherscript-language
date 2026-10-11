@@ -9,8 +9,8 @@ pub(in crate::formatter) use if_stmt::{block_single_stmt, body_expandable, chain
 pub(in crate::formatter) use switch::{SwitchArm, collect_switch_arms};
 
 use super::{
-    ChainPart, Formatter, blank_line_between_rows, chain_fully_broken, chain_has_break,
-    chain_operator_leads, child_nodes, named_child_nodes, split_binary_chain, splittable_call,
+    ChainPart, Formatter, OverflowWrapTarget, blank_line_between_rows, chain_fully_broken,
+    child_nodes, named_child_nodes, split_binary_chain, splittable_call,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,17 +167,30 @@ impl Formatter<'_> {
             kinds::EXPR_STMT => self.format_expr_stmt(node),
             _ => {
                 self.emit_indent();
-                self.format_children(node);
+                self.with_overflow_wrap_target(node, |f| f.format_children(node));
                 self.nl();
             }
         }
+    }
+
+    fn with_overflow_wrap_target(&mut self, stmt: Node, format: impl FnOnce(&mut Self)) {
+        let trailing_len = self
+            .child_of_kind(stmt, ";")
+            .filter(|semi| !semi.is_missing())
+            .map_or(0, |semi| semi.byte_range().len());
+        self.overflow_wrap_target = statement_value(stmt).map(|value| OverflowWrapTarget {
+            value_id: value.id(),
+            trailing_len,
+        });
+        format(self);
+        self.overflow_wrap_target = None;
     }
 
     fn emit_split_keyword_cond(&mut self, keyword_open: &str, cond: Option<Node>) -> bool {
         let Some(c) = cond else {
             return false;
         };
-        let parts = split_binary_chain(c, self.source);
+        let parts = split_binary_chain(c);
         if parts.len() <= 1 {
             return false;
         }
@@ -197,9 +210,9 @@ impl Formatter<'_> {
         self.level += 1;
         for part in parts {
             // Do not move interleaved comments
-            self.flush_comments_before(part.start_byte);
+            self.flush_comments_before(part.operand.start_byte());
             self.emit_indent();
-            self.emit(&part.fragment);
+            self.format_node(part.operand);
             if let Some(op) = part.op {
                 self.emit(" ");
                 self.emit(op);
@@ -212,58 +225,6 @@ impl Formatter<'_> {
         }
         self.emit_indent();
         self.emit(")");
-    }
-
-    pub(super) fn try_emit_broken_chain(&mut self, node: Node, parent_kind: &str) -> bool {
-        if node.kind() != kinds::BINARY_OP_EXPR {
-            return false;
-        }
-        // A chain nested in an enclosing chain is already rendered as one flat fragment.
-        if parent_kind == kinds::BINARY_OP_EXPR {
-            return false;
-        }
-        // Re-rendered operand fragments drop comments; defer to the child walk that keeps them.
-        if self.has_interior_comment(node) {
-            return false;
-        }
-        let parts = split_binary_chain(node, self.source);
-        if !chain_has_break(&parts) {
-            return false;
-        }
-        let leads = chain_operator_leads(&parts);
-        self.emit(&parts[0].fragment);
-        self.level += 1;
-        for window in parts.windows(2) {
-            let op = window[0]
-                .op
-                .expect("non-final chain part carries its operator");
-            self.emit_chain_link(op, window[0].break_after, leads, &window[1].fragment);
-        }
-        self.level -= 1;
-        true
-    }
-
-    fn emit_chain_link(&mut self, op: &str, break_after: bool, leads: bool, fragment: &str) {
-        if !break_after {
-            self.emit(" ");
-            self.emit(op);
-            self.emit(" ");
-            self.emit(fragment);
-            return;
-        }
-        if leads {
-            self.nl();
-            self.emit_indent();
-            self.emit(op);
-            self.emit(" ");
-            self.emit(fragment);
-        } else {
-            self.emit(" ");
-            self.emit(op);
-            self.nl();
-            self.emit_indent();
-            self.emit(fragment);
-        }
     }
 
     fn emit_stmt_body(&mut self, body: Option<Node>, layout: BodyLayout) {
@@ -404,9 +365,7 @@ impl Formatter<'_> {
                 self.emit_wrapped_call(func, args, node);
                 return;
             }
-            if !self.try_emit_broken_chain(e, node.kind()) {
-                self.format_node(e);
-            }
+            self.with_overflow_wrap_target(node, |f| f.format_operand(e, node.kind()));
         }
         let semi = self.child_of_kind(node, ";");
         if semi.is_some_and(|n| !n.is_missing()) {
@@ -466,30 +425,35 @@ impl Formatter<'_> {
                 kinds::COMMENT => self.flush_comments_before(child.end_byte()),
                 "," => {
                     if pending_break {
-                        self.break_to_arg_line();
+                        self.break_to_indented_line();
                     }
                     self.emit(",");
                     pending_break = true;
                 }
                 _ => {
                     if pending_break {
-                        self.break_to_arg_line();
+                        self.break_to_indented_line();
                         pending_break = false;
                     }
                     self.flush_comments_before(child.start_byte());
-                    let frag = self.render_node(*child);
-                    self.emit(&frag);
+                    self.format_operand(*child, args.kind());
                 }
             }
         }
     }
+}
 
-    // A trailing comment may have already broken the line; don't double it.
-    fn break_to_arg_line(&mut self) {
-        if !self.out.ends_with('\n') {
-            self.nl();
-        }
-        self.emit_indent();
+fn statement_value(stmt: Node) -> Option<Node> {
+    match stmt.kind() {
+        kinds::RETURN_STMT => named_child_nodes(stmt)
+            .into_iter()
+            .find(|child| child.kind() != kinds::COMMENT),
+        kinds::LOCAL_VAR_DECL_STMT => stmt.child_by_field_name(fields::INIT_VALUE),
+        kinds::EXPR_STMT => named_child_nodes(stmt)
+            .into_iter()
+            .find(|child| child.kind() == kinds::ASSIGN_OP_EXPR)
+            .and_then(|assign| assign.child_by_field_name(fields::RIGHT)),
+        _ => None,
     }
 }
 
