@@ -237,19 +237,23 @@ fn ternary_layout(#[case] input: &str, #[case] expected: Expect) {
         return aaaa ? bbbb : cccc;
     }
 "]])]
-#[case::long_call_arg_stays_inline(
+#[case::long_call_arg_breaks_parens(
     "function F() { Foo(conditionAlpha ? valueIfTrue : valueIfFalse); }",
     expect![[r"
         function F() {
-            Foo(conditionAlpha ? valueIfTrue : valueIfFalse);
+            Foo(
+                conditionAlpha ? valueIfTrue : valueIfFalse
+            );
         }
     "]]
 )]
-#[case::nested_ternary_in_inline_call_arg_stays_inline(
+#[case::nested_ternary_in_call_arg_breaks_parens(
     "function F() { Foo(aaaa ? bbbb : cccc ? dddd : eeee); }",
     expect![[r"
         function F() {
-            Foo(aaaa ? bbbb : cccc ? dddd : eeee);
+            Foo(
+                aaaa ? bbbb : cccc ? dddd : eeee
+            );
         }
     "]]
 )]

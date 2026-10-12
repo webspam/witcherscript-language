@@ -95,6 +95,14 @@ impl<'a> Formatter<'a> {
         comment_in_range(&self.comments, node.start_byte(), node.end_byte())
     }
 
+    pub(super) fn has_line_comment_between(&self, open: Node, close: Node) -> bool {
+        self.comments.iter().any(|c| {
+            c.start_byte() >= open.end_byte()
+                && c.start_byte() < close.start_byte()
+                && is_line_comment(self.text(*c))
+        })
+    }
+
     pub(super) fn flush_before_close(&mut self, close: Option<Node>) {
         if let Some(cl) = close {
             self.flush_comments_before(cl.start_byte());
@@ -210,6 +218,7 @@ impl<'a> Formatter<'a> {
             kinds::SWITCH_STMT => self.format_switch_stmt(node),
             kinds::EXPR_STMT => self.format_expr_stmt(node),
             kinds::TERNARY_COND_EXPR => self.format_ternary(node),
+            kinds::FUNC_CALL_EXPR => self.format_call(node),
             _ if is_expr_node(node.kind()) => self.format_children(node),
             _ => self.format_children(node),
         }
@@ -333,6 +342,38 @@ impl<'a> Formatter<'a> {
             } else {
                 s.push_str(&self.render_node(*child));
             }
+            prev = Some(*child);
+        }
+        s
+    }
+
+    pub(super) fn render_span_from(&self, node: Node, end_byte: usize) -> String {
+        let mut scope = node;
+        while scope.end_byte() < end_byte
+            && let Some(parent) = scope.parent()
+        {
+            scope = parent;
+        }
+        self.render_span(scope, node.start_byte(), end_byte)
+    }
+
+    fn render_span(&self, node: Node, start_byte: usize, end_byte: usize) -> String {
+        if node.start_byte() >= start_byte && node.end_byte() <= end_byte {
+            return self.render_node(node);
+        }
+        let mut s = String::new();
+        let mut prev: Option<Node> = None;
+        for child in &child_nodes(node) {
+            let outside = child.end_byte() <= start_byte || child.start_byte() >= end_byte;
+            if child.is_missing() || outside {
+                continue;
+            }
+            if let Some(p) = prev
+                && self.gap_between(p, *child, node.kind())
+            {
+                s.push(' ');
+            }
+            s.push_str(&self.render_span(*child, start_byte, end_byte));
             prev = Some(*child);
         }
         s

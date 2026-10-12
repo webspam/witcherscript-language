@@ -9,9 +9,13 @@ pub(in crate::formatter) use if_stmt::{block_single_stmt, body_expandable, chain
 pub(in crate::formatter) use switch::{SwitchArm, collect_switch_arms};
 
 use super::{
-    ChainPart, Formatter, OverflowWrapTarget, blank_line_between_rows, chain_fully_broken,
-    child_nodes, named_child_nodes, split_binary_chain, splittable_call,
+    ChainPart, Formatter, LineEnd, OverflowWrapTarget, blank_line_between_rows, chain_fully_broken,
+    child_nodes, named_child_nodes, split_binary_chain,
 };
+
+const COND_THEN_BLOCK: usize = ") {".len();
+const COND_THEN_SEMI: usize = ");".len();
+const HEADER_THEN_BLOCK: usize = " {".len();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::formatter) enum BodyLayout {
@@ -167,7 +171,9 @@ impl Formatter<'_> {
             kinds::EXPR_STMT => self.format_expr_stmt(node),
             _ => {
                 self.emit_indent();
-                self.with_overflow_wrap_target(node, |f| f.format_children(node));
+                self.with_line_end(LineEnd::after(node, 0), |f| {
+                    f.with_overflow_wrap_target(node, |f| f.format_children(node));
+                });
                 self.nl();
             }
         }
@@ -184,6 +190,10 @@ impl Formatter<'_> {
         });
         format(self);
         self.overflow_wrap_target = None;
+    }
+
+    pub(in crate::formatter) fn format_keyword_cond(&mut self, cond: Node, tail_len: usize) {
+        self.with_line_end(LineEnd::after(cond, tail_len), |f| f.format_node(cond));
     }
 
     fn emit_split_keyword_cond(&mut self, keyword_open: &str, cond: Option<Node>) -> bool {
@@ -212,7 +222,10 @@ impl Formatter<'_> {
             // Do not move interleaved comments
             self.flush_comments_before(part.operand.start_byte());
             self.emit_indent();
-            self.format_node(part.operand);
+            let op_len = part.op.map_or(0, |op| " ".len() + op.len());
+            self.with_line_end(LineEnd::after(part.operand, op_len), |f| {
+                f.format_node(part.operand);
+            });
             if let Some(op) = part.op {
                 self.emit(" ");
                 self.emit(op);
@@ -289,7 +302,7 @@ impl Formatter<'_> {
                     self.emit_indent();
                     self.emit("while (");
                     if let Some(c) = cond {
-                        self.format_node(c);
+                        self.format_keyword_cond(c, COND_THEN_BLOCK);
                     }
                     self.emit(")");
                 }
@@ -316,7 +329,7 @@ impl Formatter<'_> {
                     self.emit_indent();
                     self.emit("while (");
                     if let Some(c) = cond {
-                        self.format_node(c);
+                        self.format_keyword_cond(c, COND_THEN_SEMI);
                     }
                     self.emit(")");
                 }
@@ -325,16 +338,12 @@ impl Formatter<'_> {
             kinds::FOR_STMT => {
                 self.emit_indent();
                 self.emit("for (");
-                if let Some(init) = node.child_by_field_name(fields::INIT) {
-                    self.format_node(init);
-                }
-                self.emit("; ");
-                if let Some(cond) = node.child_by_field_name(fields::COND) {
-                    self.format_node(cond);
-                }
-                self.emit("; ");
-                if let Some(iter) = node.child_by_field_name(fields::ITER) {
-                    self.format_node(iter);
+                if let Some(close) = self.child_of_kind(node, ")") {
+                    self.with_line_end(LineEnd::after(close, HEADER_THEN_BLOCK), |f| {
+                        f.emit_for_clauses(node);
+                    });
+                } else {
+                    self.emit_for_clauses(node);
                 }
                 self.emit(")");
                 self.emit_stmt_body(node.child_by_field_name(fields::BODY), BodyLayout::Auto);
@@ -347,6 +356,20 @@ impl Formatter<'_> {
         }
     }
 
+    fn emit_for_clauses(&mut self, node: Node) {
+        if let Some(init) = node.child_by_field_name(fields::INIT) {
+            self.format_node(init);
+        }
+        self.emit("; ");
+        if let Some(cond) = node.child_by_field_name(fields::COND) {
+            self.format_node(cond);
+        }
+        self.emit("; ");
+        if let Some(iter) = node.child_by_field_name(fields::ITER) {
+            self.format_node(iter);
+        }
+    }
+
     pub(super) fn format_switch_stmt(&mut self, node: Node) {
         switch::format_switch_stmt(self, node);
     }
@@ -355,91 +378,15 @@ impl Formatter<'_> {
         self.emit_indent();
         let expr = named_child_nodes(node).into_iter().next();
         if let Some(e) = expr {
-            let indent = self.level * self.indent_unit.len();
-            if indent + self.render_node(e).len() + 1 > self.line_limit
-                && let Some((lead, func, args)) = self.splittable_stmt_call(e)
-            {
-                if let Some(lead) = lead {
-                    self.emit(&lead);
-                }
-                self.emit_wrapped_call(func, args, node);
-                return;
-            }
-            self.with_overflow_wrap_target(node, |f| f.format_operand(e, node.kind()));
+            self.with_line_end(LineEnd::after(node, 0), |f| {
+                f.with_overflow_wrap_target(node, |f| f.format_operand(e, node.kind()));
+            });
         }
         let semi = self.child_of_kind(node, ";");
         if semi.is_some_and(|n| !n.is_missing()) {
             self.emit(";");
         }
         self.nl();
-    }
-
-    fn splittable_stmt_call<'tree>(
-        &self,
-        e: Node<'tree>,
-    ) -> Option<(Option<String>, Node<'tree>, Node<'tree>)> {
-        if let Some((func, args)) = splittable_call(e) {
-            return Some((None, func, args));
-        }
-        if e.kind() != kinds::ASSIGN_OP_EXPR {
-            return None;
-        }
-        let rhs = e.child_by_field_name(fields::RIGHT)?;
-        let (func, args) = splittable_call(rhs)?;
-        let lhs = e.child_by_field_name(fields::LEFT)?;
-        let op = e.child_by_field_name(fields::OP)?;
-        let lead = format!("{} {} ", self.render_node(lhs), self.render_node(op));
-        Some((Some(lead), func, args))
-    }
-
-    fn emit_wrapped_call(&mut self, func: Node, args: Node, stmt: Node) {
-        let prefix = self.render_node(func);
-        self.emit(&prefix);
-        self.emit("(");
-        self.nl();
-        self.level += 1;
-        self.emit_call_arg_lines(args);
-        self.level -= 1;
-        if !self.out.ends_with('\n') {
-            self.nl();
-        }
-        self.emit_indent();
-        self.emit(")");
-        if self
-            .child_of_kind(stmt, ";")
-            .is_some_and(|n| !n.is_missing())
-        {
-            self.emit(";");
-        }
-        self.nl();
-    }
-
-    // An omitted slot (two adjacent commas) must survive as a lone comma line, not vanish.
-    fn emit_call_arg_lines(&mut self, args: Node) {
-        self.emit_indent();
-        let mut pending_break = false;
-        for child in &child_nodes(args) {
-            match child.kind() {
-                // Flush, don't render: the cursor emits the comment once and consumes it, so the
-                // end-of-statement sweep can't print it again.
-                kinds::COMMENT => self.flush_comments_before(child.end_byte()),
-                "," => {
-                    if pending_break {
-                        self.break_to_indented_line();
-                    }
-                    self.emit(",");
-                    pending_break = true;
-                }
-                _ => {
-                    if pending_break {
-                        self.break_to_indented_line();
-                        pending_break = false;
-                    }
-                    self.flush_comments_before(child.start_byte());
-                    self.format_operand(*child, args.kind());
-                }
-            }
-        }
     }
 }
 

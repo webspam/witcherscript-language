@@ -6,6 +6,7 @@ use super::super::action::LayoutCtx;
 use super::super::{
     Formatter, SwitchToggle, blank_line_between_rows, child_nodes, comment_in_range,
 };
+use super::COND_THEN_BLOCK;
 
 // Spaces between aligned switch-arm columns (label -> statement -> break).
 const SWITCH_CELL_GAP: usize = 2;
@@ -110,7 +111,7 @@ impl Formatter<'_> {
             self.emit_indent();
             self.emit("switch (");
             if let Some(c) = cond {
-                self.format_node(c);
+                self.format_keyword_cond(c, COND_THEN_BLOCK);
             }
             self.emit(") {\n");
         }

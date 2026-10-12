@@ -2,7 +2,7 @@ use serde::Deserialize;
 use tree_sitter::Node;
 
 use crate::cst::{fields, kinds};
-use expressions::OverflowWrapTarget;
+use expressions::{LineEnd, OverflowWrapTarget};
 
 mod action;
 mod core;
@@ -185,17 +185,6 @@ pub(super) fn chain_operator_leads(parts: &[ChainPart]) -> bool {
         .is_some_and(|p| p.op_leads)
 }
 
-pub(super) fn splittable_call(node: Node) -> Option<(Node, Node)> {
-    if node.kind() != kinds::FUNC_CALL_EXPR {
-        return None;
-    }
-    let func = node.child_by_field_name(fields::FUNC)?;
-    let args = node.child_by_field_name(fields::ARGS)?;
-    let mut cursor = args.walk();
-    let has_separator = args.children(&mut cursor).any(|c| c.kind() == ",");
-    has_separator.then_some((func, args))
-}
-
 pub(super) use crate::cst::nav::{child_nodes, named_child_nodes};
 
 pub(super) fn is_alignable_field(node: Node) -> bool {
@@ -296,6 +285,7 @@ pub fn format_document(root: Node, source: &str, options: FormatOptions) -> Stri
         comments: collect_comments(root),
         comment_cursor: 0,
         overflow_wrap_target: None,
+        line_end: None,
     };
     f.format_node(root);
     f.flush_comments_before(usize::MAX);
@@ -324,4 +314,5 @@ struct Formatter<'a> {
     comments: Vec<Node<'a>>,
     comment_cursor: usize,
     overflow_wrap_target: Option<OverflowWrapTarget>,
+    line_end: Option<LineEnd>,
 }

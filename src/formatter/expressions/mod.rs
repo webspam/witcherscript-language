@@ -1,3 +1,4 @@
+mod call;
 mod chain;
 mod ternary;
 
@@ -6,6 +7,21 @@ use tree_sitter::Node;
 use super::Formatter;
 
 pub(in crate::formatter) use ternary::OverflowWrapTarget;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::formatter) struct LineEnd {
+    pub end_byte: usize,
+    pub tail_len: usize,
+}
+
+impl LineEnd {
+    pub(in crate::formatter) fn after(node: Node, tail_len: usize) -> Self {
+        Self {
+            end_byte: node.end_byte(),
+            tail_len,
+        }
+    }
+}
 
 impl Formatter<'_> {
     pub(in crate::formatter) fn format_operand(&mut self, operand: Node, parent_kind: &str) {
@@ -20,5 +36,23 @@ impl Formatter<'_> {
             self.nl();
         }
         self.emit_indent();
+    }
+
+    pub(in crate::formatter) fn with_line_end<R>(
+        &mut self,
+        line_end: LineEnd,
+        emit: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let outer = self.line_end.replace(line_end);
+        let result = emit(self);
+        self.line_end = outer;
+        result
+    }
+
+    fn overflows_line(&self, node: Node) -> bool {
+        self.line_end.is_some_and(|line_end| {
+            let rest_of_line = self.render_span_from(node, line_end.end_byte).len();
+            self.current_line_len() + rest_of_line + line_end.tail_len > self.line_limit
+        })
     }
 }
