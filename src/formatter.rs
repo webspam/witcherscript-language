@@ -98,6 +98,7 @@ pub struct FormatOptions {
     pub align_member_colons: bool,
     pub annotation_placement: AnnotationPlacement,
     pub default_placement: AnnotationPlacement,
+    pub else_placement: AnnotationPlacement,
 }
 
 impl Default for FormatOptions {
@@ -110,6 +111,7 @@ impl Default for FormatOptions {
             align_member_colons: false,
             annotation_placement: AnnotationPlacement::default(),
             default_placement: AnnotationPlacement::default(),
+            else_placement: AnnotationPlacement::default(),
         }
     }
 }
@@ -126,6 +128,7 @@ fn render_expr(node: Node, source: &str) -> String {
         align_member_colons: false,
         annotation_placement: AnnotationPlacement::Preserve,
         default_placement: AnnotationPlacement::Preserve,
+        else_placement: AnnotationPlacement::Preserve,
         colon_align_col: None,
         comments: Vec::new(),
         comment_cursor: 0,
@@ -311,6 +314,7 @@ pub fn format_document(root: Node, source: &str, options: FormatOptions) -> Stri
         align_member_colons: options.align_member_colons,
         annotation_placement: options.annotation_placement,
         default_placement: options.default_placement,
+        else_placement: options.else_placement,
         colon_align_col: None,
         comments: collect_comments(root),
         comment_cursor: 0,
@@ -337,6 +341,7 @@ struct Formatter<'a> {
     align_member_colons: bool,
     annotation_placement: AnnotationPlacement,
     default_placement: AnnotationPlacement,
+    else_placement: AnnotationPlacement,
     colon_align_col: Option<usize>,
     // Source-ordered comments; the sweep emits each just before the next node past it.
     comments: Vec<Node<'a>>,
