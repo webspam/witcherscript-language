@@ -2,10 +2,7 @@ use tree_sitter::Node;
 
 use crate::cst::kinds;
 
-use super::super::{
-    ChainPart, Formatter, OperatorPlacement, chain_has_break, chain_operator_placement,
-    split_binary_chain,
-};
+use super::super::{ChainPart, Formatter, chain_has_break, split_binary_chain};
 use super::LineEnd;
 
 impl Formatter<'_> {
@@ -81,6 +78,25 @@ fn segment_line_end(parts: &[ChainPart], placement: OperatorPlacement) -> Option
         (OperatorPlacement::Leading, _) | (OperatorPlacement::Trailing, None) => 0,
     };
     Some(LineEnd::after(last_on_line.operand, trailing_op_len))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OperatorPlacement {
+    Leading,
+    Trailing,
+}
+
+// The first break sets the whole chain's operator placement; later splits follow it.
+fn chain_operator_placement(parts: &[ChainPart]) -> OperatorPlacement {
+    let leads = parts
+        .iter()
+        .find(|p| p.break_after)
+        .is_some_and(|p| p.op_leads);
+    if leads {
+        OperatorPlacement::Leading
+    } else {
+        OperatorPlacement::Trailing
+    }
 }
 
 #[derive(Clone, Copy)]
