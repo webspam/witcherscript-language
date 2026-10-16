@@ -4,7 +4,7 @@ use crate::cst::{fields, kinds};
 
 use super::super::action::LayoutCtx;
 use super::super::{
-    Formatter, SwitchToggle, blank_line_between_rows, child_nodes, comment_in_range,
+    Formatter, SwitchToggle, blank_line_between_rows, child_nodes, comments_in_range,
 };
 use super::COND_THEN_BLOCK;
 
@@ -259,15 +259,13 @@ impl Formatter<'_> {
             return false;
         };
         // Only an own-line comment explains the row gap; a trailing one shares arm a's last row.
-        self.comments
-            .iter()
-            .any(|c| c.start_byte() >= e && c.start_byte() < s && c.start_position().row > a_end)
+        comments_in_range(&self.comments, e, s).any(|c| c.start_position().row > a_end)
     }
 }
 
 fn arm_has_interior_comment(arm: &SwitchArm, comments: &[Node]) -> bool {
     match (arm_start_byte(arm), arm_end_byte(arm)) {
-        (Some(start), Some(end)) => comment_in_range(comments, start, end),
+        (Some(start), Some(end)) => comments_in_range(comments, start, end).next().is_some(),
         _ => false,
     }
 }

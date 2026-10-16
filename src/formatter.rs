@@ -237,10 +237,14 @@ pub(super) fn blank_line_between_rows(prev: usize, next: usize) -> bool {
     next.saturating_sub(prev) >= 2
 }
 
-pub(super) fn comment_in_range(comments: &[Node], lo: usize, hi: usize) -> bool {
+pub(super) fn comments_in_range<'c, 't>(
+    comments: &'c [Node<'t>],
+    lo: usize,
+    hi: usize,
+) -> impl Iterator<Item = &'c Node<'t>> {
     comments
         .iter()
-        .any(|c| c.start_byte() >= lo && c.start_byte() < hi)
+        .filter(move |c| c.start_byte() >= lo && c.start_byte() < hi)
 }
 
 fn collect_comments(root: Node) -> Vec<Node> {
