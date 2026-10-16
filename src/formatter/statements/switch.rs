@@ -105,7 +105,7 @@ pub(super) fn format_switch_stmt(f: &mut Formatter<'_>, node: Node) {
 impl Formatter<'_> {
     pub(in crate::formatter) fn format_switch_stmt_impl(&mut self, node: Node) {
         let cond = node.child_by_field_name(fields::COND);
-        if self.emit_split_keyword_cond("switch (", cond) {
+        if self.emit_split_keyword_cond("switch (", cond, COND_THEN_BLOCK) {
             self.emit(" {\n");
         } else {
             self.emit_indent();

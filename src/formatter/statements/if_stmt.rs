@@ -26,7 +26,7 @@ impl Formatter<'_> {
         let body = node.child_by_field_name(fields::BODY);
         let else_body = node.child_by_field_name(fields::ELSE);
 
-        if self.emit_split_keyword_cond("if (", cond) {
+        if self.emit_split_keyword_cond("if (", cond, COND_THEN_BLOCK) {
             self.emit_stmt_body(body, BodyLayout::ForceBlock);
         } else {
             self.emit_indent();

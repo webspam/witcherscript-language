@@ -243,6 +243,19 @@ fn call_authored_layout(#[case] input: &str, #[case] expected: Expect) {
         }
     "]]
 )]
+#[case::if_condition_chain_splits_before_call(
+    "function F() { if (alpha && Foo(bb, cc)) { Bar(); } }",
+    expect![[r"
+        function F() {
+            if (
+                alpha &&
+                Foo(bb, cc)
+            ) {
+                Bar();
+            }
+        }
+    "]]
+)]
 #[case::if_condition_call_splits(
     "function F() { if (IsReady(first, second)) { Foo(); } }",
     expect![[r"

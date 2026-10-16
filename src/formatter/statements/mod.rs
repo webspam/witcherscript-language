@@ -181,7 +181,12 @@ impl Formatter<'_> {
         self.with_line_end(LineEnd::after(cond, tail_len), |f| f.format_node(cond));
     }
 
-    fn emit_split_keyword_cond(&mut self, keyword_open: &str, cond: Option<Node>) -> bool {
+    fn emit_split_keyword_cond(
+        &mut self,
+        keyword_open: &str,
+        cond: Option<Node>,
+        tail_len: usize,
+    ) -> bool {
         let Some(c) = cond else {
             return false;
         };
@@ -190,7 +195,7 @@ impl Formatter<'_> {
             return false;
         }
         let indent = self.level * self.indent_unit.len();
-        let cond_line = indent + keyword_open.len() + self.render_node(c).len() + 1;
+        let cond_line = indent + keyword_open.len() + self.render_node(c).len() + tail_len;
         if cond_line > self.line_limit || chain_fully_broken(&parts) {
             self.emit_condition_split(keyword_open, c, &parts);
             return true;
@@ -282,7 +287,7 @@ impl Formatter<'_> {
         match node.kind() {
             kinds::WHILE_STMT => {
                 let cond = node.child_by_field_name(fields::COND);
-                let split = self.emit_split_keyword_cond("while (", cond);
+                let split = self.emit_split_keyword_cond("while (", cond, COND_THEN_BLOCK);
                 if !split {
                     self.emit_indent();
                     self.emit("while (");
@@ -310,7 +315,7 @@ impl Formatter<'_> {
                     Some(trailing),
                 );
                 self.suppress_next_indent = true;
-                if !self.emit_split_keyword_cond("while (", cond) {
+                if !self.emit_split_keyword_cond("while (", cond, COND_THEN_SEMI) {
                     self.emit_indent();
                     self.emit("while (");
                     if let Some(c) = cond {
