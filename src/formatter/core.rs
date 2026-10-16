@@ -316,35 +316,7 @@ impl<'a> Formatter<'a> {
 
     // Render a subtree to a String (no indentation/newlines) - used for line-length measurement
     pub(super) fn render_node(&self, node: Node) -> String {
-        if node.is_missing() {
-            return String::new();
-        }
-        if node.is_error() {
-            return self.original_node_text(node);
-        }
-        if node.child_count() == 0 {
-            return self.text(node).to_string();
-        }
-        let children = child_nodes(node);
-        let mut s = String::new();
-        let mut prev: Option<Node> = None;
-        for child in &children {
-            if child.is_missing() {
-                continue;
-            }
-            if let Some(p) = prev
-                && self.gap_between(p, *child, node.kind())
-            {
-                s.push(' ');
-            }
-            if child.child_count() == 0 {
-                s.push_str(self.text(*child));
-            } else {
-                s.push_str(&self.render_node(*child));
-            }
-            prev = Some(*child);
-        }
-        s
+        self.render_span(node, node.start_byte(), node.end_byte())
     }
 
     pub(super) fn render_span_from(&self, node: Node, end_byte: usize) -> String {
@@ -358,8 +330,14 @@ impl<'a> Formatter<'a> {
     }
 
     fn render_span(&self, node: Node, start_byte: usize, end_byte: usize) -> String {
-        if node.start_byte() >= start_byte && node.end_byte() <= end_byte {
-            return self.render_node(node);
+        if node.is_missing() {
+            return String::new();
+        }
+        if node.is_error() {
+            return self.original_node_text(node);
+        }
+        if node.child_count() == 0 {
+            return self.text(node).to_string();
         }
         let mut s = String::new();
         let mut prev: Option<Node> = None;
