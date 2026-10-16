@@ -3,8 +3,8 @@ use tree_sitter::Node;
 use crate::cst::nav::first_child_kind;
 use crate::cst::{fields, kinds};
 
-use super::super::Formatter;
 use super::super::statements::statement_value;
+use super::super::{Formatter, starts_below};
 use super::LineEnd;
 
 struct TernaryParts<'t> {
@@ -37,7 +37,7 @@ impl<'t> TernaryParts<'t> {
             (self.colon, self.alt),
         ]
         .iter()
-        .any(|(before, after)| after.start_position().row > before.end_position().row)
+        .any(|(before, after)| starts_below(*before, *after))
     }
 }
 

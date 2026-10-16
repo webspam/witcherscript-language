@@ -3,7 +3,7 @@ use tree_sitter::Node;
 use crate::cst::nav::first_child_kind;
 use crate::cst::{fields, kinds};
 
-use super::super::{Formatter, child_nodes};
+use super::super::{Formatter, child_nodes, starts_below};
 use super::LineEnd;
 
 struct CallParts<'t> {
@@ -56,10 +56,6 @@ impl<'t> CallParts<'t> {
             .get(comma + 1)
             .is_some_and(|second| starts_below(first_arg_end, *second))
     }
-}
-
-fn starts_below(before: Node, after: Node) -> bool {
-    after.start_position().row > before.end_position().row
 }
 
 fn arg_line_end(arg: Node, following: &[Node]) -> LineEnd {

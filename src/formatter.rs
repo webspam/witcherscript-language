@@ -147,8 +147,8 @@ fn collect_chain_parts<'t>(node: Node<'t>, parts: &mut Vec<ChainPart<'t>>) {
             collect_chain_parts(left, parts);
             if let Some(last) = parts.last_mut() {
                 last.op = Some(op);
-                last.break_after = right.start_position().row > left.end_position().row;
-                last.op_leads = op_node.start_position().row > left.end_position().row;
+                last.break_after = starts_below(left, right);
+                last.op_leads = starts_below(left, op_node);
             }
             collect_chain_parts(right, parts);
             return;
@@ -160,6 +160,10 @@ fn collect_chain_parts<'t>(node: Node<'t>, parts: &mut Vec<ChainPart<'t>>) {
         break_after: false,
         op_leads: false,
     });
+}
+
+pub(super) fn starts_below(before: Node, after: Node) -> bool {
+    after.start_position().row > before.end_position().row
 }
 
 pub(super) fn split_binary_chain(node: Node) -> Vec<ChainPart> {
