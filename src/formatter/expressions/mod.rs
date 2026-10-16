@@ -10,6 +10,7 @@ use super::Formatter;
 pub(in crate::formatter) struct LineEnd {
     end_byte: usize,
     tail_len: usize,
+    statement_value_id: Option<usize>,
 }
 
 impl LineEnd {
@@ -17,6 +18,14 @@ impl LineEnd {
         Self {
             end_byte: node.end_byte(),
             tail_len,
+            statement_value_id: None,
+        }
+    }
+
+    pub(in crate::formatter) fn with_statement_value(self, value: Option<Node>) -> Self {
+        Self {
+            statement_value_id: value.map(|v| v.id()),
+            ..self
         }
     }
 }

@@ -171,7 +171,7 @@ impl Formatter<'_> {
             kinds::EXPR_STMT => self.format_expr_stmt(node),
             _ => {
                 self.emit_indent();
-                self.with_line_end(LineEnd::after(node, 0), |f| f.format_children(node));
+                self.with_line_end(statement_line_end(node), |f| f.format_children(node));
                 self.nl();
             }
         }
@@ -363,7 +363,7 @@ impl Formatter<'_> {
         self.emit_indent();
         let expr = named_child_nodes(node).into_iter().next();
         if let Some(e) = expr {
-            self.with_line_end(LineEnd::after(node, 0), |f| {
+            self.with_line_end(statement_line_end(node), |f| {
                 f.format_operand(e, node.kind());
             });
         }
@@ -375,7 +375,11 @@ impl Formatter<'_> {
     }
 }
 
-pub(in crate::formatter) fn statement_value(stmt: Node) -> Option<Node> {
+fn statement_line_end(stmt: Node) -> LineEnd {
+    LineEnd::after(stmt, 0).with_statement_value(statement_value(stmt))
+}
+
+fn statement_value(stmt: Node) -> Option<Node> {
     match stmt.kind() {
         kinds::RETURN_STMT => named_child_nodes(stmt)
             .into_iter()

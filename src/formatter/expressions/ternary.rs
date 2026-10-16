@@ -3,7 +3,6 @@ use tree_sitter::Node;
 use crate::cst::nav::first_child_kind;
 use crate::cst::{fields, kinds};
 
-use super::super::statements::statement_value;
 use super::super::{Formatter, starts_below};
 use super::LineEnd;
 
@@ -47,21 +46,14 @@ enum OverflowWrap {
     Denied,
 }
 
-fn is_statement_value(node: Node) -> bool {
-    let Some(parent) = node.parent() else {
-        return false;
-    };
-    let stmt = match parent.kind() {
-        kinds::ASSIGN_OP_EXPR => parent.parent(),
-        _ => Some(parent),
-    };
-    stmt.and_then(statement_value)
-        .is_some_and(|value| value.id() == node.id())
-}
-
 impl Formatter<'_> {
+    fn is_statement_value(&self, node: Node) -> bool {
+        self.line_end
+            .is_some_and(|line_end| line_end.statement_value_id == Some(node.id()))
+    }
+
     pub(in crate::formatter) fn format_ternary(&mut self, node: Node) {
-        let overflow_wrap = if is_statement_value(node) {
+        let overflow_wrap = if self.is_statement_value(node) {
             OverflowWrap::Allowed
         } else {
             OverflowWrap::Denied
