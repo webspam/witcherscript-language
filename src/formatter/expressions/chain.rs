@@ -78,7 +78,7 @@ fn segment_line_end(parts: &[ChainPart], placement: OperatorPlacement) -> Option
     let last_on_line = parts.iter().find(|p| p.break_after)?;
     let trailing_op_len = match (placement, last_on_line.op) {
         (OperatorPlacement::Trailing, Some(op)) => " ".len() + op.len(),
-        _ => 0,
+        (OperatorPlacement::Leading, _) | (OperatorPlacement::Trailing, None) => 0,
     };
     Some(LineEnd::after(last_on_line.operand, trailing_op_len))
 }

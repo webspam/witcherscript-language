@@ -36,15 +36,14 @@ impl Formatter<'_> {
         self.emit_indent();
     }
 
-    pub(in crate::formatter) fn with_line_end<R>(
+    pub(in crate::formatter) fn with_line_end(
         &mut self,
         line_end: LineEnd,
-        emit: impl FnOnce(&mut Self) -> R,
-    ) -> R {
+        emit: impl FnOnce(&mut Self),
+    ) {
         let outer = self.line_end.replace(line_end);
-        let result = emit(self);
+        emit(self);
         self.line_end = outer;
-        result
     }
 
     fn overflows_line(&self, node: Node) -> bool {
