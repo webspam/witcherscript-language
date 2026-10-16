@@ -9,8 +9,8 @@ pub(in crate::formatter) use if_stmt::{block_single_stmt, body_expandable, chain
 pub(in crate::formatter) use switch::{SwitchArm, collect_switch_arms};
 
 use super::{
-    ChainPart, Formatter, LineEnd, OverflowWrapTarget, blank_line_between_rows, chain_fully_broken,
-    child_nodes, named_child_nodes, split_binary_chain,
+    ChainPart, Formatter, LineEnd, blank_line_between_rows, chain_fully_broken, child_nodes,
+    named_child_nodes, split_binary_chain,
 };
 
 const COND_THEN_BLOCK: usize = ") {".len();
@@ -171,25 +171,10 @@ impl Formatter<'_> {
             kinds::EXPR_STMT => self.format_expr_stmt(node),
             _ => {
                 self.emit_indent();
-                self.with_line_end(LineEnd::after(node, 0), |f| {
-                    f.with_overflow_wrap_target(node, |f| f.format_children(node));
-                });
+                self.with_line_end(LineEnd::after(node, 0), |f| f.format_children(node));
                 self.nl();
             }
         }
-    }
-
-    fn with_overflow_wrap_target(&mut self, stmt: Node, format: impl FnOnce(&mut Self)) {
-        let trailing_len = self
-            .child_of_kind(stmt, ";")
-            .filter(|semi| !semi.is_missing())
-            .map_or(0, |semi| semi.byte_range().len());
-        self.overflow_wrap_target = statement_value(stmt).map(|value| OverflowWrapTarget {
-            value_id: value.id(),
-            trailing_len,
-        });
-        format(self);
-        self.overflow_wrap_target = None;
     }
 
     pub(in crate::formatter) fn format_keyword_cond(&mut self, cond: Node, tail_len: usize) {
@@ -379,7 +364,7 @@ impl Formatter<'_> {
         let expr = named_child_nodes(node).into_iter().next();
         if let Some(e) = expr {
             self.with_line_end(LineEnd::after(node, 0), |f| {
-                f.with_overflow_wrap_target(node, |f| f.format_operand(e, node.kind()));
+                f.format_operand(e, node.kind());
             });
         }
         let semi = self.child_of_kind(node, ";");
@@ -390,7 +375,7 @@ impl Formatter<'_> {
     }
 }
 
-fn statement_value(stmt: Node) -> Option<Node> {
+pub(in crate::formatter) fn statement_value(stmt: Node) -> Option<Node> {
     match stmt.kind() {
         kinds::RETURN_STMT => named_child_nodes(stmt)
             .into_iter()

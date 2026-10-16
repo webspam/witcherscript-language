@@ -2,7 +2,7 @@ use serde::Deserialize;
 use tree_sitter::Node;
 
 use crate::cst::{fields, kinds};
-use expressions::{LineEnd, OverflowWrapTarget};
+use expressions::LineEnd;
 
 mod action;
 mod core;
@@ -284,7 +284,6 @@ pub fn format_document(root: Node, source: &str, options: FormatOptions) -> Stri
         colon_align_col: None,
         comments: collect_comments(root),
         comment_cursor: 0,
-        overflow_wrap_target: None,
         line_end: None,
     };
     f.format_node(root);
@@ -313,6 +312,5 @@ struct Formatter<'a> {
     // Source-ordered comments; the sweep emits each just before the next node past it.
     comments: Vec<Node<'a>>,
     comment_cursor: usize,
-    overflow_wrap_target: Option<OverflowWrapTarget>,
     line_end: Option<LineEnd>,
 }

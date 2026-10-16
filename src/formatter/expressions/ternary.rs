@@ -4,13 +4,8 @@ use crate::cst::nav::first_child_kind;
 use crate::cst::{fields, kinds};
 
 use super::super::Formatter;
+use super::super::statements::statement_value;
 use super::LineEnd;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::formatter) struct OverflowWrapTarget {
-    pub value_id: usize,
-    pub trailing_len: usize,
-}
 
 struct TernaryParts<'t> {
     cond: Node<'t>,
@@ -48,17 +43,28 @@ impl<'t> TernaryParts<'t> {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum OverflowWrap {
-    Allowed { trailing_len: usize },
+    Allowed,
     Denied,
+}
+
+fn is_statement_value(node: Node) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+    let stmt = match parent.kind() {
+        kinds::ASSIGN_OP_EXPR => parent.parent(),
+        _ => Some(parent),
+    };
+    stmt.and_then(statement_value)
+        .is_some_and(|value| value.id() == node.id())
 }
 
 impl Formatter<'_> {
     pub(in crate::formatter) fn format_ternary(&mut self, node: Node) {
-        let overflow_wrap = match self.overflow_wrap_target {
-            Some(target) if target.value_id == node.id() => OverflowWrap::Allowed {
-                trailing_len: target.trailing_len,
-            },
-            _ => OverflowWrap::Denied,
+        let overflow_wrap = if is_statement_value(node) {
+            OverflowWrap::Allowed
+        } else {
+            OverflowWrap::Denied
         };
         self.format_ternary_with(node, overflow_wrap);
     }
@@ -73,10 +79,7 @@ impl Formatter<'_> {
         let Some(parts) = TernaryParts::of(node) else {
             return false;
         };
-        let overflows = match overflow_wrap {
-            OverflowWrap::Allowed { trailing_len } => self.ternary_overflows(node, trailing_len),
-            OverflowWrap::Denied => false,
-        };
+        let overflows = overflow_wrap == OverflowWrap::Allowed && self.overflows_line(node);
         if !parts.authored_break() && !overflows {
             return false;
         }
@@ -90,10 +93,6 @@ impl Formatter<'_> {
         self.emit_ternary_link(parts.colon, parts.alt, overflow_wrap);
         self.level -= 1;
         true
-    }
-
-    fn ternary_overflows(&self, node: Node, trailing_len: usize) -> bool {
-        self.current_line_len() + self.render_node(node).len() + trailing_len > self.line_limit
     }
 
     fn emit_ternary_link(&mut self, token: Node, operand: Node, overflow_wrap: OverflowWrap) {

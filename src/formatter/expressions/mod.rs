@@ -6,8 +6,6 @@ use tree_sitter::Node;
 
 use super::Formatter;
 
-pub(in crate::formatter) use ternary::OverflowWrapTarget;
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::formatter) struct LineEnd {
     pub end_byte: usize,
