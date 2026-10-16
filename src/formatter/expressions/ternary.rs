@@ -4,6 +4,7 @@ use crate::cst::nav::first_child_kind;
 use crate::cst::{fields, kinds};
 
 use super::super::Formatter;
+use super::LineEnd;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::formatter) struct OverflowWrapTarget {
@@ -79,9 +80,13 @@ impl Formatter<'_> {
         if !parts.authored_break() && !overflows {
             return false;
         }
-        self.emit_ternary_operand(parts.cond, overflow_wrap);
+        self.with_line_end(LineEnd::after(parts.cond, 0), |f| {
+            f.emit_ternary_operand(parts.cond, overflow_wrap);
+        });
         self.level += 1;
-        self.emit_ternary_link(parts.question, parts.conseq, overflow_wrap);
+        self.with_line_end(LineEnd::after(parts.conseq, 0), |f| {
+            f.emit_ternary_link(parts.question, parts.conseq, overflow_wrap);
+        });
         self.emit_ternary_link(parts.colon, parts.alt, overflow_wrap);
         self.level -= 1;
         true

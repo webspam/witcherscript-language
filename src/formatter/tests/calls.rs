@@ -304,6 +304,26 @@ fn call_authored_layout(#[case] input: &str, #[case] expected: Expect) {
         }
     "]]
 )]
+#[case::ternary_conseq_call_fits_on_its_line(
+    "function F() { x = c\n ? Foo(aa, bb)\n : ddddddddddddddddd; }",
+    expect![[r"
+        function F() {
+            x = c
+                ? Foo(aa, bb)
+                : ddddddddddddddddd;
+        }
+    "]]
+)]
+#[case::ternary_cond_call_fits_on_its_line(
+    "function F() { x = Check(a, b)\n ? yyyyyy\n : zzzzzz; }",
+    expect![[r"
+        function F() {
+            x = Check(a, b)
+                ? yyyyyy
+                : zzzzzz;
+        }
+    "]]
+)]
 fn call_line_limit(#[case] input: &str, #[case] expected: Expect) {
     let output = fmt_limit(input, 30);
     expected.assert_eq(&output);
