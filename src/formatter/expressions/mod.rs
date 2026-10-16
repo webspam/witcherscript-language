@@ -8,8 +8,8 @@ use super::Formatter;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::formatter) struct LineEnd {
-    pub end_byte: usize,
-    pub tail_len: usize,
+    end_byte: usize,
+    tail_len: usize,
 }
 
 impl LineEnd {

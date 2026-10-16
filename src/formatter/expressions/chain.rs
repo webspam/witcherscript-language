@@ -3,7 +3,8 @@ use tree_sitter::Node;
 use crate::cst::kinds;
 
 use super::super::{
-    ChainPart, Formatter, chain_has_break, chain_operator_leads, split_binary_chain,
+    ChainPart, Formatter, OperatorPlacement, chain_has_break, chain_operator_placement,
+    split_binary_chain,
 };
 use super::LineEnd;
 
@@ -22,24 +23,29 @@ impl Formatter<'_> {
         if !chain_has_break(&parts) {
             return false;
         }
-        let leads = chain_operator_leads(&parts);
-        self.format_chain_operand(&parts, 0, leads);
+        let placement = chain_operator_placement(&parts);
+        self.format_chain_operand(&parts, 0, placement);
         self.level += 1;
         for (i, window) in parts.windows(2).enumerate() {
             let op = window[0]
                 .op
                 .expect("non-final chain part carries its operator");
-            let layout = ChainLinkLayout::of(window[0].break_after, leads);
+            let layout = ChainLinkLayout::of(window[0].break_after, placement);
             self.emit_chain_link(op, layout);
-            self.format_chain_operand(&parts, i + 1, leads);
+            self.format_chain_operand(&parts, i + 1, placement);
         }
         self.level -= 1;
         true
     }
 
-    fn format_chain_operand(&mut self, parts: &[ChainPart], index: usize, leads: bool) {
+    fn format_chain_operand(
+        &mut self,
+        parts: &[ChainPart],
+        index: usize,
+        placement: OperatorPlacement,
+    ) {
         let operand = parts[index].operand;
-        match segment_line_end(&parts[index..], leads) {
+        match segment_line_end(&parts[index..], placement) {
             Some(line_end) => self.with_line_end(line_end, |f| f.format_node(operand)),
             None => self.format_node(operand),
         }
@@ -68,10 +74,10 @@ impl Formatter<'_> {
     }
 }
 
-fn segment_line_end(parts: &[ChainPart], operator_leads: bool) -> Option<LineEnd> {
+fn segment_line_end(parts: &[ChainPart], placement: OperatorPlacement) -> Option<LineEnd> {
     let last_on_line = parts.iter().find(|p| p.break_after)?;
-    let trailing_op_len = match (operator_leads, last_on_line.op) {
-        (false, Some(op)) => " ".len() + op.len(),
+    let trailing_op_len = match (placement, last_on_line.op) {
+        (OperatorPlacement::Trailing, Some(op)) => " ".len() + op.len(),
         _ => 0,
     };
     Some(LineEnd::after(last_on_line.operand, trailing_op_len))
@@ -85,11 +91,11 @@ enum ChainLinkLayout {
 }
 
 impl ChainLinkLayout {
-    fn of(break_after: bool, operator_leads: bool) -> Self {
-        match (break_after, operator_leads) {
+    fn of(break_after: bool, placement: OperatorPlacement) -> Self {
+        match (break_after, placement) {
             (false, _) => Self::Inline,
-            (true, true) => Self::LeadingBreak,
-            (true, false) => Self::TrailingBreak,
+            (true, OperatorPlacement::Leading) => Self::LeadingBreak,
+            (true, OperatorPlacement::Trailing) => Self::TrailingBreak,
         }
     }
 }

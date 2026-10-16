@@ -178,11 +178,22 @@ pub(super) fn chain_has_break(parts: &[ChainPart]) -> bool {
 }
 
 // The first break sets the whole chain's operator placement; later splits follow it.
-pub(super) fn chain_operator_leads(parts: &[ChainPart]) -> bool {
-    parts
+pub(super) fn chain_operator_placement(parts: &[ChainPart]) -> OperatorPlacement {
+    let leads = parts
         .iter()
         .find(|p| p.break_after)
-        .is_some_and(|p| p.op_leads)
+        .is_some_and(|p| p.op_leads);
+    if leads {
+        OperatorPlacement::Leading
+    } else {
+        OperatorPlacement::Trailing
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum OperatorPlacement {
+    Leading,
+    Trailing,
 }
 
 pub(super) use crate::cst::nav::{child_nodes, named_child_nodes};
