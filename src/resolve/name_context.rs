@@ -9,15 +9,15 @@ use crate::symbols::SymbolKind;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NameContext {
     /// `: T`, `new T(...)`, cast `(T)`, `class extends T`, `state X in T`,
-    /// `@addMethod(T)`. Accepts class, native type, struct, enum.
+    /// `@addMethod(T)`. Accepts class, native type, struct, enum, and a state by
+    /// its engine class name (`OwnerStateName`).
     Type,
     /// `state X in Owner extends T`. Accepts only a state declared in `owner_class`
     /// or one of its statemachine ancestors.
     StateExtends { owner_class: String },
     /// Bare call `Name(...)`. Accepts function, event, struct (constructor).
     Callable,
-    /// Bare identifier in expression position. Accepts function, event, class,
-    /// struct, enum. States are never bare values.
+    /// Bare identifier in expression position. Accepts any top-level kind.
     Value,
 }
 
@@ -27,13 +27,13 @@ impl NameContext {
     /// (so this returns true only for `State`).
     pub fn accepts(&self, kind: SymbolKind) -> bool {
         match self {
-            NameContext::Type => kind.is_assignable_type(),
+            NameContext::Type => kind.is_type(),
             NameContext::StateExtends { .. } => kind == SymbolKind::State,
             NameContext::Callable => matches!(
                 kind,
                 SymbolKind::Function | SymbolKind::Event | SymbolKind::Struct
             ),
-            NameContext::Value => kind != SymbolKind::State,
+            NameContext::Value => true,
         }
     }
 }

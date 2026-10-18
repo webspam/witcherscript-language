@@ -4,7 +4,6 @@ use std::hash::Hash;
 
 use crate::symbols::{Symbol, SymbolKind};
 
-use super::super::state_classes::state_backing_class_name;
 use super::{Definition, WorkspaceIndex};
 
 fn retain_and_prune<K, V, Q>(
@@ -54,8 +53,10 @@ impl WorkspaceIndex {
                 continue;
             }
             if sym.container.is_none() {
-                retain_and_prune(&mut self.top_level_by_name, &sym.name, |d| d.uri != uri);
-                if sym.kind.is_object_type() {
+                retain_and_prune(&mut self.top_level_by_name, &*sym.type_name(), |d| {
+                    d.uri != uri
+                });
+                if sym.kind.is_object_type() && sym.kind != SymbolKind::State {
                     retain_and_prune(&mut self.superclass_by_name, &sym.name, |(u, _)| u != uri);
                     if let Some(base) = &sym.base_class {
                         retain_and_prune(&mut self.subclasses_by_name, base, |(u, d)| {
@@ -69,14 +70,6 @@ impl WorkspaceIndex {
                     retain_and_prune_nested(&mut self.states_by_owner, owner, &sym.name, |d| {
                         d.uri != uri
                     });
-                    let still_declared = self
-                        .states_by_owner
-                        .get(owner)
-                        .is_some_and(|states| states.contains_key(&sym.name));
-                    if !still_declared {
-                        self.state_backing_by_name
-                            .remove(&state_backing_class_name(owner, &sym.name));
-                    }
                 }
                 if let Some(target) = sym.annotation_target_class_safe() {
                     retain_and_prune_nested(
@@ -156,13 +149,14 @@ impl WorkspaceIndex {
             }
             if sym.container.is_none() {
                 self.top_level_by_name
-                    .entry(sym.name.clone())
+                    .entry(sym.type_name().into_owned())
                     .or_default()
                     .push(Definition {
                         uri: uri.to_string(),
                         symbol: sym.clone(),
                     });
                 if sym.kind.is_object_type()
+                    && sym.kind != SymbolKind::State
                     && let Some(superclass) = &sym.base_class
                 {
                     self.superclass_by_name
@@ -186,9 +180,6 @@ impl WorkspaceIndex {
                             uri: uri.to_string(),
                             symbol: sym.clone(),
                         });
-                    self.state_backing_by_name
-                        .entry(state_backing_class_name(owner, &sym.name))
-                        .or_insert_with(|| (owner.clone(), sym.name.clone()));
                 }
             } else if let Some(cn) = &sym.container_name {
                 self.member_by_type

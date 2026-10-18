@@ -99,7 +99,7 @@ fn class_field_shadow(
     if !class_sym.kind.is_instantiable() {
         return None;
     }
-    let field = index.direct_member_of(class_sym.name.as_str(), &sym.name, AccessLevel::Private)?;
+    let field = index.direct_member_of(&class_sym.type_name(), &sym.name, AccessLevel::Private)?;
     if field.symbol.kind != SymbolKind::Field {
         return None;
     }

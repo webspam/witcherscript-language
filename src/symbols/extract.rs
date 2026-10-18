@@ -430,7 +430,7 @@ impl<'a> SymbolExtractor<'a> {
         let container_name = spec
             .container
             .and_then(|id| self.symbols.by_id(id))
-            .map(|s| s.name.clone());
+            .map(|s| s.type_name().into_owned());
         self.symbols.push(Symbol {
             id: SymbolId(usize::MAX),
             name: node_text(name_node, self.source),

@@ -186,7 +186,7 @@ fn add_method_on_state_offers_parent_members() {
         "state SomeState in CMachine {\n",
         "}\n",
         "//- /mod.ws\n",
-        "@addMethod(SomeState)\n",
+        "@addMethod(CMachineStateSomeState)\n",
         "function Extra() {\n",
         "  parent.$0\n",
         "}\n",

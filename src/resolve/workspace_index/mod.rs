@@ -30,8 +30,6 @@ pub struct WorkspaceIndex {
     // Reverse direction, needed because virtualParent dispatches down to subclasses.
     subclasses_by_name: HashMap<String, Vec<(String, String)>>,
     states_by_owner: HashMap<String, HashMap<String, Vec<Definition>>>,
-    // Forward index: the synthetic name `OwnerStateS` cannot be reverse-split into owner + state.
-    state_backing_by_name: HashMap<String, (String, String)>,
     member_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
     annotated_members_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
     native_functions_by_name: HashMap<String, Vec<Definition>>,

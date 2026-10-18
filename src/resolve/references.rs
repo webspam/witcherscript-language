@@ -112,6 +112,12 @@ pub fn find_references(
     include_declaration: bool,
 ) -> Vec<(String, SourceRange)> {
     let name = &definition.symbol.name;
+    let type_name = definition.symbol.type_name();
+    let search_names: Vec<&str> = if type_name == name.as_str() {
+        vec![name]
+    } else {
+        vec![name, &type_name]
+    };
 
     // All declarations of the logical member count as one symbol.
     let equiv = all_declarations_of(definition, db);
@@ -199,35 +205,38 @@ pub fn find_references(
         };
 
         let mut byte_ranges: Vec<std::ops::Range<usize>> = Vec::new();
-        if scan_range.is_none() {
-            if db.workspace.is_indexed(uri) || db.base.is_indexed(uri) {
-                // Document is in the index: use it. If the name isn't present,
-                // both calls return None and byte_ranges stays empty - no tree scan.
-                if let Some(ranges) = db
-                    .workspace
-                    .ident_ranges_in_doc(uri, name)
-                    .or_else(|| db.base.ident_ranges_in_doc(uri, name))
-                {
-                    byte_ranges.extend_from_slice(ranges);
+        for name in &search_names {
+            if scan_range.is_none() {
+                if db.workspace.is_indexed(uri) || db.base.is_indexed(uri) {
+                    // Document is in the index: use it. If the name isn't present,
+                    // both calls return None and byte_ranges stays empty - no tree scan.
+                    if let Some(ranges) = db
+                        .workspace
+                        .ident_ranges_in_doc(uri, name)
+                        .or_else(|| db.base.ident_ranges_in_doc(uri, name))
+                    {
+                        byte_ranges.extend_from_slice(ranges);
+                    }
+                } else {
+                    collect_ident_occurrences(
+                        document.tree.root_node(),
+                        document.source.as_bytes(),
+                        name,
+                        None,
+                        &mut byte_ranges,
+                    );
                 }
             } else {
                 collect_ident_occurrences(
                     document.tree.root_node(),
                     document.source.as_bytes(),
                     name,
-                    None,
+                    scan_range,
                     &mut byte_ranges,
                 );
             }
-        } else {
-            collect_ident_occurrences(
-                document.tree.root_node(),
-                document.source.as_bytes(),
-                name,
-                scan_range,
-                &mut byte_ranges,
-            );
         }
+        byte_ranges.sort_by_key(|range| range.start);
 
         for byte_range in byte_ranges {
             // Semantic verification: resolve the candidate and confirm it points

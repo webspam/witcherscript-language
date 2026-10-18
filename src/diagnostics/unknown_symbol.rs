@@ -137,10 +137,10 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 return None;
             }
             ctx.telemetry.definition_resolutions += 1;
-            let r = if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
-                None
-            } else if is_annotation_arg(ident) && ctx.db.has_state_named(name) {
-                // Bandaid: annotations legally target states, which we cannot yet resolve from an annotation.
+            let resolved_or_reported_elsewhere =
+                resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some()
+                    || (is_annotation_arg(ident) && ctx.db.has_state_named(name));
+            let r = if resolved_or_reported_elsewhere {
                 None
             } else {
                 push(ctx, ident, "unknown_type", format!("Unknown type '{name}'"));
@@ -226,7 +226,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 if name == "autoState" && enclosing.specifiers.is_state_machine() {
                     return None;
                 }
-                let container_name = enclosing.name.clone();
+                let container_name = enclosing.type_name().into_owned();
                 ctx.telemetry.member_lookups += 1;
                 if ctx
                     .db
@@ -293,9 +293,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             } else {
                 ctx.telemetry.definition_resolutions += 1;
                 match resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident) {
-                    Some(def)
-                        if def.symbol.kind.is_assignable_type() && def.symbol.name == name =>
-                    {
+                    Some(def) if def.symbol.kind.is_type() && def.symbol.type_name() == name => {
                         push(
                             ctx,
                             ident,

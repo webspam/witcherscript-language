@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use crate::line_index::SourceRange;
@@ -203,14 +204,6 @@ impl SymbolKind {
         )
     }
 
-    /// States cannot be used for assignments
-    pub(crate) fn is_assignable_type(self) -> bool {
-        matches!(
-            self,
-            SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::Enum
-        )
-    }
-
     pub fn is_callable(self) -> bool {
         matches!(
             self,
@@ -270,7 +263,18 @@ pub struct Symbol {
 const MEMBER_INJECTING_ANNOTATIONS: &[&str] =
     &["addMethod", "wrapMethod", "replaceMethod", "addField"];
 
+pub(crate) fn state_class_name(owner: &str, state: &str) -> String {
+    format!("{owner}State{state}")
+}
+
 impl Symbol {
+    pub fn type_name(&self) -> Cow<'_, str> {
+        match (self.kind, self.owner_class.as_deref()) {
+            (SymbolKind::State, Some(owner)) => Cow::Owned(state_class_name(owner, &self.name)),
+            _ => Cow::Borrowed(&self.name),
+        }
+    }
+
     /// Native callables and fields stay invisible to scripts until a script `import` declares them; native types do not.
     pub(crate) fn requires_import(&self) -> bool {
         self.origin == SymbolOrigin::Native
@@ -466,7 +470,7 @@ impl DocumentSymbols {
                 None if sym.annotation_target_class_safe().is_some() => {}
                 None => {
                     self.top_level_by_name
-                        .entry(sym.name.clone())
+                        .entry(sym.type_name().into_owned())
                         .or_default()
                         .push(sym.id);
                 }
@@ -481,7 +485,7 @@ impl DocumentSymbols {
             }
             if sym.kind.is_object_type() {
                 self.type_by_name
-                    .entry(sym.name.clone())
+                    .entry(sym.type_name().into_owned())
                     .or_default()
                     .push(sym.id);
             }

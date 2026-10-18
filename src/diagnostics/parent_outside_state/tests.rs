@@ -25,7 +25,7 @@ fn flags_parent_outside_state(#[case] fixture: &str) {
 )]
 #[case::wrapmethod_on_state(
     "statemachine class Owner {} state S in Owner { function M() {} }\n\
-     @wrapMethod(S) function M() { parent.M(); }\n"
+     @wrapMethod(OwnerStateS) function M() { parent.M(); }\n"
 )]
 fn does_not_fire(#[case] fixture: &str) {
     let t = TestDb::new(fixture);

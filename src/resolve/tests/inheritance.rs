@@ -163,7 +163,7 @@ fn keyword_resolves_to_class(
      state Mid in Owner extends Base {}\n\
      state Leaf in Owner extends Mid {\n  entry function Run() {\n    $0Help();\n  }\n}\n",
     "Help",
-    Some("Base"),
+    Some("OwnerStateBase"),
     None
 )]
 fn method_resolution_at_cursor(
@@ -235,12 +235,18 @@ fn state_without_explicit_extends_defaults_to_cscriptablestate() {
         "state SpawnBoatLatentHack in Owner {}\n",
     ));
     assert_eq!(
-        t.db().superclass_of("SpawnBoatLatentHack").as_deref(),
+        t.db()
+            .superclass_of("OwnerStateSpawnBoatLatentHack")
+            .as_deref(),
         Some("CScriptableState")
     );
     assert!(
         t.db()
-            .find_member("SpawnBoatLatentHack", "someMethod", AccessLevel::Public)
+            .find_member(
+                "OwnerStateSpawnBoatLatentHack",
+                "someMethod",
+                AccessLevel::Public
+            )
             .is_none()
     );
 }

@@ -99,7 +99,7 @@ pub(crate) fn access_is_inside_declaring_class<'tree>(
         byte,
         &[SymbolKind::Class, SymbolKind::Struct, SymbolKind::State],
     ) {
-        return enclosing.name == declarer;
+        return enclosing.type_name() == declarer;
     }
     let callable = ctx.document.symbols.enclosing_symbol_at(
         byte,

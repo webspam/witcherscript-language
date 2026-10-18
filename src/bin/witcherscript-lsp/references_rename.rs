@@ -11,7 +11,9 @@ use tracing::{debug, trace};
 use witcherscript_language::builtins::is_builtin_uri;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
+use witcherscript_language::line_index::SourceRange;
 use witcherscript_language::resolve::{find_references, resolve_definition};
+use witcherscript_language::symbols::Symbol;
 
 use crate::backend::{Backend, Result};
 use crate::compilation::Compilation;
@@ -48,8 +50,8 @@ pub(crate) fn merge_documents<'a>(
 // even when the renamed symbol's declaration lives in the workspace (e.g. an
 // @wrapMethod whose target's class-body declaration sits in a base script).
 pub(crate) fn rename_changes(
-    refs: &[(String, witcherscript_language::line_index::SourceRange)],
-    new_name: &str,
+    refs: &[(String, SourceRange)],
+    new_text_for: impl Fn(&str, SourceRange) -> String,
     base_docs: &HashMap<String, Arc<ParsedDocument>>,
 ) -> HashMap<Url, Vec<TextEdit>> {
     let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
@@ -60,11 +62,39 @@ pub(crate) fn rename_changes(
         if let Ok(url) = Url::parse(ref_uri) {
             changes.entry(url).or_default().push(TextEdit {
                 range: lsp_range(*range),
-                new_text: new_name.to_string(),
+                new_text: new_text_for(ref_uri, *range),
             });
         }
     }
     changes
+}
+
+fn text_at(document: &ParsedDocument, range: SourceRange) -> Option<&str> {
+    let start = document
+        .line_index
+        .position_to_byte(&document.source, range.start)?;
+    let end = document
+        .line_index
+        .position_to_byte(&document.source, range.end)?;
+    document.source.get(start..end)
+}
+
+pub(crate) fn renamed_occurrence_text(
+    symbol: &Symbol,
+    new_name: &str,
+) -> impl Fn(Option<&str>) -> String + use<> {
+    let old_type_name = symbol.type_name().into_owned();
+    let mut renamed = symbol.clone();
+    renamed.name = new_name.to_string();
+    let new_type_name = renamed.type_name().into_owned();
+    let new_name = new_name.to_string();
+    move |occurrence| {
+        if occurrence == Some(old_type_name.as_str()) {
+            new_type_name.clone()
+        } else {
+            new_name.clone()
+        }
+    }
 }
 
 fn ensure_rename_target_writable(definition_uri: &str, snap: &Compilation) -> Result<()> {
@@ -245,7 +275,14 @@ impl Backend {
 
             let refs = find_references(&definition, definition_document, &search_docs, &db, true);
 
-            let changes = rename_changes(&refs, &new_name, &snap.base_scripts_documents);
+            let occurrence_text = renamed_occurrence_text(&definition.symbol, &new_name);
+            let changes = rename_changes(
+                &refs,
+                |ref_uri, range| {
+                    occurrence_text(merged.get(ref_uri).and_then(|doc| text_at(doc, range)))
+                },
+                &snap.base_scripts_documents,
+            );
 
             Ok(Some(WorkspaceEdit {
                 changes: Some(changes),

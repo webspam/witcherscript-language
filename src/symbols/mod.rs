@@ -9,7 +9,7 @@ pub use types::{
     AccessLevel, Annotation, DocumentSymbols, FuncFlavour, Specifier, Specifiers, Symbol, SymbolId,
     SymbolKind,
 };
-pub(crate) use types::{SymbolOrigin, enclosing_callable_id};
+pub(crate) use types::{SymbolOrigin, enclosing_callable_id, state_class_name};
 pub use util::node_text;
 
 #[cfg(test)]

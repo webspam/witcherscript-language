@@ -1,9 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind, state_class_name};
 
 use super::super::completion_catalog::{merge_ws_base, merge_ws_base_three};
-use super::super::state_classes::StateBackingClass;
 use super::super::{MAX_INHERITANCE_DEPTH, dedup_by_name, dedup_definitions};
 use super::SymbolDb;
 use super::generics::{
@@ -45,7 +44,6 @@ impl SymbolDb<'_> {
             .find_top_level(name)
             .or_else(|| self.shadowed_base().find_top_level(name))
             .or_else(|| self.builtins.and_then(|b| b.find_top_level(name)))
-            .or_else(|| self.synthetic_state_class(name))
     }
 
     pub fn find_top_level_filtered(&self, name: &str, ctx: &NameContext) -> Option<Definition> {
@@ -57,16 +55,6 @@ impl SymbolDb<'_> {
                 self.builtins
                     .and_then(|b| b.find_top_level_filtered(name, ctx))
             })
-            .or_else(|| {
-                self.synthetic_state_class(name)
-                    .filter(|d| ctx.accepts(d.symbol.kind))
-            })
-    }
-
-    // Resolvable by name yet absent from `top_level_by_name`, so it never reaches the completion catalog.
-    fn synthetic_state_class(&self, name: &str) -> Option<Definition> {
-        self.find_state_backing_class(name)
-            .map(|sbc| sbc.as_class_definition())
     }
 
     /// Find a state named `name` declared in `start_owner` or any statemachine
@@ -79,6 +67,7 @@ impl SymbolDb<'_> {
                 return None;
             }
             self.record_top_level(&current);
+            self.record_top_level(&state_class_name(&current, name));
             if let Some(def) = self
                 .workspace
                 .find_state_in_owner(&current, name)
@@ -97,14 +86,28 @@ impl SymbolDb<'_> {
     }
 
     pub fn has_state_named(&self, name: &str) -> bool {
-        self.workspace.has_state_named(name) || self.base.has_state_named(name)
+        self.workspace.states_named(name).next().is_some()
+            || self.base.states_named(name).next().is_some()
     }
 
-    /// Workspace shadows base; builtins hold no states so they are not consulted.
-    pub(crate) fn find_state_backing_class(&self, name: &str) -> Option<StateBackingClass<'_>> {
+    pub(crate) fn states_named(&self, name: &str) -> Vec<Definition> {
+        let mut seen: HashSet<String> = HashSet::new();
         self.workspace
-            .find_state_backing_class(name)
-            .or_else(|| self.base.find_state_backing_class(name))
+            .states_named(name)
+            .chain(self.base.states_named(name))
+            .filter(|def| seen.insert(def.symbol.type_name().into_owned()))
+            .cloned()
+            .collect()
+    }
+
+    fn state_superclass(&self, class_name: &str) -> Option<String> {
+        let state = self
+            .find_top_level(class_name)
+            .filter(|def| def.symbol.kind == SymbolKind::State)?;
+        let owner = state.symbol.owner_class.as_deref()?;
+        let base = state.symbol.base_class.as_deref()?;
+        self.find_state_in_owner_chain(owner, base)
+            .map(|def| def.symbol.type_name().into_owned())
     }
 
     /// Exact selection-range match first, then by name; edits may have shifted the symbol.
@@ -167,10 +170,7 @@ impl SymbolDb<'_> {
             .superclass_of(class_name)
             .or_else(|| self.shadowed_base().superclass_of(class_name))
             .or_else(|| self.builtins.and_then(|b| b.superclass_of(class_name)))
-            .or_else(|| {
-                self.find_state_backing_class(class_name)
-                    .map(|sbc| sbc.state_name().to_string())
-            })
+            .or_else(|| self.state_superclass(class_name))
             .or_else(|| self.virtual_object_base(class_name))
     }
 

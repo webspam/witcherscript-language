@@ -165,6 +165,14 @@ pub(crate) fn replace_method_snippet(
 }
 
 pub(crate) fn type_completion_item(definition: &Definition) -> CompletionItem {
+    labelled_type_item(definition, definition.symbol.type_name().into_owned())
+}
+
+pub(crate) fn extends_completion_item(definition: &Definition) -> CompletionItem {
+    labelled_type_item(definition, definition.symbol.name.clone())
+}
+
+fn labelled_type_item(definition: &Definition, label: String) -> CompletionItem {
     let symbol = &definition.symbol;
     let kind = Some(match symbol.kind {
         SymbolKind::Struct => CompletionItemKind::STRUCT,
@@ -172,7 +180,7 @@ pub(crate) fn type_completion_item(definition: &Definition) -> CompletionItem {
         _ => CompletionItemKind::CLASS,
     });
     CompletionItem {
-        label: symbol.name.clone(),
+        label,
         kind,
         detail: symbol.display_detail(),
         ..CompletionItem::default()

@@ -42,7 +42,7 @@ Explicit syntax: `(Type)value`
 ## Names and scope
 
 - Every top-level name is unique
-- Valid global types: `class`, `struct`, `enum`, `state`, or primitive
+- Valid global types: `class`, `struct`, `enum`, `OwnerStateName`, or primitive
 - Bare calls: `this` method, global function, struct constructor `Vector(0,0,0)`
   - Functions can shadow struct constructors
 - Bare symbols: local, param, field, enum / script global
@@ -67,6 +67,8 @@ Top-level kinds: `class`, `struct`, `enum`, `state`, `function`, `event`
 - `Owner` must be a `class` carrying `statemachine`
 - `statemachine` is not inherited; each owner class declares it itself
 - A state exposes `parent` and `virtual_parent`, both the owner class
+- `state Name in Owner` creates a globally accessible type `OwnerStateName`
+- `state X extends Name` is the only place that uses the short name, resolved through owner ancestors
 
 ### struct
 
@@ -205,4 +207,4 @@ Precedence, tightest first:
 - `@replaceMethod(Class)` replaces existing method
 - `@wrapMethod` body must call `wrappedMethod(...)` exactly once
 - `@wrapMethod` function takes no added specifier / flavour (inherits wrapped signature)
-- Annotation targeting a state uses short state name (`Swimming`), not engine backing-class name
+- Target a state by class name: `@wrapMethod(CR4PlayerStateSwimming)`

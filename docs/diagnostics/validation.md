@@ -4,50 +4,50 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 
 ## Summary
 
-| #   | Code                               | Severity | Description                                                                                        |
-| --- | ---------------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
-| 1   | `late_local_var_decl`              | error    | Local `var` declared after an executable statement                                                 |
-| 2   | `duplicate_symbol`                 | error    | Two top-level declarations share a name                                                            |
-| 3   | `base_script_conflict`             | error    | Workspace file redeclares a base game script                                                       |
-| 4   | `duplicate_local`                  | error    | Two parameters or locals in one function share a name                                              |
-| 5   | `shadows_script_global`            | warning  | Name collides with a `redscripts.ini` global                                                       |
-| 6   | `shadows_class_field`              | warning  | Local `var` collides with a field on the enclosing type                                            |
-| 7   | `unknown_method`                   | error    | Method not declared on the receiver type                                                           |
-| 8   | `unknown_type`                     | error    | Type-position identifier doesn't resolve                                                           |
-| 9   | `unknown_member`                   | error    | Field not declared on the receiver type                                                            |
-| 10  | `unknown_function`                 | error    | Bare function call doesn't resolve                                                                 |
-| 11  | `unknown_identifier`               | error    | Bare identifier doesn't resolve                                                                    |
-| 12  | `missing_wrapped_method`           | error    | `@wrapMethod` body has no `wrappedMethod(...)` call                                                |
-| 13  | `duplicate_wrapped_method`         | error    | More than one `wrappedMethod(...)` call in a `@wrapMethod` body                                    |
-| 14  | `abstract_instantiation`           | error    | `new T` on an abstract class                                                                       |
-| 15  | `super_field_access`               | error    | `super.x` used outside of a method call                                                            |
-| 16  | `private_member_access`            | error    | Private field or method accessed from outside its declaring class                                  |
-| 17  | `type_used_as_value`               | error    | Type name (class, struct, enum, native type) used in a value position                              |
-| 18  | `type_mismatch`                    | error    | A value's type is not assignable to the target slot                                                |
-| 19  | `string_as_name_default`           | info     | A `name`/`CName` field default uses a string literal where a name literal is intended              |
-| 20  | `native_instantiation`             | error    | `new T` on a native simple type (e.g. `CDateTime`), which cannot be instantiated                   |
-| 21  | `native_default_coercion`          | info     | A `CBehTreeVal*` struct `default` uses a non-exact primitive (accepted, but coerced)               |
-| 22  | `struct_property_access_modifier`  | error    | An accessibility modifier (`private`/`protected`/`public`) is applied to a struct property         |
-| 23  | `state_owner_not_statemachine`     | warning  | `state X in Owner` where `Owner` is a class missing the `statemachine` keyword                     |
-| 24  | `state_owner_not_class`            | error    | `state X in Owner` where `Owner` resolves to something that is not a class (e.g. a struct or enum) |
-| 25  | `string_linefeed`                  | error    | A string literal contains a linefeed                                                               |
-| 26  | `int_overflow`                     | error    | An integer literal overflows a 32-bit int                                                          |
-| 27  | `event_return_not_void`            | error    | An event declares a return type other than `void`                                                  |
-| 28  | `event_bare_return`                | error    | A bare `return;` inside an event body                                                              |
-| 29  | `non_constant_default`             | error    | A `default` value is a call or `new` expression                                                    |
-| 30  | `annotation_targets_backing_class` | error    | A modding annotation targets a state's backing class name instead of the short state name          |
-| 31  | `duplicate_inherited_field`        | error    | A field redeclares a field inherited from an ancestor                                              |
-| 32  | `override_weaker_access`           | error    | A method override has weaker access than the ancestor's method                                     |
-| 33  | `override_param_count`             | error    | A method override declares a different parameter count than the ancestor's method                  |
-| 34  | `unused_symbol`                    | hint     | An unused local variable, parameter, or private field; rendered faded by editors                   |
-| 35  | `wrapped_method_modifier`          | error    | A modifier or flavour keyword is applied to a `@wrapMethod` function                               |
-| 36  | `struct_property_on_temporary`     | error    | `f().x` accesses a struct property on a function result                                            |
-| 37  | `arg_count_mismatch`               | error    | A call passes too few or too many arguments for the callee's parameters                            |
-| 38  | `parent_outside_state`             | error    | `parent` / `virtual_parent` used outside a state method                                            |
-| 39  | `cast_in_var_init`                 | error    | A cast to a non-primitive type appears anywhere in a local `var` initializer                       |
-| 40  | `hex_default_zero`                 | warning  | A hex value in a class `default`, which always evaluates to 0                                      |
-| 41  | `native_not_imported`              | info     | Native function or member used without an `import`                                                 |
-| 42  | `unknown_native_import`            | error    | `import` of a function, type, or member the engine doesn't have                                    |
+| #   | Code                              | Severity | Description                                                                                        |
+| --- | --------------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| 1   | `late_local_var_decl`             | error    | Local `var` declared after an executable statement                                                 |
+| 2   | `duplicate_symbol`                | error    | Two top-level declarations share a name                                                            |
+| 3   | `base_script_conflict`            | error    | Workspace file redeclares a base game script                                                       |
+| 4   | `duplicate_local`                 | error    | Two parameters or locals in one function share a name                                              |
+| 5   | `shadows_script_global`           | warning  | Name collides with a `redscripts.ini` global                                                       |
+| 6   | `shadows_class_field`             | warning  | Local `var` collides with a field on the enclosing type                                            |
+| 7   | `unknown_method`                  | error    | Method not declared on the receiver type                                                           |
+| 8   | `unknown_type`                    | error    | Type-position identifier doesn't resolve                                                           |
+| 9   | `unknown_member`                  | error    | Field not declared on the receiver type                                                            |
+| 10  | `unknown_function`                | error    | Bare function call doesn't resolve                                                                 |
+| 11  | `unknown_identifier`              | error    | Bare identifier doesn't resolve                                                                    |
+| 12  | `missing_wrapped_method`          | error    | `@wrapMethod` body has no `wrappedMethod(...)` call                                                |
+| 13  | `duplicate_wrapped_method`        | error    | More than one `wrappedMethod(...)` call in a `@wrapMethod` body                                    |
+| 14  | `abstract_instantiation`          | error    | `new T` on an abstract class                                                                       |
+| 15  | `super_field_access`              | error    | `super.x` used outside of a method call                                                            |
+| 16  | `private_member_access`           | error    | Private field or method accessed from outside its declaring class                                  |
+| 17  | `type_used_as_value`              | error    | Type name (class, struct, enum, native type) used in a value position                              |
+| 18  | `type_mismatch`                   | error    | A value's type is not assignable to the target slot                                                |
+| 19  | `string_as_name_default`          | info     | A `name`/`CName` field default uses a string literal where a name literal is intended              |
+| 20  | `native_instantiation`            | error    | `new T` on a native simple type (e.g. `CDateTime`), which cannot be instantiated                   |
+| 21  | `native_default_coercion`         | info     | A `CBehTreeVal*` struct `default` uses a non-exact primitive (accepted, but coerced)               |
+| 22  | `struct_property_access_modifier` | error    | An accessibility modifier (`private`/`protected`/`public`) is applied to a struct property         |
+| 23  | `state_owner_not_statemachine`    | warning  | `state X in Owner` where `Owner` is a class missing the `statemachine` keyword                     |
+| 24  | `state_owner_not_class`           | error    | `state X in Owner` where `Owner` resolves to something that is not a class (e.g. a struct or enum) |
+| 25  | `string_linefeed`                 | error    | A string literal contains a linefeed                                                               |
+| 26  | `int_overflow`                    | error    | An integer literal overflows a 32-bit int                                                          |
+| 27  | `event_return_not_void`           | error    | An event declares a return type other than `void`                                                  |
+| 28  | `event_bare_return`               | error    | A bare `return;` inside an event body                                                              |
+| 29  | `non_constant_default`            | error    | A `default` value is a call or `new` expression                                                    |
+| 30  | `short_state_name`                | error    | Annotation targets the state short name instead of `OwnerStateName`                                |
+| 31  | `duplicate_inherited_field`       | error    | A field redeclares a field inherited from an ancestor                                              |
+| 32  | `override_weaker_access`          | error    | A method override has weaker access than the ancestor's method                                     |
+| 33  | `override_param_count`            | error    | A method override declares a different parameter count than the ancestor's method                  |
+| 34  | `unused_symbol`                   | hint     | An unused local variable, parameter, or private field; rendered faded by editors                   |
+| 35  | `wrapped_method_modifier`         | error    | A modifier or flavour keyword is applied to a `@wrapMethod` function                               |
+| 36  | `struct_property_on_temporary`    | error    | `f().x` accesses a struct property on a function result                                            |
+| 37  | `arg_count_mismatch`              | error    | A call passes too few or too many arguments for the callee's parameters                            |
+| 38  | `parent_outside_state`            | error    | `parent` / `virtual_parent` used outside a state method                                            |
+| 39  | `cast_in_var_init`                | error    | A cast to a non-primitive type appears anywhere in a local `var` initializer                       |
+| 40  | `hex_default_zero`                | warning  | A hex value in a class `default`, which always evaluates to 0                                      |
+| 41  | `native_not_imported`             | info     | Native function or member used without an `import`                                                 |
+| 42  | `unknown_native_import`           | error    | `import` of a function, type, or member the engine doesn't have                                    |
 
 ## Details
 

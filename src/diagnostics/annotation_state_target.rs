@@ -11,12 +11,11 @@ use super::{
     collect_single_rule_diagnostics,
 };
 
-pub const KIND: &str = "annotation_targets_backing_class";
+pub const KIND: &str = "short_state_name";
 
 const MEMBER_INJECTION_ANNOTATIONS: [&str; 4] =
     ["@wrapMethod", "@replaceMethod", "@addMethod", "@addField"];
 
-// A real class coincidentally named like `{Owner}State{Name}` would false-positive; accepted.
 pub(crate) struct AnnotationStateTargetRule;
 
 impl CstRule for AnnotationStateTargetRule {
@@ -56,9 +55,19 @@ fn check_annotation_target<'tree>(
 
     let arg = node.child_by_field_name(fields::ARG)?;
     let arg_name = arg.utf8_text(ctx.document.source.as_bytes()).ok()?;
-    let backing = ctx.db.find_state_backing_class(arg_name)?;
-    let state_name = backing.state_name().to_string();
-    let state_decl = backing.as_class_definition();
+    if ctx.db.find_top_level(arg_name).is_some() {
+        return None;
+    }
+    let mut states = ctx.db.states_named(arg_name);
+    if states.is_empty() {
+        return None;
+    }
+    states.sort_by(|a, b| a.symbol.type_name().cmp(&b.symbol.type_name()));
+    let suggestions = states
+        .iter()
+        .map(|state| format!("{annotation_name}({})", state.symbol.type_name()))
+        .collect::<Vec<_>>()
+        .join(", ");
 
     let range = ctx.document.line_index.byte_range_to_range(
         &ctx.document.source,
@@ -68,16 +77,19 @@ fn check_annotation_target<'tree>(
     ctx.diagnostics.push(WorkspaceDiagnostic {
         kind: KIND.to_string(),
         message: format!(
-            "'{arg_name}' is a state's backing class name, which annotations cannot target; \
-             use the short state name: {annotation_name}({state_name})"
+            "'{arg_name}' is a state's short name, which annotations cannot target; \
+             use the state's class name: {suggestions}"
         ),
         severity: Severity::Error,
         range,
-        related: vec![RelatedLocation {
-            uri: state_decl.uri.clone(),
-            range: state_decl.symbol.selection_range,
-            message: format!("state '{state_name}' declared here"),
-        }],
+        related: states
+            .iter()
+            .map(|state| RelatedLocation {
+                uri: state.uri.clone(),
+                range: state.symbol.selection_range,
+                message: format!("state '{}' declared here", state.symbol.type_name()),
+            })
+            .collect(),
         data: None,
     });
     Some(())

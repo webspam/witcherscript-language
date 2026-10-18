@@ -52,7 +52,7 @@ fn check_override<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> 
     let name_ident = node.child_by_field_name(fields::NAME)?;
     // safe: ident nodes are sliced from a UTF-8 String on char-aligned boundaries
     let name = name_ident.utf8_text(ctx.document.source.as_bytes()).ok()?;
-    let parent = ctx.db.superclass_of(&container.name)?;
+    let parent = ctx.db.superclass_of(&container.type_name())?;
     let ancestor = ctx.db.find_class_body_member(&parent, name)?;
     if ancestor.symbol.kind != SymbolKind::Method {
         return None;

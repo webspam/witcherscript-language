@@ -148,20 +148,49 @@ fn kinds(diags: &[super::WorkspaceDiagnostic]) -> Vec<&str> {
      function BaseState() {} \
      function F() { BaseState(); }\n"
 )]
-#[case::add_method_on_state_not_flagged(
+#[case::short_state_name_annotation_left_to_annotation_state_target(
     "statemachine class C {} \
      state Sleep in C {} \
      @addMethod(Sleep) function Extra() {}\n"
 )]
-#[case::wrap_method_on_state_not_flagged(
+#[case::add_method_on_state_class_name(
     "statemachine class C {} \
      state Sleep in C {} \
-     @wrapMethod(Sleep) function Extra() {}\n"
+     @addMethod(CStateSleep) function Extra() {}\n"
 )]
-#[case::synthetic_state_class_in_annotation(
+#[case::wrap_method_on_state_class_name(
+    "statemachine class C {} \
+     state Sleep in C { function Run() {} } \
+     @wrapMethod(CStateSleep) function Run() { wrappedMethod(); }\n"
+)]
+#[case::state_class_name_as_type(
     "statemachine class C {} \
      state Sleep in C {} \
      function F() { var s : CStateSleep; }\n"
+)]
+#[case::state_class_name_added_method_called_from_state_body(
+    "statemachine class C {} \
+     state Sleep in C { function UseAdded() { AddedViaClassName(); } } \
+     @addMethod(CStateSleep) function AddedViaClassName() {}\n"
+)]
+#[case::state_class_name_add_reads_private_state_members(
+    "statemachine class C {} \
+     state Sleep in C { private var secret : int; private function Hidden() : int { return secret; } } \
+     @addMethod(CStateSleep) function ReadSecret() : int { return this.secret + Hidden(); }\n"
+)]
+#[case::state_class_name_add_calls_owner_through_parent(
+    "statemachine class C { function OwnerOnly() : int { return 1; } } \
+     state Sleep in C {} \
+     @addMethod(CStateSleep) function CallOwner() : int { \
+         return parent.OwnerOnly() + virtual_parent.OwnerOnly(); }\n"
+)]
+#[case::state_class_name_typed_receiver_sees_added_member(
+    "statemachine class A {} \
+     statemachine class B {} \
+     state Shared in A {} \
+     state Shared in B {} \
+     @addMethod(AStateShared) function OnlyOnA() {} \
+     function F(s : AStateShared) { s.OnlyOnA(); }\n"
 )]
 fn produces_no_diagnostics(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
@@ -286,6 +315,45 @@ fn produces_no_diagnostics(#[case] fixture: &str) {
      state Child in Owner extends Missing {}\n",
     &["unknown_type"],
     &["Missing"],
+)]
+#[case::state_extends_rejects_state_class_name(
+    "statemachine class Owner {} \
+     state Base in Owner {} \
+     state Child in Owner extends OwnerStateBase {}\n",
+    &["unknown_type"],
+    &["OwnerStateBase"],
+)]
+#[case::short_state_name_return_type_is_unknown_type(
+    "statemachine class C {} \
+     state Sleep in C {} \
+     function F(s : CStateSleep) : Sleep { return s; }\n",
+    &["unknown_type"],
+    &["Sleep"],
+)]
+#[case::derived_owner_has_no_state_class_name(
+    "statemachine class Base {} \
+     statemachine class Derived extends Base {} \
+     state Idle in Base {} \
+     function F(s : DerivedStateIdle) {}\n",
+    &["unknown_type"],
+    &["DerivedStateIdle"],
+)]
+#[case::member_added_to_one_owner_state_missing_on_other(
+    "statemachine class A {} \
+     statemachine class B {} \
+     state Shared in A {} \
+     state Shared in B {} \
+     @addField(AStateShared) var onlyOnA : int; \
+     function F(s : BStateShared) { s.onlyOnA = 1; }\n",
+    &["unknown_member"],
+    &["onlyOnA", "BStateShared"],
+)]
+#[case::state_class_name_used_as_value(
+    "statemachine class C {} \
+     state Sleep in C {} \
+     function F() { var x : int; x = CStateSleep; }\n",
+    &["type_used_as_value"],
+    &["CStateSleep"],
 )]
 fn produces_kinds_and_message_substrings(
     #[case] fixture: &str,

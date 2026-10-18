@@ -23,7 +23,6 @@ mod references;
 mod selection;
 mod shadowed_base;
 mod signature;
-mod state_classes;
 mod subscription_registry;
 mod symbol_db;
 mod type_definition;

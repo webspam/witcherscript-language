@@ -76,7 +76,7 @@ fn reports_state_field_redeclared_from_base_state() {
     let diags = result.get(t.primary_uri()).expect("primary file flagged");
     assert_eq!(diags.len(), 1, "base-state fields count");
     assert_eq!(
-        diags[0].message, "Field 'hp' is already declared in ancestor class 'Base'",
+        diags[0].message, "Field 'hp' is already declared in ancestor class 'MStateBase'",
         "message names the base state",
     );
 }

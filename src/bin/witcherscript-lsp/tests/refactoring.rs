@@ -13,6 +13,19 @@ use witcherscript_language::test_support::TestDb;
 use crate::convert::{replace_method_snippet, wrap_method_snippet};
 
 #[test]
+fn renaming_a_state_rewrites_class_name_occurrences_with_the_new_class_name() {
+    use crate::references_rename::renamed_occurrence_text;
+
+    let t = TestDb::new("statemachine class C {}\nstate $0Sleep in C {}\n");
+    let (uri, pos) = t.cursor();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("state resolves");
+    let text_for = renamed_occurrence_text(&def.symbol, "Nap");
+
+    assert_eq!(text_for(Some("Sleep")), "Nap");
+    assert_eq!(text_for(Some("CStateSleep")), "CStateNap");
+}
+
+#[test]
 fn rename_returns_edits_for_all_occurrences() {
     let t = TestDb::new("function Make() {\n var $0x : int;\n x = 1;\n x = x + 1;\n}\n");
     let (uri, pos) = t.cursor();
@@ -92,7 +105,7 @@ fn rename_does_not_edit_base_scripts() {
     let refs = find_references(&def, &mod_doc, &search_docs, &db, true);
     assert!(refs.iter().any(|(uri, _)| uri == "file:///base/player.ws"));
 
-    let changes = rename_changes(&refs, "IsCiriRenamed", &base_docs);
+    let changes = rename_changes(&refs, |_, _| "IsCiriRenamed".to_string(), &base_docs);
     assert!(
         changes
             .keys()

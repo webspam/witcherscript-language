@@ -92,6 +92,24 @@ fn annotation_arg_completions_offers_classes(#[case] fixture: &str, #[case] shou
 }
 
 #[test]
+fn annotation_arg_completions_offer_states_labelled_by_class_name() {
+    let t = TestDb::new(concat!(
+        "statemachine class CR4Player {}\n",
+        "state Swimming in CR4Player {}\n",
+        "@wrapMethod($0)\n",
+    ));
+    let (_uri, pos) = t.cursor();
+    let completions = annotation_arg_completions(t.primary_doc(), &t.db(), pos);
+
+    let names: Vec<String> = completions
+        .iter()
+        .map(|d| d.symbol.type_name().into_owned())
+        .collect();
+    assert!(names.contains(&"CR4Player".to_string()));
+    assert!(names.contains(&"CR4PlayerStateSwimming".to_string()));
+}
+
+#[test]
 fn annotation_arg_completions_empty_outside_annotation() {
     let t = TestDb::new(concat!("class CPlayer {}\n", "function $0Test() {}\n",));
     let (_uri, pos) = t.cursor();
