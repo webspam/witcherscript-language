@@ -115,7 +115,10 @@ fn rename_does_not_edit_base_scripts() {
         ("file:///mod/ciri.ws", &mod_doc),
     ];
     let refs = find_references(&def, &mod_doc, &search_docs, &db, true);
-    assert!(refs.iter().any(|r| r.uri == "file:///base/player.ws"));
+    assert!(
+        refs.iter().any(|r| r.uri == "file:///base/player.ws"),
+        "the base-script call site is a reference"
+    );
 
     let changes = rename_changes(&refs, "IsCiriRenamed", "IsCiriRenamed", &base_docs);
     assert!(

@@ -105,8 +105,14 @@ fn annotation_arg_completions_offer_states_labelled_by_class_name() {
         .iter()
         .map(|d| d.symbol.type_name().into_owned())
         .collect();
-    assert!(names.contains(&"CR4Player".to_string()));
-    assert!(names.contains(&"CR4PlayerStateSwimming".to_string()));
+    assert!(
+        names.contains(&"CR4Player".to_string()),
+        "owner class offered, got {names:?}"
+    );
+    assert!(
+        names.contains(&"CR4PlayerStateSwimming".to_string()),
+        "state offered by its class name, got {names:?}"
+    );
 }
 
 #[rstest]

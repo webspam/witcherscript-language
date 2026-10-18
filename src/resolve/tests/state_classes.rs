@@ -26,9 +26,17 @@ fn state_resolves_by_class_name_not_short_name() {
     let db = SymbolDb::new(&workspace, &base);
 
     let def = db.find_top_level("CStateS").expect("class name resolves");
-    assert_eq!(def.symbol.kind, SymbolKind::State);
-    assert_eq!(def.symbol.name, "S");
-    assert_eq!(def.symbol.owner_class.as_deref(), Some("C"));
+    assert_eq!(
+        def.symbol.kind,
+        SymbolKind::State,
+        "class name resolves to the state"
+    );
+    assert_eq!(def.symbol.name, "S", "state keeps its short name");
+    assert_eq!(
+        def.symbol.owner_class.as_deref(),
+        Some("C"),
+        "state records its owner"
+    );
     assert!(db.find_top_level("S").is_none(), "short name is not a type");
 }
 
@@ -44,7 +52,11 @@ fn state_members_are_keyed_by_class_name() {
     let run = db
         .find_member("CStateS", "Run", AccessLevel::Private)
         .expect("member found under the class name");
-    assert_eq!(run.symbol.container_name.as_deref(), Some("CStateS"));
+    assert_eq!(
+        run.symbol.container_name.as_deref(),
+        Some("CStateS"),
+        "state members record the class name as their container"
+    );
 }
 
 #[test]
@@ -59,19 +71,23 @@ fn same_short_name_in_two_owners_are_distinct_classes() {
 
     assert!(
         db.find_member("AStateShared", "OnA", AccessLevel::Private)
-            .is_some()
+            .is_some(),
+        "A's Shared state should have OnA"
     );
     assert!(
         db.find_member("AStateShared", "OnB", AccessLevel::Private)
-            .is_none()
+            .is_none(),
+        "A's Shared state should not have B's OnB"
     );
     assert!(
         db.find_member("BStateShared", "OnB", AccessLevel::Private)
-            .is_some()
+            .is_some(),
+        "B's Shared state should have OnB"
     );
     assert!(
         db.find_member("BStateShared", "OnA", AccessLevel::Private)
-            .is_none()
+            .is_none(),
+        "B's Shared state should not have A's OnA"
     );
 }
 
@@ -89,6 +105,7 @@ fn state_superclass_is_base_state_class_name_resolved_through_owner_chain() {
     assert_eq!(
         db.superclass_of("WitcherStateCombatSteel").as_deref(),
         Some("PlayerStateCombatSword"),
+        "the base state is found on the owner's ancestor and named by its class name",
     );
     assert!(
         db.find_member("WitcherStateCombatSteel", "Swing", AccessLevel::Public)
@@ -105,7 +122,8 @@ fn state_without_extends_derives_from_scriptable_state() {
 
     assert_eq!(
         db.superclass_of("CStateS").as_deref(),
-        Some("CScriptableState")
+        Some("CScriptableState"),
+        "a state without extends derives from CScriptableState"
     );
 }
 
@@ -123,13 +141,15 @@ fn workspace_state_shadows_base_state_with_same_class_name() {
 
     assert_eq!(
         db.find_top_level("CStateS").expect("workspace wins").uri,
-        "file:///mod.ws"
+        "file:///mod.ws",
+        "the workspace state shadows the base state with the same class name"
     );
     assert_eq!(
         db.find_top_level("CStateOnly")
             .expect("base-only resolves")
             .uri,
-        "file:///base.ws"
+        "file:///base.ws",
+        "a state only in base still resolves from base"
     );
 }
 
@@ -158,8 +178,15 @@ fn class_name_in_type_position_resolves_to_state_declaration() {
     let def = resolve_at_cursor(
         "statemachine class C {}\nstate Sleep in C {}\nfunction F() { var s : $0CStateSleep; }\n",
     );
-    assert_eq!(def.symbol.kind, SymbolKind::State);
-    assert_eq!(def.symbol.name, "Sleep");
+    assert_eq!(
+        def.symbol.kind,
+        SymbolKind::State,
+        "type-position class name resolves to a state"
+    );
+    assert_eq!(
+        def.symbol.name, "Sleep",
+        "type-position class name resolves to the Sleep state"
+    );
 }
 
 #[test]
@@ -167,8 +194,15 @@ fn class_name_in_annotation_resolves_to_state_declaration() {
     let def = resolve_at_cursor(
         "statemachine class C {}\nstate Sleep in C {}\n@addMethod($0CStateSleep) function Extra() {}\n",
     );
-    assert_eq!(def.symbol.kind, SymbolKind::State);
-    assert_eq!(def.symbol.name, "Sleep");
+    assert_eq!(
+        def.symbol.kind,
+        SymbolKind::State,
+        "annotation class name resolves to a state"
+    );
+    assert_eq!(
+        def.symbol.name, "Sleep",
+        "annotation class name resolves to the Sleep state"
+    );
 }
 
 #[test]
@@ -177,8 +211,15 @@ fn member_access_through_class_name_typed_receiver_resolves() {
         "statemachine class C {}\nstate Sleep in C { function Doze() {} }\n\
          function F(s : CStateSleep) { s.$0Doze(); }\n",
     );
-    assert_eq!(def.symbol.kind, SymbolKind::Method);
-    assert_eq!(def.symbol.name, "Doze");
+    assert_eq!(
+        def.symbol.kind,
+        SymbolKind::Method,
+        "member access resolves to a method"
+    );
+    assert_eq!(
+        def.symbol.name, "Doze",
+        "a class-name typed receiver exposes the state's methods"
+    );
 }
 
 #[test]
@@ -187,8 +228,16 @@ fn wrapped_method_in_class_name_wrapper_resolves_to_state_method() {
         "statemachine class C {}\nstate Sleep in C { function Run() : int { return 1; } }\n\
          @wrapMethod(CStateSleep) function Run() : int { return $0wrappedMethod() + 1; }\n",
     );
-    assert_eq!(def.symbol.kind, SymbolKind::Method);
-    assert_eq!(def.symbol.container_name.as_deref(), Some("CStateSleep"));
+    assert_eq!(
+        def.symbol.kind,
+        SymbolKind::Method,
+        "wrappedMethod resolves to a method"
+    );
+    assert_eq!(
+        def.symbol.container_name.as_deref(),
+        Some("CStateSleep"),
+        "wrappedMethod resolves to the wrapped state method"
+    );
 }
 
 #[test]
@@ -197,7 +246,11 @@ fn parent_in_class_name_annotation_resolves_to_owner_member() {
         "statemachine class C { function OwnerOnly() {} }\nstate Sleep in C {}\n\
          @addMethod(CStateSleep) function CallOwner() { parent.$0OwnerOnly(); }\n",
     );
-    assert_eq!(def.symbol.container_name.as_deref(), Some("C"));
+    assert_eq!(
+        def.symbol.container_name.as_deref(),
+        Some("C"),
+        "parent inside a class-name annotation is the owner class"
+    );
 }
 
 #[test]
@@ -206,8 +259,16 @@ fn this_in_class_name_annotation_resolves_to_state_member() {
         "statemachine class C {}\nstate Sleep in C { var secret : int; }\n\
          @addMethod(CStateSleep) function Read() : int { return this.$0secret; }\n",
     );
-    assert_eq!(def.symbol.kind, SymbolKind::Field);
-    assert_eq!(def.symbol.container_name.as_deref(), Some("CStateSleep"));
+    assert_eq!(
+        def.symbol.kind,
+        SymbolKind::Field,
+        "this.secret resolves to a field"
+    );
+    assert_eq!(
+        def.symbol.container_name.as_deref(),
+        Some("CStateSleep"),
+        "this inside a class-name annotation is the state"
+    );
 }
 
 #[test]
@@ -216,8 +277,15 @@ fn class_name_added_method_resolves_from_state_body() {
         "statemachine class C {}\nstate Sleep in C { function Use() { $0Added(); } }\n\
          @addMethod(CStateSleep) function Added() {}\n",
     );
-    assert_eq!(def.symbol.kind, SymbolKind::Function);
-    assert_eq!(def.symbol.name, "Added");
+    assert_eq!(
+        def.symbol.kind,
+        SymbolKind::Function,
+        "the added method is an annotated function"
+    );
+    assert_eq!(
+        def.symbol.name, "Added",
+        "a bare call in the state body reaches the method added via the class name"
+    );
 }
 
 #[test]
@@ -226,8 +294,15 @@ fn super_in_state_resolves_to_base_state() {
         "statemachine class C {}\nstate Base in C { function Ping() {} }\n\
          state Child in C extends Base { function Ping() { $0super.Ping(); } }\n",
     );
-    assert_eq!(def.symbol.kind, SymbolKind::State);
-    assert_eq!(def.symbol.name, "Base");
+    assert_eq!(
+        def.symbol.kind,
+        SymbolKind::State,
+        "super inside a state resolves to a state"
+    );
+    assert_eq!(
+        def.symbol.name, "Base",
+        "super resolves to the extended base state"
+    );
 }
 
 #[test]
@@ -272,8 +347,15 @@ fn virtual_parent_member_resolves_against_the_owner_class() {
     let def = resolve_at_cursor(
         "class Owner {\n    function OwnerPing() : int { return 1; }\n}\nstate S in Owner {\n    function M() {\n        virtual_parent.$0OwnerPing();\n    }\n}\n",
     );
-    assert_eq!(def.symbol.kind, SymbolKind::Method);
-    assert_eq!(def.symbol.name, "OwnerPing");
+    assert_eq!(
+        def.symbol.kind,
+        SymbolKind::Method,
+        "virtualParent resolves a method"
+    );
+    assert_eq!(
+        def.symbol.name, "OwnerPing",
+        "virtualParent resolves a member of the owner class"
+    );
 }
 
 fn owning_classes(defs: &[crate::resolve::Definition]) -> Vec<&str> {
@@ -294,7 +376,11 @@ fn virtual_parent_goto_lists_owner_and_subclass_overrides() {
     );
     let (uri, pos) = t.cursor();
     let defs = resolve_all_definitions(&uri, t.doc_for(&uri), &t.db(), pos);
-    assert_eq!(owning_classes(&defs), ["BaseClass", "SomeClass"]);
+    assert_eq!(
+        owning_classes(&defs),
+        ["BaseClass", "SomeClass"],
+        "virtualParent go-to-def should reach the owner and its subclass override"
+    );
 }
 
 // A subclass two levels below the owner is still a possible runtime type.
@@ -305,7 +391,11 @@ fn virtual_parent_goto_includes_transitive_subclass_override() {
     );
     let (uri, pos) = t.cursor();
     let defs = resolve_all_definitions(&uri, t.doc_for(&uri), &t.db(), pos);
-    assert_eq!(owning_classes(&defs), ["A", "C"]);
+    assert_eq!(
+        owning_classes(&defs),
+        ["A", "C"],
+        "the override two levels down must be listed; the non-overriding middle class must not"
+    );
 }
 
 // `parent` is static, so it must stay a single owner target even when subclasses override.
@@ -316,5 +406,9 @@ fn parent_goto_does_not_list_subclass_overrides() {
     );
     let (uri, pos) = t.cursor();
     let defs = resolve_all_definitions(&uri, t.doc_for(&uri), &t.db(), pos);
-    assert_eq!(owning_classes(&defs), ["BaseClass"]);
+    assert_eq!(
+        owning_classes(&defs),
+        ["BaseClass"],
+        "parent dispatches statically to the owner only"
+    );
 }

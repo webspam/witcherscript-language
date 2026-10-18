@@ -40,7 +40,10 @@ fn after_wrap_method_on_state_class_name_offers_state_methods() {
     ))
     .expect("state methods should be offered after the state's class name");
 
-    assert!(def_names(&result.methods).contains(&"SwimmingInitGeneral"));
+    assert!(
+        def_names(&result.methods).contains(&"SwimmingInitGeneral"),
+        "the state's methods should be offered after @wrapMethod(ClassName)"
+    );
 }
 
 #[test]

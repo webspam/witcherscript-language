@@ -83,9 +83,17 @@ fn flags_method_added_to_other_owners_same_named_state() {
     let diags = result
         .get(t.primary_uri())
         .expect("should have diagnostics");
-    assert_eq!(diags.len(), 1);
-    assert!(diags[0].message.contains("OnlyOnA"));
-    assert!(diags[0].message.contains("BStateShared"));
+    assert_eq!(diags.len(), 1, "exactly one unknown-method diagnostic");
+    assert!(
+        diags[0].message.contains("OnlyOnA"),
+        "message names the missing method, got {:?}",
+        diags[0].message
+    );
+    assert!(
+        diags[0].message.contains("BStateShared"),
+        "message names the receiver's state class, got {:?}",
+        diags[0].message
+    );
 }
 
 #[test]
