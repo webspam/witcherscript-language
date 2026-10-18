@@ -82,6 +82,11 @@ fn verified(src: &str, needle: &str) -> bool {
     "c.count",
     "count1"
 )]
+#[case::enclosing_state_field_collision(
+    "statemachine class C {}\nstate S in C {\n    var count : int;\n    function M() {\n        var r : int;\n        r = this.count + 1;\n    }\n}\n",
+    "this.count",
+    "count1"
+)]
 #[case::method_name_is_not_a_field_collision(
     "class C {\n    function GetPos() : int { return 1; }\n    function M() {\n        var r : int;\n        r = this.GetPos();\n    }\n}\n",
     "this.GetPos()",
