@@ -224,9 +224,9 @@ A `return;` with no value inside an event body, at any nesting depth. Events ret
 
 A `default x = ...;` or `defaults { x = ...; }` value that is a function/constructor call or a `new` expression (e.g. `default v = Vector(0, 0, 0);`). The compiler only accepts compile-time constants here. Literals, signed literals, and bare identifiers (possible enum members) are allowed; only call and `new` expressions are flagged, so a parenthesised call slips through. Purely syntactic, so the `witcherscript-check` CLI reports it as well.
 
-### 30. Annotation targets a state's backing class
+### 30. Annotation targets a state's short name
 
-A `@wrapMethod` / `@replaceMethod` / `@addMethod` / `@addField` whose argument is the engine-synthesised backing class name of a state (e.g. `@wrapMethod(CR4PlayerStateSwimming)`). The mod compiler only matches annotations against the short state name (`@wrapMethod(Swimming)`); the message suggests that spelling and links to the state declaration.
+An annotation whose argument is a state's short name (e.g. `@wrapMethod(Swimming)`) that does not resolve to any type. A state is a class named `{Owner}State{Name}`, and annotations must target that class name (`@wrapMethod(CR4PlayerStateSwimming)`). Reported in place of `unknown_type`. The message suggests the class name for every owner that declares a state with that short name and links to each state declaration. A real class with the short name takes precedence, so `@addMethod(Idle)` is not flagged when `class Idle` exists.
 
 ### 31. Duplicate inherited field
 
