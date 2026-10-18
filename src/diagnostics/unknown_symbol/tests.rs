@@ -148,11 +148,6 @@ fn kinds(diags: &[super::WorkspaceDiagnostic]) -> Vec<&str> {
      function BaseState() {} \
      function F() { BaseState(); }\n"
 )]
-#[case::short_state_name_annotation_left_to_annotation_state_target(
-    "statemachine class C {} \
-     state Sleep in C {} \
-     @addMethod(Sleep) function Extra() {}\n"
-)]
 #[case::add_method_on_state_class_name(
     "statemachine class C {} \
      state Sleep in C {} \

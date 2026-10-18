@@ -85,11 +85,6 @@ impl SymbolDb<'_> {
         }
     }
 
-    pub fn has_state_named(&self, name: &str) -> bool {
-        self.workspace.states_named(name).next().is_some()
-            || self.base.states_named(name).next().is_some()
-    }
-
     pub(crate) fn states_named(&self, name: &str) -> Vec<Definition> {
         let mut seen: HashSet<String> = HashSet::new();
         self.workspace

@@ -14,6 +14,7 @@ use crate::symbols::{AccessLevel, SymbolKind};
 use crate::types::is_builtin_type_name;
 
 use super::native_import::{NativeName, native_not_imported};
+use super::short_state_name::short_state_name_diagnostic;
 use super::{
     CstRuleCtx, ParallelRuleShard, Severity, WorkspaceDiagnostic, access_is_inside_declaring_class,
     collect_nodes_with_error_subtree, declaring_class_of, run_parallel_pass,
@@ -137,11 +138,11 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 return None;
             }
             ctx.telemetry.definition_resolutions += 1;
-            let resolved_or_reported_elsewhere =
-                resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some()
-                    || (is_annotation_arg(ident) && ctx.db.has_state_named(name));
-            let r = if resolved_or_reported_elsewhere {
+            let r = if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
                 None
+            } else if let Some(diagnostic) = short_state_name_diagnostic(ident, name, ctx) {
+                ctx.diagnostics.push(diagnostic);
+                Some(())
             } else {
                 push(ctx, ident, "unknown_type", format!("Unknown type '{name}'"));
                 Some(())
@@ -369,12 +370,6 @@ fn resolves_as_local<'tree>(ctx: &CstRuleCtx<'_, 'tree>, ident: Node<'tree>, nam
         .symbols
         .local_at_byte(callable.id, name, byte)
         .is_some()
-}
-
-fn is_annotation_arg(ident: Node) -> bool {
-    ident
-        .parent()
-        .is_some_and(|p| p.kind() == kinds::ANNOTATION)
 }
 
 fn is_inside_wrap_method<'tree>(ident: Node<'tree>, ctx: &CstRuleCtx<'_, 'tree>) -> bool {

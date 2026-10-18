@@ -7,7 +7,6 @@ use tree_sitter::{Node, Point};
 use crate::line_index::SourceRange;
 
 mod abstract_instantiation;
-mod annotation_state_target;
 mod arg_count;
 mod base_script_conflict;
 mod cst_walker;
@@ -18,6 +17,7 @@ mod native_import;
 mod override_consistency;
 mod parent_outside_state;
 mod shadowing;
+mod short_state_name;
 mod state_owner;
 mod struct_temp_member;
 mod super_field_access;
@@ -28,7 +28,6 @@ mod unused_symbol;
 mod wrapped_method;
 
 pub use abstract_instantiation::collect_abstract_instantiation_diagnostics;
-pub use annotation_state_target::collect_annotation_state_target_diagnostics;
 pub use arg_count::collect_arg_count_diagnostics;
 pub use base_script_conflict::{
     KIND as BASE_SCRIPT_CONFLICT_KIND, basename_of, collect_base_script_conflict_diagnostics,
@@ -60,7 +59,6 @@ use crate::cst::{fields, kinds};
 use crate::document::ParsedDocument;
 use crate::resolve::SymbolDb;
 use abstract_instantiation::AbstractInstantiationRule;
-use annotation_state_target::AnnotationStateTargetRule;
 use arg_count::ArgCountRule;
 use inherited_field::InheritedFieldRule;
 use override_consistency::OverrideConsistencyRule;
@@ -87,7 +85,6 @@ pub fn collect_cst_diagnostics_for_document(
     let type_mismatch_rule = TypeMismatchRule;
     let arg_count_rule = ArgCountRule;
     let state_owner_rule = StateOwnerRule;
-    let annotation_state_target_rule = AnnotationStateTargetRule;
     let inherited_field_rule = InheritedFieldRule;
     let override_consistency_rule = OverrideConsistencyRule;
     let parent_outside_state_rule = ParentOutsideStateRule;
@@ -101,7 +98,6 @@ pub fn collect_cst_diagnostics_for_document(
         &type_mismatch_rule,
         &arg_count_rule,
         &state_owner_rule,
-        &annotation_state_target_rule,
         &inherited_field_rule,
         &override_consistency_rule,
         &parent_outside_state_rule,

@@ -23,8 +23,8 @@ Index-walking rules, each `collect_*_diagnostics(&WorkspaceIndex, ...) -> HashMa
 
 CST-walking rules, each a unit struct implementing `CstRule`, registered in `collect_cst_diagnostics_for_document`:
 
-- `unknown_method.rs`, `type_mismatch.rs`, `arg_count.rs`, `abstract_instantiation.rs`, `super_field_access.rs`, `state_owner.rs`, `annotation_state_target.rs`, `inherited_field.rs`, `override_consistency.rs`, `parent_outside_state.rs`, `unused_symbol.rs`, `wrapped_method.rs`.
-- `unknown_symbol.rs` is the exception: it runs as a separate parallel pass (`run_unknown_symbol_parallel`), not in the shared walk, because it records resolver observations that merge back into the `SymbolDb`.
+- `unknown_method.rs`, `type_mismatch.rs`, `arg_count.rs`, `abstract_instantiation.rs`, `super_field_access.rs`, `state_owner.rs`, `inherited_field.rs`, `override_consistency.rs`, `parent_outside_state.rs`, `unused_symbol.rs`, `wrapped_method.rs`.
+- `unknown_symbol.rs` is the exception: it runs as a separate parallel pass (`run_unknown_symbol_parallel`), not in the shared walk, because it records resolver observations that merge back into the `SymbolDb`. An unresolved annotation argument that names a state reports `short_state_name` (built by `short_state_name.rs`) instead of `unknown_type`.
 
 Each rule module owns its `#[cfg(test)] mod tests`.
 

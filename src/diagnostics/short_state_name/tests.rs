@@ -1,6 +1,12 @@
-use super::{KIND, collect_annotation_state_target_diagnostics};
-use crate::diagnostics::Severity;
+use super::KIND;
+use crate::diagnostics::{Severity, WorkspaceDiagnostic, collect_unknown_symbol_diagnostics};
 use crate::test_support::TestDb;
+
+fn short_state_name_diagnostics(t: &TestDb, uri: &str) -> Vec<WorkspaceDiagnostic> {
+    collect_unknown_symbol_diagnostics(&t.search_docs(), &t.db())
+        .remove(uri)
+        .unwrap_or_default()
+}
 
 #[test]
 fn reports_wrap_method_on_short_state_name() {
@@ -12,9 +18,8 @@ fn reports_wrap_method_on_short_state_name() {
         "@wrapMethod(Idle) function Run() { wrappedMethod(); }\n",
     ));
 
-    let result = collect_annotation_state_target_diagnostics(&t.search_docs(), &t.db());
+    let diags = short_state_name_diagnostics(&t, "file:///b.ws");
 
-    let diags = result.get("file:///b.ws").expect("b.ws should be flagged");
     assert_eq!(diags.len(), 1, "exactly one short-name diagnostic");
     assert_eq!(diags[0].kind, KIND, "diagnostic kind");
     assert_eq!(diags[0].severity, Severity::Error, "error severity");
@@ -40,7 +45,7 @@ fn accepts_wrap_method_on_state_class_name() {
     ));
 
     assert!(
-        collect_annotation_state_target_diagnostics(&t.search_docs(), &t.db()).is_empty(),
+        short_state_name_diagnostics(&t, t.primary_uri()).is_empty(),
         "the state's class name is the valid annotation target",
     );
 }
@@ -52,10 +57,10 @@ fn reports_short_name_of_state_declared_in_base_script() {
         "statemachine class CR4Player {}\nstate Swimming in CR4Player {}\n",
     );
 
-    let result = collect_annotation_state_target_diagnostics(&t.search_docs(), &t.db());
+    let diags = short_state_name_diagnostics(&t, t.primary_uri());
 
-    let diags = result.get(t.primary_uri()).expect("primary file flagged");
     assert_eq!(diags.len(), 1, "base-script state short name is flagged");
+    assert_eq!(diags[0].kind, KIND, "diagnostic kind");
     assert_eq!(
         diags[0].related[0].uri, "file:///base/player.ws",
         "related points at the base script",
@@ -72,9 +77,8 @@ fn suggests_every_owner_when_short_name_is_shared() {
         "@addMethod(CombatSteel) function Extra() {}\n",
     ));
 
-    let result = collect_annotation_state_target_diagnostics(&t.search_docs(), &t.db());
+    let diags = short_state_name_diagnostics(&t, t.primary_uri());
 
-    let diags = result.get(t.primary_uri()).expect("primary file flagged");
     assert_eq!(
         diags.len(),
         1,
@@ -91,6 +95,24 @@ fn suggests_every_owner_when_short_name_is_shared() {
 }
 
 #[test]
+fn reports_short_name_shared_with_a_function() {
+    let t = TestDb::new(concat!(
+        "function Idle() {}\n",
+        "statemachine class Foo {}\n",
+        "state Idle in Foo {}\n",
+        "@addMethod(Idle) function Extra() {}\n",
+    ));
+
+    let diags = short_state_name_diagnostics(&t, t.primary_uri());
+
+    assert_eq!(
+        diags.iter().map(|d| d.kind.as_str()).collect::<Vec<_>>(),
+        [KIND],
+        "a same-named function is not a type, so the short state name is still reported"
+    );
+}
+
+#[test]
 fn ignores_annotation_arg_that_is_a_plain_class() {
     let t = TestDb::new(concat!(
         "class Helper {}\n",
@@ -98,7 +120,7 @@ fn ignores_annotation_arg_that_is_a_plain_class() {
     ));
 
     assert!(
-        collect_annotation_state_target_diagnostics(&t.search_docs(), &t.db()).is_empty(),
+        short_state_name_diagnostics(&t, t.primary_uri()).is_empty(),
         "a plain class target is not this rule's concern",
     );
 }
@@ -113,7 +135,7 @@ fn ignores_short_name_shadowed_by_a_class() {
     ));
 
     assert!(
-        collect_annotation_state_target_diagnostics(&t.search_docs(), &t.db()).is_empty(),
+        short_state_name_diagnostics(&t, t.primary_uri()).is_empty(),
         "a class with the same name is the real target",
     );
 }
