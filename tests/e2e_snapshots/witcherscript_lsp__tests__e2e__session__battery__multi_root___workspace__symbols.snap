@@ -2,6 +2,66 @@
 source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
 expression: session.workspace_symbols(symbol_query).await
 ---
+- name: CBehTreeAtomicSteerWithCustomTargetDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeAtomicSteerWithCustomTargetDefinition.ws"
+    range: "0:6-0:51"
+- name: CBehTreeAtomicSteerWithTargetDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeAtomicSteerWithTargetDefinition.ws"
+    range: "0:6-0:45"
+- name: CBehTreeDecoratorSetBehaviorVariableDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeDecoratorSetBehaviorVariableDefinition.ws"
+    range: "0:6-0:52"
+- name: CBehTreeNodeConditionIsThisActorInGuardAreaDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeConditionIsThisActorInGuardAreaDefinition.ws"
+    range: "0:6-0:59"
+- name: CBehTreeNodeConditionLineofSightToNamedTargetDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeConditionLineofSightToNamedTargetDefinition.ws"
+    range: "0:6-0:61"
+- name: CBehTreeNodeConditionShouldPursueCombatTargetDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeConditionShouldPursueCombatTargetDefinition.ws"
+    range: "0:6-0:61"
+- name: CBehaviorGraphPoseConstraintWithTargetNode
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphPoseConstraintWithTargetNode.ws"
+    range: "0:6-0:48"
+- name: CBehaviorGraphSynchronizeAnimationsToParentNode
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphSynchronizeAnimationsToParentNode.ws"
+    range: "0:6-0:53"
+- name: CHorseRiderSharedParams
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CHorseRiderSharedParams.ws"
+    range: "0:6-0:29"
+- name: CMaterialBlockShadowSurfaceDepth
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CMaterialBlockShadowSurfaceDepth.ws"
+    range: "0:6-0:38"
+- name: CMoveSCHasTargetNodeSetCondition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CMoveSCHasTargetNodeSetCondition.ws"
+    range: "0:6-0:38"
+- name: CShaderCacheBuilder
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/CShaderCacheBuilder.ws"
+    range: "0:7-0:26"
 - name: CSharedThing
   kind: class
   location:
@@ -10,55 +70,415 @@ expression: session.workspace_symbols(symbol_query).await
 - name: CStorySceneChoiceLineActionScripted
   kind: class
   location:
-    file: "witcherscript-builtin:/unknown-classes.ws"
-    range: "15:6-15:41"
+    file: "witcherscript-builtin:/CStorySceneChoiceLineActionScripted.ws"
+    range: "0:6-0:41"
 - name: CStorySceneChoiceLineActionScriptedContentGuard
   kind: class
   location:
-    file: "witcherscript-builtin:/unknown-classes.ws"
-    range: "16:6-16:53"
+    file: "witcherscript-builtin:/CStorySceneChoiceLineActionScriptedContentGuard.ws"
+    range: "0:6-0:53"
+- name: CStorySceneEventEnhancedCameraBlend
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/CStorySceneEventEnhancedCameraBlend.ws"
+    range: "0:7-0:42"
 - name: ECG_FX_LightShaftReflectionLightDawn
   kind: enum_member
   location:
     file: "witcherscript-builtin:/EEnvColorGroup.ws"
     range: "34:4-34:40"
+- name: EMeshParticleOrientationMode
+  kind: enum
+  location:
+    file: "witcherscript-builtin:/EMeshParticleOrientationMode.ws"
+    range: "0:5-0:33"
+- name: EQuestBehaviorSceneSaveMode
+  kind: enum
+  location:
+    file: "witcherscript-builtin:/EQuestBehaviorSceneSaveMode.ws"
+    range: "0:5-0:32"
+- name: Force position with camera blending
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EStorySceneForcingMode.ws"
+    range: "3:4-3:39"
+- name: GetCollisionCharacterData
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CMovingPhysicalAgentComponent.ws"
+    range: "83:20-83:45"
+- name: GetCollisionCharacterDataCount
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CMovingPhysicalAgentComponent.ws"
+    range: "82:20-82:50"
+- name: GetSchematicIngredients
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CInventoryComponent.ws"
+    range: "91:20-91:43"
+- name: GetSchematicRequiredCraftsmanLevel
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CInventoryComponent.ws"
+    range: "93:20-93:54"
+- name: GetSchematicRequiredCraftsmanType
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CInventoryComponent.ws"
+    range: "92:20-92:53"
+- name: IsScreenshotDataReady
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CCommonGame.ws"
+    range: "41:20-41:41"
+- name: IsWeatherPauseRequested
+  kind: function
+  location:
+    file: "witcherscript-builtin:/globals.ws"
+    range: "118:16-118:39"
+- name: SBehaviorConstraintCartKinematicsData
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintCartKinematicsData.ws"
+    range: "0:7-0:44"
+- name: SBehaviorConstraintNodeFloorIKCachedTrace
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintNodeFloorIKCachedTrace.ws"
+    range: "0:7-0:48"
+- name: SBehaviorConstraintNodeFloorIKCommonData
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintNodeFloorIKCommonData.ws"
+    range: "0:7-0:47"
+- name: SBehaviorConstraintNodeFloorIKDebugTrace
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintNodeFloorIKDebugTrace.ws"
+    range: "0:7-0:47"
+- name: SBehaviorConstraintNodeFloorIKFrontBackWeightHandler
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintNodeFloorIKFrontBackWeightHandler.ws"
+    range: "0:7-0:59"
+- name: SBehaviorConstraintNodeFloorIKLegsData
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintNodeFloorIKLegsData.ws"
+    range: "0:7-0:45"
+- name: SBehaviorConstraintNodeFloorIKLegsIKWeightHandler
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintNodeFloorIKLegsIKWeightHandler.ws"
+    range: "0:7-0:56"
+- name: SBehaviorConstraintNodeFloorIKMaintainLookBoneData
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintNodeFloorIKMaintainLookBoneData.ws"
+    range: "0:7-0:57"
+- name: SBehaviorConstraintNodeFloorIKVerticalBoneData
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintNodeFloorIKVerticalBoneData.ws"
+    range: "0:7-0:53"
+- name: SBehaviorConstraintNodeFloorIKWeightHandler
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintNodeFloorIKWeightHandler.ws"
+    range: "0:7-0:50"
+- name: SBehaviorConstraintPullReinToHand
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintPullReinToHand.ws"
+    range: "0:7-0:40"
+- name: SBehaviorConstraintPullReinToHandData
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintPullReinToHandData.ws"
+    range: "0:7-0:44"
+- name: SBehaviorConstraintPullStirrupToLegData
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintPullStirrupToLegData.ws"
+    range: "0:7-0:46"
+- name: SBehaviorConstraintPutLegIntoStirrupData
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintPutLegIntoStirrupData.ws"
+    range: "0:7-0:47"
+- name: SBehaviorConstraintTargetWeightHandler
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintTargetWeightHandler.ws"
+    range: "0:7-0:45"
+- name: SBehaviorConstraintUprightSpineBonesData
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorConstraintUprightSpineBonesData.ws"
+    range: "0:7-0:47"
+- name: SBehaviorGraphAnimatedRagdollDirDefinition
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorGraphAnimatedRagdollDirDefinition.ws"
+    range: "0:7-0:49"
+- name: SBehaviorGraphAnimatedRagdollDirReplacement
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SBehaviorGraphAnimatedRagdollDirReplacement.ws"
+    range: "0:7-0:50"
+- name: SCharacterWindParams
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SCharacterWindParams.ws"
+    range: "0:7-0:27"
+- name: SForcedBehaviorEventData
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SForcedBehaviorEventData.ws"
+    range: "0:7-0:31"
+- name: SHOW_ActorFriendlyName
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EShowFlags.ws"
+    range: "204:4-204:26"
+- name: SHOW_ActorShowPlayedAnimation
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EShowFlags.ws"
+    range: "205:4-205:33"
 - name: SHOW_ApexThresoldLeft
   kind: enum_member
   location:
     file: "witcherscript-builtin:/EShowFlags.ws"
-    range: "156:4-156:25"
+    range: "170:4-170:25"
+- name: SHOW_AreaSelected
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EShowFlags.ws"
+    range: "29:4-29:21"
 - name: SHOW_FlaresData
   kind: enum_member
   location:
     file: "witcherscript-builtin:/EShowFlags.ws"
-    range: "51:4-51:19"
+    range: "68:4-68:19"
 - name: SHOW_RenderTargetBackground
   kind: enum_member
   location:
     file: "witcherscript-builtin:/EShowFlags.ws"
-    range: "217:4-217:31"
+    range: "221:4-221:31"
 - name: SHOW_ShadowPreviewDynamic
   kind: enum_member
   location:
     file: "witcherscript-builtin:/EShowFlags.ws"
-    range: "78:4-78:29"
+    range: "108:4-108:29"
 - name: SHOW_ShadowsFromMerged
   kind: enum_member
   location:
     file: "witcherscript-builtin:/EShowFlags.ws"
-    range: "71:4-71:26"
+    range: "89:4-89:26"
 - name: SHOW_UmbraCullSpeedTreeShadows
   kind: enum_member
   location:
     file: "witcherscript-builtin:/EShowFlags.ws"
-    range: "170:4-170:34"
-- name: SharedDataBuffer
+    range: "184:4-184:34"
+- name: SSynchronizeAnimationToParentDefinition
   kind: struct
   location:
-    file: "witcherscript-builtin:/unknown-structs.ws"
-    range: "2:7-2:23"
+    file: "witcherscript-builtin:/SSynchronizeAnimationToParentDefinition.ws"
+    range: "0:7-0:46"
+- name: SW3JournalCharacterDescriptionEvent
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SW3JournalCharacterDescriptionEvent.ws"
+    range: "0:7-0:42"
+- name: SetBehaviorCallbackNeed
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CMovingPhysicalAgentComponent.ws"
+    range: "42:20-42:43"
+- name: SetHasDrowned
+  kind: method
+  location:
+    file: "witcherscript-builtin:/W3Boat.ws"
+    range: "25:20-25:33"
+- name: SetPhysicalEventOnTriggerFocusFound
+  kind: function
+  location:
+    file: "witcherscript-builtin:/globals.ws"
+    range: "238:16-238:51"
+- name: SharedDataBuffer
+  kind: object
+  location:
+    file: "witcherscript-builtin:/SharedDataBuffer.ws"
+    range: "0:6-0:22"
+- name: ShowLoadingScreenVideo
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CWitcherJournalManager.ws"
+    range: "20:20-20:42"
+- name: ShowSteamControllerBindingPanel
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4Game.ws"
+    range: "76:20-76:51"
 - name: UseShared
   kind: function
   location:
     file: rootB/scripts/b.ws
     range: "0:9-0:18"
+- name: baseVirtualCharacterRadius
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CCharacterControllerParam.ws"
+    range: "6:15-6:41"
+- name: cachedShiftVariableNode
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphPositionControllerBaseNode.ws"
+    range: "17:15-17:38"
+- name: cachedShiftVariableNode
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphPositionControllerNode.ws"
+    range: "17:15-17:38"
+- name: cachedShiftVariableNode
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphPositionControllerWithDampNode.ws"
+    range: "17:15-17:38"
+- name: customHitReactionRequested
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CDamageData.ws"
+    range: "9:15-9:41"
+- name: distantLightStartOverride
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CStorySceneCutsceneSection.ws"
+    range: "43:15-43:40"
+- name: distantLightStartOverride
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CStorySceneSection.ws"
+    range: "43:15-43:40"
+- name: distantLightStartOverride
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CStorySceneVideoSection.ws"
+    range: "43:15-43:40"
+- name: fxLightShaftReflectionLightDawn
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvColorGroupsParameters.ws"
+    range: "51:15-51:46"
+- name: isHardLockedToTarget
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SR4PlayerTargetingIn.ws"
+    range: "3:15-3:35"
+- name: riderSharedParams
+  kind: field
+  location:
+    file: "witcherscript-builtin:/W3HorseComponent.ws"
+    range: "10:15-10:32"
+- name: shadowingCascadesVertexBased
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CMaterialBlockOutputColorHair.ws"
+    range: "10:15-10:43"
+- name: shadowingSolidVertexBased
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CMaterialBlockOutputColorHair.ws"
+    range: "8:15-8:40"
+- name: shadowingTransparentVertexBased
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CMaterialBlockOutputColorHair.ws"
+    range: "9:15-9:46"
+- name: shaftsCoreRadius
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvBloomRemasterParameters.ws"
+    range: "19:15-19:31"
+- name: shaftsCoreRadius
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SWorldBloomRemasterParameters.ws"
+    range: "20:15-20:31"
+- name: shaftsRadiusOverride
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvBloomRemasterParameters.ws"
+    range: "12:15-12:35"
+- name: shaftsRadiusOverride
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SWorldBloomRemasterParameters.ws"
+    range: "13:15-13:35"
+- name: shaftsShapeInvSquareOverride
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvBloomRemasterParameters.ws"
+    range: "14:15-14:43"
+- name: shaftsShapeInvSquareOverride
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SWorldBloomRemasterParameters.ws"
+    range: "15:15-15:43"
+- name: shaftsThreshold
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvBloomNewParameters.ws"
+    range: "12:15-12:30"
+- name: shaftsThresholdOverride
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvBloomRemasterParameters.ws"
+    range: "15:15-15:38"
+- name: shaftsThresholdOverride
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SWorldBloomRemasterParameters.ws"
+    range: "16:15-16:38"
+- name: shaftsThresholdRange
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvBloomNewParameters.ws"
+    range: "13:15-13:35"
+- name: shaftsThresholdRangeOverride
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvBloomRemasterParameters.ws"
+    range: "16:15-16:43"
+- name: shaftsThresholdRangeOverride
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SWorldBloomRemasterParameters.ws"
+    range: "17:15-17:43"
+- name: shaftsThresholdsScale
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SWorldRenderSettings.ws"
+    range: "26:15-26:36"
+- name: sharedFileName
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CNavmeshComponent.ws"
+    range: "20:15-20:29"
+- name: sharedParams
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CAIStorageRiderData.ws"
+    range: "1:15-1:27"
+- name: shoulderBoneFrontAxisInverted
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphChooseRecoverFromRagdollAnimNode.ws"
+    range: "22:15-22:44"
+- name: useSharedEffects
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CCameraEffectTrigger.ws"
+    range: "25:15-25:31"

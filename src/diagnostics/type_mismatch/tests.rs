@@ -45,23 +45,25 @@ use crate::test_support::TestDb;
 #[case::matching_defaults_block("class C { var n : int; defaults { n = 5; } }\n")]
 #[case::name_default_name_literal("class C { var n : name; default n = 'Swimming'; }\n")]
 #[case::behtree_bool(
-    "class CBehTreeValBool {} class C { var v : CBehTreeValBool; default v = true; }\n"
+    "struct CBehTreeValBool {} class C { var v : CBehTreeValBool; default v = true; }\n"
 )]
 #[case::behtree_bool_block(
-    "class CBehTreeValBool {} class C { var v : CBehTreeValBool; defaults { v = true; } }\n"
+    "struct CBehTreeValBool {} class C { var v : CBehTreeValBool; defaults { v = true; } }\n"
 )]
-#[case::behtree_int("class CBehTreeValInt {} class C { var v : CBehTreeValInt; default v = 5; }\n")]
+#[case::behtree_int(
+    "struct CBehTreeValInt {} class C { var v : CBehTreeValInt; default v = 5; }\n"
+)]
 #[case::behtree_float_from_float(
-    "class CBehTreeValFloat {} class C { var v : CBehTreeValFloat; default v = 0.5; }\n"
+    "struct CBehTreeValFloat {} class C { var v : CBehTreeValFloat; default v = 0.5; }\n"
 )]
 #[case::behtree_float_from_int(
-    "class CBehTreeValFloat {} class C { var v : CBehTreeValFloat; default v = 5; }\n"
+    "struct CBehTreeValFloat {} class C { var v : CBehTreeValFloat; default v = 5; }\n"
 )]
 #[case::behtree_string(
-    "class CBehTreeValString {} class C { var v : CBehTreeValString; default v = \"hi\"; }\n"
+    "struct CBehTreeValString {} class C { var v : CBehTreeValString; default v = \"hi\"; }\n"
 )]
 #[case::behtree_cname(
-    "class CBehTreeValCName {} class C { var v : CBehTreeValCName; default v = 'Swimming'; }\n"
+    "struct CBehTreeValCName {} class C { var v : CBehTreeValCName; default v = 'Swimming'; }\n"
 )]
 #[case::compound_widening("function Test() { var f : float; f += 1; }\n")]
 #[case::compound_to_string("function Test() { var s : string; s += 5; }\n")]
@@ -246,19 +248,19 @@ fn flags_incompatible_defaults_block() {
 
 #[rstest]
 #[case::bool_gets_float(
-    "class CBehTreeValBool {} class C { var v : CBehTreeValBool; default v = 0.5; }\n"
+    "struct CBehTreeValBool {} class C { var v : CBehTreeValBool; default v = 0.5; }\n"
 )]
 #[case::string_gets_int(
-    "class CBehTreeValString {} class C { var v : CBehTreeValString; default v = 5; }\n"
+    "struct CBehTreeValString {} class C { var v : CBehTreeValString; default v = 5; }\n"
 )]
 #[case::cname_gets_int(
-    "class CBehTreeValCName {} class C { var v : CBehTreeValCName; default v = 5; }\n"
+    "struct CBehTreeValCName {} class C { var v : CBehTreeValCName; default v = 5; }\n"
 )]
 #[case::int_gets_float(
-    "class CBehTreeValInt {} class C { var v : CBehTreeValInt; default v = 10.0f; }\n"
+    "struct CBehTreeValInt {} class C { var v : CBehTreeValInt; default v = 10.0f; }\n"
 )]
 #[case::cname_gets_string(
-    "class CBehTreeValCName {} class C { var v : CBehTreeValCName; default v = \"Swimming\"; }\n"
+    "struct CBehTreeValCName {} class C { var v : CBehTreeValCName; default v = \"Swimming\"; }\n"
 )]
 fn behtree_non_exact_default_is_info(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
@@ -273,9 +275,9 @@ fn behtree_non_exact_default_is_info(#[case] fixture: &str) {
 }
 
 #[test]
-fn behtree_wrapper_normal_assignment_still_errors() {
+fn behtree_struct_normal_assignment_still_errors() {
     let t = TestDb::new(
-        "class CBehTreeValBool {} function Test() { var v : CBehTreeValBool; v = true; }\n",
+        "struct CBehTreeValBool {} function Test() { var v : CBehTreeValBool; v = true; }\n",
     );
     let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
 

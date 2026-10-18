@@ -6,7 +6,7 @@ use lsp_types::{
     DidCloseTextDocumentParams, DidOpenTextDocumentParams,
 };
 use tracing::{error, trace};
-use witcherscript_language::builtins::builtin_source;
+use witcherscript_language::builtins::is_builtin_uri;
 use witcherscript_language::document::apply_content_change;
 use witcherscript_language::files::any_dir_contains_uri;
 use witcherscript_language::line_index::LineIndex;
@@ -17,7 +17,7 @@ use crate::convert::{source_position, source_range};
 impl Backend {
     pub(crate) fn _did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
-        if builtin_source(uri.as_str()).is_some() {
+        if is_builtin_uri(uri.as_str()) {
             return;
         }
         if self.is_uri_excluded(&uri) {
@@ -46,7 +46,7 @@ impl Backend {
 
     pub(crate) fn _did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
-        if builtin_source(uri.as_str()).is_some() {
+        if is_builtin_uri(uri.as_str()) {
             return;
         }
         if self.is_uri_excluded(&uri) {
@@ -115,7 +115,7 @@ impl Backend {
 
     pub(crate) fn _did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
-        if builtin_source(uri.as_str()).is_some() {
+        if is_builtin_uri(uri.as_str()) {
             return;
         }
         let started_at = Instant::now();

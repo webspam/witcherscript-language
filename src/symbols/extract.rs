@@ -9,7 +9,7 @@ use crate::types::Type;
 use super::doc::doc_comment_above;
 use super::types::{
     AccessLevel, Annotation, DocumentSymbols, FuncFlavour, Specifier, Specifiers, Symbol, SymbolId,
-    SymbolKind,
+    SymbolKind, SymbolOrigin,
 };
 use super::util::{base_type, direct_child_text, node_text};
 
@@ -457,6 +457,7 @@ impl<'a> SymbolExtractor<'a> {
             access: spec.access,
             specifiers: spec.specifiers,
             doc_comment: doc_comment_above(node, self.source, self.line_index),
+            origin: SymbolOrigin::Script,
         })
     }
 

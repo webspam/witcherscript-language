@@ -457,3 +457,42 @@ fn script_global_bare_use_no_type_used_as_value() {
         "script global passed as value should not trigger type_used_as_value, got {result:?}"
     );
 }
+
+#[rstest]
+#[case::native_enum_member_without_enum_import(
+    "function F() : int { return FLAG_ExcludePlayer; }\n"
+)]
+#[case::simple_type("function F(t : EngineTransform, d : CDateTime) {}\n")]
+#[case::imported_native_function(
+    "import function AbsF(f : float) : float;\nfunction F() { AbsF(1.0); }\n"
+)]
+#[case::unimported_native_type("function F(a : C2dArray, d : EAttackDirection) {}\n")]
+#[case::extends_unimported_native_base("import class C2dArray extends CResource {}\n")]
+#[case::add_field_of_unimported_native_type(
+    "@addField(CR4Player) private var descomp : CMeshTypeComponent;\n"
+)]
+fn natives_usable_without_diagnostics(#[case] fixture: &str) {
+    let t = TestDb::new(fixture).with_builtins_index();
+    let result = collect_unknown_symbol_diagnostics(&t.search_docs(), &t.db());
+    assert!(result.is_empty(), "expected no diagnostics, got {result:?}");
+}
+
+#[rstest]
+#[case::global_function_call(
+    "function F() { AbsF(1.0); }\n",
+    "Native function 'AbsF' is not imported"
+)]
+#[case::field_access(
+    "import class C2dArray {}\nfunction F(a : C2dArray) { a.headers; }\n",
+    "Native member 'headers' of 'C2dArray' is not imported"
+)]
+fn natives_require_import(#[case] fixture: &str, #[case] message: &str) {
+    let t = TestDb::new(fixture).with_builtins_index();
+    let result = collect_unknown_symbol_diagnostics(&t.search_docs(), &t.db());
+    let diags = result.get(t.primary_uri()).expect("primary file flagged");
+    assert_eq!(
+        kinds(diags),
+        [super::super::native_import::KIND_NATIVE_NOT_IMPORTED]
+    );
+    assert_eq!(diags[0].message, message);
+}

@@ -1,0 +1,9 @@
+pub(crate) const NATIVE: &str = "N";
+pub(crate) const CLASS: &str = "C";
+pub(crate) const STRUCT: &str = "S";
+pub(crate) const ENUM: &str = "E";
+pub(crate) const FIELD: &str = "F";
+pub(crate) const METHOD: &str = "M";
+pub(crate) const ENUM_OPTION: &str = "O";
+pub(crate) const GLOBAL_FUNCTION: &str = "G";
+pub(crate) const ABSTRACT_FLAG: &str = "a";

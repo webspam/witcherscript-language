@@ -178,6 +178,9 @@ pub fn resolve_all_definitions(
     let Some(primary) = resolve_definition_at_ident(uri, document, db, ident) else {
         return Vec::new();
     };
+    if let Some(native) = native_behind_import_declaration(uri, &primary, ident, db) {
+        return vec![native];
+    }
     // Suppression keys off the resolved ident, not the cursor offset, so a trailing-`;` park stays consistent.
     if ident
         .utf8_text(document.source.as_bytes())
@@ -192,6 +195,21 @@ pub fn resolve_all_definitions(
     }
     defs.extend(overrides);
     dedup_definitions(defs)
+}
+
+/// On an `import` declaration's own name, the only useful destination is the native it binds to.
+fn native_behind_import_declaration(
+    uri: &str,
+    primary: &Definition,
+    ident: Node,
+    db: &SymbolDb,
+) -> Option<Definition> {
+    let on_declaration_name = primary.uri == uri
+        && primary.symbol.selection_byte_range == (ident.start_byte()..ident.end_byte());
+    if !on_declaration_name || !primary.symbol.is_script_import() {
+        return None;
+    }
+    db.native_counterpart_of(&primary.symbol)
 }
 
 fn virtual_parent_overrides_at(

@@ -13,6 +13,7 @@ use crate::resolve::{
 use crate::symbols::{AccessLevel, SymbolKind};
 use crate::types::is_builtin_type_name;
 
+use super::native_import::{NativeName, native_not_imported};
 use super::{
     CstRuleCtx, ParallelRuleShard, Severity, WorkspaceDiagnostic, access_is_inside_declaring_class,
     collect_nodes_with_error_subtree, declaring_class_of, run_parallel_pass,
@@ -192,6 +193,17 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                     }
                     return None;
                 }
+                if let Some((kind, message)) = native_not_imported(
+                    ctx.db,
+                    NativeName::Member {
+                        receiver: &receiver_type,
+                        name,
+                        noun: "member",
+                    },
+                ) {
+                    push(ctx, ident, kind, message);
+                    return Some(());
+                }
                 push(
                     ctx,
                     ident,
@@ -257,6 +269,10 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                         "type_used_as_value",
                         format!("Type '{name}' cannot be called as a function"),
                     );
+                } else if let Some((kind, message)) =
+                    native_not_imported(ctx.db, NativeName::Function(name))
+                {
+                    push(ctx, ident, kind, message);
                 } else {
                     push(
                         ctx,

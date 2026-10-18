@@ -24,8 +24,7 @@ const PRIMITIVE_ALIASES: &[(&str, Primitive)] = &[
     ("StringAnsi", Primitive::StringAnsi),
 ];
 
-/// Per-type `default`-value acceptance for the `CBehTreeVal*` native types (Float also takes `int`).
-const NATIVE_TYPE_ACCEPTS: &[(&str, &[Primitive])] = &[
+const DEFAULT_COERCION_ACCEPTS: &[(&str, &[Primitive])] = &[
     ("CBehTreeValBool", &[Primitive::Bool]),
     ("CBehTreeValInt", &[Primitive::Int]),
     ("CBehTreeValFloat", &[Primitive::Int, Primitive::Float]),
@@ -56,17 +55,13 @@ pub(super) fn from_annotation(s: &str) -> Type {
     Type::Named(trimmed.to_string())
 }
 
-pub(crate) fn is_builtin_type_name(name: &str) -> bool {
+pub fn is_builtin_type_name(name: &str) -> bool {
     name == "void" || PRIMITIVE_ALIASES.iter().any(|(alias, _)| *alias == name)
 }
 
-pub(crate) fn native_type_accepts(name: &str) -> Option<&'static [Primitive]> {
-    NATIVE_TYPE_ACCEPTS
+pub(crate) fn default_coercion_accepts(name: &str) -> Option<&'static [Primitive]> {
+    DEFAULT_COERCION_ACCEPTS
         .iter()
         .find(|(n, _)| *n == name)
         .map(|(_, prims)| *prims)
-}
-
-pub(crate) fn native_type_names() -> impl Iterator<Item = &'static str> {
-    NATIVE_TYPE_ACCEPTS.iter().map(|(name, _)| *name)
 }

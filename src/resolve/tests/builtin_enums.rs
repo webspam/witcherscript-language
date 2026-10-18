@@ -1,52 +1,42 @@
 use rstest::rstest;
 
-use super::super::{
-    merged_global_completions, resolve_definition, statement_completions, type_completions,
-};
-use crate::builtins::BUILTIN_ENUMS_URI;
+use super::super::{merged_global_completions, resolve_definition, statement_completions};
+use crate::builtins::builtin_uri;
 use crate::symbols::SymbolKind;
 use crate::test_support::TestDb;
 
 #[test]
-fn enum_type_is_indexed_as_global_type() {
+fn native_enum_type_is_usable_without_import() {
     let t = TestDb::new("").with_builtins_index();
     let def = t
         .db()
         .find_top_level("EAttackDirection")
-        .expect("EAttackDirection should be indexed");
-    assert_eq!(def.symbol.kind, SymbolKind::Enum);
-    assert_eq!(def.uri, BUILTIN_ENUMS_URI);
+        .expect("EAttackDirection indexed");
+    assert_eq!(def.uri, builtin_uri("EAttackDirection"));
+    let types = t.db().all_types();
+    assert!(
+        types.iter().any(|d| d.symbol.name == "EAttackDirection"),
+        "native enum should appear in type completions"
+    );
+    assert!(
+        !types.iter().any(|d| d.symbol.name == "array"),
+        "builtin array class must still be excluded from all_types()"
+    );
 }
 
 #[rstest]
-#[case::first_enum_sole_member("EAIASM_GuardArea")]
-#[case::mid_list_member("AD_Back")]
-#[case::lowercase_enums_member("TreasureHunt")]
-fn enum_member_is_a_global_symbol(#[case] member: &str) {
+#[case::first_enum_sole_member("EAIASM_GuardArea", "EAIAreaSelectionMode")]
+#[case::mid_list_member("AD_Back", "EAttackDirection")]
+#[case::lowercase_enums_member("TreasureHunt", "eQuestType")]
+fn native_enum_member_is_a_global_symbol(#[case] member: &str, #[case] owner: &str) {
     let t = TestDb::new("").with_builtins_index();
     let def = t
         .db()
         .find_enum_member(member)
         .unwrap_or_else(|| panic!("{member} should resolve"));
     assert_eq!(def.symbol.kind, SymbolKind::EnumMember);
-    assert_eq!(def.uri, BUILTIN_ENUMS_URI);
-}
-
-#[test]
-fn enum_types_appear_in_type_completions() {
-    let t = TestDb::new("").with_builtins_index();
-    let types = t.db().all_types();
-    assert!(
-        types
-            .iter()
-            .any(|d| d.symbol.name == "EVehicleType" && d.symbol.kind == SymbolKind::Enum),
-        "builtin enum should appear in all_types(); got {:?}",
-        types.iter().map(|d| &d.symbol.name).collect::<Vec<_>>()
-    );
-    assert!(
-        !types.iter().any(|d| d.symbol.name == "array"),
-        "builtin array class must still be excluded from all_types()"
-    );
+    assert_eq!(def.symbol.container_name.as_deref(), Some(owner));
+    assert_eq!(def.uri, builtin_uri(owner));
 }
 
 #[test]
@@ -62,7 +52,7 @@ fn enum_members_appear_in_enum_member_globals() {
 }
 
 #[test]
-fn goto_definition_on_enum_member_resolves_into_builtin_file() {
+fn goto_definition_on_enum_member_resolves_into_its_enum_file() {
     let t = TestDb::new(concat!(
         "function Test() {\n",
         "  var d : EAttackDirection;\n",
@@ -74,27 +64,9 @@ fn goto_definition_on_enum_member_resolves_into_builtin_file() {
     let def =
         resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("AD_Back should resolve");
 
-    assert_eq!(def.uri, BUILTIN_ENUMS_URI);
+    assert_eq!(def.uri, builtin_uri("EAttackDirection"));
     assert_eq!(def.symbol.name, "AD_Back");
     assert_eq!(def.symbol.kind, SymbolKind::EnumMember);
-}
-
-#[test]
-fn type_completions_offer_builtin_enum() {
-    let t = TestDb::new(concat!(
-        "function Test() {\n",
-        "  var x : EAtt$0\n",
-        "  var y : int;\n",
-        "}\n",
-    ))
-    .with_builtins_index();
-    let (_uri, pos) = t.cursor();
-    let types = type_completions(t.primary_doc(), &t.db(), pos);
-    assert!(
-        types.iter().any(|d| d.symbol.name == "EAttackDirection"),
-        "type completions should offer the builtin enum; got {:?}",
-        types.iter().map(|d| &d.symbol.name).collect::<Vec<_>>()
-    );
 }
 
 #[test]

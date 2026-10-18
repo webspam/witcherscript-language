@@ -9,6 +9,7 @@ use crate::document::ParsedDocument;
 use crate::resolve::{SymbolDb, infer_type_memo};
 use crate::symbols::AccessLevel;
 
+use super::native_import::{NativeName, native_not_imported};
 use super::{
     CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, access_is_inside_declaring_class,
     collect_single_rule_diagnostics, declaring_class_of,
@@ -118,9 +119,23 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         method_ident.end_byte(),
     );
 
+    let (kind, message) = native_not_imported(
+        ctx.db,
+        NativeName::Member {
+            receiver: &receiver_type,
+            name: method_name,
+            noun: "method",
+        },
+    )
+    .unwrap_or_else(|| {
+        (
+            "unknown_method",
+            format!("No method '{method_name}' on type '{receiver_type}'"),
+        )
+    });
     ctx.diagnostics.push(WorkspaceDiagnostic {
-        kind: "unknown_method".to_string(),
-        message: format!("No method '{method_name}' on type '{receiver_type}'"),
+        kind: kind.to_string(),
+        message,
         severity: Severity::Error,
         range,
         related: vec![],

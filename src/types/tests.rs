@@ -42,22 +42,22 @@ fn sized_engine_types_are_distinct_primitives() {
 }
 
 #[test]
-fn native_type_accepts_returns_per_type_primitives() {
-    use super::native_type_accepts;
+fn default_coercion_accepts_returns_per_type_primitives() {
+    use super::default_coercion_accepts;
     assert_eq!(
-        native_type_accepts("CBehTreeValBool"),
+        default_coercion_accepts("CBehTreeValBool"),
         Some(&[Primitive::Bool][..])
     );
     assert_eq!(
-        native_type_accepts("CBehTreeValFloat"),
+        default_coercion_accepts("CBehTreeValFloat"),
         Some(&[Primitive::Int, Primitive::Float][..])
     );
     assert_eq!(
-        native_type_accepts("CBehTreeValCName"),
+        default_coercion_accepts("CBehTreeValCName"),
         Some(&[Primitive::Name][..])
     );
-    assert_eq!(native_type_accepts("CR4Player"), None);
-    assert_eq!(native_type_accepts("int"), None);
+    assert_eq!(default_coercion_accepts("CR4Player"), None);
+    assert_eq!(default_coercion_accepts("int"), None);
 }
 
 #[test]

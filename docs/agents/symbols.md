@@ -10,7 +10,7 @@ The kind of declaration a `Symbol` is: `Class`, `NativeType`, `Struct`, `Enum`, 
 
 `Function` vs `Method` is decided at extraction time, not by syntax: a `func_decl` with a container becomes `Method`, one without becomes `Function`.
 
-`NativeType` is the one kind the extractor never emits: native engine types are declared as `class` in the builtin sources, then `retag_top_level` rewrites them from `Class` to `NativeType` during builtins ingestion.
+`NativeType` is the one kind the extractor never emits: it only comes from `N` rows in `builtins/rtti.tsv`, via `type_kind` in `src/builtins/native.rs`.
 
 ## Symbol
 

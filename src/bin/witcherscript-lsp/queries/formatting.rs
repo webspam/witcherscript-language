@@ -3,7 +3,7 @@ use std::time::Instant;
 use lsp_types::{DocumentFormattingParams, TextEdit};
 
 use tracing::trace;
-use witcherscript_language::builtins::builtin_source;
+use witcherscript_language::builtins::is_builtin_uri;
 use witcherscript_language::formatter::format_document;
 
 use crate::backend::{Backend, Result};
@@ -15,7 +15,7 @@ impl Backend {
         params: DocumentFormattingParams,
     ) -> Result<Option<Vec<TextEdit>>> {
         let uri = params.text_document.uri;
-        if builtin_source(uri.as_str()).is_some() {
+        if is_builtin_uri(uri.as_str()) {
             return Ok(None);
         }
         let started_at = Instant::now();

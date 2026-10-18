@@ -2,58 +2,1053 @@
 source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
 expression: session.workspace_symbols(symbol_query).await
 ---
+- name: AnimationTrajectoryPlayerScriptWrapper
+  kind: class
+  location:
+    file: "witcherscript-builtin:/AnimationTrajectoryPlayerScriptWrapper.ws"
+    range: "0:6-0:44"
+- name: ApplyAbilityAttributeModifier
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CDefinitionsManagerAccessor.ws"
+    range: "17:20-17:49"
+- name: ApplyItemAbilityAttributeModifier
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CDefinitionsManagerAccessor.ws"
+    range: "16:20-16:53"
+- name: BalanceItemsWithPlayerLevel
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CInventoryComponent.ws"
+    range: "140:20-140:47"
+- name: CBehTreeNodeAtomicPlayAnimationManualMotionExtractionDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeAtomicPlayAnimationManualMotionExtractionDefinition.ws"
+    range: "0:6-0:69"
+- name: CBehTreeNodeConditionIsPlayerInInteriorDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeConditionIsPlayerInInteriorDefinition.ws"
+    range: "0:6-0:55"
+- name: CBehTreeNodeConditionIsTargetThePlayerDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeConditionIsTargetThePlayerDefinition.ws"
+    range: "0:6-0:54"
+- name: CBehTreeNodePlayVoicesetDecoratorDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodePlayVoicesetDecoratorDefinition.ws"
+    range: "0:6-0:49"
+- name: CBehTreeNodePlayVoicesetOnDeactivationDecoratorDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodePlayVoicesetOnDeactivationDecoratorDefinition.ws"
+    range: "0:6-0:63"
+- name: CComboPlayer
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CComboPlayer.ws"
+    range: "0:6-0:18"
+- name: CCustomCameraPlayerPPC
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CCustomCameraPlayerPPC.ws"
+    range: "0:6-0:28"
+- name: CEnvDisplaySettingsParams
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/CEnvDisplaySettingsParams.ws"
+    range: "0:7-0:32"
+- name: CEnvGameplayEffectsParameters
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/CEnvGameplayEffectsParameters.ws"
+    range: "0:7-0:36"
+- name: CFCLOS_Player
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/ECameraFocusConditionLineOfSightSource.ws"
+    range: "2:4-2:17"
+- name: CFXTrackItemPlayPropertyAnim
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CFXTrackItemPlayPropertyAnim.ws"
+    range: "0:6-0:34"
+- name: CGameplayDLCMounterScripted
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CGameplayDLCMounterScripted.ws"
+    range: "0:6-0:33"
+- name: CGameplayDestructionSystemComponent
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CGameplayDestructionSystemComponent.ws"
+    range: "0:6-0:41"
+- name: CGameplayEntityParam
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CGameplayEntityParam.ws"
+    range: "0:6-0:26"
+- name: CGuiScenePlayer
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CGuiScenePlayer.ws"
+    range: "0:6-0:21"
+- name: CMoveSTApplySteeringToPlayerVariables
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CMoveSTApplySteeringToPlayerVariables.ws"
+    range: "0:6-0:43"
+- name: CParticleInitializerVelocityInherit
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CParticleInitializerVelocityInherit.ws"
+    range: "0:6-0:41"
+- name: CParticleModificatorVelocityOverLife
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CParticleModificatorVelocityOverLife.ws"
+    range: "0:6-0:42"
+- name: CPlayEffectPerformableAction
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CPlayEffectPerformableAction.ws"
+    range: "0:6-0:34"
+- name: CPlayPropertyAnimationAction
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CPlayPropertyAnimationAction.ws"
+    range: "0:6-0:34"
 - name: CPlayer
   kind: class
   location:
     file: scripts/player.ws
     range: "0:6-0:13"
+- name: CPlayer
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CPlayer.ws"
+    range: "0:6-0:13"
+- name: CPlayerLevelCondition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CPlayerLevelCondition.ws"
+    range: "0:6-0:27"
+- name: CPlayerStateBase
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CPlayerStateBase.ws"
+    range: "0:6-0:22"
+- name: CPlayerStateMovable
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CPlayerStateMovable.ws"
+    range: "0:6-0:25"
+- name: CPlayerStatePostUseVehicle
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CPlayerStatePostUseVehicle.ws"
+    range: "0:6-0:32"
+- name: CPlayerStateUseVehicle
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CPlayerStateUseVehicle.ws"
+    range: "0:6-0:28"
+- name: CPlayerTargetPriority
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CPlayerTargetPriority.ws"
+    range: "0:6-0:27"
+- name: CR4Player
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CR4Player.ws"
+    range: "0:6-0:15"
+- name: CR4PlayerTargeting
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CR4PlayerTargeting.ws"
+    range: "0:6-0:24"
+- name: CSpawnTreeInitializerWaypointSpawner
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CSpawnTreeInitializerWaypointSpawner.ws"
+    range: "0:6-0:42"
+- name: CStorySceneActionRotateToPlayer
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CStorySceneActionRotateToPlayer.ws"
+    range: "0:6-0:37"
+- name: CStorySceneCutscenePlayer
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CStorySceneCutscenePlayer.ws"
+    range: "0:6-0:31"
+- name: CStorySceneEventGameplayCamera
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/CStorySceneEventGameplayCamera.ws"
+    range: "0:7-0:37"
+- name: CStorySceneEventStartBlendToGameplayCamera
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/CStorySceneEventStartBlendToGameplayCamera.ws"
+    range: "0:7-0:49"
+- name: CStoryScenePlayer
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CStoryScenePlayer.ws"
+    range: "0:6-0:23"
+- name: ChangePlayer
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CCommonGame.ws"
+    range: "90:20-90:32"
+- name: DisplayUserProfileSystemDialog
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4Game.ws"
+    range: "51:20-51:50"
+- name: EEP_Player
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EEffectEntityPosition.ws"
+    range: "2:4-2:14"
+- name: EEP_XYCameraZPlayer
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EEffectEntityPosition.ws"
+    range: "3:4-3:23"
+- name: EEP_XYPlayerZCamera
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EEffectEntityPosition.ws"
+    range: "4:4-4:23"
+- name: EEP_XYPlayerZTerrain
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EEffectEntityPosition.ws"
+    range: "6:4-6:24"
+- name: EGraphLayerState
+  kind: enum
+  location:
+    file: "witcherscript-builtin:/EGraphLayerState.ws"
+    range: "0:5-0:21"
 - name: EMS_End_PlayerForfeited
   kind: enum_member
   location:
-    file: "witcherscript-builtin:/enums.ws"
-    range: "619:4-619:27"
+    file: "witcherscript-builtin:/EMinigameState.ws"
+    range: "8:4-8:27"
 - name: EMS_End_PlayerLost
   kind: enum_member
   location:
-    file: "witcherscript-builtin:/enums.ws"
-    range: "616:4-616:22"
+    file: "witcherscript-builtin:/EMinigameState.ws"
+    range: "5:4-5:22"
 - name: EMS_End_PlayerWon
   kind: enum_member
   location:
-    file: "witcherscript-builtin:/enums.ws"
-    range: "615:4-615:21"
+    file: "witcherscript-builtin:/EMinigameState.ws"
+    range: "4:4-4:21"
 - name: EMS_Wait_PlayerLost
   kind: enum_member
   location:
-    file: "witcherscript-builtin:/enums.ws"
-    range: "618:4-618:23"
+    file: "witcherscript-builtin:/EMinigameState.ws"
+    range: "7:4-7:23"
+- name: EXPDS_DOUBLE_FOR_PLAYER
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/ExpDoubleSided.ws"
+    range: "4:4-4:27"
 - name: FLAG_ExcludePlayer
   kind: enum_member
   location:
-    file: "witcherscript-builtin:/enums.ws"
-    range: "853:4-853:22"
+    file: "witcherscript-builtin:/EScriptQueryFlags.ws"
+    range: "1:4-1:22"
+- name: FindGameplayEntitiesInCylinder
+  kind: function
+  location:
+    file: "witcherscript-builtin:/globals.ws"
+    range: "61:16-61:46"
+- name: FindGameplayEntitiesInRange
+  kind: function
+  location:
+    file: "witcherscript-builtin:/globals.ws"
+    range: "62:16-62:43"
+- name: FindGameplayEntitiesInSphere
+  kind: function
+  location:
+    file: "witcherscript-builtin:/globals.ws"
+    range: "63:16-63:44"
+- name: GetDisplayNameForSavedGame
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CCommonGame.ws"
+    range: "33:20-33:46"
+- name: GetGameplayEntityParam
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CGameplayEntity.ws"
+    range: "29:20-29:42"
+- name: GetPlayer
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CCommonGame.ws"
+    range: "56:20-56:29"
+- name: GetPlayerCardCount
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4GwintManager.ws"
+    range: "12:20-12:38"
+- name: GetPlayerCollection
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4GwintManager.ws"
+    range: "11:20-11:39"
+- name: GetPlayerDistFromArea
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CEncounter.ws"
+    range: "38:20-38:41"
+- name: GetPlayerLeaderCollection
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4GwintManager.ws"
+    range: "13:20-13:45"
+- name: GetSelectedPlayerDeck
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4GwintManager.ws"
+    range: "14:20-14:41"
+- name: GotoAndPlayFrameNumber
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CScriptedFlashSprite.ws"
+    range: "3:20-3:42"
 - name: IGameplayDLCMounter
   kind: class
   location:
-    file: "witcherscript-builtin:/unknown-interfaces.ws"
-    range: "5:15-5:34"
+    file: "witcherscript-builtin:/IGameplayDLCMounter.ws"
+    range: "0:15-0:34"
+- name: IGameplayEffectExecutor
+  kind: class
+  location:
+    file: "witcherscript-builtin:/IGameplayEffectExecutor.ws"
+    range: "0:6-0:29"
+- name: I_IsPlayer
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CPilotComponent.ws"
+    range: "9:20-9:30"
+- name: I_IsPlayerControlled
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CAdvancedVehicleComponent.ws"
+    range: "12:20-12:40"
+- name: IfCanSeePlayer
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CNewNPC.ws"
+    range: "68:20-68:34"
+- name: IsAttackableByPlayer
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "113:20-113:40"
+- name: IsMountedByPlayer
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CNewNPC.ws"
+    range: "83:20-83:37"
+- name: IsPlayerInEncounterArea
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CEncounter.ws"
+    range: "40:20-40:43"
+- name: IsPointSeenByPlayer
+  kind: function
+  location:
+    file: "witcherscript-builtin:/globals.ws"
+    range: "116:16-116:35"
+- name: MEVT_GameplayFXRendererParam
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EMaterialEngineValueType.ws"
+    range: "21:4-21:32"
+- name: NotifyPlayerEnteredBorder
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CCommonMapManager.ws"
+    range: "50:20-50:45"
+- name: NotifyPlayerExitedBorder
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CCommonMapManager.ws"
+    range: "51:20-51:44"
 - name: OT_Player
   kind: enum_member
   location:
-    file: "witcherscript-builtin:/enums.ws"
-    range: "702:4-702:13"
+    file: "witcherscript-builtin:/EOrientationTarget.ws"
+    range: "1:4-1:13"
+- name: PEAT_Player
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EPathEngineAgentType.ws"
+    range: "1:4-1:15"
+- name: PlayLineByStringKey
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "106:20-106:39"
+- name: PlayPropertyAnimation
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CGameplayEntity.ws"
+    range: "26:20-26:41"
+- name: SAnimationTrajectoryPlayerInput
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SAnimationTrajectoryPlayerInput.ws"
+    range: "0:7-0:38"
+- name: SAnimationTrajectoryPlayerToken
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SAnimationTrajectoryPlayerToken.ws"
+    range: "0:7-0:38"
+- name: SCompiledSpawnStrategyInitializer
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SCompiledSpawnStrategyInitializer.ws"
+    range: "0:7-0:40"
+- name: SGameplayAdditiveAnimRuntimeData
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SGameplayAdditiveAnimRuntimeData.ws"
+    range: "0:7-0:39"
+- name: SGameplayConfigGameCamera
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SGameplayConfigGameCamera.ws"
+    range: "0:7-0:32"
+- name: SGameplayEventParamCName
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SGameplayEventParamCName.ws"
+    range: "0:7-0:31"
+- name: SGameplayEventParamFloat
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SGameplayEventParamFloat.ws"
+    range: "0:7-0:31"
+- name: SGameplayEventParamInt
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SGameplayEventParamInt.ws"
+    range: "0:7-0:29"
+- name: SGameplayEventParamObject
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SGameplayEventParamObject.ws"
+    range: "0:7-0:32"
+- name: SGraphLayer
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SGraphLayer.ws"
+    range: "0:7-0:18"
+- name: SHOW_VisualDebugPlayer
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EShowFlags.ws"
+    range: "53:4-53:26"
+- name: SPlaySceneRequestData
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SPlaySceneRequestData.ws"
+    range: "0:7-0:28"
+- name: SR4PlayerTargetingConsts
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SR4PlayerTargetingConsts.ws"
+    range: "0:7-0:31"
+- name: SR4PlayerTargetingIn
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SR4PlayerTargetingIn.ws"
+    range: "0:7-0:27"
+- name: SR4PlayerTargetingOut
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SR4PlayerTargetingOut.ws"
+    range: "0:7-0:28"
+- name: SR4PlayerTargetingPrecalcs
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SR4PlayerTargetingPrecalcs.ws"
+    range: "0:7-0:33"
+- name: SetAttackableByPlayerPersistent
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "114:20-114:51"
+- name: SetAttackableByPlayerRuntime
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "115:20-115:48"
+- name: SetGameplayMoveDirection
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CMovingAgentComponent.ws"
+    range: "54:20-54:44"
+- name: SetPlayerCombatTarget
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4Player.ws"
+    range: "70:20-70:41"
+- name: SetPlayerTarget
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4Player.ws"
+    range: "69:20-69:35"
+- name: SetSelectedPlayerDeck
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4GwintManager.ws"
+    range: "15:20-15:41"
+- name: SignalGameplayEventParamCName
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "53:20-53:49"
+- name: SignalGameplayEventParamFloat
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "55:20-55:49"
+- name: SignalGameplayEventParamInt
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "54:20-54:47"
+- name: SignalGameplayEventParamObject
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "56:20-56:50"
+- name: SignalGameplayEventReturnCName
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "57:20-57:50"
+- name: SignalGameplayEventReturnFloat
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "59:20-59:50"
+- name: SignalGameplayEventReturnInt
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "58:20-58:48"
+- name: Skip normal/full body anims when syncing overlay anims
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphSynchronizeAnimationsToParentNode.ws"
+    range: "19:15-19:69"
+- name: SummonPlayerHorse
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4Game.ws"
+    range: "38:20-38:37"
 - name: TE_FIGHT_PLAYER_ATTACKS
   kind: enum_member
   location:
-    file: "witcherscript-builtin:/enums.ws"
-    range: "791:4-791:27"
+    file: "witcherscript-builtin:/ER4TelemetryEvents.ws"
+    range: "25:4-25:27"
 - name: TE_FIGHT_PLAYER_DIES
   kind: enum_member
   location:
-    file: "witcherscript-builtin:/enums.ws"
-    range: "790:4-790:24"
+    file: "witcherscript-builtin:/ER4TelemetryEvents.ws"
+    range: "24:4-24:24"
 - name: TE_FIGHT_PLAYER_USE_SIGN
   kind: enum_member
   location:
-    file: "witcherscript-builtin:/enums.ws"
-    range: "792:4-792:28"
+    file: "witcherscript-builtin:/ER4TelemetryEvents.ws"
+    range: "26:4-26:28"
+- name: UnsetGameplayMoveDirection
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CMovingAgentComponent.ws"
+    range: "55:20-55:46"
+- name: alignToPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CSkyTransformEntity.ws"
+    range: "15:15-15:28"
+- name: attitudeTowardsPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CStorySceneEventChangeActorGameState.ws"
+    range: "24:15-24:36"
+- name: blockPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CStaticCamera.ws"
+    range: "22:15-22:26"
+- name: cachedRawPlayerHeading
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SR4PlayerTargetingIn.ws"
+    range: "25:15-25:37"
+- name: cameraHidePlayerDistMax
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SGameplayConfig.ws"
+    range: "66:15-66:38"
+- name: cameraHidePlayerDistMin
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SGameplayConfig.ws"
+    range: "65:15-65:38"
+- name: cameraHidePlayerSwordsAngleMax
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SGameplayConfig.ws"
+    range: "70:15-70:45"
+- name: cameraHidePlayerSwordsAngleMin
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SGameplayConfig.ws"
+    range: "69:15-69:45"
+- name: cameraHidePlayerSwordsDistMax
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SGameplayConfig.ws"
+    range: "68:15-68:44"
+- name: cameraHidePlayerSwordsDistMin
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SGameplayConfig.ws"
+    range: "67:15-67:44"
+- name: defaultPlayerTemplate
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CCommonGameResource.ws"
+    range: "4:15-4:36"
+- name: defaultPlayerTemplate
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CGameResource.ws"
+    range: "4:15-4:36"
+- name: defaultPlayerTemplate
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CWitcherGameResource.ws"
+    range: "4:15-4:36"
+- name: displayPerc
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SAbilityAttribute.ws"
+    range: "7:15-7:26"
+- name: enemiesMaxDistanceToPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SCameraDistanceInfo.ws"
+    range: "4:15-4:41"
+- name: forceLookAtPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SGameplayConfig.ws"
+    range: "41:15-41:32"
+- name: forceLookAtPlayerDist
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SGameplayConfig.ws"
+    range: "42:15-42:36"
+- name: gameplayCameraBlendTime
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CStorySceneOutput.ws"
+    range: "8:15-8:38"
+- name: gameplayCameraUseFocusTarget
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CStorySceneOutput.ws"
+    range: "10:15-10:43"
+- name: inAttitudeTowardsPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SStorySceneGameplayActionCallbackInfo.ws"
+    range: "7:15-7:38"
+- name: interactionTestIsInPlayerRadius
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SGameplayConfig.ws"
+    range: "39:15-39:46"
+- name: interactionTestPlayerRadius
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SGameplayConfig.ws"
+    range: "40:15-40:42"
+- name: interactionTestPlayerRange
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SGameplayConfig.ws"
+    range: "37:15-37:41"
+- name: interactionTestPlayerRangeAngle
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SGameplayConfig.ws"
+    range: "38:15-38:46"
+- name: isAttackableByPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "26:15-26:35"
+- name: isAttackableByPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CNewNPC.ws"
+    range: "26:15-26:35"
+- name: isAttackableByPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CPlayer.ws"
+    range: "26:15-26:35"
+- name: isAttackableByPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CR4Player.ws"
+    range: "26:15-26:35"
+- name: isPlayerOnly
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBgInteractionComponent.ws"
+    range: "13:15-13:27"
+- name: isPlayerOnly
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CDoorComponent.ws"
+    range: "13:15-13:27"
+- name: isPlayerOnly
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CGameplayLightComponent.ws"
+    range: "13:15-13:27"
+- name: isPlayerOnly
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CInteractionAreaComponent.ws"
+    range: "13:15-13:27"
+- name: isPlayerOnly
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CInteractionComponent.ws"
+    range: "13:15-13:27"
+- name: isPlayerOnly
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CInteractionToComponentComponent.ws"
+    range: "13:15-13:27"
+- name: isPlayerOnly
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CInteractionTooltipComponent.ws"
+    range: "13:15-13:27"
+- name: isPlayerOnly
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CPersistentLightComponent.ws"
+    range: "13:15-13:27"
+- name: maxActorsStartingDistanceFormPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CStorySceneInput.ws"
+    range: "12:15-12:50"
+- name: onlyPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBgNpcTriggerActionLookAt.ws"
+    range: "2:15-2:25"
+- name: playAfterXTimes
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodePlayVoicesetOnDeactivationDecoratorDefinition.ws"
+    range: "9:15-9:30"
+- name: playPropertyCurveMode
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CQuestPlayAnimationBlock.ws"
+    range: "16:15-16:36"
+- name: player
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeAtomicLookAtDefinition.ws"
+    range: "8:15-8:21"
+- name: player
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeDecoratorLookAtDefinition.ws"
+    range: "8:15-8:21"
+- name: player
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CCommonGame.ws"
+    range: "6:15-6:21"
+- name: player
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CR4Game.ws"
+    range: "6:15-6:21"
+- name: player
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CWccDummyGame.ws"
+    range: "6:15-6:21"
+- name: playerHasBlockingBuffs
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SR4PlayerTargetingIn.ws"
+    range: "2:15-2:37"
+- name: playerHeading
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SR4PlayerTargetingPrecalcs.ws"
+    range: "2:15-2:28"
+- name: playerHeadingVector
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SR4PlayerTargetingPrecalcs.ws"
+    range: "3:15-3:34"
+- name: playerInInteriorLightsScale
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvCameraLightsSetupParameters.ws"
+    range: "10:15-10:42"
+- name: playerLevelMax
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CR4LootContainerDefinition.ws"
+    range: "4:15-4:29"
+- name: playerLevelMax
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CR4LootDefinitionBase.ws"
+    range: "4:15-4:29"
+- name: playerLevelMax
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CR4LootItemDefinition.ws"
+    range: "4:15-4:29"
+- name: playerLevelMin
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CR4LootContainerDefinition.ws"
+    range: "3:15-3:29"
+- name: playerLevelMin
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CR4LootDefinitionBase.ws"
+    range: "3:15-3:29"
+- name: playerLevelMin
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CR4LootItemDefinition.ws"
+    range: "3:15-3:29"
+- name: playerPosTag
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CFistfightMinigame.ws"
+    range: "2:15-2:27"
+- name: playerPosition
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SR4PlayerTargetingPrecalcs.ws"
+    range: "1:15-1:29"
+- name: playerPreviewInventory
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SGameplayConfig.ws"
+    range: "34:15-34:37"
+- name: playerRadius
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SR4PlayerTargetingPrecalcs.ws"
+    range: "4:15-4:27"
+- name: playerWeight
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeCombatTargetSelectionDefinition.ws"
+    range: "14:15-14:27"
+- name: playerWeightProbability
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeCombatTargetSelectionDefinition.ws"
+    range: "13:15-13:38"
+- name: rawPlayerHeadingVector
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SR4PlayerTargetingIn.ws"
+    range: "27:15-27:37"
+- name: resetPlayerCamera
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CStaticCamera.ws"
+    range: "23:15-23:32"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CActionAreaComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CAreaComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CAreaEnvironmentComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBgNpcTriggerComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBoidActivationTriggerComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBoidAreaComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CDeniedAreaComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CNavmeshBorderAreaComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CNavmeshComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CNegativeAreaComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CPathLibRoughtTerrainComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CR4InteriorAreaComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CSceneAreaComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CSoftTriggerAreaComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CSoundAmbientAreaComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CStandPhysicalMaterialAreaComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CStreamingAreaComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CTriggerAreaComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CTriggerAreaEnvironmentVisibilityComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CTriggerAreaExpansionPackComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CWaterComponent.ws"
+    range: "15:15-15:31"
+- name: saveShapeToLayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CWindAreaComponent.ws"
+    range: "15:15-15:31"
+- name: spawnLayerTag
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CQuestSpawnNotStreamedBoatBlock.ws"
+    range: "13:15-13:28"
+- name: specularFirstBounceSkyScaleAtFarDistance
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvPathTracingSettings.ws"
+    range: "8:15-8:55"
+- name: specularFirstBounceSkyScaleCharacters
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvPathTracingSettings.ws"
+    range: "16:15-16:52"
+- name: specularFirstBounceSkyScaleEnviro
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvPathTracingSettings.ws"
+    range: "17:15-17:48"
+- name: specularFirstBounceSkyScaleInterior
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvPathTracingSettings.ws"
+    range: "13:15-13:50"
+- name: specularFirstBounceSkyScaleTerrain
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvPathTracingSettings.ws"
+    range: "15:15-15:49"
+- name: specularSkyScaleInterior
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvPathTracingSettings.ws"
+    range: "20:15-20:39"
+- name: specularityMultiplier
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvGameplayEffectsParameters.ws"
+    range: "4:15-4:36"
+- name: targetOnlyPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeCombatTargetSelectionDefinition.ws"
+    range: "6:15-6:31"

@@ -1,73 +1,29 @@
-use std::collections::HashMap;
+mod native;
+mod native_layout;
+
+use std::borrow::Cow;
 use std::sync::{Arc, LazyLock};
 
 use crate::document::{ParsedDocument, parse_document};
 use crate::resolve::{Definition, WorkspaceIndex};
-use crate::symbols::SymbolKind;
-use crate::types::native_type_names;
+use crate::symbols::SymbolOrigin;
 
+const BUILTIN_URI_PREFIX: &str = "witcherscript-builtin:/";
 pub const BUILTIN_ARRAY_URI: &str = "witcherscript-builtin:/array.ws";
-pub const BUILTIN_ENUMS_URI: &str = "witcherscript-builtin:/enums.ws";
-pub const BUILTIN_NATIVE_TYPES_URI: &str = "witcherscript-builtin:/native-types.ws";
 
 pub const GENERIC_ELEMENT_PLACEHOLDER: &str = "T";
 
-static BUILTIN_SOURCES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
-    HashMap::from([
-        (BUILTIN_ARRAY_URI, include_str!("../builtins/array.ws")),
-        (
-            "witcherscript-builtin:/EInputKey.ws",
-            include_str!("../builtins/EInputKey.ws"),
-        ),
-        (
-            "witcherscript-builtin:/EShowFlags.ws",
-            include_str!("../builtins/EShowFlags.ws"),
-        ),
-        (
-            "witcherscript-builtin:/EEnvColorGroup.ws",
-            include_str!("../builtins/EEnvColorGroup.ws"),
-        ),
-        (
-            "witcherscript-builtin:/EEnvManagerModifier.ws",
-            include_str!("../builtins/EEnvManagerModifier.ws"),
-        ),
-        (
-            "witcherscript-builtin:/PhotomodeParameterId.ws",
-            include_str!("../builtins/PhotomodeParameterId.ws"),
-        ),
-        (BUILTIN_ENUMS_URI, include_str!("../builtins/enums.ws")),
-        (
-            "witcherscript-builtin:/CR4HudModule.ws",
-            include_str!("../builtins/CR4HudModule.ws"),
-        ),
-        (
-            "witcherscript-builtin:/CGuiObject.ws",
-            include_str!("../builtins/CGuiObject.ws"),
-        ),
-        (
-            "witcherscript-builtin:/unknown-classes.ws",
-            include_str!("../builtins/unknown-classes.ws"),
-        ),
-        (
-            "witcherscript-builtin:/unknown-interfaces.ws",
-            include_str!("../builtins/unknown-interfaces.ws"),
-        ),
-        (
-            "witcherscript-builtin:/unknown-structs.ws",
-            include_str!("../builtins/unknown-structs.ws"),
-        ),
-    ])
-});
+const BUILTIN_DOCUMENT_EXTENSION: &str = ".ws";
 
-/// `class` stubs for the native engine types, emitted from `NATIVE_TYPE_ACCEPTS` so the names live in one place.
-static NATIVE_TYPES_SOURCE: LazyLock<String> = LazyLock::new(|| {
-    native_type_names().fold(String::new(), |mut acc, name| {
-        acc.push_str("class ");
-        acc.push_str(name);
-        acc.push_str(" {}\n");
-        acc
-    })
-});
+const ARRAY_SOURCE: &str = include_str!("../builtins/array.ws");
+
+pub(crate) fn builtin_uri(name: &str) -> String {
+    format!("{BUILTIN_URI_PREFIX}{name}{BUILTIN_DOCUMENT_EXTENSION}")
+}
+
+pub fn is_builtin_uri(uri: &str) -> bool {
+    uri.starts_with(BUILTIN_URI_PREFIX)
+}
 
 /// `array` (only valid as `array<T>`) is not a bare-writable type name, so its type must stay out of type completion.
 pub fn is_non_type_builtin(uri: &str) -> bool {
@@ -95,35 +51,33 @@ pub fn load_builtins_index() -> WorkspaceIndex {
     BUILTINS.0.clone()
 }
 
+fn array_document() -> ParsedDocument {
+    // Invariant: array.ws is a fixed embedded source covered by the builtins tests
+    let mut array =
+        parse_document(ARRAY_SOURCE).expect("builtin sources must parse cleanly at build time");
+    array.symbols.set_origin(SymbolOrigin::Builtin);
+    array
+}
+
 fn build_builtins_index() -> WorkspaceIndex {
     let mut index = WorkspaceIndex::default();
-    for (&uri, &source) in BUILTIN_SOURCES.iter() {
-        insert_builtin(&mut index, uri, source);
+    index.begin_bulk_catalog_update();
+    for (name, symbols) in native::documents() {
+        index.insert_synthetic(builtin_uri(name), symbols);
     }
-    insert_builtin(
-        &mut index,
-        BUILTIN_NATIVE_TYPES_URI,
-        NATIVE_TYPES_SOURCE.as_str(),
-    );
+    index.update_document(BUILTIN_ARRAY_URI, &array_document());
+    index.end_bulk_catalog_update();
     index
 }
 
-pub fn builtin_source(uri: &str) -> Option<&'static str> {
-    if uri == BUILTIN_NATIVE_TYPES_URI {
-        return Some(NATIVE_TYPES_SOURCE.as_str());
+pub fn builtin_source(uri: &str) -> Option<Cow<'static, str>> {
+    if uri == BUILTIN_ARRAY_URI {
+        return Some(Cow::Borrowed(ARRAY_SOURCE));
     }
-    BUILTIN_SOURCES.get(uri).copied()
-}
-
-fn insert_builtin(index: &mut WorkspaceIndex, uri: &str, source: &str) {
-    let mut doc: ParsedDocument =
-        parse_document(source).expect("builtin sources must parse cleanly at build time");
-    // Native engine types are stubbed as `class` since no native-type syntax exists; re-tag them.
-    if uri == BUILTIN_NATIVE_TYPES_URI {
-        doc.symbols
-            .retag_top_level(SymbolKind::Class, SymbolKind::NativeType);
-    }
-    index.update_document(uri, &doc);
+    let name = uri
+        .strip_prefix(BUILTIN_URI_PREFIX)?
+        .strip_suffix(BUILTIN_DOCUMENT_EXTENSION)?;
+    native::render(name).map(Cow::Owned)
 }
 
 #[cfg(test)]

@@ -8,7 +8,7 @@ use lsp_types::{
     TextDocumentPositionParams, TextEdit, Url, WorkspaceEdit,
 };
 use tracing::{debug, trace};
-use witcherscript_language::builtins::builtin_source;
+use witcherscript_language::builtins::is_builtin_uri;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
 use witcherscript_language::resolve::{find_references, resolve_definition};
@@ -54,7 +54,7 @@ pub(crate) fn rename_changes(
 ) -> HashMap<Url, Vec<TextEdit>> {
     let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
     for (ref_uri, range) in refs {
-        if base_docs.contains_key(ref_uri) || builtin_source(ref_uri).is_some() {
+        if base_docs.contains_key(ref_uri) || is_builtin_uri(ref_uri) {
             continue;
         }
         if let Ok(url) = Url::parse(ref_uri) {
@@ -74,7 +74,7 @@ fn ensure_rename_target_writable(definition_uri: &str, snap: &Compilation) -> Re
             "Cannot rename a symbol declared in a base script (read-only)",
         ));
     }
-    if builtin_source(definition_uri).is_some() {
+    if is_builtin_uri(definition_uri) {
         return Err(ResponseError::new(
             ErrorCode::INVALID_REQUEST,
             "Cannot rename a built-in symbol",

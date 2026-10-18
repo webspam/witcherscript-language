@@ -49,6 +49,10 @@ impl WorkspaceIndex {
             return;
         };
         for sym in old_symbols.clone() {
+            if sym.requires_import() {
+                self.remove_native(uri, &sym);
+                continue;
+            }
             if sym.container.is_none() {
                 retain_and_prune(&mut self.top_level_by_name, &sym.name, |d| d.uri != uri);
                 if sym.kind.is_object_type() {
@@ -91,8 +95,53 @@ impl WorkspaceIndex {
         }
     }
 
+    fn remove_native(&mut self, uri: &str, sym: &Symbol) {
+        match &sym.container_name {
+            None => {
+                retain_and_prune(&mut self.native_functions_by_name, &sym.name, |d| {
+                    d.uri != uri
+                });
+            }
+            Some(container) => {
+                retain_and_prune_nested(
+                    &mut self.native_member_by_type,
+                    container,
+                    &sym.name,
+                    |d| d.uri != uri,
+                );
+            }
+        }
+    }
+
+    fn insert_native(&mut self, uri: &str, sym: &Symbol) {
+        let definition = Definition {
+            uri: uri.to_string(),
+            symbol: sym.clone(),
+        };
+        match &sym.container_name {
+            None => {
+                self.native_functions_by_name
+                    .entry(sym.name.clone())
+                    .or_default()
+                    .push(definition);
+            }
+            Some(container) => {
+                self.native_member_by_type
+                    .entry(container.clone())
+                    .or_default()
+                    .entry(sym.name.clone())
+                    .or_default()
+                    .push(definition);
+            }
+        }
+    }
+
     pub(super) fn insert_into_indices(&mut self, uri: &str, symbols: &[Symbol]) {
         for sym in symbols {
+            if sym.requires_import() {
+                self.insert_native(uri, sym);
+                continue;
+            }
             if let Some(target) = sym.annotation_target_class_safe() {
                 self.annotated_members_by_type
                     .entry(target.to_string())

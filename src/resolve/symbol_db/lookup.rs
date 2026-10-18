@@ -172,6 +172,32 @@ impl SymbolDb<'_> {
             .or_else(|| self.virtual_object_base(class_name))
     }
 
+    pub(crate) fn has_builtins(&self) -> bool {
+        self.builtins.is_some()
+    }
+
+    /// A native type, or a native function that scripts may `import`.
+    pub(crate) fn find_native_top_level(&self, name: &str) -> Option<Definition> {
+        self.builtins?.find_native_top_level(name)
+    }
+
+    /// Walks ancestry, since an import may name a member the engine declares on a base.
+    pub(crate) fn find_native_member(&self, container: &str, name: &str) -> Option<Definition> {
+        let builtins = self.builtins?;
+        self.try_in_chain(container, |current, _| {
+            builtins.direct_native_member_of(current, name)
+        })
+    }
+
+    pub(crate) fn native_counterpart_of(&self, symbol: &Symbol) -> Option<Definition> {
+        match &symbol.container_name {
+            None => self
+                .find_native_top_level(&symbol.name)
+                .filter(|native| native.symbol.kind.is_type() == symbol.kind.is_type()),
+            Some(container) => self.find_native_member(container, &symbol.name),
+        }
+    }
+
     pub fn inherits_from(&self, class_name: &str, ancestor: &str) -> bool {
         self.try_in_chain(class_name, |current, _| (current == ancestor).then_some(()))
             .is_some()

@@ -18,6 +18,10 @@ path = "src/main.rs"
 name = "wsformat"
 path = "src/bin/wsformat.rs"
 
+[[bin]]
+name = "rtti-gen"
+path = "src/bin/rtti-gen.rs"
+
 [dependencies]
 anyhow = "1"
 # default-features = false drops colour, suggestions, env, wrap_help, unicode - smaller binary and fewer deps

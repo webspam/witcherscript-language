@@ -6,7 +6,7 @@ use tracing::debug;
 
 use crate::files::read_text_file;
 use crate::line_index::{SourcePosition, SourceRange};
-use crate::symbols::{AccessLevel, Specifiers, Symbol, SymbolId, SymbolKind};
+use crate::symbols::{AccessLevel, Specifiers, Symbol, SymbolId, SymbolKind, SymbolOrigin};
 use crate::types::Type;
 
 static SCRIPT_ENV_VERSION: AtomicU64 = AtomicU64::new(0);
@@ -217,6 +217,7 @@ fn global_symbol(
         access: AccessLevel::Public,
         specifiers: Specifiers::default(),
         doc_comment: None,
+        origin: SymbolOrigin::Script,
     }
 }
 

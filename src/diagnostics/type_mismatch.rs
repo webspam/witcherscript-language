@@ -10,7 +10,7 @@ use crate::resolve::{
     Assignability, SymbolDb, assignability, callee_params, infer_type, resolve_definition_at_byte,
 };
 use crate::symbols::{SymbolKind, node_text};
-use crate::types::{Primitive, Type, native_type_accepts};
+use crate::types::{Primitive, Type, default_coercion_accepts};
 
 use super::{CstRule, CstRuleCtx, Severity, WorkspaceDiagnostic, collect_single_rule_diagnostics};
 
@@ -204,7 +204,7 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
         );
         return;
     }
-    if check_native_type_default(&target, value, &value_type, ctx) {
+    if check_coerced_default(&target, value, &value_type, ctx) {
         return;
     }
     if is_incompatible(&value_type, &target, ctx.db) {
@@ -218,8 +218,7 @@ fn check_default<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) {
     }
 }
 
-/// A `CBehTreeVal*` native type accepts any primitive `default`; a non-exact one is coerced, flagged info-only, never an error.
-fn check_native_type_default<'tree>(
+fn check_coerced_default<'tree>(
     target: &Type,
     value: Node<'tree>,
     value_type: &Type,
@@ -228,7 +227,7 @@ fn check_native_type_default<'tree>(
     let Type::Named(name) = target else {
         return false;
     };
-    let Some(accepted) = native_type_accepts(name) else {
+    let Some(accepted) = default_coercion_accepts(name) else {
         return false;
     };
     let exact = matches!(value_type, Type::Primitive(p) if accepted.contains(p));
@@ -236,7 +235,7 @@ fn check_native_type_default<'tree>(
         emit(
             value,
             "native_default_coercion",
-            format!("Value of type '{value_type}' coerced into native type '{target}' default"),
+            format!("Value of type '{value_type}' coerced into '{target}' default"),
             Severity::Info,
             ctx,
         );

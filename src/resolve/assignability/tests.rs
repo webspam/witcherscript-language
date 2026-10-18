@@ -72,11 +72,7 @@ fn null_assigns_to_object_references_only() {
         "NULL assigns to a class reference"
     );
     assert_eq!(
-        assignability(
-            &Type::Null,
-            &Type::Named("CBehTreeValBool".to_string()),
-            &t.db()
-        ),
+        assignability(&Type::Null, &Type::Named("CDateTime".to_string()), &t.db()),
         Assignability::Incompatible,
         "NULL does not assign to a native value type"
     );
@@ -85,7 +81,7 @@ fn null_assigns_to_object_references_only() {
 #[test]
 fn native_types_are_not_object_like() {
     let t = TestDb::new("").with_builtins_index();
-    let native = Type::Named("CBehTreeValBool".to_string());
+    let native = Type::Named("CDateTime".to_string());
     assert_eq!(
         assignability(&native, &prim(Primitive::Bool), &t.db()),
         Assignability::Incompatible,

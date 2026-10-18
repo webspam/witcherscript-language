@@ -27,14 +27,13 @@ fn flags_new_on_abstract_class(#[case] fixture: &str, #[case] flagged_uri: &str)
 
 #[test]
 fn flags_new_on_native_type() {
-    let t =
-        TestDb::new("function F() { var v : CBehTreeValBool; v = new CBehTreeValBool in this; }\n")
-            .with_builtins_index();
+    let t = TestDb::new("function F() { var v : CDateTime; v = new CDateTime in this; }\n")
+        .with_builtins_index();
     let result = collect_abstract_instantiation_diagnostics(&t.search_docs(), &t.db());
     let diags = result.get("file:///main.ws").expect("expected diagnostic");
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].kind, "native_instantiation");
-    assert!(diags[0].message.contains("CBehTreeValBool"));
+    assert!(diags[0].message.contains("CDateTime"));
 }
 
 #[rstest]

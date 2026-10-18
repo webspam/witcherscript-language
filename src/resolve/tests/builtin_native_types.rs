@@ -1,16 +1,9 @@
 use super::super::resolve_definition;
+use crate::builtins::builtin_uri;
 use crate::symbols::SymbolKind;
 use crate::test_support::TestDb;
 
-const NATIVE_TYPES_URI: &str = "witcherscript-builtin:/native-types.ws";
-
-const NATIVE_TYPE_NAMES: &[&str] = &[
-    "CBehTreeValBool",
-    "CBehTreeValCName",
-    "CBehTreeValFloat",
-    "CBehTreeValInt",
-    "CBehTreeValString",
-];
+const NATIVE_TYPE_NAMES: &[&str] = &["CDateTime", "EngineTransform", "TagList"];
 
 #[test]
 fn native_types_are_indexed_as_native_type_kind() {
@@ -21,7 +14,7 @@ fn native_types_are_indexed_as_native_type_kind() {
             .find_top_level(name)
             .unwrap_or_else(|| panic!("{name} should be indexed"));
         assert_eq!(def.symbol.kind, SymbolKind::NativeType, "{name} kind");
-        assert_eq!(def.uri, NATIVE_TYPES_URI, "{name} uri");
+        assert_eq!(def.uri, builtin_uri(name), "{name} uri");
     }
 }
 
@@ -38,12 +31,11 @@ fn native_types_appear_in_type_completions() {
 }
 
 #[test]
-fn goto_definition_on_native_type_resolves_into_native_types_file() {
-    let t =
-        TestDb::new("function Test() {\n  var v : CBehTreeValFl$0oat;\n}\n").with_builtins_index();
+fn goto_definition_on_native_type_resolves_into_its_own_file() {
+    let t = TestDb::new("function Test() {\n  var v : CDateT$0ime;\n}\n").with_builtins_index();
     let (uri, pos) = t.cursor();
-    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos)
-        .expect("CBehTreeValFloat should resolve");
-    assert_eq!(def.uri, NATIVE_TYPES_URI);
-    assert_eq!(def.symbol.name, "CBehTreeValFloat");
+    let def =
+        resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("CDateTime should resolve");
+    assert_eq!(def.uri, builtin_uri("CDateTime"));
+    assert_eq!(def.symbol.name, "CDateTime");
 }

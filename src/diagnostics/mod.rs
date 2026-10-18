@@ -14,6 +14,7 @@ mod cst_walker;
 mod duplicate_local;
 mod duplicate_symbols;
 mod inherited_field;
+mod native_import;
 mod override_consistency;
 mod parent_outside_state;
 mod shadowing;
@@ -111,6 +112,7 @@ pub fn collect_cst_diagnostics_for_document(
     let shard = run_unknown_symbol_parallel(uri, document, db);
     db.merge_observations(shard.observer);
     diagnostics.extend(shard.diagnostics);
+    diagnostics.extend(native_import::check_document(document, db));
     diagnostics.sort_by(|a, b| {
         (a.range.start.line, a.range.start.character)
             .cmp(&(b.range.start.line, b.range.start.character))

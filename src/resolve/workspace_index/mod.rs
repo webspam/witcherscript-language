@@ -34,6 +34,8 @@ pub struct WorkspaceIndex {
     state_backing_by_name: HashMap<String, (String, String)>,
     member_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
     annotated_members_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
+    native_functions_by_name: HashMap<String, Vec<Definition>>,
+    native_member_by_type: HashMap<String, HashMap<String, Vec<Definition>>>,
     doc_idents: HashMap<String, HashMap<String, Vec<Range<usize>>>>,
     doc_surface_hashes: HashMap<String, u64>,
     surface_hash: u64,
@@ -82,6 +84,21 @@ impl WorkspaceIndex {
             surface_hash,
             outward,
         }
+    }
+
+    pub(crate) fn insert_synthetic(
+        &mut self,
+        uri: impl Into<String>,
+        symbols: Vec<Symbol>,
+    ) -> Vec<ObservedKey> {
+        let uri: String = uri.into();
+        let contribution = DocContribution {
+            surface_hash: doc_surface_hash(&uri, &symbols),
+            outward: outward_hash_map(&symbols),
+            idents: HashMap::new(),
+            symbols,
+        };
+        self.apply_contribution(uri, contribution)
     }
 
     /// Mutating half of `update_document`: folds a precomputed contribution into the index.

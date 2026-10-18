@@ -2,6 +2,76 @@
 source: src/bin/witcherscript-lsp/tests/e2e/session/battery.rs
 expression: session.workspace_symbols(symbol_query).await
 ---
+- name: ApplyItemAbilityAttributeModifier
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CDefinitionsManagerAccessor.ws"
+    range: "16:20-16:53"
+- name: CAnimSkeletalMultiDangleConstraint_Painter
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CAnimSkeletalMultiDangleConstraint_Painter.ws"
+    range: "0:6-0:48"
+- name: CBehTreeNodeAtomicMatchActionTargetRotationDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeAtomicMatchActionTargetRotationDefinition.ws"
+    range: "0:6-0:59"
+- name: CBehTreeNodeAtomicPlayAnimationManualMotionExtractionDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeAtomicPlayAnimationManualMotionExtractionDefinition.ws"
+    range: "0:6-0:69"
+- name: CBehTreeNodeAtomicRotateToTargetDefinition
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehTreeNodeAtomicRotateToTargetDefinition.ws"
+    range: "0:6-0:48"
+- name: CBehaviorGraphComboTransitionInterface
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphComboTransitionInterface.ws"
+    range: "0:6-0:44"
+- name: CBehaviorGraphMapWorldSpaceDirectionToModelSpaceRangeNode
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphMapWorldSpaceDirectionToModelSpaceRangeNode.ws"
+    range: "0:6-0:63"
+- name: CBehaviorGraphMimicBlinkControllerNode_Setter
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphMimicBlinkControllerNode_Setter.ws"
+    range: "0:6-0:51"
+- name: CBehaviorGraphMimicBlinkControllerNode_Watcher
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphMimicBlinkControllerNode_Watcher.ws"
+    range: "0:6-0:52"
+- name: CCCOpItemsFromVirtualContainer
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CCCOpItemsFromVirtualContainer.ws"
+    range: "0:6-0:36"
+- name: CCCOpItemsRemoveMatchingVirtualContainer
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CCCOpItemsRemoveMatchingVirtualContainer.ws"
+    range: "0:6-0:46"
+- name: CCCOpItemsToVirtualContainer
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CCCOpItemsToVirtualContainer.ws"
+    range: "0:6-0:34"
+- name: CCustomCameraPhotomodePosititonController
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CCustomCameraPhotomodePosititonController.ws"
+    range: "0:6-0:47"
+- name: CCustomCameraSimplePositionController
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CCustomCameraSimplePositionController.ws"
+    range: "0:6-0:43"
 - name: CEmitterManager
   kind: class
   location:
@@ -12,11 +82,111 @@ expression: session.workspace_symbols(symbol_query).await
   location:
     file: mod/scripts/params.ws
     range: "21:6-21:20"
+- name: CEnvAmbientProbesGenParameters
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/CEnvAmbientProbesGenParameters.ws"
+    range: "0:7-0:37"
+- name: CEnvCameraLightParameters
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/CEnvCameraLightParameters.ws"
+    range: "0:7-0:32"
+- name: CEnvCameraLightsSetupParameters
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/CEnvCameraLightsSetupParameters.ws"
+    range: "0:7-0:38"
+- name: CParticleDrawerEmitterOrientation
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CParticleDrawerEmitterOrientation.ws"
+    range: "0:6-0:39"
+- name: CParticleEmitter
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CParticleEmitter.ws"
+    range: "0:6-0:22"
+- name: CParticleModificatorRotation3DOverLife
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CParticleModificatorRotation3DOverLife.ws"
+    range: "0:6-0:44"
+- name: CParticleModificatorRotationOverLife
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CParticleModificatorRotationOverLife.ws"
+    range: "0:6-0:42"
+- name: CParticleModificatorRotationRate3DOverLife
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CParticleModificatorRotationRate3DOverLife.ws"
+    range: "0:6-0:48"
+- name: CParticleModificatorRotationRateOverLife
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CParticleModificatorRotationRateOverLife.ws"
+    range: "0:6-0:46"
+- name: CParticleModificatorTextureAnimation
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CParticleModificatorTextureAnimation.ws"
+    range: "0:6-0:42"
+- name: CParticleModificatorVelocityOverLife
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CParticleModificatorVelocityOverLife.ws"
+    range: "0:6-0:42"
+- name: CPoseCompressionDefaultWithExtraBones
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CPoseCompressionDefaultWithExtraBones.ws"
+    range: "0:6-0:43"
+- name: CSStoryPhaseTimetableACategoriesTimetableEntry
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/CSStoryPhaseTimetableACategoriesTimetableEntry.ws"
+    range: "0:7-0:53"
+- name: CSkeletalAnimationAttackTrajectoryParam
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CSkeletalAnimationAttackTrajectoryParam.ws"
+    range: "0:6-0:45"
+- name: CSoundAmbientEmitter
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CSoundAmbientEmitter.ws"
+    range: "0:6-0:26"
+- name: CSoundEmitterComponent
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CSoundEmitterComponent.ws"
+    range: "0:6-0:28"
+- name: CStorySceneEventCameraLightInterpolation
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/CStorySceneEventCameraLightInterpolation.ws"
+    range: "0:7-0:47"
+- name: CStorySceneEventCameraLightInterpolationKey
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/CStorySceneEventCameraLightInterpolationKey.ws"
+    range: "0:7-0:50"
+- name: CSwarmSoundEmitterComponent
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CSwarmSoundEmitterComponent.ws"
+    range: "0:6-0:33"
+- name: CTrailerCameraPositionController
+  kind: class
+  location:
+    file: "witcherscript-builtin:/CTrailerCameraPositionController.ws"
+    range: "0:6-0:38"
 - name: EAnimationTrajectorySelectorType
   kind: enum
   location:
-    file: "witcherscript-builtin:/enums.ws"
-    range: "52:5-52:37"
+    file: "witcherscript-builtin:/EAnimationTrajectorySelectorType.ws"
+    range: "0:5-0:37"
 - name: EEmitterKind
   kind: enum
   location:
@@ -25,13 +195,68 @@ expression: session.workspace_symbols(symbol_query).await
 - name: ESoundAmbientDynamicParameter
   kind: enum
   location:
-    file: "witcherscript-builtin:/enums.ws"
-    range: "900:5-900:34"
+    file: "witcherscript-builtin:/ESoundAmbientDynamicParameter.ws"
+    range: "0:5-0:34"
+- name: EmitterDelaySettings
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/EmitterDelaySettings.ws"
+    range: "0:7-0:27"
+- name: EmitterDurationSettings
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/EmitterDurationSettings.ws"
+    range: "0:7-0:30"
 - name: FLAG_WindEmitters
   kind: enum_member
   location:
-    file: "witcherscript-builtin:/enums.ws"
-    range: "856:4-856:21"
+    file: "witcherscript-builtin:/EScriptQueryFlags.ws"
+    range: "4:4-4:21"
+- name: GetAnimationTimeMultiplier
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "87:20-87:46"
+- name: GetAnimationTimeMultiplier
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CAnimatedComponent.ws"
+    range: "36:20-36:46"
+- name: GetItemQuantityByCategory
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CInventoryComponent.ws"
+    range: "29:20-29:45"
+- name: GetMiniMapExteriorTextureExtension
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4WorldDLCExtender.ws"
+    range: "8:20-8:54"
+- name: GetMiniMapExteriorTextureSize
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4WorldDLCExtender.ws"
+    range: "3:20-3:49"
+- name: GetMiniMapInteriorTextureExtension
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4WorldDLCExtender.ws"
+    range: "9:20-9:54"
+- name: GetMiniMapInteriorTextureSize
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4WorldDLCExtender.ws"
+    range: "4:20-4:49"
+- name: GetMotionPatternsMode_DualGrip
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CGame.ws"
+    range: "143:20-143:50"
+- name: GetSubmittedModRating
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CModHandlerSystem.ws"
+    range: "69:20-69:41"
 - name: IEmitterParams
   kind: class
   location:
@@ -42,11 +267,71 @@ expression: session.workspace_symbols(symbol_query).await
   location:
     file: mod/scripts/tuner.ws
     range: "3:15-3:28"
+- name: ISpawnTreeSpawnMonitorBaseInitializer
+  kind: class
+  location:
+    file: "witcherscript-builtin:/ISpawnTreeSpawnMonitorBaseInitializer.ws"
+    range: "0:15-0:52"
+- name: ISpawnTreeSpawnMonitorInitializer
+  kind: class
+  location:
+    file: "witcherscript-builtin:/ISpawnTreeSpawnMonitorInitializer.ws"
+    range: "0:6-0:39"
+- name: PVDT_EmitterOrientation
+  kind: enum_member
+  location:
+    file: "witcherscript-builtin:/EParticleVertexDrawerType.ws"
+    range: "4:4-4:27"
+- name: PreviewItemAttributeAfterUpgrade
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CInventoryComponent.ws"
+    range: "130:20-130:52"
+- name: RefreshSubmittedModRatings
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CModHandlerSystem.ws"
+    range: "84:20-84:46"
+- name: RemoveFilterNameArrayFromCategory
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4GlobalEventsScriptsDispatcher.ws"
+    range: "14:20-14:53"
+- name: RemoveFilterNameFromCategory
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4GlobalEventsScriptsDispatcher.ws"
+    range: "13:20-13:48"
+- name: RemoveFilterStringArrayFromCategory
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4GlobalEventsScriptsDispatcher.ws"
+    range: "16:20-16:55"
+- name: RemoveFilterStringFromCategory
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CR4GlobalEventsScriptsDispatcher.ws"
+    range: "15:20-15:50"
 - name: SHOW_SoundEmitters
   kind: enum_member
   location:
     file: "witcherscript-builtin:/EShowFlags.ws"
-    range: "152:4-152:22"
+    range: "64:4-64:22"
+- name: SParticleEmitterLODLevel
+  kind: struct
+  location:
+    file: "witcherscript-builtin:/SParticleEmitterLODLevel.ws"
+    range: "0:7-0:31"
+- name: SetAnimationTimeMultiplier
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "88:20-88:46"
+- name: SetAnimationTimeMultiplier
+  kind: method
+  location:
+    file: "witcherscript-builtin:/CAnimatedComponent.ws"
+    range: "37:20-37:46"
 - name: TuneEmitter
   kind: method
   location:
@@ -62,3 +347,163 @@ expression: session.workspace_symbols(symbol_query).await
   location:
     file: mod/scripts/tuner.ws
     range: "80:17-80:28"
+- name: activeCameraPositionController
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CCustomCamera.ws"
+    range: "17:15-17:45"
+- name: convertAnimationToAdditiveRefFrameNumA
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphPointCloudLookAtNode.ws"
+    range: "23:15-23:53"
+- name: convertAnimationToAdditiveRefFrameNumB
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphPointCloudLookAtNode.ws"
+    range: "25:15-25:53"
+- name: currentMovementDirectionMSInternalVariableName
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CChangeMovementDirectionTransitionCondition.ws"
+    range: "4:15-4:61"
+- name: emitterDelay
+  kind: field
+  location:
+    file: "witcherscript-builtin:/EmitterDelaySettings.ws"
+    range: "1:15-1:27"
+- name: emitterDelayLow
+  kind: field
+  location:
+    file: "witcherscript-builtin:/EmitterDelaySettings.ws"
+    range: "2:15-2:30"
+- name: emitterDelaySettings
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SParticleEmitterLODLevel.ws"
+    range: "2:15-2:35"
+- name: emitterDuration
+  kind: field
+  location:
+    file: "witcherscript-builtin:/EmitterDurationSettings.ws"
+    range: "1:15-1:30"
+- name: emitterDurationLow
+  kind: field
+  location:
+    file: "witcherscript-builtin:/EmitterDurationSettings.ws"
+    range: "2:15-2:33"
+- name: emitterDurationSettings
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SParticleEmitterLODLevel.ws"
+    range: "1:15-1:38"
+- name: emitterLoops
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CParticleEmitter.ws"
+    range: "12:15-12:27"
+- name: emitters
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CParticleSystem.ws"
+    range: "7:15-7:23"
+- name: enableAutomaticRotationFromDirectionRecalculation
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SMultiCurve.ws"
+    range: "13:15-13:64"
+- name: enableAutomaticTimeByDistanceRecalculation
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SMultiCurve.ws"
+    range: "11:15-11:57"
+- name: enemiesMaxDistanceToCamera
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SCameraDistanceInfo.ws"
+    range: "3:15-3:41"
+- name: enemiesMaxDistanceToPlayer
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SCameraDistanceInfo.ws"
+    range: "4:15-4:41"
+- name: envProbeSecondAmbientFilterSize
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SWorldRenderSettings.ws"
+    range: "6:15-6:46"
+- name: interiorFallbackAmbientTexture
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CEnvProbeComponent.ws"
+    range: "17:15-17:45"
+- name: interiorFallbackAmbientTexture
+  kind: field
+  location:
+    file: "witcherscript-builtin:/SWorldEnvironmentParameters.ws"
+    range: "3:15-3:45"
+- name: movementDirectionInternalVariableName
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphDirectionalMovementNode.ws"
+    range: "39:15-39:52"
+- name: movementDirectionInternalVariableName
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphDirectionalMovementStartNode.ws"
+    range: "39:15-39:52"
+- name: movementDirectionInternalVariableName
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphDirectionalMovementStopNode.ws"
+    range: "39:15-39:52"
+- name: parentEmitterName
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CParticleInitializerCollisionSpawn.ws"
+    range: "9:15-9:32"
+- name: updateAndSampleInputIfPreRagdollWeightIsNonZero
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CBehaviorGraphRagdollNode.ws"
+    range: "16:15-16:62"
+- name: useAnimationEventFilter
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CActor.ws"
+    range: "46:15-46:38"
+- name: useAnimationEventFilter
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CNewNPC.ws"
+    range: "46:15-46:38"
+- name: useAnimationEventFilter
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CPlayer.ws"
+    range: "46:15-46:38"
+- name: useAnimationEventFilter
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CR4Player.ws"
+    range: "46:15-46:38"
+- name: useEmitterDelayOnce
+  kind: field
+  location:
+    file: "witcherscript-builtin:/EmitterDelaySettings.ws"
+    range: "4:15-4:34"
+- name: useEmitterDelayRange
+  kind: field
+  location:
+    file: "witcherscript-builtin:/EmitterDelaySettings.ws"
+    range: "3:15-3:35"
+- name: useEmitterDurationRange
+  kind: field
+  location:
+    file: "witcherscript-builtin:/EmitterDurationSettings.ws"
+    range: "3:15-3:38"
+- name: wallaEmitterSpread
+  kind: field
+  location:
+    file: "witcherscript-builtin:/CSoundAmbientAreaComponent.ws"
+    range: "50:15-50:33"

@@ -12,8 +12,8 @@ Terse reference. Each bullet is one rule. Spellings are exact.
 - `array<T>` is the only generic type; write `array<ElementType>`
 - Generics nest by grammar but only one level is used (`array<T>`)
 - No static members, methods, or fields
-- Native value types `CBehTreeValBool`, `CBehTreeValInt`, `CBehTreeValFloat`, `CBehTreeValString`, `CBehTreeValCName` are not classes
-- Native value types cannot be `new`-instantiated; they receive a value only via a `default` or a native `out` param
+- `CBehTreeVal*` types are structs
+- Native simple types (`CDateTime`, `EngineTransform`, ...) are not classes and cannot be `new`-instantiated
 
 ## Literals
 

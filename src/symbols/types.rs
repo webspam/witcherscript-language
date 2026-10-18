@@ -231,6 +231,14 @@ impl SymbolKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub(crate) enum SymbolOrigin {
+    #[default]
+    Script,
+    Builtin,
+    Native,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Annotation {
     pub name: String,
@@ -256,12 +264,37 @@ pub struct Symbol {
     pub access: AccessLevel,
     pub specifiers: Specifiers,
     pub doc_comment: Option<String>,
+    pub(crate) origin: SymbolOrigin,
 }
 
 const MEMBER_INJECTING_ANNOTATIONS: &[&str] =
     &["addMethod", "wrapMethod", "replaceMethod", "addField"];
 
 impl Symbol {
+    /// Native callables and fields stay invisible to scripts until a script `import` declares them; native types do not.
+    pub(crate) fn requires_import(&self) -> bool {
+        self.origin == SymbolOrigin::Native
+            && matches!(
+                self.kind,
+                SymbolKind::Function | SymbolKind::Method | SymbolKind::Field
+            )
+    }
+
+    pub(crate) fn is_script_import(&self) -> bool {
+        self.origin == SymbolOrigin::Script
+            && self.specifiers.contains(Specifier::Import)
+            && self.annotation_target_class_safe().is_none()
+            && matches!(
+                self.kind,
+                SymbolKind::Class
+                    | SymbolKind::Struct
+                    | SymbolKind::Enum
+                    | SymbolKind::Function
+                    | SymbolKind::Method
+                    | SymbolKind::Field
+            )
+    }
+
     pub fn display_detail(&self) -> Option<String> {
         match (self.base_class.as_deref(), self.owner_class.as_deref()) {
             (Some(b), Some(o)) => Some(format!("in {o} extends {b}")),
@@ -410,6 +443,12 @@ impl DocumentSymbols {
         None
     }
 
+    pub(crate) fn set_origin(&mut self, origin: SymbolOrigin) {
+        for symbol in &mut self.symbols {
+            symbol.origin = origin;
+        }
+    }
+
     pub(crate) fn push(&mut self, mut symbol: Symbol) -> SymbolId {
         let id = SymbolId(self.symbols.len());
         symbol.id = id;
@@ -465,15 +504,6 @@ impl DocumentSymbols {
         for by_name in self.locals_in_function.values_mut() {
             for ids in by_name.values_mut() {
                 ids.sort_by_key(|id| self.symbols[id.0].selection_byte_range.start);
-            }
-        }
-    }
-
-    /// Builtins ingestion marks native engine types, which have no declaration syntax of their own.
-    pub(crate) fn retag_top_level(&mut self, from: SymbolKind, to: SymbolKind) {
-        for symbol in &mut self.symbols {
-            if symbol.container.is_none() && symbol.kind == from {
-                symbol.kind = to;
             }
         }
     }

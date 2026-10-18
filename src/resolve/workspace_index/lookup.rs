@@ -1,4 +1,4 @@
-use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind, SymbolOrigin};
 
 use super::super::NameContext;
 use super::super::state_classes::StateBackingClass;
@@ -145,6 +145,31 @@ impl WorkspaceIndex {
             .and_then(|m| m.get(name))
             .cloned()
             .unwrap_or_default()
+    }
+
+    pub(crate) fn find_native_top_level(&self, name: &str) -> Option<Definition> {
+        self.native_functions_by_name
+            .get(name)
+            .and_then(|defs| defs.last())
+            .or_else(|| {
+                self.top_level_by_name
+                    .get(name)?
+                    .iter()
+                    .find(|d| d.symbol.origin == SymbolOrigin::Native)
+            })
+            .cloned()
+    }
+
+    pub(crate) fn direct_native_member_of(
+        &self,
+        container_name: &str,
+        name: &str,
+    ) -> Option<Definition> {
+        self.native_member_by_type
+            .get(container_name)?
+            .get(name)?
+            .last()
+            .cloned()
     }
 
     pub fn superclass_of(&self, class_name: &str) -> Option<String> {

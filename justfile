@@ -35,6 +35,10 @@ precommit: fmt clippy
     cargo nextest run
     @echo "Agent reminder: if clippy errors occurred, use 'just clippy-fix'"
 
+# Regenerate builtins/rtti.tsv from an RTTI XML dump
+rtti input="target/tmp/rttidump.xml":
+    cargo run --release --bin rtti-gen -- {{input}} builtins/rtti.tsv
+
 # Build dev binary
 build:
     cargo build
