@@ -4,7 +4,7 @@ use super::super::NameContext;
 use super::{Definition, WorkspaceIndex};
 
 impl WorkspaceIndex {
-    /// First match for `name`, preferring a non-state kind when a class shares a state's engine name.
+    /// An explicit class named like `OwnerStateName` wins over the state, so single-definition callers (hover, `this`) land on the hand-written declaration.
     pub fn find_top_level(&self, name: &str) -> Option<Definition> {
         let defs = self.top_level_by_name.get(name)?;
         defs.iter()

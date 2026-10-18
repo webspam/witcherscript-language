@@ -17,7 +17,7 @@ pub enum NameContext {
     StateExtends { owner_class: String },
     /// Bare call `Name(...)`. Accepts function, event, struct (constructor).
     Callable,
-    /// Bare identifier in expression position. Accepts any top-level kind.
+    /// Bare identifier in expression position.
     Value,
 }
 
