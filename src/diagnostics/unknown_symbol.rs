@@ -193,7 +193,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                     }
                     return None;
                 }
-                if let Some((kind, message)) = native_not_imported(
+                if let Some((kind, message, severity)) = native_not_imported(
                     ctx.db,
                     NativeName::Member {
                         receiver: &receiver_type,
@@ -201,7 +201,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                         noun: "member",
                     },
                 ) {
-                    push(ctx, ident, kind, message);
+                    push_with_severity(ctx, ident, kind, message, severity);
                     return Some(());
                 }
                 push(
@@ -269,10 +269,10 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                         "type_used_as_value",
                         format!("Type '{name}' cannot be called as a function"),
                     );
-                } else if let Some((kind, message)) =
+                } else if let Some((kind, message, severity)) =
                     native_not_imported(ctx.db, NativeName::Function(name))
                 {
-                    push(ctx, ident, kind, message);
+                    push_with_severity(ctx, ident, kind, message, severity);
                 } else {
                     push(
                         ctx,

@@ -119,7 +119,7 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         method_ident.end_byte(),
     );
 
-    let (kind, message) = native_not_imported(
+    let (kind, message, severity) = native_not_imported(
         ctx.db,
         NativeName::Member {
             receiver: &receiver_type,
@@ -131,12 +131,13 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
         (
             "unknown_method",
             format!("No method '{method_name}' on type '{receiver_type}'"),
+            Severity::Error,
         )
     });
     ctx.diagnostics.push(WorkspaceDiagnostic {
         kind: kind.to_string(),
         message,
-        severity: Severity::Error,
+        severity,
         range,
         related: vec![],
         data: None,

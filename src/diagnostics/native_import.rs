@@ -19,7 +19,7 @@ pub(crate) enum NativeName<'a> {
 pub(crate) fn native_not_imported(
     db: &SymbolDb,
     target: NativeName<'_>,
-) -> Option<(&'static str, String)> {
+) -> Option<(&'static str, String, Severity)> {
     let message = match target {
         NativeName::Member {
             receiver,
@@ -32,7 +32,7 @@ pub(crate) fn native_not_imported(
             .find_native_top_level(name)
             .map(|_| format!("Native function '{name}' is not imported")),
     }?;
-    Some((KIND_NATIVE_NOT_IMPORTED, message))
+    Some((KIND_NATIVE_NOT_IMPORTED, message, Severity::Info))
 }
 
 #[cfg(test)]

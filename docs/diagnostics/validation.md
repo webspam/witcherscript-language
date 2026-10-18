@@ -46,6 +46,8 @@ In addition to tree-sitter parse errors, the LSP server publishes the following 
 | 38  | `parent_outside_state`             | error    | `parent` / `virtual_parent` used outside a state method                                            |
 | 39  | `cast_in_var_init`                 | error    | A cast to a non-primitive type appears anywhere in a local `var` initializer                       |
 | 40  | `hex_default_zero`                 | warning  | A hex value in a class `default`, which always evaluates to 0                                      |
+| 41  | `native_not_imported`              | info     | Native function or member used without an `import`                                                 |
+| 42  | `unknown_native_import`            | error    | `import` of a function, type, or member the engine doesn't have                                    |
 
 ## Details
 
@@ -265,3 +267,11 @@ An explicit cast to a non-primitive type in a local `var` initializer, e.g. `var
 ### 40. Hex literal in a default value
 
 A hex literal in a `default` value. The compiler evaluates it to `0`.
+
+### 41. Native not imported
+
+An engine function or member used without an `import` for it. The compiler allows this.
+
+### 42. Unknown native import
+
+An `import` of something not in `builtins/`. Skipped when builtins aren't loaded.

@@ -495,4 +495,5 @@ fn natives_require_import(#[case] fixture: &str, #[case] message: &str) {
         [super::super::native_import::KIND_NATIVE_NOT_IMPORTED]
     );
     assert_eq!(diags[0].message, message);
+    assert_eq!(diags[0].severity, crate::diagnostics::Severity::Info);
 }
