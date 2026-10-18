@@ -204,36 +204,8 @@ pub fn find_references(
         };
 
         let mut byte_ranges: Vec<std::ops::Range<usize>> = Vec::new();
-        for name in &search_names {
-            if scan_range.is_none() {
-                if db.workspace.is_indexed(uri) || db.base.is_indexed(uri) {
-                    // Document is in the index: use it. If the name isn't present,
-                    // both calls return None and byte_ranges stays empty - no tree scan.
-                    if let Some(ranges) = db
-                        .workspace
-                        .ident_ranges_in_doc(uri, name)
-                        .or_else(|| db.base.ident_ranges_in_doc(uri, name))
-                    {
-                        byte_ranges.extend_from_slice(ranges);
-                    }
-                } else {
-                    collect_ident_occurrences(
-                        document.tree.root_node(),
-                        document.source.as_bytes(),
-                        name,
-                        None,
-                        &mut byte_ranges,
-                    );
-                }
-            } else {
-                collect_ident_occurrences(
-                    document.tree.root_node(),
-                    document.source.as_bytes(),
-                    name,
-                    scan_range,
-                    &mut byte_ranges,
-                );
-            }
+        for search_name in &search_names {
+            collect_candidate_ranges(uri, document, db, search_name, scan_range, &mut byte_ranges);
         }
         byte_ranges.sort_by_key(|range| range.start);
 
@@ -275,6 +247,34 @@ pub fn find_references(
     }
 
     results
+}
+
+fn collect_candidate_ranges(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    name: &str,
+    scan_range: Option<&std::ops::Range<usize>>,
+    byte_ranges: &mut Vec<std::ops::Range<usize>>,
+) {
+    let indexed = db.workspace.is_indexed(uri) || db.base.is_indexed(uri);
+    if scan_range.is_none() && indexed {
+        if let Some(ranges) = db
+            .workspace
+            .ident_ranges_in_doc(uri, name)
+            .or_else(|| db.base.ident_ranges_in_doc(uri, name))
+        {
+            byte_ranges.extend_from_slice(ranges);
+        }
+        return;
+    }
+    collect_ident_occurrences(
+        document.tree.root_node(),
+        document.source.as_bytes(),
+        name,
+        scan_range,
+        byte_ranges,
+    );
 }
 
 fn collect_ident_occurrences(
