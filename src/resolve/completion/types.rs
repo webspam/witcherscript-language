@@ -137,7 +137,7 @@ fn annotation_arg_completions_inner(
     Some(
         db.merged_types_catalog()
             .iter()
-            .filter(|def| matches!(def.symbol.kind, SymbolKind::Class | SymbolKind::State))
+            .filter(|def| def.symbol.kind.is_class_like())
             .cloned()
             .collect(),
     )
@@ -260,7 +260,7 @@ fn is_replace_method_ident(node: Node, source: &str) -> bool {
 
 fn direct_methods_of_class(class_name: &str, db: &SymbolDb) -> Option<Vec<Definition>> {
     let class_def = db.find_top_level(class_name)?;
-    if !matches!(class_def.symbol.kind, SymbolKind::Class | SymbolKind::State) {
+    if !class_def.symbol.kind.is_class_like() {
         return None;
     }
     Some(

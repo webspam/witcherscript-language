@@ -216,7 +216,7 @@ impl SymbolDb<'_> {
 
     fn type_or_state_kind_of(&self, name: &str) -> Option<SymbolKind> {
         let kind = self.find_top_level(name)?.symbol.kind;
-        matches!(kind, SymbolKind::Class | SymbolKind::State).then_some(kind)
+        kind.is_class_like().then_some(kind)
     }
 
     pub fn find_member(

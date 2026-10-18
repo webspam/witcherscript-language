@@ -204,6 +204,10 @@ impl SymbolKind {
         )
     }
 
+    pub(crate) fn is_class_like(self) -> bool {
+        matches!(self, SymbolKind::Class | SymbolKind::State)
+    }
+
     pub fn is_callable(self) -> bool {
         matches!(
             self,

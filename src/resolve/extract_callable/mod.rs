@@ -10,7 +10,7 @@ use crate::cst::ancestors::{enclosing_callable_block, find_ancestor_of_kind, nod
 use crate::cst::kinds;
 use crate::document::ParsedDocument;
 use crate::formatter::{FormatOptions, indent_block};
-use crate::symbols::{Symbol, SymbolKind};
+use crate::symbols::Symbol;
 use crate::types::Type;
 
 use super::Definition;
@@ -98,7 +98,7 @@ fn method_host(document: &ParsedDocument, callable: &Symbol) -> Option<()> {
     callable
         .container
         .and_then(|id| document.symbols.by_id(id))
-        .filter(|host| matches!(host.kind, SymbolKind::Class | SymbolKind::State))
+        .filter(|host| host.kind.is_class_like())
         .map(|_| ())
 }
 
