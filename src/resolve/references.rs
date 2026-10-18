@@ -52,11 +52,12 @@ fn paired_suppressed_base_uri(definition: &Definition, db: &SymbolDb) -> Option<
         return None;
     }
     let suppressed = db.suppressed_base_uris()?;
-    let base_def = db.base.find_top_level(&definition.symbol.name)?;
+    let type_name = definition.symbol.type_name();
+    let base_def = db.base.find_top_level(&type_name)?;
     if !suppressed.contains(base_def.uri.as_str()) {
         return None;
     }
-    let ws_def = db.workspace.find_top_level(&definition.symbol.name)?;
+    let ws_def = db.workspace.find_top_level(&type_name)?;
     (ws_def.uri == definition.uri).then_some(base_def.uri)
 }
 
@@ -76,11 +77,17 @@ fn paired_base_occurrence_matches(
     uri: &str,
     document: &ParsedDocument,
     db: &SymbolDb,
-    byte_offset: usize,
+    byte_range: &std::ops::Range<usize>,
     name: &str,
     equiv_keys: &[(String, std::ops::Range<usize>)],
     paired_base_top_key: Option<&(String, std::ops::Range<usize>)>,
 ) -> bool {
+    if paired_base_top_key
+        .is_some_and(|(key_uri, key_range)| key_uri == uri && key_range == byte_range)
+    {
+        return true;
+    }
+    let byte_offset = byte_range.start;
     if resolve_local_or_parameter(uri, document, byte_offset, name).is_some() {
         return false;
     }
@@ -93,15 +100,7 @@ fn paired_base_occurrence_matches(
     let Some(resolved) = resolve_name(uri, document, db, byte_offset, name) else {
         return false;
     };
-    let key = definition_key(&resolved);
-    if equiv_keys.contains(&key) {
-        return true;
-    }
-    if paired_base_top_key == Some(&key) {
-        return ident.start_byte() == resolved.symbol.selection_byte_range.start
-            && ident.end_byte() == resolved.symbol.selection_byte_range.end;
-    }
-    false
+    equiv_keys.contains(&definition_key(&resolved))
 }
 
 pub fn find_references(
@@ -133,7 +132,7 @@ pub fn find_references(
     let paired_base = paired_suppressed_base_uri(definition, db);
     let paired_base_top_key = paired_base
         .as_ref()
-        .and_then(|_| db.base.find_top_level(name))
+        .and_then(|_| db.base.find_top_level(&type_name))
         .map(|d| definition_key(&d));
 
     let mut results = Vec::new();
@@ -160,7 +159,7 @@ pub fn find_references(
                     uri,
                     document,
                     db,
-                    byte_range.start,
+                    &byte_range,
                     name,
                     &equiv_keys,
                     paired_base_top_key.as_ref(),
