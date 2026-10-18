@@ -109,6 +109,40 @@ fn annotation_arg_completions_offer_states_labelled_by_class_name() {
     assert!(names.contains(&"CR4PlayerStateSwimming".to_string()));
 }
 
+#[rstest]
+#[case::without_builtins(false)]
+#[case::with_builtins(true)]
+fn annotation_arg_completions_keep_same_named_states_of_other_owners(#[case] builtins: bool) {
+    let t = TestDb::new(concat!(
+        "statemachine class CMod {}\n",
+        "state Idle in CMod {}\n",
+        "@wrapMethod($0)\n",
+    ))
+    .with_base_doc(
+        "file:///base/states.ws",
+        concat!(
+            "statemachine class CA {}\n",
+            "state Idle in CA {}\n",
+            "statemachine class CB {}\n",
+            "state Idle in CB {}\n",
+        ),
+    );
+    let t = if builtins { t.with_builtins_index() } else { t };
+    let (_uri, pos) = t.cursor();
+    let completions = annotation_arg_completions(t.primary_doc(), &t.db(), pos);
+
+    let names: Vec<String> = completions
+        .iter()
+        .map(|d| d.symbol.type_name().into_owned())
+        .collect();
+    for expected in ["CModStateIdle", "CAStateIdle", "CBStateIdle"] {
+        assert!(
+            names.iter().any(|name| name == expected),
+            "every owner's `Idle` state should be offered, missing {expected} in {names:?}"
+        );
+    }
+}
+
 #[test]
 fn annotation_arg_completions_empty_outside_annotation() {
     let t = TestDb::new(concat!("class CPlayer {}\n", "function $0Test() {}\n",));

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -62,10 +63,10 @@ pub fn merge_ws_base(ws: Arc<[Definition]>, base: Arc<[Definition]>) -> Arc<[Def
     if ws.is_empty() {
         return base;
     }
-    let shadowed: HashSet<&str> = ws.iter().map(|d| d.symbol.name.as_str()).collect();
+    let shadowed: HashSet<Cow<'_, str>> = ws.iter().map(|d| d.symbol.type_name()).collect();
     let extra: usize = base
         .iter()
-        .filter(|d| !shadowed.contains(d.symbol.name.as_str()))
+        .filter(|d| !shadowed.contains(&d.symbol.type_name()))
         .count();
     if extra == 0 {
         return ws;
@@ -73,7 +74,7 @@ pub fn merge_ws_base(ws: Arc<[Definition]>, base: Arc<[Definition]>) -> Arc<[Def
     let mut out = Vec::with_capacity(ws.len() + extra);
     out.extend(ws.iter().cloned());
     for def in base.iter() {
-        if !shadowed.contains(def.symbol.name.as_str()) {
+        if !shadowed.contains(&def.symbol.type_name()) {
             out.push(def.clone());
         }
     }
@@ -88,11 +89,11 @@ pub fn merge_ws_base_three(
     let mut shadowed = HashSet::with_capacity(ws.len());
     let mut out = Vec::with_capacity(ws.len() + base.len() + builtins.len());
     for def in ws.iter() {
-        shadowed.insert(def.symbol.name.as_str());
+        shadowed.insert(def.symbol.type_name());
         out.push(def.clone());
     }
     for def in base.iter().chain(builtins.iter()) {
-        if shadowed.insert(def.symbol.name.as_str()) {
+        if shadowed.insert(def.symbol.type_name()) {
             out.push(def.clone());
         }
     }
