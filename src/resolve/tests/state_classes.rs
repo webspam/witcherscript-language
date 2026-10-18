@@ -1,6 +1,7 @@
 use crate::document::parse_document;
 use crate::resolve::{
-    SymbolDb, WorkspaceIndex, find_references, resolve_all_definitions, resolve_definition,
+    ReferenceSpelling, SymbolDb, WorkspaceIndex, find_references, resolve_all_definitions,
+    resolve_definition,
 };
 use crate::symbols::{AccessLevel, SymbolKind};
 use crate::test_support::TestDb;
@@ -243,6 +244,24 @@ fn references_to_state_include_class_name_usages() {
         refs.len(),
         3,
         "declaration plus two class-name usages: {refs:?}"
+    );
+}
+
+#[test]
+fn references_to_state_report_which_name_matched() {
+    let t = TestDb::new(
+        "statemachine class C {}\nstate $0Sleep in C {}\n\
+         function F(s : CStateSleep) {}\n",
+    );
+    let (uri, pos) = t.cursor();
+    let db = t.db();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &db, pos).expect("state declaration");
+    let refs = find_references(&def, t.doc_for(&uri), &t.search_docs(), &db, true);
+    let spellings: Vec<ReferenceSpelling> = refs.iter().map(|r| r.spelling).collect();
+    assert_eq!(
+        spellings,
+        [ReferenceSpelling::Name, ReferenceSpelling::TypeName],
+        "declaration matches the short name, the parameter type matches the class name"
     );
 }
 

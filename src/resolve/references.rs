@@ -103,20 +103,32 @@ fn paired_base_occurrence_matches(
     equiv_keys.contains(&definition_key(&resolved))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReferenceSpelling {
+    Name,
+    TypeName,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reference {
+    pub uri: String,
+    pub range: SourceRange,
+    pub spelling: ReferenceSpelling,
+}
+
 pub fn find_references(
     definition: &Definition,
     definition_document: &ParsedDocument,
     search_documents: &[(&str, &ParsedDocument)],
     db: &SymbolDb,
     include_declaration: bool,
-) -> Vec<(String, SourceRange)> {
+) -> Vec<Reference> {
     let name = &definition.symbol.name;
     let type_name = definition.symbol.type_name();
-    let search_names: Vec<&str> = if type_name == name.as_str() {
-        vec![name]
-    } else {
-        vec![name, &type_name]
-    };
+    let mut search_names = vec![(name.as_str(), ReferenceSpelling::Name)];
+    if type_name != name.as_str() {
+        search_names.push((&type_name, ReferenceSpelling::TypeName));
+    }
 
     // All declarations of the logical member count as one symbol.
     let equiv = all_declarations_of(definition, db);
@@ -177,12 +189,15 @@ pub fn find_references(
                 {
                     continue;
                 }
-                let range = document.line_index.byte_range_to_range(
-                    &document.source,
-                    byte_range.start,
-                    byte_range.end,
-                );
-                results.push((uri.to_string(), range));
+                results.push(Reference {
+                    uri: uri.to_string(),
+                    range: document.line_index.byte_range_to_range(
+                        &document.source,
+                        byte_range.start,
+                        byte_range.end,
+                    ),
+                    spelling: ReferenceSpelling::Name,
+                });
             }
             continue;
         }
@@ -203,13 +218,17 @@ pub fn find_references(
             }
         };
 
-        let mut byte_ranges: Vec<std::ops::Range<usize>> = Vec::new();
-        for search_name in &search_names {
-            collect_candidate_ranges(uri, document, db, search_name, scan_range, &mut byte_ranges);
-        }
-        byte_ranges.sort_by_key(|range| range.start);
+        let mut candidates: Vec<(std::ops::Range<usize>, ReferenceSpelling)> = search_names
+            .iter()
+            .flat_map(|&(search_name, spelling)| {
+                collect_candidate_ranges(uri, document, db, search_name, scan_range)
+                    .into_iter()
+                    .map(move |byte_range| (byte_range, spelling))
+            })
+            .collect();
+        candidates.sort_by_key(|(byte_range, _)| byte_range.start);
 
-        for byte_range in byte_ranges {
+        for (byte_range, spelling) in candidates {
             // Semantic verification: resolve the candidate and confirm it points
             // at the same definition (same file + same selection range).
             let position = document
@@ -228,12 +247,15 @@ pub fn find_references(
                     continue;
                 }
             }
-            let range = document.line_index.byte_range_to_range(
-                &document.source,
-                byte_range.start,
-                byte_range.end,
-            );
-            results.push((uri.to_string(), range));
+            results.push(Reference {
+                uri: uri.to_string(),
+                range: document.line_index.byte_range_to_range(
+                    &document.source,
+                    byte_range.start,
+                    byte_range.end,
+                ),
+                spelling,
+            });
         }
     }
 
@@ -241,7 +263,11 @@ pub fn find_references(
     if include_declaration {
         for (idx, decl) in equiv.iter().enumerate() {
             if !decl_found[idx] {
-                results.push((decl.uri.clone(), decl.symbol.selection_range));
+                results.push(Reference {
+                    uri: decl.uri.clone(),
+                    range: decl.symbol.selection_range,
+                    spelling: ReferenceSpelling::Name,
+                });
             }
         }
     }
@@ -255,26 +281,24 @@ fn collect_candidate_ranges(
     db: &SymbolDb,
     name: &str,
     scan_range: Option<&std::ops::Range<usize>>,
-    byte_ranges: &mut Vec<std::ops::Range<usize>>,
-) {
+) -> Vec<std::ops::Range<usize>> {
     let indexed = db.workspace.is_indexed(uri) || db.base.is_indexed(uri);
     if scan_range.is_none() && indexed {
-        if let Some(ranges) = db
+        return db
             .workspace
             .ident_ranges_in_doc(uri, name)
             .or_else(|| db.base.ident_ranges_in_doc(uri, name))
-        {
-            byte_ranges.extend_from_slice(ranges);
-        }
-        return;
+            .map_or_else(Vec::new, <[_]>::to_vec);
     }
+    let mut byte_ranges = Vec::new();
     collect_ident_occurrences(
         document.tree.root_node(),
         document.source.as_bytes(),
         name,
         scan_range,
-        byte_ranges,
+        &mut byte_ranges,
     );
+    byte_ranges
 }
 
 fn collect_ident_occurrences(

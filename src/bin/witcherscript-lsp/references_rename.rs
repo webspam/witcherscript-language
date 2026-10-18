@@ -11,9 +11,9 @@ use tracing::{debug, trace};
 use witcherscript_language::builtins::is_builtin_uri;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
-use witcherscript_language::line_index::SourceRange;
-use witcherscript_language::resolve::{find_references, resolve_definition};
-use witcherscript_language::symbols::Symbol;
+use witcherscript_language::resolve::{
+    Reference, ReferenceSpelling, find_references, resolve_definition,
+};
 
 use crate::backend::{Backend, Result};
 use crate::compilation::Compilation;
@@ -50,51 +50,28 @@ pub(crate) fn merge_documents<'a>(
 // even when the renamed symbol's declaration lives in the workspace (e.g. an
 // @wrapMethod whose target's class-body declaration sits in a base script).
 pub(crate) fn rename_changes(
-    refs: &[(String, SourceRange)],
-    new_text_for: impl Fn(&str, SourceRange) -> String,
+    refs: &[Reference],
+    new_name: &str,
+    new_type_name: &str,
     base_docs: &HashMap<String, Arc<ParsedDocument>>,
 ) -> HashMap<Url, Vec<TextEdit>> {
     let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
-    for (ref_uri, range) in refs {
-        if base_docs.contains_key(ref_uri) || is_builtin_uri(ref_uri) {
+    for reference in refs {
+        if base_docs.contains_key(&reference.uri) || is_builtin_uri(&reference.uri) {
             continue;
         }
-        if let Ok(url) = Url::parse(ref_uri) {
+        if let Ok(url) = Url::parse(&reference.uri) {
+            let new_text = match reference.spelling {
+                ReferenceSpelling::Name => new_name,
+                ReferenceSpelling::TypeName => new_type_name,
+            };
             changes.entry(url).or_default().push(TextEdit {
-                range: lsp_range(*range),
-                new_text: new_text_for(ref_uri, *range),
+                range: lsp_range(reference.range),
+                new_text: new_text.to_string(),
             });
         }
     }
     changes
-}
-
-fn text_at(document: &ParsedDocument, range: SourceRange) -> Option<&str> {
-    let start = document
-        .line_index
-        .position_to_byte(&document.source, range.start)?;
-    let end = document
-        .line_index
-        .position_to_byte(&document.source, range.end)?;
-    document.source.get(start..end)
-}
-
-pub(crate) fn renamed_occurrence_text(
-    symbol: &Symbol,
-    new_name: &str,
-) -> impl Fn(Option<&str>) -> String + use<> {
-    let old_type_name = symbol.type_name().into_owned();
-    let mut renamed = symbol.clone();
-    renamed.name = new_name.to_string();
-    let new_type_name = renamed.type_name().into_owned();
-    let new_name = new_name.to_string();
-    move |occurrence| {
-        if occurrence == Some(old_type_name.as_str()) {
-            new_type_name.clone()
-        } else {
-            new_name.clone()
-        }
-    }
 }
 
 fn ensure_rename_target_writable(definition_uri: &str, snap: &Compilation) -> Result<()> {
@@ -179,10 +156,10 @@ impl Backend {
 
         Some(
             refs.into_iter()
-                .filter_map(|(ref_uri, range)| {
-                    Url::parse(&ref_uri).ok().map(|url| Location {
+                .filter_map(|reference| {
+                    Url::parse(&reference.uri).ok().map(|url| Location {
                         uri: url,
-                        range: lsp_range(range),
+                        range: lsp_range(reference.range),
                     })
                 })
                 .collect(),
@@ -275,12 +252,11 @@ impl Backend {
 
             let refs = find_references(&definition, definition_document, &search_docs, &db, true);
 
-            let occurrence_text = renamed_occurrence_text(&definition.symbol, &new_name);
+            let new_type_name = definition.symbol.renamed_type_name(&new_name);
             let changes = rename_changes(
                 &refs,
-                |ref_uri, range| {
-                    occurrence_text(merged.get(ref_uri).and_then(|doc| text_at(doc, range)))
-                },
+                &new_name,
+                &new_type_name,
                 &snap.base_scripts_documents,
             );
 

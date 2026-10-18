@@ -14,15 +14,27 @@ use crate::convert::{replace_method_snippet, wrap_method_snippet};
 
 #[test]
 fn renaming_a_state_rewrites_class_name_occurrences_with_the_new_class_name() {
-    use crate::references_rename::renamed_occurrence_text;
+    use crate::references_rename::rename_changes;
 
-    let t = TestDb::new("statemachine class C {}\nstate $0Sleep in C {}\n");
+    let t = TestDb::new(
+        "statemachine class C {}\nstate $0Sleep in C {}\nfunction F(s : CStateSleep) {}\n",
+    );
     let (uri, pos) = t.cursor();
-    let def = resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("state resolves");
-    let text_for = renamed_occurrence_text(&def.symbol, "Nap");
+    let db = t.db();
+    let def = resolve_definition(&uri, t.doc_for(&uri), &db, pos).expect("state resolves");
+    let refs = find_references(&def, t.doc_for(&uri), &t.search_docs(), &db, true);
+    let new_type_name = def.symbol.renamed_type_name("Nap");
 
-    assert_eq!(text_for(Some("Sleep")), "Nap");
-    assert_eq!(text_for(Some("CStateSleep")), "CStateNap");
+    let changes = rename_changes(&refs, "Nap", &new_type_name, &HashMap::new());
+    let mut edits: Vec<_> = changes.into_values().flatten().collect();
+    edits.sort_by_key(|edit| (edit.range.start.line, edit.range.start.character));
+    let new_texts: Vec<&str> = edits.iter().map(|edit| edit.new_text.as_str()).collect();
+
+    assert_eq!(
+        new_texts,
+        ["Nap", "CStateNap"],
+        "the short-name declaration becomes `Nap`, the class-name usage becomes `CStateNap`"
+    );
 }
 
 #[test]
@@ -103,9 +115,9 @@ fn rename_does_not_edit_base_scripts() {
         ("file:///mod/ciri.ws", &mod_doc),
     ];
     let refs = find_references(&def, &mod_doc, &search_docs, &db, true);
-    assert!(refs.iter().any(|(uri, _)| uri == "file:///base/player.ws"));
+    assert!(refs.iter().any(|r| r.uri == "file:///base/player.ws"));
 
-    let changes = rename_changes(&refs, |_, _| "IsCiriRenamed".to_string(), &base_docs);
+    let changes = rename_changes(&refs, "IsCiriRenamed", "IsCiriRenamed", &base_docs);
     assert!(
         changes
             .keys()

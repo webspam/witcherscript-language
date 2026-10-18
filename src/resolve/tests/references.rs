@@ -89,11 +89,11 @@ fn references(
         refs.len(),
         expected_count,
         "actual: {:?}",
-        refs.iter().map(|(u, _)| u).collect::<Vec<_>>()
+        refs.iter().map(|r| &r.uri).collect::<Vec<_>>()
     );
     for required in required_uris {
         assert!(
-            refs.iter().any(|(u, _)| u == required),
+            refs.iter().any(|r| r.uri == *required),
             "missing required uri {required:?}"
         );
     }
@@ -123,7 +123,7 @@ fn private_member_scope_blocks_homonym_in_other_files() {
         1,
         "the top-level Secret() in b.ws must not match"
     );
-    assert_eq!(refs[0].0, "file:///a.ws");
+    assert_eq!(refs[0].uri, "file:///a.ws");
 }
 
 #[test]
@@ -142,8 +142,8 @@ fn private_member_with_wrap_still_searches_other_files() {
     assert_eq!(def.symbol.kind, SymbolKind::Method);
 
     let refs = find_references(&def, doc, &t.search_docs(), &t.db(), true);
-    assert!(refs.iter().any(|(u, _)| u == "file:///a.ws"));
-    assert!(refs.iter().any(|(u, _)| u == "file:///base.ws"));
+    assert!(refs.iter().any(|r| r.uri == "file:///a.ws"));
+    assert!(refs.iter().any(|r| r.uri == "file:///base.ws"));
 }
 
 // The wrapped class-body declaration counts as a reference even when it is a read-only base script.
@@ -161,9 +161,9 @@ fn wrap_function_name_finds_base_script_declaration() {
 
     let refs = find_references(&def, doc, &t.search_docs(), &t.db(), true);
     assert!(
-        refs.iter().any(|(u, _)| u == "file:///base/r4Player.ws"),
+        refs.iter().any(|r| r.uri == "file:///base/r4Player.ws"),
         "base-script class-body declaration must be a reference, got {:?}",
-        refs.iter().map(|(u, _)| u).collect::<Vec<_>>()
+        refs.iter().map(|r| &r.uri).collect::<Vec<_>>()
     );
 }
 

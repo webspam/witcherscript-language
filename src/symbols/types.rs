@@ -269,9 +269,13 @@ pub(crate) fn state_class_name(owner: &str, state: &str) -> String {
 
 impl Symbol {
     pub fn type_name(&self) -> Cow<'_, str> {
+        self.renamed_type_name(&self.name)
+    }
+
+    pub fn renamed_type_name<'a>(&self, name: &'a str) -> Cow<'a, str> {
         match (self.kind, self.owner_class.as_deref()) {
-            (SymbolKind::State, Some(owner)) => Cow::Owned(state_class_name(owner, &self.name)),
-            _ => Cow::Borrowed(&self.name),
+            (SymbolKind::State, Some(owner)) => Cow::Owned(state_class_name(owner, name)),
+            _ => Cow::Borrowed(name),
         }
     }
 

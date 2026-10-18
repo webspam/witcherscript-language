@@ -33,14 +33,14 @@ pub fn document_highlights(
     let mut highlights: Vec<(SourceRange, HighlightKind)> = refs
         .into_iter()
         // find_references appends declarations from unscanned files; drop those.
-        .filter(|(ref_uri, _)| ref_uri == uri)
-        .map(|(_, range)| {
+        .filter(|reference| reference.uri == uri)
+        .map(|reference| {
             let kind = document
                 .line_index
-                .position_to_byte(&document.source, range.start)
+                .position_to_byte(&document.source, reference.range.start)
                 .and_then(|byte| identifier_at(root, byte))
                 .map_or(HighlightKind::Read, classify_occurrence);
-            (range, kind)
+            (reference.range, kind)
         })
         .collect();
 
