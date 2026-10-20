@@ -79,8 +79,8 @@ fn paired_base_occurrence_matches(
     db: &SymbolDb,
     byte_range: &std::ops::Range<usize>,
     name: &str,
-    equiv_keys: &[(String, std::ops::Range<usize>)],
-    paired_base_top_key: Option<&(String, std::ops::Range<usize>)>,
+    equiv_keys: &[OccurrenceKey],
+    paired_base_top_key: Option<&OccurrenceKey>,
 ) -> bool {
     if paired_base_top_key
         .is_some_and(|(key_uri, key_range)| key_uri == uri && key_range == byte_range)
@@ -169,8 +169,7 @@ pub fn find_references(
 
     // All declarations of the logical member count as one symbol.
     let equiv = all_declarations_of(definition, db);
-    let equiv_keys: Vec<(String, std::ops::Range<usize>)> =
-        equiv.iter().map(definition_key).collect();
+    let equiv_keys: Vec<OccurrenceKey> = equiv.iter().map(definition_key).collect();
 
     let scope = if equiv.len() > 1 {
         SearchScope::AllDocuments
@@ -185,49 +184,22 @@ pub fn find_references(
         .map(|d| definition_key(&d));
 
     let mut results = Vec::new();
-    let mut decl_found = vec![false; equiv.len()];
+    let mut filter = OccurrenceFilter {
+        decl_found: vec![false; equiv_keys.len()],
+        equiv_keys,
+        include_declaration,
+    };
 
     for (uri, document) in search_documents {
         if paired_base.as_deref() == Some(*uri) {
-            let mut byte_ranges: Vec<std::ops::Range<usize>> = Vec::new();
-            if db.base.is_indexed(uri) {
-                if let Some(ranges) = db.base.ident_ranges_in_doc(uri, name) {
-                    byte_ranges.extend_from_slice(ranges);
-                }
-            } else {
-                collect_ident_occurrences(
-                    document.tree.root_node(),
-                    document.source.as_bytes(),
-                    name,
-                    None,
-                    &mut byte_ranges,
-                );
-            }
-            for byte_range in byte_ranges {
-                if !paired_base_occurrence_matches(
-                    uri,
-                    document,
-                    db,
-                    &byte_range,
-                    name,
-                    &equiv_keys,
-                    paired_base_top_key.as_ref(),
-                ) {
-                    continue;
-                }
-                let occurrence_key = (uri.to_string(), byte_range.clone());
-                if let Some(idx) = equiv_keys.iter().position(|k| *k == occurrence_key) {
-                    decl_found[idx] = true;
-                    if !include_declaration {
-                        continue;
-                    }
-                } else if !include_declaration
-                    && paired_base_top_key.as_ref() == Some(&occurrence_key)
-                {
-                    continue;
-                }
-                results.push(Reference::in_document(uri, document, &byte_range, 0));
-            }
+            results.extend(paired_base_references(
+                uri,
+                document,
+                db,
+                name,
+                paired_base_top_key.as_ref(),
+                &mut filter,
+            ));
             continue;
         }
 
@@ -265,16 +237,12 @@ pub fn find_references(
                 .byte_to_position(&document.source, byte_range.start);
             let resolved = resolve_definition(uri, document, db, position);
             match resolved {
-                Some(ref r) if equiv_keys.contains(&definition_key(r)) => {}
+                Some(ref r) if filter.equiv_keys.contains(&definition_key(r)) => {}
                 _ => continue,
             }
 
-            let occurrence_key = (uri.to_string(), byte_range.clone());
-            if let Some(idx) = equiv_keys.iter().position(|k| *k == occurrence_key) {
-                decl_found[idx] = true;
-                if !include_declaration {
-                    continue;
-                }
+            if !filter.should_report(&(uri.to_string(), byte_range.clone())) {
+                continue;
             }
             results.push(Reference::in_document(
                 uri,
@@ -288,7 +256,7 @@ pub fn find_references(
     // Catch declarations whose file was not in the search set.
     if include_declaration {
         for (idx, decl) in equiv.iter().enumerate() {
-            if !decl_found[idx] {
+            if !filter.decl_found[idx] {
                 results.push(Reference {
                     uri: decl.uri.clone(),
                     range: decl.symbol.selection_range,
@@ -299,6 +267,59 @@ pub fn find_references(
     }
 
     results
+}
+
+type OccurrenceKey = (String, std::ops::Range<usize>);
+
+struct OccurrenceFilter {
+    equiv_keys: Vec<OccurrenceKey>,
+    decl_found: Vec<bool>,
+    include_declaration: bool,
+}
+
+impl OccurrenceFilter {
+    fn should_report(&mut self, occurrence_key: &OccurrenceKey) -> bool {
+        match self.equiv_keys.iter().position(|k| k == occurrence_key) {
+            Some(idx) => {
+                self.decl_found[idx] = true;
+                self.include_declaration
+            }
+            None => true,
+        }
+    }
+}
+
+fn paired_base_references(
+    uri: &str,
+    document: &ParsedDocument,
+    db: &SymbolDb,
+    name: &str,
+    paired_base_top_key: Option<&OccurrenceKey>,
+    filter: &mut OccurrenceFilter,
+) -> Vec<Reference> {
+    let mut references = Vec::new();
+    for byte_range in collect_candidate_ranges(uri, document, db, name, None) {
+        if !paired_base_occurrence_matches(
+            uri,
+            document,
+            db,
+            &byte_range,
+            name,
+            &filter.equiv_keys,
+            paired_base_top_key,
+        ) {
+            continue;
+        }
+        let occurrence_key = (uri.to_string(), byte_range.clone());
+        let is_paired_base_declaration = paired_base_top_key == Some(&occurrence_key);
+        if !filter.should_report(&occurrence_key)
+            || (is_paired_base_declaration && !filter.include_declaration)
+        {
+            continue;
+        }
+        references.push(Reference::in_document(uri, document, &byte_range, 0));
+    }
+    references
 }
 
 fn collect_candidate_ranges(
