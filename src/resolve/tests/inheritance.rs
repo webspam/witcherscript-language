@@ -238,7 +238,8 @@ fn state_without_explicit_extends_defaults_to_cscriptablestate() {
         t.db()
             .superclass_of("OwnerStateSpawnBoatLatentHack")
             .as_deref(),
-        Some("CScriptableState")
+        Some("CScriptableState"),
+        "a state without `extends` must inherit from CScriptableState"
     );
     assert!(
         t.db()
@@ -247,6 +248,7 @@ fn state_without_explicit_extends_defaults_to_cscriptablestate() {
                 "someMethod",
                 AccessLevel::Public
             )
-            .is_none()
+            .is_none(),
+        "someMethod is declared nowhere in the CScriptableState chain, so lookup must fail"
     );
 }

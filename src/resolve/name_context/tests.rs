@@ -98,7 +98,10 @@ fn type_accepts_types_only() {
     assert!(ctx.accepts(SymbolKind::Class));
     assert!(ctx.accepts(SymbolKind::Struct));
     assert!(ctx.accepts(SymbolKind::Enum));
-    assert!(ctx.accepts(SymbolKind::State));
+    assert!(
+        ctx.accepts(SymbolKind::State),
+        "a state's class name must be accepted in type position"
+    );
     assert!(!ctx.accepts(SymbolKind::Function));
     assert!(!ctx.accepts(SymbolKind::Event));
 }
@@ -122,7 +125,10 @@ fn value_accepts_every_top_level_kind() {
     assert!(ctx.accepts(SymbolKind::Class));
     assert!(ctx.accepts(SymbolKind::Struct));
     assert!(ctx.accepts(SymbolKind::Enum));
-    assert!(ctx.accepts(SymbolKind::State));
+    assert!(
+        ctx.accepts(SymbolKind::State),
+        "a state's class name must be accepted in value position"
+    );
 }
 
 #[test]
