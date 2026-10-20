@@ -4,7 +4,7 @@ use crate::cst::{fields, kinds};
 
 use super::{CstRuleCtx, RelatedLocation, Severity, WorkspaceDiagnostic};
 
-pub const KIND: &str = "short_state_name";
+pub(crate) const KIND: &str = "short_state_name";
 
 pub(super) fn short_state_name_diagnostic(
     ident: Node<'_>,
