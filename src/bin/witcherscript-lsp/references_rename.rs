@@ -11,8 +11,9 @@ use tracing::{debug, trace};
 use witcherscript_language::builtins::is_builtin_uri;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
+use witcherscript_language::line_index::SourcePosition;
 use witcherscript_language::resolve::{
-    Reference, ReferenceSpelling, find_references, resolve_definition,
+    Definition, Reference, find_references, resolve_definition, state_class_name_range_at,
 };
 
 use crate::backend::{Backend, Result};
@@ -52,7 +53,6 @@ pub(crate) fn merge_documents<'a>(
 pub(crate) fn rename_changes(
     refs: &[Reference],
     new_name: &str,
-    new_type_name: &str,
     base_docs: &HashMap<String, Arc<ParsedDocument>>,
 ) -> HashMap<Url, Vec<TextEdit>> {
     let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
@@ -61,17 +61,29 @@ pub(crate) fn rename_changes(
             continue;
         }
         if let Ok(url) = Url::parse(&reference.uri) {
-            let new_text = match reference.spelling {
-                ReferenceSpelling::Name => new_name,
-                ReferenceSpelling::TypeName => new_type_name,
-            };
             changes.entry(url).or_default().push(TextEdit {
-                range: lsp_range(reference.range),
-                new_text: new_text.to_string(),
+                range: lsp_range(reference.name_range),
+                new_text: new_name.to_string(),
             });
         }
     }
     changes
+}
+
+pub(crate) fn prepare_rename_response(
+    definition: &Definition,
+    document: &ParsedDocument,
+    position: SourcePosition,
+) -> PrepareRenameResponse {
+    match state_class_name_range_at(definition, document, position) {
+        Some(range) => PrepareRenameResponse::RangeWithPlaceholder {
+            range: lsp_range(range),
+            placeholder: definition.symbol.name.clone(),
+        },
+        None => PrepareRenameResponse::DefaultBehavior {
+            default_behavior: true,
+        },
+    }
 }
 
 fn ensure_rename_target_writable(definition_uri: &str, snap: &Compilation) -> Result<()> {
@@ -191,7 +203,7 @@ impl Backend {
         trace!(op = "prepare_rename", uri = %uri, "start");
         let result = 'body: {
             let snap = self.snapshot();
-            let Some((definition, _)) = self.resolve_at(&uri, params.position, &snap) else {
+            let Some((definition, latest)) = self.resolve_at(&uri, params.position, &snap) else {
                 break 'body Ok(None);
             };
 
@@ -199,9 +211,11 @@ impl Backend {
                 break 'body Err(e);
             }
 
-            Ok(Some(PrepareRenameResponse::DefaultBehavior {
-                default_behavior: true,
-            }))
+            Ok(Some(prepare_rename_response(
+                &definition,
+                &latest,
+                source_position(params.position),
+            )))
         };
         trace!(
             op = "prepare_rename",
@@ -252,11 +266,9 @@ impl Backend {
 
             let refs = find_references(&definition, definition_document, &search_docs, &db, true);
 
-            let new_type_name = definition.symbol.renamed_type_name(&new_name);
             let changes = rename_changes(
                 &refs,
-                &new_name,
-                &new_type_name,
+                definition.symbol.short_name_from(&new_name),
                 &snap.base_scripts_documents,
             );
 

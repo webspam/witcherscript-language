@@ -1,7 +1,6 @@
 use crate::document::parse_document;
 use crate::resolve::{
-    ReferenceSpelling, SymbolDb, WorkspaceIndex, find_references, resolve_all_definitions,
-    resolve_definition,
+    SymbolDb, WorkspaceIndex, find_references, resolve_all_definitions, resolve_definition,
 };
 use crate::symbols::{AccessLevel, SymbolKind};
 use crate::test_support::TestDb;
@@ -323,7 +322,7 @@ fn references_to_state_include_class_name_usages() {
 }
 
 #[test]
-fn references_to_state_report_which_name_matched() {
+fn references_to_state_report_the_short_name_span() {
     let t = TestDb::new(
         "statemachine class C {}\nstate $0Sleep in C {}\n\
          function F(s : CStateSleep) {}\n",
@@ -332,11 +331,20 @@ fn references_to_state_report_which_name_matched() {
     let db = t.db();
     let def = resolve_definition(&uri, t.doc_for(&uri), &db, pos).expect("state declaration");
     let refs = find_references(&def, t.doc_for(&uri), &t.search_docs(), &db, true);
-    let spellings: Vec<ReferenceSpelling> = refs.iter().map(|r| r.spelling).collect();
+    let spans: Vec<(u32, u32, u32)> = refs
+        .iter()
+        .map(|r| {
+            (
+                r.range.start.character,
+                r.name_range.start.character,
+                r.name_range.end.character,
+            )
+        })
+        .collect();
     assert_eq!(
-        spellings,
-        [ReferenceSpelling::Name, ReferenceSpelling::TypeName],
-        "declaration matches the short name, the parameter type matches the class name"
+        spans,
+        [(6, 6, 11), (15, 21, 26)],
+        "the declaration's name span is the whole ident; the class-name usage's name span skips `CState`"
     );
 }
 

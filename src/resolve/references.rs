@@ -2,7 +2,7 @@ use tree_sitter::Node;
 
 use crate::cst::kinds;
 use crate::document::ParsedDocument;
-use crate::line_index::SourceRange;
+use crate::line_index::{SourcePosition, SourceRange};
 use crate::symbols::{AccessLevel, SymbolKind};
 
 use super::Definition;
@@ -103,17 +103,54 @@ fn paired_base_occurrence_matches(
     equiv_keys.contains(&definition_key(&resolved))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReferenceSpelling {
-    Name,
-    TypeName,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reference {
     pub uri: String,
     pub range: SourceRange,
-    pub spelling: ReferenceSpelling,
+    pub name_range: SourceRange,
+}
+
+impl Reference {
+    fn in_document(
+        uri: &str,
+        document: &ParsedDocument,
+        byte_range: &std::ops::Range<usize>,
+        name_offset: usize,
+    ) -> Self {
+        let to_range = |start| {
+            document
+                .line_index
+                .byte_range_to_range(&document.source, start, byte_range.end)
+        };
+        Self {
+            uri: uri.to_string(),
+            range: to_range(byte_range.start),
+            name_range: to_range(byte_range.start + name_offset),
+        }
+    }
+}
+
+pub fn state_class_name_range_at(
+    definition: &Definition,
+    document: &ParsedDocument,
+    position: SourcePosition,
+) -> Option<SourceRange> {
+    let type_name = definition.symbol.type_name();
+    if type_name == definition.symbol.name.as_str() {
+        return None;
+    }
+    let byte_offset = document
+        .line_index
+        .position_to_byte(&document.source, position)?;
+    let ident = identifier_at(document.tree.root_node(), byte_offset)?;
+    let spells_class_name = ident.utf8_text(document.source.as_bytes()).ok()? == type_name;
+    spells_class_name.then(|| {
+        document.line_index.byte_range_to_range(
+            &document.source,
+            ident.start_byte(),
+            ident.end_byte(),
+        )
+    })
 }
 
 pub fn find_references(
@@ -125,9 +162,9 @@ pub fn find_references(
 ) -> Vec<Reference> {
     let name = &definition.symbol.name;
     let type_name = definition.symbol.type_name();
-    let mut search_names = vec![(name.as_str(), ReferenceSpelling::Name)];
+    let mut search_names = vec![(name.as_str(), 0)];
     if type_name != name.as_str() {
-        search_names.push((&type_name, ReferenceSpelling::TypeName));
+        search_names.push((&type_name, type_name.len() - name.len()));
     }
 
     // All declarations of the logical member count as one symbol.
@@ -189,15 +226,7 @@ pub fn find_references(
                 {
                     continue;
                 }
-                results.push(Reference {
-                    uri: uri.to_string(),
-                    range: document.line_index.byte_range_to_range(
-                        &document.source,
-                        byte_range.start,
-                        byte_range.end,
-                    ),
-                    spelling: ReferenceSpelling::Name,
-                });
+                results.push(Reference::in_document(uri, document, &byte_range, 0));
             }
             continue;
         }
@@ -218,17 +247,17 @@ pub fn find_references(
             }
         };
 
-        let mut candidates: Vec<(std::ops::Range<usize>, ReferenceSpelling)> = search_names
+        let mut candidates: Vec<(std::ops::Range<usize>, usize)> = search_names
             .iter()
-            .flat_map(|&(search_name, spelling)| {
+            .flat_map(|&(search_name, name_offset)| {
                 collect_candidate_ranges(uri, document, db, search_name, scan_range)
                     .into_iter()
-                    .map(move |byte_range| (byte_range, spelling))
+                    .map(move |byte_range| (byte_range, name_offset))
             })
             .collect();
         candidates.sort_by_key(|(byte_range, _)| byte_range.start);
 
-        for (byte_range, spelling) in candidates {
+        for (byte_range, name_offset) in candidates {
             // Semantic verification: resolve the candidate and confirm it points
             // at the same definition (same file + same selection range).
             let position = document
@@ -247,15 +276,12 @@ pub fn find_references(
                     continue;
                 }
             }
-            results.push(Reference {
-                uri: uri.to_string(),
-                range: document.line_index.byte_range_to_range(
-                    &document.source,
-                    byte_range.start,
-                    byte_range.end,
-                ),
-                spelling,
-            });
+            results.push(Reference::in_document(
+                uri,
+                document,
+                &byte_range,
+                name_offset,
+            ));
         }
     }
 
@@ -266,7 +292,7 @@ pub fn find_references(
                 results.push(Reference {
                     uri: decl.uri.clone(),
                     range: decl.symbol.selection_range,
-                    spelling: ReferenceSpelling::Name,
+                    name_range: decl.symbol.selection_range,
                 });
             }
         }

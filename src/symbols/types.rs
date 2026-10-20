@@ -267,19 +267,32 @@ pub struct Symbol {
 const MEMBER_INJECTING_ANNOTATIONS: &[&str] =
     &["addMethod", "wrapMethod", "replaceMethod", "addField"];
 
+const STATE_CLASS_INFIX: &str = "State";
+
 pub(crate) fn state_class_name(owner: &str, state: &str) -> String {
-    format!("{owner}State{state}")
+    format!("{owner}{STATE_CLASS_INFIX}{state}")
 }
 
 impl Symbol {
     pub fn type_name(&self) -> Cow<'_, str> {
-        self.renamed_type_name(&self.name)
+        match self.state_owner() {
+            Some(owner) => Cow::Owned(state_class_name(owner, &self.name)),
+            None => Cow::Borrowed(&self.name),
+        }
     }
 
-    pub fn renamed_type_name<'a>(&self, name: &'a str) -> Cow<'a, str> {
-        match (self.kind, self.owner_class.as_deref()) {
-            (SymbolKind::State, Some(owner)) => Cow::Owned(state_class_name(owner, name)),
-            _ => Cow::Borrowed(name),
+    pub fn short_name_from<'a>(&self, name: &'a str) -> &'a str {
+        self.state_owner()
+            .and_then(|owner| name.strip_prefix(owner))
+            .and_then(|rest| rest.strip_prefix(STATE_CLASS_INFIX))
+            .filter(|short| !short.is_empty())
+            .unwrap_or(name)
+    }
+
+    fn state_owner(&self) -> Option<&str> {
+        match self.kind {
+            SymbolKind::State => self.owner_class.as_deref(),
+            _ => None,
         }
     }
 

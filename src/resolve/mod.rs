@@ -66,7 +66,7 @@ pub use inline_var::{InlineScope, Inlining, inline_variable};
 pub use join_split_decl::{join_declaration, split_declaration};
 pub use name_context::{NameContext, classify_ident_context};
 pub use overrides::{OverriddenSymbol, overridden_top_level};
-pub use references::{Reference, ReferenceSpelling, find_references};
+pub use references::{Reference, find_references, state_class_name_range_at};
 pub use signature::{
     SignatureHelpInfo, hover_doc, hover_text, render_parameters, render_signature, signature_help,
 };
