@@ -204,6 +204,13 @@ impl SymbolKind {
         )
     }
 
+    pub(crate) fn extends_by_type_name(self) -> bool {
+        matches!(
+            self,
+            SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct
+        )
+    }
+
     pub(crate) fn is_class_like(self) -> bool {
         matches!(self, SymbolKind::Class | SymbolKind::State)
     }

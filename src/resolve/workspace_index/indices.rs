@@ -56,7 +56,7 @@ impl WorkspaceIndex {
                 retain_and_prune(&mut self.top_level_by_name, &*sym.type_name(), |d| {
                     d.uri != uri
                 });
-                if sym.kind.is_object_type() && sym.kind != SymbolKind::State {
+                if sym.kind.extends_by_type_name() {
                     retain_and_prune(&mut self.superclass_by_name, &sym.name, |(u, _)| u != uri);
                     if let Some(base) = &sym.base_class {
                         retain_and_prune(&mut self.subclasses_by_name, base, |(u, d)| {
@@ -155,8 +155,7 @@ impl WorkspaceIndex {
                         uri: uri.to_string(),
                         symbol: sym.clone(),
                     });
-                if sym.kind.is_object_type()
-                    && sym.kind != SymbolKind::State
+                if sym.kind.extends_by_type_name()
                     && let Some(superclass) = &sym.base_class
                 {
                     self.superclass_by_name
