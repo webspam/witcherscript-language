@@ -485,7 +485,7 @@ pub(super) fn enclosing_type_context(
     byte_offset: usize,
 ) -> Option<TypeContext> {
     if let Some(symbol) = current_type_symbol(document, byte_offset) {
-        let name = symbol.type_name().into_owned();
+        let name = symbol.type_name().to_string();
         return Some(TypeContext {
             base_class: db.superclass_of(&name),
             owner_class: symbol.owner_class.clone(),

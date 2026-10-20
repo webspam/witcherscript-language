@@ -53,11 +53,11 @@ fn paired_suppressed_base_uri(definition: &Definition, db: &SymbolDb) -> Option<
     }
     let suppressed = db.suppressed_base_uris()?;
     let type_name = definition.symbol.type_name();
-    let base_def = db.base.find_top_level(&type_name)?;
+    let base_def = db.base.find_top_level(type_name)?;
     if !suppressed.contains(base_def.uri.as_str()) {
         return None;
     }
-    let ws_def = db.workspace.find_top_level(&type_name)?;
+    let ws_def = db.workspace.find_top_level(type_name)?;
     (ws_def.uri == definition.uri).then_some(base_def.uri)
 }
 
@@ -164,7 +164,7 @@ pub fn find_references(
     let type_name = definition.symbol.type_name();
     let mut search_names = vec![(name.as_str(), 0)];
     if type_name != name.as_str() {
-        search_names.push((&type_name, type_name.len() - name.len()));
+        search_names.push((type_name, type_name.len() - name.len()));
     }
 
     // All declarations of the logical member count as one symbol.
@@ -180,7 +180,7 @@ pub fn find_references(
     let paired_base = paired_suppressed_base_uri(definition, db);
     let paired_base_top_key = paired_base
         .as_ref()
-        .and_then(|_| db.base.find_top_level(&type_name))
+        .and_then(|_| db.base.find_top_level(type_name))
         .map(|d| definition_key(&d));
 
     let mut results = Vec::new();

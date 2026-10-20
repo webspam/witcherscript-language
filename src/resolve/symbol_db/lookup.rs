@@ -90,7 +90,7 @@ impl SymbolDb<'_> {
         self.workspace
             .states_named(name)
             .chain(self.base.states_named(name))
-            .filter(|def| seen.insert(def.symbol.type_name().into_owned()))
+            .filter(|def| seen.insert(def.symbol.type_name().to_string()))
             .cloned()
             .collect()
     }
@@ -114,7 +114,7 @@ impl SymbolDb<'_> {
             .and_then(|(owner, base)| self.find_state_in_owner_chain(owner, base))
             .map_or_else(
                 || STATE_BASE_CLASS.to_string(),
-                |base_state| base_state.symbol.type_name().into_owned(),
+                |base_state| base_state.symbol.type_name().to_string(),
             )
     }
 

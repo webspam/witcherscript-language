@@ -23,7 +23,7 @@ pub(super) fn short_state_name_diagnostic(
         .child_by_field_name(fields::NAME)?
         .utf8_text(ctx.document.source.as_bytes())
         .ok()?;
-    states.sort_by(|a, b| a.symbol.type_name().cmp(&b.symbol.type_name()));
+    states.sort_by(|a, b| a.symbol.type_name().cmp(b.symbol.type_name()));
     let suggestions = states
         .iter()
         .map(|state| format!("{annotation_name}({})", state.symbol.type_name()))

@@ -130,6 +130,7 @@ fn native_symbol(id: SymbolId, kind: SymbolKind, name: &str, spans: DeclarationS
         type_annotation: None,
         base_class: None,
         owner_class: None,
+        state_class: None,
         flavour: None,
         annotations: Vec::new(),
         access: AccessLevel::Public,

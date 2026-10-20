@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::HashMap;
 
 use crate::line_index::SourceRange;
@@ -263,6 +262,7 @@ pub struct Symbol {
     pub type_annotation: Option<Type>,
     pub base_class: Option<String>,
     pub owner_class: Option<String>,
+    pub(crate) state_class: Option<String>,
     pub flavour: Option<FuncFlavour>,
     pub annotations: Vec<Annotation>,
     pub access: AccessLevel,
@@ -281,11 +281,8 @@ pub(crate) fn state_class_name(owner: &str, state: &str) -> String {
 }
 
 impl Symbol {
-    pub fn type_name(&self) -> Cow<'_, str> {
-        match self.state_owner() {
-            Some(owner) => Cow::Owned(state_class_name(owner, &self.name)),
-            None => Cow::Borrowed(&self.name),
-        }
+    pub fn type_name(&self) -> &str {
+        self.state_class.as_deref().unwrap_or(&self.name)
     }
 
     pub fn short_name_from<'a>(&self, name: &'a str) -> &'a str {
@@ -498,7 +495,7 @@ impl DocumentSymbols {
                 None if sym.annotation_target_class_safe().is_some() => {}
                 None => {
                     self.top_level_by_name
-                        .entry(sym.type_name().into_owned())
+                        .entry(sym.type_name().to_string())
                         .or_default()
                         .push(sym.id);
                 }
@@ -513,7 +510,7 @@ impl DocumentSymbols {
             }
             if sym.kind.is_object_type() {
                 self.type_by_name
-                    .entry(sym.type_name().into_owned())
+                    .entry(sym.type_name().to_string())
                     .or_default()
                     .push(sym.id);
             }

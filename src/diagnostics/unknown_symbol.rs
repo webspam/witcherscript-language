@@ -227,7 +227,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 if name == "autoState" && enclosing.specifiers.is_state_machine() {
                     return None;
                 }
-                let container_name = enclosing.type_name().into_owned();
+                let container_name = enclosing.type_name().to_string();
                 ctx.telemetry.member_lookups += 1;
                 if ctx
                     .db

@@ -103,7 +103,7 @@ fn annotation_arg_completions_offer_states_labelled_by_class_name() {
 
     let names: Vec<String> = completions
         .iter()
-        .map(|d| d.symbol.type_name().into_owned())
+        .map(|d| d.symbol.type_name().to_string())
         .collect();
     assert!(
         names.contains(&"CR4Player".to_string()),
@@ -139,7 +139,7 @@ fn annotation_arg_completions_keep_same_named_states_of_other_owners(#[case] bui
 
     let names: Vec<String> = completions
         .iter()
-        .map(|d| d.symbol.type_name().into_owned())
+        .map(|d| d.symbol.type_name().to_string())
         .collect();
     for expected in ["CModStateIdle", "CAStateIdle", "CBStateIdle"] {
         assert!(

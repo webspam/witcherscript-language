@@ -49,7 +49,7 @@ fn check_inherited_field<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tre
         .document
         .symbols
         .enclosing_symbol_at(node.start_byte(), &[SymbolKind::Class, SymbolKind::State])?;
-    let parent = ctx.db.superclass_of(&container.type_name())?;
+    let parent = ctx.db.superclass_of(container.type_name())?;
 
     let mut cursor = node.walk();
     for ident in node.children_by_field_name(fields::NAMES, &mut cursor) {

@@ -165,7 +165,7 @@ pub(crate) fn replace_method_snippet(
 }
 
 pub(crate) fn type_completion_item(definition: &Definition) -> CompletionItem {
-    labelled_type_item(definition, definition.symbol.type_name().into_owned())
+    labelled_type_item(definition, definition.symbol.type_name().to_string())
 }
 
 pub(crate) fn extends_completion_item(definition: &Definition) -> CompletionItem {

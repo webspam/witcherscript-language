@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -63,10 +62,10 @@ pub fn merge_ws_base(ws: Arc<[Definition]>, base: Arc<[Definition]>) -> Arc<[Def
     if ws.is_empty() {
         return base;
     }
-    let shadowed: HashSet<Cow<'_, str>> = ws.iter().map(|d| d.symbol.type_name()).collect();
+    let shadowed: HashSet<&str> = ws.iter().map(|d| d.symbol.type_name()).collect();
     let extra: usize = base
         .iter()
-        .filter(|d| !shadowed.contains(&d.symbol.type_name()))
+        .filter(|d| !shadowed.contains(d.symbol.type_name()))
         .count();
     if extra == 0 {
         return ws;
@@ -74,7 +73,7 @@ pub fn merge_ws_base(ws: Arc<[Definition]>, base: Arc<[Definition]>) -> Arc<[Def
     let mut out = Vec::with_capacity(ws.len() + extra);
     out.extend(ws.iter().cloned());
     for def in base.iter() {
-        if !shadowed.contains(&def.symbol.type_name()) {
+        if !shadowed.contains(def.symbol.type_name()) {
             out.push(def.clone());
         }
     }

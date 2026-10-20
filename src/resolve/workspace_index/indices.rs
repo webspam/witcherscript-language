@@ -53,7 +53,7 @@ impl WorkspaceIndex {
                 continue;
             }
             if sym.container.is_none() {
-                retain_and_prune(&mut self.top_level_by_name, &*sym.type_name(), |d| {
+                retain_and_prune(&mut self.top_level_by_name, sym.type_name(), |d| {
                     d.uri != uri
                 });
                 if sym.kind.extends_by_type_name() {
@@ -149,7 +149,7 @@ impl WorkspaceIndex {
             }
             if sym.container.is_none() {
                 self.top_level_by_name
-                    .entry(sym.type_name().into_owned())
+                    .entry(sym.type_name().to_string())
                     .or_default()
                     .push(Definition {
                         uri: uri.to_string(),
