@@ -95,14 +95,27 @@ impl SymbolDb<'_> {
             .collect()
     }
 
-    fn state_superclass(&self, class_name: &str) -> Option<String> {
-        let state = self
-            .find_top_level(class_name)
-            .filter(|def| def.symbol.kind == SymbolKind::State)?;
-        let owner = state.symbol.owner_class.as_deref()?;
-        let base = state.symbol.base_class.as_deref()?;
-        self.find_state_in_owner_chain(owner, base)
-            .map(|def| def.symbol.type_name().into_owned())
+    fn implicit_superclass(&self, class_name: &str) -> Option<String> {
+        let symbol = self.find_top_level(class_name)?.symbol;
+        match symbol.kind {
+            SymbolKind::State => Some(self.state_superclass(&symbol)),
+            SymbolKind::Class if !OBJECT_ROOT_CHAIN.contains(&class_name) => {
+                Some(OBJECT_BASE_CLASS.to_string())
+            }
+            _ => None,
+        }
+    }
+
+    fn state_superclass(&self, state: &Symbol) -> String {
+        state
+            .owner_class
+            .as_deref()
+            .zip(state.base_class.as_deref())
+            .and_then(|(owner, base)| self.find_state_in_owner_chain(owner, base))
+            .map_or_else(
+                || STATE_BASE_CLASS.to_string(),
+                |base_state| base_state.symbol.type_name().into_owned(),
+            )
     }
 
     /// Exact selection-range match first, then by name; edits may have shifted the symbol.
@@ -165,8 +178,7 @@ impl SymbolDb<'_> {
             .superclass_of(class_name)
             .or_else(|| self.shadowed_base().superclass_of(class_name))
             .or_else(|| self.builtins.and_then(|b| b.superclass_of(class_name)))
-            .or_else(|| self.state_superclass(class_name))
-            .or_else(|| self.virtual_object_base(class_name))
+            .or_else(|| self.implicit_superclass(class_name))
     }
 
     pub(crate) fn has_builtins(&self) -> bool {
@@ -198,25 +210,6 @@ impl SymbolDb<'_> {
     pub fn inherits_from(&self, class_name: &str, ancestor: &str) -> bool {
         self.try_in_chain(class_name, |current, _| (current == ancestor).then_some(()))
             .is_some()
-    }
-
-    fn virtual_object_base(&self, class_name: &str) -> Option<String> {
-        if OBJECT_ROOT_CHAIN.contains(&class_name) {
-            return None;
-        }
-        let kind = self.type_or_state_kind_of(class_name)?;
-        match kind {
-            SymbolKind::Class => Some(OBJECT_BASE_CLASS.to_string()),
-            SymbolKind::State if class_name != STATE_BASE_CLASS => {
-                Some(STATE_BASE_CLASS.to_string())
-            }
-            _ => None,
-        }
-    }
-
-    fn type_or_state_kind_of(&self, name: &str) -> Option<SymbolKind> {
-        let kind = self.find_top_level(name)?.symbol.kind;
-        kind.is_class_like().then_some(kind)
     }
 
     pub fn find_member(
