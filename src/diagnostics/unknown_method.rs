@@ -8,6 +8,7 @@ use crate::cst::nav::first_named_child;
 use crate::document::ParsedDocument;
 use crate::resolve::{SymbolDb, infer_type_memo};
 use crate::symbols::AccessLevel;
+use crate::types::lookup_ctor;
 
 use super::native_import::{NativeName, native_not_imported};
 use super::{
@@ -64,23 +65,20 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
     };
 
     ctx.telemetry.type_inferences += 1;
-    let receiver_inferred = infer_type_memo(
+    let Some(receiver_type) = infer_type_memo(
         ctx.uri,
         ctx.document,
         ctx.db,
         receiver,
         method_ident.start_byte(),
         ctx.type_memo,
-    );
-    let (Some(receiver_type), Some(receiver_ctor)) = (
-        receiver_inferred.to_db_string(),
-        receiver_inferred.to_lookup_ctor(),
-    ) else {
+    )
+    .to_db_string() else {
         return;
     };
 
     ctx.telemetry.top_level_lookups += 1;
-    let Some(top) = ctx.db.find_top_level(&receiver_ctor) else {
+    let Some(top) = ctx.db.find_top_level(lookup_ctor(&receiver_type)) else {
         return;
     };
 

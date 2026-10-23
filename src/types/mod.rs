@@ -62,11 +62,7 @@ impl Type {
 
     /// The top-level `SymbolDb` lookup name: generic arguments are dropped, e.g. `array<int>` -> `array`.
     pub(crate) fn to_lookup_ctor(&self) -> Option<String> {
-        let raw = self.to_db_string()?;
-        Some(match parse_generic_type(&raw) {
-            Some((ctor, _)) => ctor.to_string(),
-            None => raw,
-        })
+        self.to_db_string().map(|raw| lookup_ctor(&raw).to_string())
     }
 
     pub(crate) fn substitute_placeholders(&self, bindings: &[(&str, &Type)]) -> Type {
@@ -111,6 +107,10 @@ pub(crate) fn parse_generic_type(s: &str) -> Option<(&str, &str)> {
         return None;
     }
     Some((ctor, element))
+}
+
+pub(crate) fn lookup_ctor(type_name: &str) -> &str {
+    parse_generic_type(type_name).map_or(type_name, |(ctor, _)| ctor)
 }
 
 pub(crate) fn split_type_args(args: &str) -> Vec<&str> {
