@@ -115,6 +115,12 @@ fn flags_incompatible_assignment() {
     "map<int, int>",
     "map<int, float>"
 )]
+#[case::derived_value(
+    "class Base {} class Derived extends Base {} \
+     function Test() { var a : map<int, Base>; var b : map<int, Derived>; a = b; }\n",
+    "map<int, Derived>",
+    "map<int, Base>"
+)]
 #[case::indexed_value(
     "function Test() { var m : map<name, int>; var f : float; m['a'] = f; }\n",
     "float",

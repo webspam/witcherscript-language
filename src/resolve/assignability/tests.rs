@@ -228,6 +228,38 @@ fn maps_are_invariant() {
 }
 
 #[test]
+fn map_values_do_not_upcast() {
+    let t = TestDb::new(TYPES_SRC);
+    let map_of = |value: &str| {
+        Type::Map(
+            Box::new(prim(Primitive::Int)),
+            Box::new(Type::Named(value.into())),
+        )
+    };
+    assert_eq!(
+        assignability(&map_of("Derived"), &map_of("Base"), &t.db()),
+        Assignability::Incompatible,
+        "map values must not upcast"
+    );
+}
+
+#[test]
+fn map_aliases_are_identical() {
+    let t = TestDb::new(TYPES_SRC);
+    for (from, to) in [
+        ("map<CName, Int32>", "map<name, int>"),
+        ("map<int, float>", "map<int, float>"),
+    ] {
+        let (from, to) = (Type::from_annotation(from), Type::from_annotation(to));
+        assert_eq!(
+            assignability(&from, &to, &t.db()),
+            Assignability::Identical,
+            "{from} -> {to}"
+        );
+    }
+}
+
+#[test]
 fn objects_cast_to_bool_and_string() {
     let t = TestDb::new(TYPES_SRC);
     for name in ["Base", "Derived", "Active"] {

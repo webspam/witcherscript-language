@@ -58,6 +58,11 @@ fn map_method_container_name_becomes_generic_instance() {
         "hover should show generic instance: {hover}"
     );
     assert!(hover.contains("key : int"), "hover: {hover}");
+    assert_eq!(
+        def.symbol.type_annotation,
+        Some(Type::from_annotation("bool")),
+        "Erase must return bool"
+    );
 }
 
 #[test]
