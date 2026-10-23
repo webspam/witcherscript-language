@@ -41,6 +41,26 @@ fn flags_unknown_method_on_known_type() {
     assert!(diags[0].message.contains("Foo"));
 }
 
+#[rstest]
+#[case::map_known("map<name, int>", "Size", 0)]
+#[case::map_unknown("map<name, int>", "PushBack", 1)]
+#[case::array_known("array<int>", "PushBack", 0)]
+#[case::array_unknown("array<int>", "Key", 1)]
+fn generic_builtin_methods_are_a_closed_set(
+    #[case] receiver: &str,
+    #[case] method: &str,
+    #[case] expected: usize,
+) {
+    let t = TestDb::new(&format!(
+        "function Test() {{ var g : {receiver}; g.{method}(); }}\n"
+    ))
+    .with_builtins_index();
+    let result = collect_unknown_method_diagnostics(&t.search_docs(), &t.db());
+
+    let count = result.get(t.primary_uri()).map_or(0, Vec::len);
+    assert_eq!(count, expected, "{method}: {result:?}");
+}
+
 #[test]
 fn flags_this_unknown_method() {
     let t = TestDb::new("class Foo { function Run() { this.Nonexistent(); } }\n");

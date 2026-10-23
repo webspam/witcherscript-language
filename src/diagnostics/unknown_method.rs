@@ -64,20 +64,23 @@ fn check_method_call<'tree>(node: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) 
     };
 
     ctx.telemetry.type_inferences += 1;
-    let Some(receiver_type) = infer_type_memo(
+    let receiver_inferred = infer_type_memo(
         ctx.uri,
         ctx.document,
         ctx.db,
         receiver,
         method_ident.start_byte(),
         ctx.type_memo,
-    )
-    .to_db_string() else {
+    );
+    let (Some(receiver_type), Some(receiver_ctor)) = (
+        receiver_inferred.to_db_string(),
+        receiver_inferred.to_lookup_ctor(),
+    ) else {
         return;
     };
 
     ctx.telemetry.top_level_lookups += 1;
-    let Some(top) = ctx.db.find_top_level(&receiver_type) else {
+    let Some(top) = ctx.db.find_top_level(&receiver_ctor) else {
         return;
     };
 
