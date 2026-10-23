@@ -113,25 +113,6 @@ pub(crate) fn lookup_ctor(type_name: &str) -> &str {
     parse_generic_type(type_name).map_or(type_name, |(ctor, _)| ctor)
 }
 
-pub(crate) fn split_type_args(args: &str) -> Vec<&str> {
-    let mut parts = Vec::new();
-    let mut depth = 0usize;
-    let mut start = 0;
-    for (i, c) in args.char_indices() {
-        match c {
-            '<' => depth += 1,
-            '>' => depth = depth.saturating_sub(1),
-            ',' if depth == 0 => {
-                parts.push(args[start..i].trim());
-                start = i + 1;
-            }
-            _ => {}
-        }
-    }
-    parts.push(args[start..].trim());
-    parts
-}
-
 impl Primitive {
     pub(crate) fn canonical(self) -> &'static str {
         match self {

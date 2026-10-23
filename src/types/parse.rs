@@ -1,4 +1,4 @@
-use super::{parse_generic_type, split_type_args};
+use super::parse_generic_type;
 
 use super::{Primitive, Type};
 
@@ -60,6 +60,25 @@ pub(super) fn from_annotation(s: &str) -> Type {
         return Type::Primitive(prim);
     }
     Type::Named(trimmed.to_string())
+}
+
+fn split_type_args(args: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0;
+    for (i, c) in args.char_indices() {
+        match c {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                parts.push(args[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(args[start..].trim());
+    parts
 }
 
 pub fn is_builtin_type_name(name: &str) -> bool {
