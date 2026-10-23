@@ -21,7 +21,8 @@ fn map_member_params_substitute_key_type() {
     );
     assert_eq!(
         def.symbol.type_annotation,
-        Some(Type::from_annotation("bool"))
+        Some(Type::from_annotation("bool")),
+        "Contains must return bool"
     );
 }
 
@@ -50,7 +51,8 @@ fn map_method_container_name_becomes_generic_instance() {
 
     assert_eq!(
         def.symbol.container_name.as_deref(),
-        Some("map<int, float>")
+        Some("map<int, float>"),
+        "container must become the generic instance"
     );
     let hover = hover_text(&def, &db, ColonSpacing::Spaced);
     assert!(
@@ -83,7 +85,11 @@ fn completion_after_dot_on_map_var_returns_methods() {
         .collect();
     names.sort_unstable();
 
-    assert_eq!(names, ["Clear", "Contains", "Erase", "Key", "Size"]);
+    assert_eq!(
+        names,
+        ["Clear", "Contains", "Erase", "Key", "Size"],
+        "completion must list exactly the map methods"
+    );
 }
 
 #[test]
@@ -99,8 +105,14 @@ fn goto_definition_on_map_method_resolves_into_builtin_file() {
     let def =
         resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("Contains should resolve");
 
-    assert_eq!(def.uri, BUILTIN_MAP_URI);
-    assert_eq!(def.symbol.name, "Contains");
+    assert_eq!(
+        def.uri, BUILTIN_MAP_URI,
+        "definition must land in the builtin map file"
+    );
+    assert_eq!(
+        def.symbol.name, "Contains",
+        "definition must be the Contains method"
+    );
 }
 
 #[test]
@@ -116,8 +128,15 @@ fn method_on_indexed_map_value_resolves_through_value_type() {
     let def =
         resolve_definition(&uri, t.doc_for(&uri), &t.db(), pos).expect("PushBack should resolve");
 
-    assert_eq!(def.symbol.name, "PushBack");
-    assert_eq!(def.symbol.container_name.as_deref(), Some("array<string>"));
+    assert_eq!(
+        def.symbol.name, "PushBack",
+        "definition must be the PushBack method"
+    );
+    assert_eq!(
+        def.symbol.container_name.as_deref(),
+        Some("array<string>"),
+        "PushBack must resolve on the map's value type"
+    );
 }
 
 #[test]

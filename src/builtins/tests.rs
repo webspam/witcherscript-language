@@ -44,9 +44,20 @@ fn last_method_returns_placeholder() {
 fn map_class_is_indexed_with_placeholder_types() {
     let index = load_builtins_index();
     let def = index.find_top_level("map").expect("map class indexed");
-    assert_eq!(def.symbol.kind, SymbolKind::Class);
-    assert_eq!(def.symbol.origin, SymbolOrigin::Builtin);
-    assert_eq!(def.uri, BUILTIN_MAP_URI);
+    assert_eq!(
+        def.symbol.kind,
+        SymbolKind::Class,
+        "map must be indexed as a class"
+    );
+    assert_eq!(
+        def.symbol.origin,
+        SymbolOrigin::Builtin,
+        "map must carry the builtin origin"
+    );
+    assert_eq!(
+        def.uri, BUILTIN_MAP_URI,
+        "map must be indexed under the builtin map URI"
+    );
 
     let key = index
         .direct_member_of("map", "Key", AccessLevel::Public)
