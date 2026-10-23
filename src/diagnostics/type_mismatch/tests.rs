@@ -109,6 +109,33 @@ fn flags_incompatible_assignment() {
     assert!(diags[0].message.contains("int"));
 }
 
+#[rstest]
+#[case::whole_map(
+    "function Test() { var a : map<int, float>; var b : map<int, int>; a = b; }\n",
+    "map<int, int>",
+    "map<int, float>"
+)]
+#[case::indexed_value(
+    "function Test() { var m : map<name, int>; var f : float; m['a'] = f; }\n",
+    "float",
+    "int"
+)]
+fn flags_incompatible_map_assignment(
+    #[case] fixture: &str,
+    #[case] value: &str,
+    #[case] target: &str,
+) {
+    let t = TestDb::new(fixture);
+    let result = collect_type_mismatch_diagnostics(&t.search_docs(), &t.db());
+
+    let diags = result
+        .get(t.primary_uri())
+        .expect("should have diagnostics");
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(diags[0].message.contains(value), "{}", diags[0].message);
+    assert!(diags[0].message.contains(target), "{}", diags[0].message);
+}
+
 #[test]
 fn flags_string_literal_into_name_var_initializer() {
     let t = TestDb::new("function Test() { var n : name = \"Swimming\"; }\n");

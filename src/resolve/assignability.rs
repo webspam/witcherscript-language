@@ -70,6 +70,14 @@ pub(crate) fn assignability(from: &Type, to: &Type, db: &SymbolDb) -> Assignabil
         },
         (Type::Array(_), _) | (_, Type::Array(_)) => Assignability::Incompatible,
 
+        (Type::Map(fk, fv), Type::Map(tk, tv)) => {
+            match (assignability(fk, tk, db), assignability(fv, tv, db)) {
+                (Assignability::Identical, Assignability::Identical) => Assignability::Identical,
+                _ => Assignability::Incompatible,
+            }
+        }
+        (Type::Map(..), _) | (_, Type::Map(..)) => Assignability::Incompatible,
+
         (Type::Named(n), Type::Primitive(Primitive::Int))
         | (Type::Primitive(Primitive::Int), Type::Named(n))
             if is_enum(db, n) =>

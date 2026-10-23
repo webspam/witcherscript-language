@@ -41,6 +41,24 @@ fn last_method_returns_placeholder() {
 }
 
 #[test]
+fn map_class_is_indexed_with_placeholder_types() {
+    let index = load_builtins_index();
+    let def = index.find_top_level("map").expect("map class indexed");
+    assert_eq!(def.symbol.kind, SymbolKind::Class);
+    assert_eq!(def.symbol.origin, SymbolOrigin::Builtin);
+    assert_eq!(def.uri, BUILTIN_MAP_URI);
+
+    let key = index
+        .direct_member_of("map", "Key", AccessLevel::Public)
+        .expect("Key indexed");
+    assert_eq!(
+        key.symbol.type_annotation,
+        Some(Type::from_annotation(MAP_KEY_PLACEHOLDER)),
+        "Key must return the key placeholder type"
+    );
+}
+
+#[test]
 fn every_selection_range_slices_its_name_from_the_served_source() {
     let index = load_builtins_index();
     let mut checked = 0;

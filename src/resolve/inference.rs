@@ -95,6 +95,7 @@ pub(crate) fn infer_type(
         kinds::ARRAY_EXPR => match node.child_by_field_name(fields::ACCESSOR) {
             Some(accessor) => match infer_type(uri, document, db, accessor, context_byte) {
                 Type::Array(elem) => *elem,
+                Type::Map(_, value) => *value,
                 _ => Type::Unknown,
             },
             None => Type::Unknown,

@@ -100,10 +100,10 @@ fn method_call_receiver_base(call: Node) -> Option<Node> {
     lvalue_base_ident(first_named_child(callee)?)
 }
 
-// Arrays and structs copy on assignment and into parameters; classes are shared handles.
+// Arrays, maps and structs copy on assignment and into parameters; classes are shared handles
 pub(super) fn is_value_type(ty: &Type, db: &SymbolDb) -> bool {
     match ty {
-        Type::Array(_) => true,
+        Type::Array(_) | Type::Map(..) => true,
         Type::Named(name) => db
             .find_top_level(name)
             .is_some_and(|d| d.symbol.kind == SymbolKind::Struct),

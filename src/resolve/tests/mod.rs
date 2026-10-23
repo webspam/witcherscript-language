@@ -2,6 +2,7 @@ mod base_shadowing;
 mod builtin_array;
 mod builtin_classes;
 mod builtin_enums;
+mod builtin_map;
 mod builtin_native_types;
 mod chaining;
 mod completion_annotation_arg;

@@ -255,6 +255,7 @@ fn is_concrete(ty: &Type, db: &SymbolDb) -> bool {
     match ty {
         Type::Primitive(_) | Type::Null => true,
         Type::Array(elem) => is_concrete(elem, db),
+        Type::Map(key, value) => is_concrete(key, db) && is_concrete(value, db),
         Type::Named(name) => db.find_top_level(name).is_some(),
         Type::Void | Type::Unknown => false,
     }

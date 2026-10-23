@@ -1,22 +1,33 @@
+use crate::builtins::{GENERIC_ELEMENT_PLACEHOLDER, MAP_KEY_PLACEHOLDER, MAP_VALUE_PLACEHOLDER};
 use crate::resolve::Definition;
-use crate::types::Type;
+use crate::types::{Type, parse_generic_type};
 
-pub(super) fn generic_lookup_target(container: &str) -> (&str, Option<&str>) {
-    match crate::types::parse_generic_type(container) {
-        Some((ctor, elem)) => (ctor, Some(elem)),
+pub(super) fn generic_lookup_target(container: &str) -> (&str, Option<Type>) {
+    match parse_generic_type(container) {
+        Some((ctor, _)) => (ctor, Some(Type::from_annotation(container))),
         None => (container, None),
     }
+}
+
+fn generic_bindings(container: &Type) -> Vec<(&'static str, &Type)> {
+    match container {
+        Type::Array(element) => vec![(GENERIC_ELEMENT_PLACEHOLDER, element)],
+        Type::Map(key, value) => vec![(MAP_KEY_PLACEHOLDER, key), (MAP_VALUE_PLACEHOLDER, value)],
+        _ => Vec::new(),
+    }
+}
+
+pub(super) fn substitute_generics(ty: &Type, container: &Type) -> Type {
+    ty.substitute_placeholders(&generic_bindings(container))
 }
 
 pub(super) fn substitute_in_definition(
     mut def: Definition,
     container_instance: &str,
-    element: &str,
+    container: &Type,
 ) -> Definition {
-    let p = crate::builtins::GENERIC_ELEMENT_PLACEHOLDER;
     if let Some(t) = def.symbol.type_annotation.take() {
-        let element_type = Type::from_annotation(element);
-        def.symbol.type_annotation = Some(t.substitute_named(p, &element_type));
+        def.symbol.type_annotation = Some(substitute_generics(&t, container));
     }
     if def.symbol.container_name.is_some() {
         def.symbol.container_name = Some(container_instance.to_string());

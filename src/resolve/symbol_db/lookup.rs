@@ -6,7 +6,7 @@ use super::super::completion_catalog::{merge_ws_base, merge_ws_base_three};
 use super::super::state_classes::StateBackingClass;
 use super::super::{MAX_INHERITANCE_DEPTH, dedup_by_name, dedup_definitions};
 use super::SymbolDb;
-use super::generics::{generic_lookup_target, substitute_in_definition};
+use super::generics::{generic_lookup_target, substitute_generics, substitute_in_definition};
 use crate::resolve::{Definition, NameContext};
 use crate::types::Type;
 
@@ -228,7 +228,7 @@ impl SymbolDb<'_> {
         name: &str,
         min_access: AccessLevel,
     ) -> Option<Definition> {
-        let (lookup, element) = generic_lookup_target(container);
+        let (lookup, generic_instance) = generic_lookup_target(container);
         let def = self.try_in_chain(lookup, |container, _depth| {
             self.record_member(container, name);
             self.workspace
@@ -245,15 +245,15 @@ impl SymbolDb<'_> {
         if def.symbol.access < min_access {
             return None;
         }
-        Some(match element {
-            Some(elem) => substitute_in_definition(def, container, elem),
+        Some(match &generic_instance {
+            Some(generic) => substitute_in_definition(def, container, generic),
             None => def,
         })
     }
 
     // Class-body declaration only, so a `@wrapMethod` overlay cannot shadow the method it wraps.
     pub(crate) fn find_class_body_member(&self, container: &str, name: &str) -> Option<Definition> {
-        let (lookup, element) = generic_lookup_target(container);
+        let (lookup, generic_instance) = generic_lookup_target(container);
         let def = self.try_in_chain(lookup, |container, _depth| {
             self.workspace
                 .class_body_member_of(container, name)
@@ -263,8 +263,8 @@ impl SymbolDb<'_> {
                         .and_then(|b| b.class_body_member_of(container, name))
                 })
         })?;
-        Some(match element {
-            Some(elem) => substitute_in_definition(def, container, elem),
+        Some(match &generic_instance {
+            Some(generic) => substitute_in_definition(def, container, generic),
             None => def,
         })
     }
@@ -343,7 +343,7 @@ impl SymbolDb<'_> {
         container_name: &str,
         min_access: AccessLevel,
     ) -> Vec<Definition> {
-        let (lookup, element) = generic_lookup_target(container_name);
+        let (lookup, generic_instance) = generic_lookup_target(container_name);
         let raw = dedup_by_name(
             self.workspace
                 .direct_members_of(lookup, min_access)
@@ -355,10 +355,10 @@ impl SymbolDb<'_> {
                         .unwrap_or_default(),
                 ),
         );
-        match element {
-            Some(elem) => raw
+        match &generic_instance {
+            Some(generic) => raw
                 .into_iter()
-                .map(|d| substitute_in_definition(d, container_name, elem))
+                .map(|d| substitute_in_definition(d, container_name, generic))
                 .collect(),
             None => raw,
         }
@@ -376,7 +376,7 @@ impl SymbolDb<'_> {
         container: &str,
         min_access: AccessLevel,
     ) -> Vec<(u8, Definition)> {
-        let (lookup, element) = generic_lookup_target(container);
+        let (lookup, generic_instance) = generic_lookup_target(container);
         let mut seen: HashMap<String, (u8, Definition)> = HashMap::new();
         self.try_in_chain::<(), _>(lookup, |c, depth| {
             let tier = u8::from(depth != 0);
@@ -400,8 +400,8 @@ impl SymbolDb<'_> {
         });
         seen.into_values()
             .filter(|(_, def)| def.symbol.access >= min_access)
-            .map(|(t, d)| match element {
-                Some(elem) => (t, substitute_in_definition(d, container, elem)),
+            .map(|(t, d)| match &generic_instance {
+                Some(generic) => (t, substitute_in_definition(d, container, generic)),
                 None => (t, d),
             })
             .collect()
@@ -515,20 +515,17 @@ impl SymbolDb<'_> {
     /// Parameters of a callable with the generic element type applied, for display.
     pub fn display_parameters_of(&self, definition: &Definition) -> Vec<Symbol> {
         let mut params = self.full_parameters_of(&definition.uri, definition.symbol.id);
-        let Some((_, element)) = definition
+        let Some(generic) = definition
             .symbol
             .container_name
             .as_deref()
-            .and_then(crate::types::parse_generic_type)
+            .and_then(|container| generic_lookup_target(container).1)
         else {
             return params;
         };
-        let element_type = crate::types::Type::from_annotation(element);
         for param in &mut params {
             if let Some(t) = param.type_annotation.take() {
-                param.type_annotation = Some(
-                    t.substitute_named(crate::builtins::GENERIC_ELEMENT_PLACEHOLDER, &element_type),
-                );
+                param.type_annotation = Some(substitute_generics(&t, &generic));
             }
         }
         params

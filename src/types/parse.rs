@@ -1,4 +1,4 @@
-use super::parse_generic_type;
+use super::{parse_generic_type, split_type_args};
 
 use super::{Primitive, Type};
 
@@ -40,10 +40,17 @@ pub(super) fn from_annotation(s: &str) -> Type {
     if trimmed == "void" {
         return Type::Void;
     }
-    if let Some((ctor, element)) = parse_generic_type(trimmed)
-        && ctor == "array"
-    {
-        return Type::Array(Box::new(from_annotation(element)));
+    if let Some((ctor, args)) = parse_generic_type(trimmed) {
+        match (ctor, split_type_args(args).as_slice()) {
+            ("array", [element]) => return Type::Array(Box::new(from_annotation(element))),
+            ("map", [key, value]) => {
+                return Type::Map(
+                    Box::new(from_annotation(key)),
+                    Box::new(from_annotation(value)),
+                );
+            }
+            _ => {}
+        }
     }
     if let Some(prim) = PRIMITIVE_ALIASES
         .iter()

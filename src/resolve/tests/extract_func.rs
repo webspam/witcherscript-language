@@ -333,6 +333,36 @@ fn array_method_call_makes_array_an_out_parameter() {
 }
 
 #[test]
+fn map_method_call_makes_map_an_out_parameter() {
+    let src =
+        "function F() {\n    var m : map<name, int>;\n    var n : int;\n    n = m.Size() + 1;\n}\n";
+    let t = TestDb::new(src).with_builtins_index();
+    let uri = t.primary_uri();
+    let doc = t.doc_for(uri);
+    let start = doc.source.find("m.Size() + 1").expect("needle present");
+    let db = t.db();
+    let model = BodyModel::enclosing(uri, doc, &db, start).expect("cursor is in a function body");
+    let result = extract_function(
+        &model,
+        start..start + "m.Size() + 1".len(),
+        FormatOptions::default(),
+    )
+    .expect("expected an extraction");
+    expect![[r"
+        function F() {
+            var m : map<name, int>;
+            var n : int;
+            n = NewFunction(m);
+        }
+
+        function NewFunction(out m : map<name, int>) : int {
+            return m.Size() + 1;
+        }
+    "]]
+    .assert_eq(&result.plan.apply(&doc.source));
+}
+
+#[test]
 fn compact_colon_option_applies_to_signature() {
     let src = "function F() {\n    var a : int;\n    var r : int;\n    r = a + 1;\n}\n";
     let options = FormatOptions {

@@ -200,6 +200,34 @@ fn arrays_are_invariant() {
 }
 
 #[test]
+fn maps_are_invariant() {
+    let t = TestDb::new(TYPES_SRC);
+    let map_of = |key: Type, value: Type| Type::Map(Box::new(key), Box::new(value));
+    let int_to_float = map_of(prim(Primitive::Int), prim(Primitive::Float));
+    for (target, expected) in [
+        (int_to_float.clone(), Assignability::Identical),
+        (
+            map_of(prim(Primitive::Int), prim(Primitive::Int)),
+            Assignability::Incompatible,
+        ),
+        (
+            map_of(prim(Primitive::Byte), prim(Primitive::Float)),
+            Assignability::Incompatible,
+        ),
+        (
+            Type::Array(Box::new(prim(Primitive::Float))),
+            Assignability::Incompatible,
+        ),
+    ] {
+        assert_eq!(
+            assignability(&int_to_float, &target, &t.db()),
+            expected,
+            "map<int, float> -> {target}"
+        );
+    }
+}
+
+#[test]
 fn objects_cast_to_bool_and_string() {
     let t = TestDb::new(TYPES_SRC);
     for name in ["Base", "Derived", "Active"] {

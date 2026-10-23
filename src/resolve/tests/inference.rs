@@ -269,3 +269,46 @@ fn member_access_on_indexed_struct_infers_field_type() {
         "accessing a field on an indexed array element must infer the field's type"
     );
 }
+
+const MAP_OF_STRUCTS: &str = concat!(
+    "struct Handle {\n",
+    "    var id : int;\n",
+    "}\n",
+    "struct Aspect {\n",
+    "    var projTemplate : Handle;\n",
+    "}\n",
+    "function F() {\n",
+    "    var aspects : map<name, Aspect>;\n",
+    "    var nested : map<int, array<Aspect>>;\n",
+    "    var t : Handle;\n",
+    "    t = aspects['fire'].projTemplate;\n",
+    "    t = nested[1][0].projTemplate;\n",
+    "}\n",
+);
+
+#[test]
+fn indexing_map_yields_value_type() {
+    assert_eq!(
+        inferred(MAP_OF_STRUCTS, "aspects['fire']"),
+        Type::Named("Aspect".to_string()),
+        "indexing map<name, Aspect> must yield the value type"
+    );
+}
+
+#[test]
+fn member_access_on_indexed_map_value_infers_field_type() {
+    assert_eq!(
+        inferred(MAP_OF_STRUCTS, "aspects['fire'].projTemplate"),
+        Type::Named("Handle".to_string()),
+        "accessing a field on an indexed map value must infer the field's type"
+    );
+}
+
+#[test]
+fn indexing_map_of_arrays_chains_into_element_type() {
+    assert_eq!(
+        inferred(MAP_OF_STRUCTS, "nested[1][0].projTemplate"),
+        Type::Named("Handle".to_string()),
+        "map value array element field must infer through both index levels"
+    );
+}

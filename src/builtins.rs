@@ -10,12 +10,18 @@ use crate::symbols::SymbolOrigin;
 
 const BUILTIN_URI_PREFIX: &str = "witcherscript-builtin:/";
 pub const BUILTIN_ARRAY_URI: &str = "witcherscript-builtin:/array.ws";
+pub const BUILTIN_MAP_URI: &str = "witcherscript-builtin:/map.ws";
 
 pub const GENERIC_ELEMENT_PLACEHOLDER: &str = "T";
+pub const MAP_KEY_PLACEHOLDER: &str = "K";
+pub const MAP_VALUE_PLACEHOLDER: &str = "V";
 
 const BUILTIN_DOCUMENT_EXTENSION: &str = ".ws";
 
-const ARRAY_SOURCE: &str = include_str!("../builtins/array.ws");
+const GENERIC_SOURCES: &[(&str, &str)] = &[
+    (BUILTIN_ARRAY_URI, include_str!("../builtins/array.ws")),
+    (BUILTIN_MAP_URI, include_str!("../builtins/map.ws")),
+];
 
 pub(crate) fn builtin_uri(name: &str) -> String {
     format!("{BUILTIN_URI_PREFIX}{name}{BUILTIN_DOCUMENT_EXTENSION}")
@@ -25,9 +31,16 @@ pub fn is_builtin_uri(uri: &str) -> bool {
     uri.starts_with(BUILTIN_URI_PREFIX)
 }
 
-/// `array` (only valid as `array<T>`) is not a bare-writable type name, so its type must stay out of type completion.
+fn generic_source(uri: &str) -> Option<&'static str> {
+    GENERIC_SOURCES
+        .iter()
+        .find(|(generic_uri, _)| *generic_uri == uri)
+        .map(|(_, source)| *source)
+}
+
+/// `array` and `map` (only valid with type arguments) are not bare-writable type names, so they must stay out of type completion.
 pub fn is_non_type_builtin(uri: &str) -> bool {
-    uri == BUILTIN_ARRAY_URI
+    generic_source(uri).is_some()
 }
 
 static BUILTINS: LazyLock<(WorkspaceIndex, Arc<[Definition]>)> = LazyLock::new(|| {
@@ -51,12 +64,12 @@ pub fn load_builtins_index() -> WorkspaceIndex {
     BUILTINS.0.clone()
 }
 
-fn array_document() -> ParsedDocument {
-    // Invariant: array.ws is a fixed embedded source covered by the builtins tests
-    let mut array =
-        parse_document(ARRAY_SOURCE).expect("builtin sources must parse cleanly at build time");
-    array.symbols.set_origin(SymbolOrigin::Builtin);
-    array
+fn generic_document(source: &str) -> ParsedDocument {
+    // Invariant: generic builtin sources are fixed embedded sources covered by the builtins tests
+    let mut document =
+        parse_document(source).expect("builtin sources must parse cleanly at build time");
+    document.symbols.set_origin(SymbolOrigin::Builtin);
+    document
 }
 
 fn build_builtins_index() -> WorkspaceIndex {
@@ -65,14 +78,16 @@ fn build_builtins_index() -> WorkspaceIndex {
     for (name, symbols) in native::documents() {
         index.insert_synthetic(builtin_uri(name), symbols);
     }
-    index.update_document(BUILTIN_ARRAY_URI, &array_document());
+    for &(uri, source) in GENERIC_SOURCES {
+        index.update_document(uri, &generic_document(source));
+    }
     index.end_bulk_catalog_update();
     index
 }
 
 pub fn builtin_source(uri: &str) -> Option<Cow<'static, str>> {
-    if uri == BUILTIN_ARRAY_URI {
-        return Some(Cow::Borrowed(ARRAY_SOURCE));
+    if let Some(source) = generic_source(uri) {
+        return Some(Cow::Borrowed(source));
     }
     let name = uri
         .strip_prefix(BUILTIN_URI_PREFIX)?
