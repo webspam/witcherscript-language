@@ -17,8 +17,7 @@ fn full_range() -> SourceRange {
     }
 }
 
-fn hint_labels(source: &str) -> Vec<String> {
-    let t = TestDb::new(source);
+pub(super) fn hint_labels(t: &TestDb) -> Vec<String> {
     inlay_hints(
         t.primary_uri(),
         t.primary_doc(),
@@ -80,7 +79,7 @@ fn parameter_hint_labels(#[case] source: &str, #[case] expected: &[&str]) {
         .map(std::string::ToString::to_string)
         .collect();
     assert_eq!(
-        hint_labels(source),
+        hint_labels(&TestDb::new(source)),
         expected,
         "labels for source: {source:?}"
     );

@@ -1,12 +1,10 @@
 use rstest::rstest;
 
-use super::super::{
-    completion_members, hover_text, inlay_hints, resolve_definition, signature_help,
-};
+use super::super::{completion_members, hover_text, resolve_definition, signature_help};
+use super::inlay_hints::hint_labels;
 use crate::builtins::BUILTIN_MAP_URI;
 use crate::diagnostics::collect_arg_count_diagnostics;
 use crate::formatter::ColonSpacing;
-use crate::line_index::{SourcePosition, SourceRange};
 use crate::symbols::AccessLevel;
 use crate::test_support::TestDb;
 use crate::types::Type;
@@ -97,28 +95,7 @@ fn try_get_value_argument_is_marked_out_in_inlay_hints() {
         "}\n",
     ))
     .with_builtins_index();
-    let labels: Vec<String> = inlay_hints(
-        t.primary_uri(),
-        t.primary_doc(),
-        &t.db(),
-        SourceRange {
-            start: SourcePosition {
-                line: 0,
-                character: 0,
-            },
-            end: SourcePosition {
-                line: u32::MAX,
-                character: 0,
-            },
-        },
-        &|| true,
-    )
-    .expect("an uncancellable walk yields Some")
-    .into_iter()
-    .map(|h| h.label)
-    .collect();
-
-    assert_eq!(labels, ["key:", "out value:"]);
+    assert_eq!(hint_labels(&t), ["key:", "out value:"]);
 }
 
 #[rstest]
