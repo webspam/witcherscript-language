@@ -64,21 +64,6 @@ impl Type {
     pub(crate) fn to_lookup_ctor(&self) -> Option<String> {
         self.to_db_string().map(|raw| lookup_ctor(&raw).to_string())
     }
-
-    pub(crate) fn substitute_placeholders(&self, bindings: &[(&str, &Type)]) -> Type {
-        match self {
-            Type::Named(name) => bindings
-                .iter()
-                .find(|(placeholder, _)| placeholder == name)
-                .map_or_else(|| self.clone(), |(_, replacement)| (*replacement).clone()),
-            Type::Array(elem) => Type::Array(Box::new(elem.substitute_placeholders(bindings))),
-            Type::Map(key, value) => Type::Map(
-                Box::new(key.substitute_placeholders(bindings)),
-                Box::new(value.substitute_placeholders(bindings)),
-            ),
-            Type::Void | Type::Primitive(_) | Type::Null | Type::Unknown => self.clone(),
-        }
-    }
 }
 
 impl std::fmt::Display for Type {

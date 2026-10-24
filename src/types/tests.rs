@@ -126,19 +126,6 @@ fn map_with_wrong_arity_is_named() {
 }
 
 #[test]
-fn substitute_placeholders_replaces_simultaneously() {
-    let key = Type::Named("V".to_string());
-    let value = Type::Primitive(Primitive::Int);
-    let substituted = Type::from_annotation("map<K, array<V>>")
-        .substitute_placeholders(&[("K", &key), ("V", &value)]);
-    assert_eq!(
-        substituted,
-        Type::from_annotation("map<V, array<int>>"),
-        "a key bound to a type named V must not be re-substituted as the value placeholder"
-    );
-}
-
-#[test]
 fn to_db_string_round_trips() {
     for s in [
         "int",
