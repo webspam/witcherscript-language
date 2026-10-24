@@ -107,16 +107,20 @@ fn try_get_value_argument_is_marked_out_in_inlay_hints() {
 }
 
 #[rstest]
-#[case::both_args("m.TryGet(1, s);", false)]
-#[case::missing_value("m.TryGet(1);", true)]
-fn try_get_arg_count(#[case] call: &str, #[case] flagged: bool) {
+#[case::both_args("m.TryGet(1, s);", 0)]
+#[case::missing_value("m.TryGet(1);", 1)]
+fn try_get_requires_key_and_value_arguments(#[case] call: &str, #[case] expected: usize) {
     let source = format!(
         "function Test() {{\n  var m : map<int, string>;\n  var s : string;\n  {call}\n}}\n"
     );
     let t = TestDb::new(&source).with_builtins_index();
     let diagnostics = collect_arg_count_diagnostics(&t.search_docs(), &t.db());
+    let count: usize = diagnostics.values().map(Vec::len).sum();
 
-    assert_eq!(!diagnostics.is_empty(), flagged, "{call}: {diagnostics:?}");
+    assert_eq!(
+        count, expected,
+        "{call}: expected {expected} arg-count diagnostic(s), got {diagnostics:?}"
+    );
 }
 
 #[test]
