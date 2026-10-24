@@ -1,4 +1,4 @@
-use crate::builtins::{GENERIC_ELEMENT_PLACEHOLDER, MAP_KEY_PLACEHOLDER};
+use crate::builtins::{GENERIC_ELEMENT_PLACEHOLDER, MAP_KEY_PLACEHOLDER, MAP_VALUE_PLACEHOLDER};
 use crate::resolve::Definition;
 use crate::types::{Type, parse_generic_type};
 
@@ -14,6 +14,7 @@ fn placeholder_binding<'a>(placeholder: &str, container: &'a Type) -> Option<&'a
     match container {
         Type::Array(element) if placeholder == GENERIC_ELEMENT_PLACEHOLDER => Some(element),
         Type::Map(key, _) if placeholder == MAP_KEY_PLACEHOLDER => Some(key),
+        Type::Map(_, value) if placeholder == MAP_VALUE_PLACEHOLDER => Some(value),
         Type::Array(_)
         | Type::Map(..)
         | Type::Void

@@ -14,6 +14,7 @@ pub const BUILTIN_MAP_URI: &str = "witcherscript-builtin:/map.ws";
 
 pub const GENERIC_ELEMENT_PLACEHOLDER: &str = "T";
 pub const MAP_KEY_PLACEHOLDER: &str = "K";
+pub const MAP_VALUE_PLACEHOLDER: &str = "V";
 
 const BUILTIN_DOCUMENT_EXTENSION: &str = ".ws";
 

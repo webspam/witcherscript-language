@@ -363,6 +363,37 @@ fn map_method_call_makes_map_an_out_parameter() {
 }
 
 #[test]
+fn map_try_get_value_argument_becomes_out_parameter() {
+    let src = "function F() {\n    var m : map<name, int>;\n    var v : int;\n    var ok : bool;\n    ok = m.TryGet('a', v);\n}\n";
+    let t = TestDb::new(src).with_builtins_index();
+    let uri = t.primary_uri();
+    let doc = t.doc_for(uri);
+    let needle = "m.TryGet('a', v)";
+    let start = doc.source.find(needle).expect("needle present");
+    let db = t.db();
+    let model = BodyModel::enclosing(uri, doc, &db, start).expect("cursor is in a function body");
+    let result = extract_function(
+        &model,
+        start..start + needle.len(),
+        FormatOptions::default(),
+    )
+    .expect("expected an extraction");
+    expect![[r"
+        function F() {
+            var m : map<name, int>;
+            var v : int;
+            var ok : bool;
+            ok = NewFunction(m, v);
+        }
+
+        function NewFunction(out m : map<name, int>, out v : int) : bool {
+            return m.TryGet('a', v);
+        }
+    "]]
+    .assert_eq(&result.plan.apply(&doc.source));
+}
+
+#[test]
 fn compact_colon_option_applies_to_signature() {
     let src = "function F() {\n    var a : int;\n    var r : int;\n    r = a + 1;\n}\n";
     let options = FormatOptions {
