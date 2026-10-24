@@ -79,10 +79,14 @@ fn try_get_signature_help_shows_substituted_out_value() {
         .expect("signature help for TryGet");
 
     assert_eq!(
-        info.label,
-        "TryGet(key : name, out value : array<int>) : bool"
+        info.label, "TryGet(key : name, out value : array<int>) : bool",
+        "label must show the substituted key and out value types"
     );
-    assert_eq!(info.active_parameter, Some(1));
+    assert_eq!(
+        info.active_parameter,
+        Some(1),
+        "cursor on the second argument must activate the value parameter"
+    );
 }
 
 #[test]
@@ -95,7 +99,11 @@ fn try_get_value_argument_is_marked_out_in_inlay_hints() {
         "}\n",
     ))
     .with_builtins_index();
-    assert_eq!(hint_labels(&t), ["key:", "out value:"]);
+    assert_eq!(
+        hint_labels(&t),
+        ["key:", "out value:"],
+        "value argument must be hinted as an out parameter"
+    );
 }
 
 #[rstest]
