@@ -2,11 +2,12 @@ use crate::builtins::{GENERIC_ELEMENT_PLACEHOLDER, MAP_KEY_PLACEHOLDER, MAP_VALU
 use crate::resolve::Definition;
 use crate::types::{Type, parse_generic_type};
 
-pub(super) fn generic_lookup_target(container: &str) -> (&str, Option<Type>) {
-    match parse_generic_type(container) {
-        Some((ctor, _)) => (ctor, Some(Type::from_annotation(container))),
-        None => (container, None),
-    }
+pub(super) fn is_generic_instance(container: &str) -> bool {
+    parse_generic_type(container).is_some()
+}
+
+pub(super) fn parse_generic_instance(container: &str) -> Option<Type> {
+    is_generic_instance(container).then(|| Type::from_annotation(container))
 }
 
 fn generic_bindings(container: &Type) -> Vec<(&'static str, &Type)> {

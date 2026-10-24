@@ -6,9 +6,11 @@ use super::super::completion_catalog::{merge_ws_base, merge_ws_base_three};
 use super::super::state_classes::StateBackingClass;
 use super::super::{MAX_INHERITANCE_DEPTH, dedup_by_name, dedup_definitions};
 use super::SymbolDb;
-use super::generics::{generic_lookup_target, substitute_generics, substitute_in_definition};
+use super::generics::{
+    is_generic_instance, parse_generic_instance, substitute_generics, substitute_in_definition,
+};
 use crate::resolve::{Definition, NameContext};
-use crate::types::Type;
+use crate::types::{Type, lookup_ctor};
 
 const OBJECT_BASE_CLASS: &str = "CObject";
 const STATE_BASE_CLASS: &str = "CScriptableState";
@@ -116,7 +118,7 @@ impl SymbolDb<'_> {
     ) -> Option<Definition> {
         // Generic-instance members must be re-substituted; the index only holds the raw `T` form.
         if let Some(container) = container
-            && generic_lookup_target(container).1.is_some()
+            && is_generic_instance(container)
         {
             return self.find_member(container, name, AccessLevel::Private);
         }
@@ -228,7 +230,8 @@ impl SymbolDb<'_> {
         name: &str,
         min_access: AccessLevel,
     ) -> Option<Definition> {
-        let (lookup, generic_instance) = generic_lookup_target(container);
+        let lookup = lookup_ctor(container);
+        let generic_instance = parse_generic_instance(container);
         let def = self.try_in_chain(lookup, |container, _depth| {
             self.record_member(container, name);
             self.workspace
@@ -253,7 +256,8 @@ impl SymbolDb<'_> {
 
     // Class-body declaration only, so a `@wrapMethod` overlay cannot shadow the method it wraps.
     pub(crate) fn find_class_body_member(&self, container: &str, name: &str) -> Option<Definition> {
-        let (lookup, generic_instance) = generic_lookup_target(container);
+        let lookup = lookup_ctor(container);
+        let generic_instance = parse_generic_instance(container);
         let def = self.try_in_chain(lookup, |container, _depth| {
             self.workspace
                 .class_body_member_of(container, name)
@@ -343,7 +347,8 @@ impl SymbolDb<'_> {
         container_name: &str,
         min_access: AccessLevel,
     ) -> Vec<Definition> {
-        let (lookup, generic_instance) = generic_lookup_target(container_name);
+        let lookup = lookup_ctor(container_name);
+        let generic_instance = parse_generic_instance(container_name);
         let raw = dedup_by_name(
             self.workspace
                 .direct_members_of(lookup, min_access)
@@ -376,7 +381,8 @@ impl SymbolDb<'_> {
         container: &str,
         min_access: AccessLevel,
     ) -> Vec<(u8, Definition)> {
-        let (lookup, generic_instance) = generic_lookup_target(container);
+        let lookup = lookup_ctor(container);
+        let generic_instance = parse_generic_instance(container);
         let mut seen: HashMap<String, (u8, Definition)> = HashMap::new();
         self.try_in_chain::<(), _>(lookup, |c, depth| {
             let tier = u8::from(depth != 0);
@@ -519,7 +525,7 @@ impl SymbolDb<'_> {
             .symbol
             .container_name
             .as_deref()
-            .and_then(|container| generic_lookup_target(container).1)
+            .and_then(parse_generic_instance)
         else {
             return params;
         };
