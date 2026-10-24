@@ -6,7 +6,10 @@ use crate::formatter::{ColonSpacing, FormatOptions};
 use crate::test_support::{TestDb, script_env};
 
 fn run(src: &str, needle: &str, options: FormatOptions) -> (String, Option<Extraction>) {
-    let t = TestDb::new(src);
+    run_in(&TestDb::new(src), needle, options)
+}
+
+fn run_in(t: &TestDb, needle: &str, options: FormatOptions) -> (String, Option<Extraction>) {
     let uri = t.primary_uri();
     let doc = t.doc_for(uri);
     let start = doc
@@ -25,14 +28,26 @@ fn extraction(src: &str, needle: &str) -> Extraction {
         .unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"))
 }
 
-fn applied_with(src: &str, needle: &str, options: FormatOptions) -> String {
-    let (source, result) = run(src, needle, options);
+fn applied_in(t: &TestDb, needle: &str, options: FormatOptions) -> String {
+    let (source, result) = run_in(t, needle, options);
     let x = result.unwrap_or_else(|| panic!("expected an extraction for needle {needle:?}"));
     x.plan.apply(&source)
 }
 
+fn applied_with(src: &str, needle: &str, options: FormatOptions) -> String {
+    applied_in(&TestDb::new(src), needle, options)
+}
+
 fn applied(src: &str, needle: &str) -> String {
     applied_with(src, needle, FormatOptions::default())
+}
+
+fn applied_with_builtins(src: &str, needle: &str) -> String {
+    applied_in(
+        &TestDb::new(src).with_builtins_index(),
+        needle,
+        FormatOptions::default(),
+    )
 }
 
 fn refused(src: &str, needle: &str) -> bool {
@@ -306,18 +321,6 @@ fn local_written_through_out_argument_becomes_out_parameter() {
 fn array_method_call_makes_array_an_out_parameter() {
     let src =
         "function F() {\n    var arr : array<int>;\n    var n : int;\n    n = arr.Size() + 1;\n}\n";
-    let t = TestDb::new(src).with_builtins_index();
-    let uri = t.primary_uri();
-    let doc = t.doc_for(uri);
-    let start = doc.source.find("arr.Size() + 1").expect("needle present");
-    let db = t.db();
-    let model = BodyModel::enclosing(uri, doc, &db, start).expect("cursor is in a function body");
-    let result = extract_function(
-        &model,
-        start..start + "arr.Size() + 1".len(),
-        FormatOptions::default(),
-    )
-    .expect("expected an extraction");
     expect![[r"
         function F() {
             var arr : array<int>;
@@ -329,25 +332,13 @@ fn array_method_call_makes_array_an_out_parameter() {
             return arr.Size() + 1;
         }
     "]]
-    .assert_eq(&result.plan.apply(&doc.source));
+    .assert_eq(&applied_with_builtins(src, "arr.Size() + 1"));
 }
 
 #[test]
 fn map_method_call_makes_map_an_out_parameter() {
     let src =
         "function F() {\n    var m : map<name, int>;\n    var n : int;\n    n = m.Size() + 1;\n}\n";
-    let t = TestDb::new(src).with_builtins_index();
-    let uri = t.primary_uri();
-    let doc = t.doc_for(uri);
-    let start = doc.source.find("m.Size() + 1").expect("needle present");
-    let db = t.db();
-    let model = BodyModel::enclosing(uri, doc, &db, start).expect("cursor is in a function body");
-    let result = extract_function(
-        &model,
-        start..start + "m.Size() + 1".len(),
-        FormatOptions::default(),
-    )
-    .expect("expected an extraction");
     expect![[r"
         function F() {
             var m : map<name, int>;
@@ -359,25 +350,12 @@ fn map_method_call_makes_map_an_out_parameter() {
             return m.Size() + 1;
         }
     "]]
-    .assert_eq(&result.plan.apply(&doc.source));
+    .assert_eq(&applied_with_builtins(src, "m.Size() + 1"));
 }
 
 #[test]
 fn map_try_get_value_argument_becomes_out_parameter() {
     let src = "function F() {\n    var m : map<name, int>;\n    var v : int;\n    var ok : bool;\n    ok = m.TryGet('a', v);\n}\n";
-    let t = TestDb::new(src).with_builtins_index();
-    let uri = t.primary_uri();
-    let doc = t.doc_for(uri);
-    let needle = "m.TryGet('a', v)";
-    let start = doc.source.find(needle).expect("needle present");
-    let db = t.db();
-    let model = BodyModel::enclosing(uri, doc, &db, start).expect("cursor is in a function body");
-    let result = extract_function(
-        &model,
-        start..start + needle.len(),
-        FormatOptions::default(),
-    )
-    .expect("expected an extraction");
     expect![[r"
         function F() {
             var m : map<name, int>;
@@ -390,7 +368,7 @@ fn map_try_get_value_argument_becomes_out_parameter() {
             return m.TryGet('a', v);
         }
     "]]
-    .assert_eq(&result.plan.apply(&doc.source));
+    .assert_eq(&applied_with_builtins(src, "m.TryGet('a', v)"));
 }
 
 #[test]
