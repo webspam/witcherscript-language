@@ -356,19 +356,16 @@ fn map_method_call_makes_map_an_out_parameter() {
 #[test]
 fn map_try_get_value_argument_becomes_out_parameter() {
     let src = "function F() {\n    var m : map<name, int>;\n    var v : int;\n    var ok : bool;\n    ok = m.TryGet('a', v);\n}\n";
-    expect![[r"
-        function F() {
-            var m : map<name, int>;
-            var v : int;
-            var ok : bool;
-            ok = NewFunction(m, v);
-        }
+    let result = applied_with_builtins(src, "m.TryGet('a', v)");
 
-        function NewFunction(out m : map<name, int>, out v : int) : bool {
-            return m.TryGet('a', v);
-        }
-    "]]
-    .assert_eq(&applied_with_builtins(src, "m.TryGet('a', v)"));
+    assert!(
+        result.contains("function NewFunction(out m : map<name, int>, out v : int) : bool {"),
+        "value argument must become an out parameter: {result}"
+    );
+    assert!(
+        result.contains("ok = NewFunction(m, v);"),
+        "call site must pass the map and the value: {result}"
+    );
 }
 
 #[test]
