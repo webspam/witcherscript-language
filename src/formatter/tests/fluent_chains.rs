@@ -55,6 +55,38 @@ fn long_chain_breaks_before_each_call() {
         a.B().C().D();
     }
 "]])]
+#[case::two_calls_break_before_first_splits("function F() { a\n.B().C(); }", expect![[r"
+    function F() {
+        a
+            .B()
+            .C();
+    }
+"]])]
+#[case::two_calls_break_before_second_splits("function F() { a.B()\n.C(); }", expect![[r"
+    function F() {
+        a
+            .B()
+            .C();
+    }
+"]])]
+#[case::removed_first_break_collapses("function F() { a.B()\n.C()\n.D(); }", expect![[r"
+    function F() {
+        a.B().C().D();
+    }
+"]])]
+#[case::removed_second_break_collapses("function F() { a\n.B().C()\n.D(); }", expect![[r"
+    function F() {
+        a.B().C().D();
+    }
+"]])]
+#[case::removed_first_break_of_four_collapses(
+    "function F() { a.B()\n.C()\n.D()\n.E(); }",
+    expect![[r"
+        function F() {
+            a.B().C().D().E();
+        }
+    "]]
+)]
 #[case::single_call_break_collapses("function F() { a\n.B(); }", expect![[r"
     function F() {
         a.B();
@@ -177,6 +209,17 @@ fn fluent_chain_authored_layout(#[case] input: &str, #[case] expected: Expect) {
 #[rstest]
 #[case::overflowing_chain_breaks_fluently(
     "function F() { theGame.GetWorld().GetPlayer().Kill(); }",
+    expect![[r"
+        function F() {
+            theGame
+                .GetWorld()
+                .GetPlayer()
+                .Kill();
+        }
+    "]]
+)]
+#[case::removed_break_that_overflows_breaks_fluently(
+    "function F() { theGame.GetWorld()\n.GetPlayer()\n.Kill(); }",
     expect![[r"
         function F() {
             theGame

@@ -78,12 +78,24 @@ impl<'t> FluentChain<'t> {
         Some(Self { head, groups })
     }
 
-    fn has_authored_break(&self) -> bool {
+    fn is_authored_fluent(&self) -> bool {
+        let breaks = self.authored_boundary_breaks();
+        let break_count = breaks.iter().filter(|&&has_break| has_break).count();
+        let intent_breaks = &breaks[..AUTHORED_BREAK_BOUNDARIES.min(breaks.len())];
+        let added_one_break = break_count == 1;
+        let removed_one_break = !added_one_break && breaks.len() - break_count == 1;
+        if removed_one_break && intent_breaks.contains(&false) {
+            return false;
+        }
+        intent_breaks.contains(&true)
+    }
+
+    fn authored_boundary_breaks(&self) -> Vec<bool> {
         let group_ends = iter::once(self.head).chain(self.groups.iter().map(|g| g.closing_paren));
         group_ends
             .zip(&self.groups)
-            .take(AUTHORED_BREAK_BOUNDARIES)
-            .any(|(previous_end, group)| group.starts_below(previous_end))
+            .map(|(previous_end, group)| group.starts_below(previous_end))
+            .collect()
     }
 }
 
@@ -154,7 +166,7 @@ impl Formatter<'_> {
         if chain.groups.len() < MIN_FLUENT_GROUPS {
             return false;
         }
-        chain.has_authored_break() || self.overflows_line(call)
+        chain.is_authored_fluent() || self.overflows_line(call)
     }
 
     fn emit_fluent_chain(&mut self, chain: &FluentChain) {
