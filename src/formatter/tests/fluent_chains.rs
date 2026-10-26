@@ -86,6 +86,21 @@ fn long_chain_breaks_before_each_call() {
             .C();
     }
 "]])]
+#[case::comment_in_chain_keeps_whole_chain_inline(
+    "function F() { a\n.B()\n.C()\n.D(x, /* c */ y); }",
+    expect![[r"
+        function F() {
+            a.B().C().D(x, /* c */ y);
+        }
+    "]]
+)]
+#[case::property_tail_follows_last_group("function F() { a\n.B()\n.C().d; }", expect![[r"
+    function F() {
+        a
+            .B()
+            .C().d;
+    }
+"]])]
 fn fluent_chain_authored_layout(#[case] input: &str, #[case] expected: Expect) {
     let output = fmt(input);
     expected.assert_eq(&output);

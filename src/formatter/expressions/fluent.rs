@@ -4,8 +4,8 @@ use std::mem;
 use tree_sitter::Node;
 
 use crate::cst::grammar::member_access_member;
-use crate::cst::kinds;
 use crate::cst::nav::{first_child_kind, first_named_child};
+use crate::cst::{fields, kinds};
 
 use super::super::{Formatter, starts_below};
 use super::LineEnd;
@@ -114,8 +114,28 @@ fn group_links<'t>(links: impl Iterator<Item = FluentLink<'t>>) -> Vec<FluentGro
     groups
 }
 
+fn is_receiver_of_later_call(call: Node) -> bool {
+    let mut receiver = call;
+    while let Some(access) = receiver.parent()
+        && access.kind() == kinds::MEMBER_ACCESS_EXPR
+        && first_named_child(access) == Some(receiver)
+    {
+        let is_callee = access
+            .parent()
+            .is_some_and(|outer| outer.child_by_field_name(fields::FUNC) == Some(access));
+        if is_callee {
+            return true;
+        }
+        receiver = access;
+    }
+    false
+}
+
 impl Formatter<'_> {
     pub(super) fn try_emit_fluent_chain(&mut self, call: Node) -> bool {
+        if is_receiver_of_later_call(call) {
+            return false;
+        }
         let Some(chain) = FluentChain::of(call) else {
             return false;
         };
