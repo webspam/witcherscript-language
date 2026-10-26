@@ -232,14 +232,16 @@ fn call_authored_layout(#[case] input: &str, #[case] expected: Expect) {
         }
     "]]
 )]
-#[case::chained_call_splits_outermost(
+#[case::chained_call_breaks_fluently(
     "function F() { x = a.Get(key).Compute(first, second); }",
     expect![[r"
         function F() {
-            x = a.Get(key).Compute(
-                first,
-                second
-            );
+            x = a
+                .Get(key)
+                .Compute(
+                    first,
+                    second
+                );
         }
     "]]
 )]

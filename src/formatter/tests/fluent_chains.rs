@@ -186,14 +186,13 @@ fn fluent_chain_authored_layout(#[case] input: &str, #[case] expected: Expect) {
         }
     "]]
 )]
-#[case::overflowing_two_call_chain_splits_args(
+#[case::overflowing_two_call_chain_breaks_fluently(
     "function F() { theGame.GetWorld().Spawn(first, second); }",
     expect![[r"
         function F() {
-            theGame.GetWorld().Spawn(
-                first,
-                second
-            );
+            theGame
+                .GetWorld()
+                .Spawn(first, second);
         }
     "]]
 )]

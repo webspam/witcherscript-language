@@ -12,7 +12,6 @@ use super::LineEnd;
 use super::call::CallParts;
 
 const MIN_FLUENT_GROUPS: usize = 2;
-const MIN_OVERFLOW_FLUENT_GROUPS: usize = 3;
 const AUTHORED_BREAK_BOUNDARIES: usize = 2;
 
 struct FluentLink<'t> {
@@ -152,12 +151,10 @@ impl Formatter<'_> {
     }
 
     fn breaks_fluently(&self, call: Node, chain: &FluentChain) -> bool {
-        let group_count = chain.groups.len();
-        if group_count < MIN_FLUENT_GROUPS {
+        if chain.groups.len() < MIN_FLUENT_GROUPS {
             return false;
         }
-        chain.has_authored_break()
-            || (group_count >= MIN_OVERFLOW_FLUENT_GROUPS && self.overflows_line(call))
+        chain.has_authored_break() || self.overflows_line(call)
     }
 
     fn emit_fluent_chain(&mut self, chain: &FluentChain) {
