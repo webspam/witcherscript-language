@@ -47,6 +47,7 @@ impl<'t> FluentLink<'t> {
 
 struct FluentGroup<'t> {
     links: Vec<FluentLink<'t>>,
+    opening_dot: Node<'t>,
     closing_paren: Node<'t>,
 }
 
@@ -102,11 +103,15 @@ fn group_links<'t>(links: impl Iterator<Item = FluentLink<'t>>) -> Vec<FluentGro
     let mut groups = Vec::new();
     let mut pending = Vec::new();
     for link in links {
+        let opening_dot = pending
+            .first()
+            .map_or(link.dot, |first: &FluentLink| first.dot);
         let closing_paren = link.call.as_ref().map(|call| call.close);
         pending.push(link);
         if let Some(closing_paren) = closing_paren {
             groups.push(FluentGroup {
                 links: mem::take(&mut pending),
+                opening_dot,
                 closing_paren,
             });
         }
@@ -148,7 +153,7 @@ impl Formatter<'_> {
 
     fn breaks_fluently(&self, call: Node, chain: &FluentChain) -> bool {
         let group_count = chain.groups.len();
-        if group_count < MIN_FLUENT_GROUPS || self.has_interior_comment(call) {
+        if group_count < MIN_FLUENT_GROUPS {
             return false;
         }
         chain.has_authored_break()
@@ -162,6 +167,7 @@ impl Formatter<'_> {
         self.level += 1;
         let last_index = chain.groups.len() - 1;
         for (index, group) in chain.groups.iter().enumerate() {
+            self.flush_comments_before(group.opening_dot.start_byte());
             self.break_to_indented_line();
             if index == last_index {
                 self.emit_fluent_group(group);

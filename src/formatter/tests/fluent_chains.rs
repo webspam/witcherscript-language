@@ -88,11 +88,72 @@ fn long_chain_breaks_before_each_call() {
             .C();
     }
 "]])]
-#[case::comment_in_chain_keeps_whole_chain_inline(
+#[case::block_comment_in_args_keeps_fluent(
     "function F() { a\n.B()\n.C()\n.D(x, /* c */ y); }",
     expect![[r"
         function F() {
-            a.B().C().D(x, /* c */ y);
+            a
+                .B()
+                .C()
+                .D(x, /* c */ y);
+        }
+    "]]
+)]
+#[case::line_comment_in_args_keeps_fluent(
+    "function F() { a\n.B()\n.C(x, // c\ny)\n.D(); }",
+    expect![[r"
+        function F() {
+            a
+                .B()
+                .C(
+                    x, // c
+                    y
+                )
+                .D();
+        }
+    "]]
+)]
+#[case::trailing_line_comment_after_link_keeps_fluent(
+    "function F() { a\n.B() // c\n.C()\n.D(); }",
+    expect![[r"
+        function F() {
+            a
+                .B() // c
+                .C()
+                .D();
+        }
+    "]]
+)]
+#[case::own_line_comment_between_links_keeps_fluent(
+    "function F() { a\n.B()\n// c\n.C()\n.D(); }",
+    expect![[r"
+        function F() {
+            a
+                .B()
+                // c
+                .C()
+                .D();
+        }
+    "]]
+)]
+#[case::trailing_block_comment_after_link_keeps_fluent(
+    "function F() { a\n.B() /* c */\n.C()\n.D(); }",
+    expect![[r"
+        function F() {
+            a
+                .B() /* c */
+                .C()
+                .D();
+        }
+    "]]
+)]
+#[case::trailing_line_comment_after_head_keeps_fluent(
+    "function F() { a // c\n.B()\n.C(); }",
+    expect![[r"
+        function F() {
+            a // c
+                .B()
+                .C();
         }
     "]]
 )]
