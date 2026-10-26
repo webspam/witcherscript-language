@@ -3,40 +3,32 @@ use std::mem;
 
 use tree_sitter::Node;
 
-use crate::cst::grammar::{call_callee, member_access_member};
+use crate::cst::grammar::member_access_member;
 use crate::cst::kinds;
 use crate::cst::nav::{first_child_kind, first_named_child};
 
 use super::super::{Formatter, starts_below};
 use super::LineEnd;
+use super::call::CallParts;
 
 const MIN_FLUENT_GROUPS: usize = 2;
 const MIN_OVERFLOW_FLUENT_GROUPS: usize = 3;
 const AUTHORED_BREAK_BOUNDARIES: usize = 2;
 
-#[derive(Clone, Copy)]
-struct ChainCall<'t> {
-    node: Node<'t>,
-    open: Node<'t>,
-}
-
 struct ChainLink<'t> {
     access: Node<'t>,
+    receiver: Node<'t>,
     dot: Node<'t>,
     member: Node<'t>,
-    call: Option<ChainCall<'t>>,
+    call: Option<CallParts<'t>>,
 }
 
 impl<'t> ChainLink<'t> {
     fn of(node: Node<'t>) -> Option<Self> {
         let (access, call) = match node.kind() {
             kinds::FUNC_CALL_EXPR => {
-                let callee = call_callee(node)?;
-                let call = ChainCall {
-                    node,
-                    open: first_child_kind(node, "(")?,
-                };
-                (callee, Some(call))
+                let call = CallParts::of(node)?;
+                (call.func, Some(call))
             }
             _ => (node, None),
         };
@@ -45,20 +37,17 @@ impl<'t> ChainLink<'t> {
         }
         Some(Self {
             access,
+            receiver: first_named_child(access)?,
             dot: first_child_kind(access, ".")?,
             member: member_access_member(access)?,
             call,
         })
     }
-
-    fn receiver(&self) -> Option<Node<'t>> {
-        first_named_child(self.access)
-    }
 }
 
 struct ChainGroup<'t> {
     links: Vec<ChainLink<'t>>,
-    closing_call: Node<'t>,
+    closing_paren: Node<'t>,
 }
 
 impl ChainGroup<'_> {
@@ -90,7 +79,7 @@ impl<'t> FluentChain<'t> {
     }
 
     fn has_authored_break(&self) -> bool {
-        let group_ends = iter::once(self.head).chain(self.groups.iter().map(|g| g.closing_call));
+        let group_ends = iter::once(self.head).chain(self.groups.iter().map(|g| g.closing_paren));
         group_ends
             .zip(&self.groups)
             .take(AUTHORED_BREAK_BOUNDARIES)
@@ -102,11 +91,8 @@ fn collect_links_in_source_order(root: Node) -> (Node, Vec<ChainLink>) {
     let mut links = Vec::new();
     let mut current = root;
     while let Some(link) = ChainLink::of(current) {
-        let Some(receiver) = link.receiver() else {
-            break;
-        };
+        current = link.receiver;
         links.push(link);
-        current = receiver;
     }
     links.reverse();
     (current, links)
@@ -116,12 +102,12 @@ fn group_links<'t>(links: impl Iterator<Item = ChainLink<'t>>) -> Vec<ChainGroup
     let mut groups = Vec::new();
     let mut pending = Vec::new();
     for link in links {
-        let closing_call = link.call.map(|call| call.node);
+        let closing_paren = link.call.as_ref().map(|call| call.close);
         pending.push(link);
-        if let Some(closing_call) = closing_call {
+        if let Some(closing_paren) = closing_paren {
             groups.push(ChainGroup {
                 links: mem::take(&mut pending),
-                closing_call,
+                closing_paren,
             });
         }
     }
@@ -160,7 +146,7 @@ impl Formatter<'_> {
             if index == last_index {
                 self.emit_chain_group(group);
             } else {
-                self.with_line_end(LineEnd::after(group.closing_call, 0), |f| {
+                self.with_line_end(LineEnd::after(group.closing_paren, 0), |f| {
                     f.emit_chain_group(group);
                 });
             }
@@ -172,8 +158,8 @@ impl Formatter<'_> {
         for link in &group.links {
             self.emit_verbatim(link.dot);
             self.emit_verbatim(link.member);
-            if let Some(call) = link.call {
-                self.format_chained_call_args(call.node, call.open);
+            if let Some(call) = &link.call {
+                self.format_chained_call_args(call);
             }
         }
     }
