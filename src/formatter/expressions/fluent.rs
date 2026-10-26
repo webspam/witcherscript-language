@@ -15,7 +15,7 @@ const MIN_FLUENT_GROUPS: usize = 2;
 const MIN_OVERFLOW_FLUENT_GROUPS: usize = 3;
 const AUTHORED_BREAK_BOUNDARIES: usize = 2;
 
-struct ChainLink<'t> {
+struct FluentLink<'t> {
     access: Node<'t>,
     receiver: Node<'t>,
     dot: Node<'t>,
@@ -23,7 +23,7 @@ struct ChainLink<'t> {
     call: Option<CallParts<'t>>,
 }
 
-impl<'t> ChainLink<'t> {
+impl<'t> FluentLink<'t> {
     fn of(node: Node<'t>) -> Option<Self> {
         let (access, call) = match node.kind() {
             kinds::FUNC_CALL_EXPR => {
@@ -45,12 +45,12 @@ impl<'t> ChainLink<'t> {
     }
 }
 
-struct ChainGroup<'t> {
-    links: Vec<ChainLink<'t>>,
+struct FluentGroup<'t> {
+    links: Vec<FluentLink<'t>>,
     closing_paren: Node<'t>,
 }
 
-impl ChainGroup<'_> {
+impl FluentGroup<'_> {
     fn starts_below(&self, previous_end: Node) -> bool {
         self.links
             .first()
@@ -60,7 +60,7 @@ impl ChainGroup<'_> {
 
 struct FluentChain<'t> {
     head: Node<'t>,
-    groups: Vec<ChainGroup<'t>>,
+    groups: Vec<FluentGroup<'t>>,
 }
 
 impl<'t> FluentChain<'t> {
@@ -87,10 +87,10 @@ impl<'t> FluentChain<'t> {
     }
 }
 
-fn collect_links_in_source_order(root: Node) -> (Node, Vec<ChainLink>) {
+fn collect_links_in_source_order(root: Node) -> (Node, Vec<FluentLink>) {
     let mut links = Vec::new();
     let mut current = root;
-    while let Some(link) = ChainLink::of(current) {
+    while let Some(link) = FluentLink::of(current) {
         current = link.receiver;
         links.push(link);
     }
@@ -98,14 +98,14 @@ fn collect_links_in_source_order(root: Node) -> (Node, Vec<ChainLink>) {
     (current, links)
 }
 
-fn group_links<'t>(links: impl Iterator<Item = ChainLink<'t>>) -> Vec<ChainGroup<'t>> {
+fn group_links<'t>(links: impl Iterator<Item = FluentLink<'t>>) -> Vec<FluentGroup<'t>> {
     let mut groups = Vec::new();
     let mut pending = Vec::new();
     for link in links {
         let closing_paren = link.call.as_ref().map(|call| call.close);
         pending.push(link);
         if let Some(closing_paren) = closing_paren {
-            groups.push(ChainGroup {
+            groups.push(FluentGroup {
                 links: mem::take(&mut pending),
                 closing_paren,
             });
@@ -144,22 +144,22 @@ impl Formatter<'_> {
         for (index, group) in chain.groups.iter().enumerate() {
             self.break_to_indented_line();
             if index == last_index {
-                self.emit_chain_group(group);
+                self.emit_fluent_group(group);
             } else {
                 self.with_line_end(LineEnd::after(group.closing_paren, 0), |f| {
-                    f.emit_chain_group(group);
+                    f.emit_fluent_group(group);
                 });
             }
         }
         self.level -= 1;
     }
 
-    fn emit_chain_group(&mut self, group: &ChainGroup) {
+    fn emit_fluent_group(&mut self, group: &FluentGroup) {
         for link in &group.links {
             self.emit_verbatim(link.dot);
             self.emit_verbatim(link.member);
             if let Some(call) = &link.call {
-                self.format_chained_call_args(call);
+                self.format_fluent_call_args(call);
             }
         }
     }

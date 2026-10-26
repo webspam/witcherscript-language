@@ -83,7 +83,7 @@ impl Formatter<'_> {
         }
     }
 
-    pub(super) fn format_chained_call_args(&mut self, parts: &CallParts) {
+    pub(super) fn format_fluent_call_args(&mut self, parts: &CallParts) {
         if self.call_needs_split(parts.open, parts) {
             self.emit_split_args(parts);
         } else {
