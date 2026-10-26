@@ -30,9 +30,10 @@ pub fn overridden_top_level(symbols: &[Symbol], base: &WorkspaceIndex) -> Vec<Ov
 }
 
 fn base_match(base: &WorkspaceIndex, sym: &Symbol) -> Option<Definition> {
-    base.all_top_level_with_name(&sym.name)
+    let type_name = sym.type_name();
+    base.all_top_level_with_name(type_name)
         .iter()
         .find(|def| def.symbol.kind == sym.kind)
         .cloned()
-        .or_else(|| base.find_top_level(&sym.name))
+        .or_else(|| base.find_top_level(type_name))
 }

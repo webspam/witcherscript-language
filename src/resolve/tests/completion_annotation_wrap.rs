@@ -30,6 +30,36 @@ fn after_wrap_method_offers_methods_with_function_keyword() {
 }
 
 #[test]
+fn after_wrap_method_on_state_class_name_offers_state_methods() {
+    let result = run(concat!(
+        "statemachine class CR4Player {}\n",
+        "state Swimming in CR4Player {\n",
+        "  function SwimmingInitGeneral() {}\n",
+        "}\n",
+        "@wrapMethod(CR4PlayerStateSwimming) $0\n",
+    ))
+    .expect("state methods should be offered after the state's class name");
+
+    assert!(
+        def_names(&result.methods).contains(&"SwimmingInitGeneral"),
+        "the state's methods should be offered after @wrapMethod(ClassName)"
+    );
+}
+
+#[test]
+fn after_wrap_method_none_for_short_state_name() {
+    assert!(
+        run(concat!(
+            "statemachine class CR4Player {}\n",
+            "state Swimming in CR4Player { function Run() {} }\n",
+            "@wrapMethod(Swimming) $0\n",
+        ))
+        .is_none(),
+        "the short state name is not a class"
+    );
+}
+
+#[test]
 fn after_wrap_method_none_for_unknown_class() {
     assert!(
         run("@wrapMethod(CUnknown) $0\n").is_none(),

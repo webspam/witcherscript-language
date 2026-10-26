@@ -17,6 +17,18 @@ fn base_index(uri: &str, source: &str) -> WorkspaceIndex {
 #[case::structure("struct", "struct Foo {}\n", "struct Foo {}\n", true)]
 #[case::enumeration("enum", "enum Foo { A }\n", "enum Foo { A }\n", true)]
 #[case::no_name_collision("no collision", "function Foo() {}\n", "function Bar() {}\n", false)]
+#[case::state_same_owner(
+    "state same owner",
+    "statemachine class C {}\nstate Idle in C {}\n",
+    "state Idle in C {}\n",
+    true
+)]
+#[case::state_other_owner(
+    "state other owner",
+    "statemachine class C {}\nstate Idle in C {}\n",
+    "state Idle in D {}\n",
+    false
+)]
 fn detects_top_level_override(
     #[case] name: &str,
     #[case] base_src: &str,

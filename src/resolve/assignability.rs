@@ -117,17 +117,13 @@ fn is_enum(db: &SymbolDb, name: &str) -> bool {
 // Classes and states are `ISerializable` reference types; structs are value types.
 fn is_object_type(db: &SymbolDb, name: &str) -> bool {
     db.find_top_level(name)
-        .is_some_and(|d| matches!(d.symbol.kind, SymbolKind::Class | SymbolKind::State))
+        .is_some_and(|d| d.symbol.kind.is_class_like())
 }
 
 // Enums and objects stringify; structs do not.
 fn is_stringifiable(db: &SymbolDb, name: &str) -> bool {
-    db.find_top_level(name).is_some_and(|d| {
-        matches!(
-            d.symbol.kind,
-            SymbolKind::Enum | SymbolKind::Class | SymbolKind::State
-        )
-    })
+    db.find_top_level(name)
+        .is_some_and(|d| d.symbol.kind == SymbolKind::Enum || d.symbol.kind.is_class_like())
 }
 
 #[cfg(test)]

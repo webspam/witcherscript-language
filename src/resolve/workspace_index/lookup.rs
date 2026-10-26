@@ -1,13 +1,10 @@
 use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind, SymbolOrigin};
 
 use super::super::NameContext;
-use super::super::state_classes::StateBackingClass;
 use super::{Definition, WorkspaceIndex};
 
 impl WorkspaceIndex {
-    /// First match for `name`, preferring a non-state kind so callers that
-    /// only want one definition (e.g. `this` resolution, hover) keep working
-    /// when a same-named function or class exists alongside the state.
+    /// An explicit class named like `OwnerStateName` wins over the state, so single-definition callers (hover, `this`) land on the hand-written declaration.
     pub fn find_top_level(&self, name: &str) -> Option<Definition> {
         let defs = self.top_level_by_name.get(name)?;
         defs.iter()
@@ -33,16 +30,13 @@ impl WorkspaceIndex {
         self.states_by_owner.get(owner)?.get(name)?.last().cloned()
     }
 
-    pub fn has_state_named(&self, name: &str) -> bool {
+    pub(crate) fn states_named<'a>(
+        &'a self,
+        name: &'a str,
+    ) -> impl Iterator<Item = &'a Definition> {
         self.states_by_owner
             .values()
-            .any(|states| states.contains_key(name))
-    }
-
-    pub(crate) fn find_state_backing_class(&self, name: &str) -> Option<StateBackingClass<'_>> {
-        let (synthetic, (owner, state)) = self.state_backing_by_name.get_key_value(name)?;
-        let declaration = self.states_by_owner.get(owner)?.get(state)?.last()?;
-        Some(StateBackingClass::new(synthetic, declaration))
+            .filter_map(move |states| states.get(name)?.last())
     }
 
     pub fn find_enum_member(&self, name: &str) -> Option<Definition> {

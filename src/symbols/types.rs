@@ -203,12 +203,15 @@ impl SymbolKind {
         )
     }
 
-    /// States cannot be used for assignments
-    pub(crate) fn is_assignable_type(self) -> bool {
+    pub(crate) fn extends_by_type_name(self) -> bool {
         matches!(
             self,
-            SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct | SymbolKind::Enum
+            SymbolKind::Class | SymbolKind::NativeType | SymbolKind::Struct
         )
+    }
+
+    pub(crate) fn is_class_like(self) -> bool {
+        matches!(self, SymbolKind::Class | SymbolKind::State)
     }
 
     pub fn is_callable(self) -> bool {
@@ -259,6 +262,7 @@ pub struct Symbol {
     pub type_annotation: Option<Type>,
     pub base_class: Option<String>,
     pub owner_class: Option<String>,
+    pub(crate) state_class: Option<String>,
     pub flavour: Option<FuncFlavour>,
     pub annotations: Vec<Annotation>,
     pub access: AccessLevel,
@@ -270,7 +274,32 @@ pub struct Symbol {
 const MEMBER_INJECTING_ANNOTATIONS: &[&str] =
     &["addMethod", "wrapMethod", "replaceMethod", "addField"];
 
+const STATE_CLASS_INFIX: &str = "State";
+
+pub(crate) fn state_class_name(owner: &str, state: &str) -> String {
+    format!("{owner}{STATE_CLASS_INFIX}{state}")
+}
+
 impl Symbol {
+    pub fn type_name(&self) -> &str {
+        self.state_class.as_deref().unwrap_or(&self.name)
+    }
+
+    pub fn short_name_from<'a>(&self, name: &'a str) -> &'a str {
+        self.state_owner()
+            .and_then(|owner| name.strip_prefix(owner))
+            .and_then(|rest| rest.strip_prefix(STATE_CLASS_INFIX))
+            .filter(|short| !short.is_empty())
+            .unwrap_or(name)
+    }
+
+    fn state_owner(&self) -> Option<&str> {
+        match self.kind {
+            SymbolKind::State => self.owner_class.as_deref(),
+            _ => None,
+        }
+    }
+
     /// Native callables and fields stay invisible to scripts until a script `import` declares them; native types do not.
     pub(crate) fn requires_import(&self) -> bool {
         self.origin == SymbolOrigin::Native
@@ -466,7 +495,7 @@ impl DocumentSymbols {
                 None if sym.annotation_target_class_safe().is_some() => {}
                 None => {
                     self.top_level_by_name
-                        .entry(sym.name.clone())
+                        .entry(sym.type_name().to_string())
                         .or_default()
                         .push(sym.id);
                 }
@@ -481,7 +510,7 @@ impl DocumentSymbols {
             }
             if sym.kind.is_object_type() {
                 self.type_by_name
-                    .entry(sym.name.clone())
+                    .entry(sym.type_name().to_string())
                     .or_default()
                     .push(sym.id);
             }

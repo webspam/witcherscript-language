@@ -9,7 +9,7 @@ use crate::types::Type;
 use super::doc::doc_comment_above;
 use super::types::{
     AccessLevel, Annotation, DocumentSymbols, FuncFlavour, Specifier, Specifiers, Symbol, SymbolId,
-    SymbolKind, SymbolOrigin,
+    SymbolKind, SymbolOrigin, state_class_name,
 };
 use super::util::{base_type, direct_child_text, node_text};
 
@@ -430,10 +430,16 @@ impl<'a> SymbolExtractor<'a> {
         let container_name = spec
             .container
             .and_then(|id| self.symbols.by_id(id))
-            .map(|s| s.name.clone());
+            .map(|s| s.type_name().to_string());
+        let name = node_text(name_node, self.source);
+        let state_class = spec
+            .owner_class
+            .as_deref()
+            .filter(|_| kind == SymbolKind::State)
+            .map(|owner| state_class_name(owner, &name));
         self.symbols.push(Symbol {
             id: SymbolId(usize::MAX),
-            name: node_text(name_node, self.source),
+            name,
             kind,
             range: self.line_index.byte_range_to_range(
                 self.source,
@@ -452,6 +458,7 @@ impl<'a> SymbolExtractor<'a> {
             type_annotation: spec.type_annotation,
             base_class: spec.base_class,
             owner_class: spec.owner_class,
+            state_class,
             flavour: spec.flavour,
             annotations: spec.annotations,
             access: spec.access,

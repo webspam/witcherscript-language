@@ -93,12 +93,15 @@ fn member_access_returns_none() {
 }
 
 #[test]
-fn type_accepts_class_struct_enum_only() {
+fn type_accepts_types_only() {
     let ctx = NameContext::Type;
     assert!(ctx.accepts(SymbolKind::Class));
     assert!(ctx.accepts(SymbolKind::Struct));
     assert!(ctx.accepts(SymbolKind::Enum));
-    assert!(!ctx.accepts(SymbolKind::State));
+    assert!(
+        ctx.accepts(SymbolKind::State),
+        "a state's class name must be accepted in type position"
+    );
     assert!(!ctx.accepts(SymbolKind::Function));
     assert!(!ctx.accepts(SymbolKind::Event));
 }
@@ -115,14 +118,17 @@ fn callable_accepts_function_event_struct() {
 }
 
 #[test]
-fn value_excludes_state() {
+fn value_accepts_every_top_level_kind() {
     let ctx = NameContext::Value;
     assert!(ctx.accepts(SymbolKind::Function));
     assert!(ctx.accepts(SymbolKind::Event));
     assert!(ctx.accepts(SymbolKind::Class));
     assert!(ctx.accepts(SymbolKind::Struct));
     assert!(ctx.accepts(SymbolKind::Enum));
-    assert!(!ctx.accepts(SymbolKind::State));
+    assert!(
+        ctx.accepts(SymbolKind::State),
+        "a state's class name must be accepted in value position"
+    );
 }
 
 #[test]

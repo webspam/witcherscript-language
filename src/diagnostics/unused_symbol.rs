@@ -264,11 +264,11 @@ fn is_referenced(
         ctx.db,
         false,
     );
-    refs.iter().any(|(_, range)| {
+    refs.iter().any(|reference| {
         match ctx
             .document
             .line_index
-            .position_to_byte(&ctx.document.source, range.start)
+            .position_to_byte(&ctx.document.source, reference.range.start)
         {
             Some(byte) => !initialiser_ranges.iter().any(|r| r.contains(&byte)),
             None => true,

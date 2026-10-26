@@ -1,7 +1,8 @@
 use rstest::rstest;
 use std::collections::HashMap;
 
-use witcherscript_language::document::parse_document;
+use lsp_types::{PrepareRenameResponse, TextEdit};
+use witcherscript_language::document::{ParsedDocument, parse_document};
 use witcherscript_language::formatter::ColonSpacing;
 use witcherscript_language::line_index::SourcePosition;
 use witcherscript_language::resolve::{
@@ -11,6 +12,118 @@ use witcherscript_language::symbols::AccessLevel;
 use witcherscript_language::test_support::TestDb;
 
 use crate::convert::{replace_method_snippet, wrap_method_snippet};
+
+fn rename_edits(t: &TestDb, new_name: &str) -> Vec<TextEdit> {
+    use crate::references_rename::rename_changes;
+
+    let (uri, pos) = t.cursor();
+    let db = t.db();
+    let doc = t.doc_for(&uri);
+    let def = resolve_definition(&uri, doc, &db, pos).expect("rename target resolves");
+    let refs = find_references(&def, doc, &t.search_docs(), &db, true);
+    let changes = rename_changes(&refs, def.symbol.short_name_from(new_name), &HashMap::new());
+    changes.into_values().flatten().collect()
+}
+
+fn edit_byte_range(doc: &ParsedDocument, edit: &TextEdit) -> std::ops::Range<usize> {
+    let to_byte = |position: lsp_types::Position| {
+        doc.line_index
+            .position_to_byte(
+                &doc.source,
+                SourcePosition {
+                    line: position.line,
+                    character: position.character,
+                },
+            )
+            .expect("edit position lies inside the document")
+    };
+    to_byte(edit.range.start)..to_byte(edit.range.end)
+}
+
+fn renamed_source(t: &TestDb, new_name: &str) -> String {
+    let doc = t.doc_for(t.primary_uri());
+    let mut edits = rename_edits(t, new_name);
+    edits.sort_by_key(|edit| std::cmp::Reverse(edit_byte_range(doc, edit).start));
+    let mut source = doc.source.clone();
+    for edit in &edits {
+        source.replace_range(edit_byte_range(doc, edit), &edit.new_text);
+    }
+    source
+}
+
+const RENAMED_STATE_SOURCE: &str =
+    "statemachine class C {}\nstate Nap in C {}\nfunction F(s : CStateNap) {}\n";
+
+#[rstest]
+#[case::from_declaration(
+    "statemachine class C {}\nstate $0Sleep in C {}\nfunction F(s : CStateSleep) {}\n",
+    "Nap"
+)]
+#[case::from_class_name_with_short_name(
+    "statemachine class C {}\nstate Sleep in C {}\nfunction F(s : $0CStateSleep) {}\n",
+    "Nap"
+)]
+#[case::from_class_name_with_class_name(
+    "statemachine class C {}\nstate Sleep in C {}\nfunction F(s : $0CStateSleep) {}\n",
+    "CStateNap"
+)]
+fn renaming_a_state_rewrites_only_its_short_name(#[case] source: &str, #[case] new_name: &str) {
+    let t = TestDb::new(source);
+    assert_eq!(
+        renamed_source(&t, new_name),
+        RENAMED_STATE_SOURCE,
+        "the declaration and the class-name usage must both end up spelling `Nap`"
+    );
+}
+
+#[test]
+fn renaming_a_state_never_edits_the_owner_prefix() {
+    let t = TestDb::new(
+        "statemachine class C {}\nstate Sleep in C {}\nfunction F(s : $0CStateSleep) {}\n",
+    );
+    let doc = t.doc_for(t.primary_uri());
+    let replaced: Vec<&str> = rename_edits(&t, "Nap")
+        .iter()
+        .map(|edit| &doc.source[edit_byte_range(doc, edit)])
+        .collect();
+    assert_eq!(
+        replaced,
+        ["Sleep", "Sleep"],
+        "every edit must replace only the short name, never the `CState` prefix"
+    );
+}
+
+#[rstest]
+#[case::class_name_usage(
+    "statemachine class C {}\nstate Sleep in C {}\nfunction F(s : $0CStateSleep) {}\n",
+    Some("Sleep")
+)]
+#[case::short_name_declaration(
+    "statemachine class C {}\nstate $0Sleep in C {}\nfunction F(s : CStateSleep) {}\n",
+    None
+)]
+#[case::plain_class("class $0CPlain {}\nfunction F(p : CPlain) {}\n", None)]
+fn prepare_rename_offers_the_short_name_on_state_class_names(
+    #[case] source: &str,
+    #[case] expected_placeholder: Option<&str>,
+) {
+    use crate::references_rename::prepare_rename_response;
+
+    let t = TestDb::new(source);
+    let (uri, pos) = t.cursor();
+    let doc = t.doc_for(&uri);
+    let def = resolve_definition(&uri, doc, &t.db(), pos).expect("rename target resolves");
+    let placeholder = match prepare_rename_response(&def, doc, pos) {
+        PrepareRenameResponse::RangeWithPlaceholder { placeholder, .. } => Some(placeholder),
+        PrepareRenameResponse::DefaultBehavior { .. } => None,
+        PrepareRenameResponse::Range(_) => panic!("prepare rename must not return a bare range"),
+    };
+    assert_eq!(
+        placeholder.as_deref(),
+        expected_placeholder,
+        "only a state's class-name spelling swaps the placeholder for the short name"
+    );
+}
 
 #[test]
 fn rename_returns_edits_for_all_occurrences() {
@@ -90,7 +203,10 @@ fn rename_does_not_edit_base_scripts() {
         ("file:///mod/ciri.ws", &mod_doc),
     ];
     let refs = find_references(&def, &mod_doc, &search_docs, &db, true);
-    assert!(refs.iter().any(|(uri, _)| uri == "file:///base/player.ws"));
+    assert!(
+        refs.iter().any(|r| r.uri == "file:///base/player.ws"),
+        "the base-script call site is a reference"
+    );
 
     let changes = rename_changes(&refs, "IsCiriRenamed", &base_docs);
     assert!(

@@ -14,6 +14,7 @@ use crate::symbols::{AccessLevel, SymbolKind};
 use crate::types::is_builtin_type_name;
 
 use super::native_import::{NativeName, native_not_imported};
+use super::short_state_name::short_state_name_diagnostic;
 use super::{
     CstRuleCtx, ParallelRuleShard, Severity, WorkspaceDiagnostic, access_is_inside_declaring_class,
     collect_nodes_with_error_subtree, declaring_class_of, run_parallel_pass,
@@ -139,9 +140,9 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             ctx.telemetry.definition_resolutions += 1;
             let r = if resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident).is_some() {
                 None
-            } else if is_annotation_arg(ident) && ctx.db.has_state_named(name) {
-                // Bandaid: annotations legally target states, which we cannot yet resolve from an annotation.
-                None
+            } else if let Some(diagnostic) = short_state_name_diagnostic(ident, name, ctx) {
+                ctx.diagnostics.push(diagnostic);
+                Some(())
             } else {
                 push(ctx, ident, "unknown_type", format!("Unknown type '{name}'"));
                 Some(())
@@ -226,7 +227,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
                 if name == "autoState" && enclosing.specifiers.is_state_machine() {
                     return None;
                 }
-                let container_name = enclosing.name.clone();
+                let container_name = enclosing.type_name().to_string();
                 ctx.telemetry.member_lookups += 1;
                 if ctx
                     .db
@@ -293,9 +294,7 @@ fn check_ident<'tree>(ident: Node<'tree>, ctx: &mut CstRuleCtx<'_, 'tree>) -> Op
             } else {
                 ctx.telemetry.definition_resolutions += 1;
                 match resolve_definition_at_ident(ctx.uri, ctx.document, ctx.db, ident) {
-                    Some(def)
-                        if def.symbol.kind.is_assignable_type() && def.symbol.name == name =>
-                    {
+                    Some(def) if def.symbol.kind.is_type() && def.symbol.type_name() == name => {
                         push(
                             ctx,
                             ident,
@@ -371,12 +370,6 @@ fn resolves_as_local<'tree>(ctx: &CstRuleCtx<'_, 'tree>, ident: Node<'tree>, nam
         .symbols
         .local_at_byte(callable.id, name, byte)
         .is_some()
-}
-
-fn is_annotation_arg(ident: Node) -> bool {
-    ident
-        .parent()
-        .is_some_and(|p| p.kind() == kinds::ANNOTATION)
 }
 
 fn is_inside_wrap_method<'tree>(ident: Node<'tree>, ctx: &CstRuleCtx<'_, 'tree>) -> bool {

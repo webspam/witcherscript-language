@@ -1,9 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind};
+use crate::symbols::{AccessLevel, Symbol, SymbolId, SymbolKind, state_class_name};
 
 use super::super::completion_catalog::{merge_ws_base, merge_ws_base_three};
-use super::super::state_classes::StateBackingClass;
 use super::super::{MAX_INHERITANCE_DEPTH, dedup_by_name, dedup_definitions};
 use super::SymbolDb;
 use super::generics::{
@@ -45,7 +44,6 @@ impl SymbolDb<'_> {
             .find_top_level(name)
             .or_else(|| self.shadowed_base().find_top_level(name))
             .or_else(|| self.builtins.and_then(|b| b.find_top_level(name)))
-            .or_else(|| self.synthetic_state_class(name))
     }
 
     pub fn find_top_level_filtered(&self, name: &str, ctx: &NameContext) -> Option<Definition> {
@@ -57,16 +55,6 @@ impl SymbolDb<'_> {
                 self.builtins
                     .and_then(|b| b.find_top_level_filtered(name, ctx))
             })
-            .or_else(|| {
-                self.synthetic_state_class(name)
-                    .filter(|d| ctx.accepts(d.symbol.kind))
-            })
-    }
-
-    // Resolvable by name yet absent from `top_level_by_name`, so it never reaches the completion catalog.
-    fn synthetic_state_class(&self, name: &str) -> Option<Definition> {
-        self.find_state_backing_class(name)
-            .map(|sbc| sbc.as_class_definition())
     }
 
     /// Find a state named `name` declared in `start_owner` or any statemachine
@@ -79,6 +67,7 @@ impl SymbolDb<'_> {
                 return None;
             }
             self.record_top_level(&current);
+            self.record_top_level(&state_class_name(&current, name));
             if let Some(def) = self
                 .workspace
                 .find_state_in_owner(&current, name)
@@ -96,15 +85,37 @@ impl SymbolDb<'_> {
         }
     }
 
-    pub fn has_state_named(&self, name: &str) -> bool {
-        self.workspace.has_state_named(name) || self.base.has_state_named(name)
+    pub(crate) fn states_named(&self, name: &str) -> Vec<Definition> {
+        let mut seen: HashSet<String> = HashSet::new();
+        self.workspace
+            .states_named(name)
+            .chain(self.base.states_named(name))
+            .filter(|def| seen.insert(def.symbol.type_name().to_string()))
+            .cloned()
+            .collect()
     }
 
-    /// Workspace shadows base; builtins hold no states so they are not consulted.
-    pub(crate) fn find_state_backing_class(&self, name: &str) -> Option<StateBackingClass<'_>> {
-        self.workspace
-            .find_state_backing_class(name)
-            .or_else(|| self.base.find_state_backing_class(name))
+    fn implicit_superclass(&self, class_name: &str) -> Option<String> {
+        let symbol = self.find_top_level(class_name)?.symbol;
+        match symbol.kind {
+            SymbolKind::State => Some(self.state_superclass(&symbol)),
+            SymbolKind::Class if !OBJECT_ROOT_CHAIN.contains(&class_name) => {
+                Some(OBJECT_BASE_CLASS.to_string())
+            }
+            _ => None,
+        }
+    }
+
+    fn state_superclass(&self, state: &Symbol) -> String {
+        state
+            .owner_class
+            .as_deref()
+            .zip(state.base_class.as_deref())
+            .and_then(|(owner, base)| self.find_state_in_owner_chain(owner, base))
+            .map_or_else(
+                || STATE_BASE_CLASS.to_string(),
+                |base_state| base_state.symbol.type_name().to_string(),
+            )
     }
 
     /// Exact selection-range match first, then by name; edits may have shifted the symbol.
@@ -167,11 +178,7 @@ impl SymbolDb<'_> {
             .superclass_of(class_name)
             .or_else(|| self.shadowed_base().superclass_of(class_name))
             .or_else(|| self.builtins.and_then(|b| b.superclass_of(class_name)))
-            .or_else(|| {
-                self.find_state_backing_class(class_name)
-                    .map(|sbc| sbc.state_name().to_string())
-            })
-            .or_else(|| self.virtual_object_base(class_name))
+            .or_else(|| self.implicit_superclass(class_name))
     }
 
     pub(crate) fn has_builtins(&self) -> bool {
@@ -203,25 +210,6 @@ impl SymbolDb<'_> {
     pub fn inherits_from(&self, class_name: &str, ancestor: &str) -> bool {
         self.try_in_chain(class_name, |current, _| (current == ancestor).then_some(()))
             .is_some()
-    }
-
-    fn virtual_object_base(&self, class_name: &str) -> Option<String> {
-        if OBJECT_ROOT_CHAIN.contains(&class_name) {
-            return None;
-        }
-        let kind = self.type_or_state_kind_of(class_name)?;
-        match kind {
-            SymbolKind::Class => Some(OBJECT_BASE_CLASS.to_string()),
-            SymbolKind::State if class_name != STATE_BASE_CLASS => {
-                Some(STATE_BASE_CLASS.to_string())
-            }
-            _ => None,
-        }
-    }
-
-    fn type_or_state_kind_of(&self, name: &str) -> Option<SymbolKind> {
-        let kind = self.find_top_level(name)?.symbol.kind;
-        matches!(kind, SymbolKind::Class | SymbolKind::State).then_some(kind)
     }
 
     pub fn find_member(

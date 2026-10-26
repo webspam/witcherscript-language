@@ -430,7 +430,7 @@ fn unique_name(base: &str, document: &ParsedDocument, db: &SymbolDb, callable: &
         taken.contains(name)
             || db.find_script_global(name).is_some()
             || class.is_some_and(|c| {
-                db.find_member(&c.name, name, AccessLevel::Private)
+                db.find_member(c.type_name(), name, AccessLevel::Private)
                     .is_some_and(|d| d.symbol.kind == SymbolKind::Field)
             })
     };

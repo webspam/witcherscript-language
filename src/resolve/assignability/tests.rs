@@ -262,7 +262,7 @@ fn map_aliases_are_identical() {
 #[test]
 fn objects_cast_to_bool_and_string() {
     let t = TestDb::new(TYPES_SRC);
-    for name in ["Base", "Derived", "Active"] {
+    for name in ["Base", "Derived", "MachineStateActive"] {
         assert_eq!(
             assignability(&Type::Named(name.into()), &prim(Primitive::Bool), &t.db()),
             Assignability::ImplicitCast(CastKind::ObjectToBool),

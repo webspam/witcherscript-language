@@ -128,6 +128,7 @@ pub fn script_env(name: &str, type_name: &str) -> ScriptEnvironment {
             type_annotation: Some(Type::from_annotation(type_name)),
             base_class: None,
             owner_class: None,
+            state_class: None,
             flavour: None,
             annotations: Vec::new(),
             access: AccessLevel::Public,

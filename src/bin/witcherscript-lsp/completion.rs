@@ -22,8 +22,9 @@ use witcherscript_language::symbols::SymbolKind;
 use crate::backend::{Backend, Result};
 use crate::convert::{
     CompletionItemData, annotation_name_items, builtin_type_item, class_body_kw_item,
-    completion_item, hover_markdown, keyword_snippet_item, lsp_range, replace_method_snippet,
-    script_body_item, source_position, this_super_item, type_completion_item, wrap_method_snippet,
+    completion_item, extends_completion_item, hover_markdown, keyword_snippet_item, lsp_range,
+    replace_method_snippet, script_body_item, source_position, this_super_item,
+    type_completion_item, wrap_method_snippet,
 };
 
 fn triggered_by_dot(params: &CompletionParams) -> bool {
@@ -200,7 +201,7 @@ impl Backend {
             let extends = extends_completions(document, &db, pos);
             if !extends.is_empty() {
                 break 'body Ok(Some(CompletionResponse::Array(
-                    extends.iter().map(type_completion_item).collect(),
+                    extends.iter().map(extends_completion_item).collect(),
                 )));
             }
 

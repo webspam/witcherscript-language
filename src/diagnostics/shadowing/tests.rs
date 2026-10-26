@@ -25,6 +25,7 @@ fn env(names_and_types: &[(&str, &str)]) -> ScriptEnvironment {
                 type_annotation: Some(Type::from_annotation(ty)),
                 base_class: None,
                 owner_class: None,
+                state_class: None,
                 flavour: None,
                 annotations: Vec::new(),
                 access: AccessLevel::Public,

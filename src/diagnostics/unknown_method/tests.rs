@@ -21,6 +21,15 @@ use crate::test_support::TestDb;
 #[case::new_receiver_known_method(
     "class Foo { function Bar() {} } function Test() { (new Foo).Bar(); }\n"
 )]
+#[case::state_class_name_receiver_sees_added_method(
+    "statemachine class A {} state Shared in A {} \
+     @addMethod(AStateShared) function OnlyOnA() {} \
+     function Test(s : AStateShared) { s.OnlyOnA(); }\n"
+)]
+#[case::state_body_calls_method_added_by_class_name(
+    "statemachine class A {} state Idle in A { function Use() { this.Added(); } } \
+     @addMethod(AStateIdle) function Added() {}\n"
+)]
 fn does_not_fire(#[case] fixture: &str) {
     let t = TestDb::new(fixture);
     let result = collect_unknown_method_diagnostics(&t.search_docs(), &t.db());
@@ -59,6 +68,32 @@ fn generic_builtin_methods_are_a_closed_set(
 
     let count = result.get(t.primary_uri()).map_or(0, Vec::len);
     assert_eq!(count, expected, "{method}: {result:?}");
+}
+
+#[test]
+fn flags_method_added_to_other_owners_same_named_state() {
+    let t = TestDb::new(
+        "statemachine class A {} statemachine class B {} \
+         state Shared in A {} state Shared in B {} \
+         @addMethod(AStateShared) function OnlyOnA() {} \
+         function Test(s : BStateShared) { s.OnlyOnA(); }\n",
+    );
+    let result = collect_unknown_method_diagnostics(&t.search_docs(), &t.db());
+
+    let diags = result
+        .get(t.primary_uri())
+        .expect("should have diagnostics");
+    assert_eq!(diags.len(), 1, "exactly one unknown-method diagnostic");
+    assert!(
+        diags[0].message.contains("OnlyOnA"),
+        "message names the missing method, got {:?}",
+        diags[0].message
+    );
+    assert!(
+        diags[0].message.contains("BStateShared"),
+        "message names the receiver's state class, got {:?}",
+        diags[0].message
+    );
 }
 
 #[test]

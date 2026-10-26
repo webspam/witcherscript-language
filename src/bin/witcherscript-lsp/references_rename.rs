@@ -11,7 +11,10 @@ use tracing::{debug, trace};
 use witcherscript_language::builtins::is_builtin_uri;
 use witcherscript_language::document::ParsedDocument;
 use witcherscript_language::files::canonical_uri;
-use witcherscript_language::resolve::{find_references, resolve_definition};
+use witcherscript_language::line_index::SourcePosition;
+use witcherscript_language::resolve::{
+    Definition, Reference, find_references, resolve_definition, state_class_name_range_at,
+};
 
 use crate::backend::{Backend, Result};
 use crate::compilation::Compilation;
@@ -48,23 +51,39 @@ pub(crate) fn merge_documents<'a>(
 // even when the renamed symbol's declaration lives in the workspace (e.g. an
 // @wrapMethod whose target's class-body declaration sits in a base script).
 pub(crate) fn rename_changes(
-    refs: &[(String, witcherscript_language::line_index::SourceRange)],
+    refs: &[Reference],
     new_name: &str,
     base_docs: &HashMap<String, Arc<ParsedDocument>>,
 ) -> HashMap<Url, Vec<TextEdit>> {
     let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
-    for (ref_uri, range) in refs {
-        if base_docs.contains_key(ref_uri) || is_builtin_uri(ref_uri) {
+    for reference in refs {
+        if base_docs.contains_key(&reference.uri) || is_builtin_uri(&reference.uri) {
             continue;
         }
-        if let Ok(url) = Url::parse(ref_uri) {
+        if let Ok(url) = Url::parse(&reference.uri) {
             changes.entry(url).or_default().push(TextEdit {
-                range: lsp_range(*range),
+                range: lsp_range(reference.name_range),
                 new_text: new_name.to_string(),
             });
         }
     }
     changes
+}
+
+pub(crate) fn prepare_rename_response(
+    definition: &Definition,
+    document: &ParsedDocument,
+    position: SourcePosition,
+) -> PrepareRenameResponse {
+    match state_class_name_range_at(definition, document, position) {
+        Some(range) => PrepareRenameResponse::RangeWithPlaceholder {
+            range: lsp_range(range),
+            placeholder: definition.symbol.name.clone(),
+        },
+        None => PrepareRenameResponse::DefaultBehavior {
+            default_behavior: true,
+        },
+    }
 }
 
 fn ensure_rename_target_writable(definition_uri: &str, snap: &Compilation) -> Result<()> {
@@ -149,10 +168,10 @@ impl Backend {
 
         Some(
             refs.into_iter()
-                .filter_map(|(ref_uri, range)| {
-                    Url::parse(&ref_uri).ok().map(|url| Location {
+                .filter_map(|reference| {
+                    Url::parse(&reference.uri).ok().map(|url| Location {
                         uri: url,
-                        range: lsp_range(range),
+                        range: lsp_range(reference.range),
                     })
                 })
                 .collect(),
@@ -184,7 +203,7 @@ impl Backend {
         trace!(op = "prepare_rename", uri = %uri, "start");
         let result = 'body: {
             let snap = self.snapshot();
-            let Some((definition, _)) = self.resolve_at(&uri, params.position, &snap) else {
+            let Some((definition, latest)) = self.resolve_at(&uri, params.position, &snap) else {
                 break 'body Ok(None);
             };
 
@@ -192,9 +211,11 @@ impl Backend {
                 break 'body Err(e);
             }
 
-            Ok(Some(PrepareRenameResponse::DefaultBehavior {
-                default_behavior: true,
-            }))
+            Ok(Some(prepare_rename_response(
+                &definition,
+                &latest,
+                source_position(params.position),
+            )))
         };
         trace!(
             op = "prepare_rename",
@@ -245,7 +266,11 @@ impl Backend {
 
             let refs = find_references(&definition, definition_document, &search_docs, &db, true);
 
-            let changes = rename_changes(&refs, &new_name, &snap.base_scripts_documents);
+            let changes = rename_changes(
+                &refs,
+                definition.symbol.short_name_from(&new_name),
+                &snap.base_scripts_documents,
+            );
 
             Ok(Some(WorkspaceEdit {
                 changes: Some(changes),
