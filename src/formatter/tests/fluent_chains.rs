@@ -3,6 +3,8 @@ use rstest::rstest;
 
 use super::{fmt, fmt_limit};
 
+const FLUENT_LINE_LIMIT: u32 = 30;
+
 #[test]
 fn long_chain_breaks_before_each_call() {
     let src = r#"function F() { m_flashModule.GetChildFlashSprite("mcOptionListModule").GetChildFlashSprite("tooltip").GetMemberFlashObject("textField").SetMemberFlashString("autoSize", "left"); }"#;
@@ -163,11 +165,11 @@ fn fluent_chain_authored_layout(#[case] input: &str, #[case] expected: Expect) {
     "]]
 )]
 fn fluent_chain_line_limit(#[case] input: &str, #[case] expected: Expect) {
-    let output = fmt_limit(input, 30);
+    let output = fmt_limit(input, FLUENT_LINE_LIMIT);
     expected.assert_eq(&output);
     assert_eq!(
         output,
-        fmt_limit(&output, 30),
+        fmt_limit(&output, FLUENT_LINE_LIMIT),
         "fluent chain layout should be idempotent"
     );
 }
