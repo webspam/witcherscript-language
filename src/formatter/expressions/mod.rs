@@ -1,5 +1,6 @@
 mod call;
 mod chain;
+mod fluent;
 mod ternary;
 
 use tree_sitter::Node;
