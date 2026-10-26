@@ -68,22 +68,49 @@ fn arg_line_end(arg: Node, following: &[Node]) -> LineEnd {
 
 impl Formatter<'_> {
     pub(in crate::formatter) fn format_call(&mut self, call: Node) {
+        if self.try_emit_fluent_chain(call) {
+            return;
+        }
         match CallParts::of(call) {
             Some(parts) if self.call_needs_split(call, &parts) => self.emit_split_call(&parts),
             _ => self.format_children(call),
         }
     }
 
-    fn call_needs_split(&self, call: Node, parts: &CallParts) -> bool {
+    pub(super) fn format_chained_call_args(&mut self, call: Node, open: Node) {
+        match CallParts::of(call) {
+            Some(parts) if self.call_needs_split(open, &parts) => self.emit_split_args(&parts),
+            _ => self.emit_inline_args(call, open),
+        }
+    }
+
+    fn call_needs_split(&self, measure_from: Node, parts: &CallParts) -> bool {
         parts.authored_split()
             || self.has_line_comment_between(parts.open, parts.close)
-            || (!parts.hugs_lone_call_arg() && self.overflows_line(call))
+            || (!parts.hugs_lone_call_arg() && self.overflows_line(measure_from))
+    }
+
+    fn emit_inline_args(&mut self, call: Node, open: Node) {
+        let tail = child_nodes(call)
+            .into_iter()
+            .filter(|child| child.start_byte() >= open.start_byte());
+        for child in tail {
+            if child.child_count() == 0 {
+                self.emit_verbatim(child);
+            } else {
+                self.format_operand(child, kinds::FUNC_CALL_EXPR);
+            }
+        }
     }
 
     fn emit_split_call(&mut self, parts: &CallParts) {
         self.with_line_end(LineEnd::after(parts.open, 0), |f| {
             f.format_node(parts.func);
         });
+        self.emit_split_args(parts);
+    }
+
+    fn emit_split_args(&mut self, parts: &CallParts) {
         self.emit_verbatim(parts.open);
         self.level += 1;
         self.emit_arg_lines(parts.args);
