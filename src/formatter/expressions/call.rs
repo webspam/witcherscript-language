@@ -1,3 +1,5 @@
+use std::iter;
+
 use tree_sitter::Node;
 
 use crate::cst::nav::first_child_kind;
@@ -48,28 +50,42 @@ impl<'t> CallParts<'t> {
 
     fn authored_split(&self) -> bool {
         let tokens = self.arg_tokens();
-        let Some(first) = tokens.first() else {
-            return false;
-        };
-        if starts_below(self.open, *first) {
-            return true;
-        }
-        let Some(comma) = tokens.iter().position(|t| t.kind() == ",") else {
-            return false;
-        };
-        let first_arg_end = comma.checked_sub(1).map_or(self.open, |i| tokens[i]);
-        tokens
-            .get(comma + 1)
-            .is_some_and(|second| starts_below(first_arg_end, *second))
+        let line_heads = (0..tokens.len())
+            .filter(|&index| opens_split_line(&tokens, index))
+            .map(|index| tokens[index]);
+        let anchors: Vec<Node> = iter::once(self.open)
+            .chain(line_heads)
+            .chain(iter::once(self.close))
+            .collect();
+        let breaks: Vec<bool> = anchors
+            .windows(2)
+            .map(|pair| starts_below(pair[0], pair[1]))
+            .collect();
+        breaks_request_split(&breaks)
     }
 }
 
-fn arg_line_end(arg: Node, following: &[Node]) -> LineEnd {
-    let comma = following
-        .iter()
-        .find(|n| n.kind() != kinds::COMMENT)
-        .filter(|n| n.kind() == ",");
-    LineEnd::after(comma.copied().unwrap_or(arg), 0)
+fn breaks_request_split(breaks: &[bool]) -> bool {
+    let broken = breaks.iter().filter(|&&is_broken| is_broken).count();
+    let intact = breaks.len() - broken;
+    let close_on_own_line = breaks.last() == Some(&true);
+    match (broken, intact) {
+        (0, _) => false,
+        (_, 0) => true,
+        _ if broken == intact => !close_on_own_line,
+        _ => broken < intact,
+    }
+}
+
+// An omitted slot (two adjacent commas) must survive as a lone comma line, not vanish
+fn opens_split_line(tokens: &[Node], index: usize) -> bool {
+    let is_comma = |i: usize| tokens[i].kind() == ",";
+    !is_comma(index) || index == 0 || is_comma(index - 1)
+}
+
+fn arg_line_end(arg: Node, next: Option<Node>) -> LineEnd {
+    let comma = next.filter(|n| n.kind() == ",");
+    LineEnd::after(comma.unwrap_or(arg), 0)
 }
 
 impl Formatter<'_> {
@@ -118,9 +134,7 @@ impl Formatter<'_> {
     fn emit_split_args(&mut self, parts: &CallParts) {
         self.emit_verbatim(parts.open);
         self.level += 1;
-        if let Some(args) = parts.args {
-            self.emit_arg_lines(args);
-        }
+        self.emit_arg_lines(parts);
         self.level -= 1;
         self.flush_comments_before(parts.close.start_byte());
         if !self.out.ends_with('\n') {
@@ -130,34 +144,21 @@ impl Formatter<'_> {
         self.emit_verbatim(parts.close);
     }
 
-    // An omitted slot (two adjacent commas) must survive as a lone comma line, not vanish.
-    fn emit_arg_lines(&mut self, args: Node) {
-        let children = child_nodes(args);
-        let mut pending_break = true;
-        for (i, child) in children.iter().enumerate() {
-            match child.kind() {
-                // Flush, don't render: the cursor emits the comment once and consumes it, so the
-                // end-of-statement sweep can't print it again.
-                kinds::COMMENT => self.flush_comments_before(child.end_byte()),
-                "," => {
-                    if pending_break {
-                        self.break_to_indented_line();
-                    }
-                    self.emit(",");
-                    pending_break = true;
-                }
-                _ => {
-                    self.flush_comments_before(child.start_byte());
-                    if pending_break {
-                        self.break_to_indented_line();
-                        pending_break = false;
-                    }
-                    let line_end = arg_line_end(*child, &children[i + 1..]);
-                    self.with_line_end(line_end, |f| {
-                        f.format_operand(*child, kinds::FUNC_CALL_ARGS);
-                    });
-                }
+    fn emit_arg_lines(&mut self, parts: &CallParts) {
+        let tokens = parts.arg_tokens();
+        for (index, token) in tokens.iter().enumerate() {
+            self.flush_comments_before(token.start_byte());
+            if opens_split_line(&tokens, index) {
+                self.break_to_indented_line();
             }
+            if token.kind() == "," {
+                self.emit(",");
+                continue;
+            }
+            let line_end = arg_line_end(*token, tokens.get(index + 1).copied());
+            self.with_line_end(line_end, |f| {
+                f.format_operand(*token, kinds::FUNC_CALL_ARGS);
+            });
         }
     }
 }
