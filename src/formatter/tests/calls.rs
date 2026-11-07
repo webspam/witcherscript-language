@@ -28,9 +28,13 @@ use super::{fmt, fmt_limit};
         );
     }
 "]])]
-#[case::break_after_second_arg_collapses("function F() { Foo(a, b,\n c); }", expect![[r"
+#[case::break_after_second_arg_splits("function F() { Foo(a, b,\n c); }", expect![[r"
     function F() {
-        Foo(a, b, c);
+        Foo(
+            a,
+            b,
+            c
+        );
     }
 "]])]
 #[case::single_arg_break_after_open_paren_splits("function F() { Foo(\n a); }", expect![[r"
@@ -62,9 +66,79 @@ use super::{fmt, fmt_limit};
         Foo();
     }
 "]])]
-#[case::break_before_close_paren_only_collapses("function F() { Foo(a, b\n); }", expect![[r"
+#[case::break_before_close_paren_only_splits("function F() { Foo(a, b\n); }", expect![[r"
+    function F() {
+        Foo(
+            a,
+            b
+        );
+    }
+"]])]
+#[case::single_arg_break_before_close_paren_collapses("function F() { Foo(a\n); }", expect![[r"
+    function F() {
+        Foo(a);
+    }
+"]])]
+#[case::removed_break_before_close_paren_collapses("function F() { Foo(\n a,\n b); }", expect![[r"
     function F() {
         Foo(a, b);
+    }
+"]])]
+#[case::removed_break_after_open_paren_collapses("function F() { Foo(a,\n b\n); }", expect![[r"
+    function F() {
+        Foo(a, b);
+    }
+"]])]
+#[case::removed_break_between_args_collapses("function F() { Foo(\n a, b\n); }", expect![[r"
+    function F() {
+        Foo(a, b);
+    }
+"]])]
+#[case::removed_break_after_first_of_three_collapses(
+    "function F() { Foo(\n a, b,\n c\n); }",
+    expect![[r"
+        function F() {
+            Foo(a, b, c);
+        }
+    "]]
+)]
+#[case::removed_break_after_open_of_three_collapses(
+    "function F() { Foo(a,\n b,\n c\n); }",
+    expect![[r"
+        function F() {
+            Foo(a, b, c);
+        }
+    "]]
+)]
+#[case::added_break_after_open_of_three_splits("function F() { Foo(\n a, b, c); }", expect![[r"
+    function F() {
+        Foo(
+            a,
+            b,
+            c
+        );
+    }
+"]])]
+#[case::added_break_after_first_of_three_splits("function F() { Foo(a,\n b, c); }", expect![[r"
+    function F() {
+        Foo(
+            a,
+            b,
+            c
+        );
+    }
+"]])]
+#[case::split_layout_stays_split("function F() { Foo(\n a,\n b\n); }", expect![[r"
+    function F() {
+        Foo(
+            a,
+            b
+        );
+    }
+"]])]
+#[case::removed_break_with_skipped_arg_collapses("function F() { Foo(\n a,\n ,\n b); }", expect![[r"
+    function F() {
+        Foo(a, , b);
     }
 "]])]
 #[case::return_call_break_splits("function F() : int { return Foo(\n a, b); }", expect![[r"
