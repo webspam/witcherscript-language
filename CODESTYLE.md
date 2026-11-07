@@ -81,7 +81,7 @@ Take structural wins at equal readability: keyed access wants a `HashMap`, not a
 
 ## Testing
 
-Unit tests in `#[cfg(test)] mod tests` at the bottom of the file they cover; integration tests under `tests/`. Names state the behaviour (`returns_none_when_input_empty`); assert messages name the failed expectation. Snapshots only for output that is large *and* stable.
+Unit tests are split out to `tests.rs` and `tests/`, depending on complexity. Integration tests under `tests/`. Names state the behaviour (`returns_none_when_input_empty`); assert messages describe the failed expectation. Use snapshots for output that is large _and_ stable.
 
 ## Async and concurrency
 
