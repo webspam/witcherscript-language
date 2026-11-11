@@ -26,8 +26,12 @@ impl Formatter<'_> {
         let body = node.child_by_field_name(fields::BODY);
         let else_body = node.child_by_field_name(fields::ELSE);
 
+        let trailing = else_body
+            .filter(|_| self.else_placement.resolve())
+            .map(|_| 0);
+
         if self.emit_split_keyword_cond("if (", cond, COND_THEN_BLOCK) {
-            self.emit_stmt_body(body, BodyLayout::ForceBlock);
+            self.emit_stmt_body_trailing(body, BodyLayout::ForceBlock, trailing);
         } else {
             self.emit_indent();
             self.emit("if (");
@@ -35,12 +39,21 @@ impl Formatter<'_> {
                 self.format_keyword_cond(c, COND_THEN_BLOCK);
             }
             self.emit(")");
-            self.emit_stmt_body(body, layout);
+            self.emit_stmt_body_trailing(body, layout, trailing);
         }
 
         if let Some(eb) = else_body {
             self.flush_comments_before(eb.start_byte());
-            self.emit_indent();
+            if trailing.is_some() && !self.out.ends_with("} ") {
+                // there's no block or there are comments in between, don't cuddle the else
+                if self.out.ends_with(" ") {
+                    self.out.pop();
+                }
+                self.nl();
+            }
+            if self.out.ends_with("\n") {
+                self.emit_indent();
+            }
             self.emit("else");
             self.emit_else_clause(eb, layout);
         }

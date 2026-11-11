@@ -5,7 +5,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::files::read_text_file;
-use crate::formatter::{AnnotationPlacement, ColonSpacing, FormatOptions};
+use crate::formatter::{AnnotationPlacement, ColonSpacing, ElsePlacement, FormatOptions};
 
 const PRIMARY_FILENAME: &str = ".wsformat.toml";
 const FALLBACK_FILENAME: &str = "wsformat.toml";
@@ -20,6 +20,7 @@ pub struct FormatConfigFile {
     align_member_colons: Option<bool>,
     annotation_placement: Option<AnnotationPlacement>,
     default_placement: Option<AnnotationPlacement>,
+    else_placement: Option<ElsePlacement>,
 }
 
 impl FormatConfigFile {
@@ -34,6 +35,7 @@ impl FormatConfigFile {
                 .annotation_placement
                 .unwrap_or(base.annotation_placement),
             default_placement: self.default_placement.unwrap_or(base.default_placement),
+            else_placement: self.else_placement.unwrap_or(base.else_placement),
         }
     }
 }

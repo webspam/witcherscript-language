@@ -9,7 +9,7 @@ use witcherscript_language::document::parse_document_with_parser;
 use witcherscript_language::files::{collect_witcherscript_files, read_text_file};
 use witcherscript_language::format_config::{self, FormatConfigFile};
 use witcherscript_language::formatter::{
-    AnnotationPlacement, ColonSpacing, FormatOptions, format_document,
+    AnnotationPlacement, ColonSpacing, ElsePlacement, FormatOptions, format_document,
 };
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -43,6 +43,24 @@ impl From<PlacementArg> for AnnotationPlacement {
             PlacementArg::Preserve => Self::Preserve,
             PlacementArg::OwnLine => Self::OwnLine,
             PlacementArg::SameLine => Self::SameLine,
+        }
+    }
+}
+
+// Value names match the `.wsformat.toml` tokens so the CLI and the config file share one vocabulary.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum ElsePlacementArg {
+    #[value(name = "ownLine")]
+    OwnLine,
+    #[value(name = "sameLine")]
+    SameLine,
+}
+
+impl From<ElsePlacementArg> for ElsePlacement {
+    fn from(arg: ElsePlacementArg) -> Self {
+        match arg {
+            ElsePlacementArg::OwnLine => Self::OwnLine,
+            ElsePlacementArg::SameLine => Self::SameLine,
         }
     }
 }
@@ -85,6 +103,10 @@ struct Cli {
     /// Placement of a trailing `default` relative to its statement.
     #[arg(long)]
     default_placement: Option<PlacementArg>,
+
+    /// Placement of `else` in `if`-`else` blocks.
+    #[arg(long)]
+    else_placement: Option<ElsePlacementArg>,
 }
 
 impl Cli {
@@ -112,6 +134,9 @@ impl Cli {
         }
         if let Some(placement) = self.default_placement {
             options.default_placement = placement.into();
+        }
+        if let Some(placement) = self.else_placement {
+            options.else_placement = placement.into();
         }
         options
     }

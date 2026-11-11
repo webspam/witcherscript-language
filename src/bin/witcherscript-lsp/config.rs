@@ -8,7 +8,7 @@ use tracing::{info, trace, warn};
 
 use crate::backend::Backend;
 use crate::logging::{DEFAULT_LOG_LEVEL, level_from_str, level_to_u8};
-use witcherscript_language::formatter::{AnnotationPlacement, ColonSpacing};
+use witcherscript_language::formatter::{AnnotationPlacement, ColonSpacing, ElsePlacement};
 
 fn parse_path_array(value: Option<Value>) -> Vec<PathBuf> {
     let Some(Value::Array(arr)) = value else {
@@ -50,6 +50,7 @@ pub(crate) struct Config {
     pub(crate) formatter_align_member_colons: bool,
     pub(crate) formatter_annotation_placement: AnnotationPlacement,
     pub(crate) formatter_default_placement: AnnotationPlacement,
+    pub(crate) formatter_else_placement: ElsePlacement,
     // Editor indent settings, used by code actions: their LSP request carries no FormattingOptions.
     pub(crate) editor_tab_size: u32,
     pub(crate) editor_insert_spaces: bool,
@@ -76,6 +77,7 @@ impl Default for Config {
             formatter_align_member_colons: false,
             formatter_annotation_placement: AnnotationPlacement::Preserve,
             formatter_default_placement: AnnotationPlacement::Preserve,
+            formatter_else_placement: ElsePlacement::default(),
             editor_tab_size: 4,
             editor_insert_spaces: true,
             code_lens_overridden_symbols: true,
