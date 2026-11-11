@@ -27,10 +27,7 @@ impl Formatter<'_> {
         let else_body = node.child_by_field_name(fields::ELSE);
 
         let trailing = else_body
-            .filter(|eb| {
-                self.else_placement
-                    .resolve(|| self.else_same_line_in_source(body, eb))
-            })
+            .filter(|_| self.else_placement.resolve())
             .map(|_| 0);
 
         if self.emit_split_keyword_cond("if (", cond, COND_THEN_BLOCK) {
@@ -93,11 +90,6 @@ impl Formatter<'_> {
                 indent + ELSE_OPEN + self.text(eb).len() > self.line_limit
             }
         }
-    }
-
-    fn else_same_line_in_source(&self, prev: Option<Node>, else_node: &Node) -> bool {
-        prev.or_else(|| else_node.prev_sibling())
-            .is_some_and(|prev_node| prev_node.end_position().row == else_node.start_position().row)
     }
 
     fn if_link_overflows(&self, node: Node, open: usize) -> bool {

@@ -74,6 +74,54 @@ impl<'de> Deserialize<'de> for AnnotationPlacement {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum ElsePlacement {
+    #[default]
+    OwnLine,
+    SameLine,
+}
+
+impl ElsePlacement {
+    fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "ownLine" => Some(Self::OwnLine),
+            "sameLine" => Some(Self::SameLine),
+            _ => None,
+        }
+    }
+
+    /// Lenient: untrusted LSP client settings fall back to the default rather than erroring.
+    pub fn from_setting(value: &str) -> Self {
+        Self::from_wire(value).unwrap_or_default()
+    }
+
+    fn resolve(self) -> bool {
+        match self {
+            Self::SameLine => true,
+            Self::OwnLine => false,
+        }
+    }
+}
+
+impl std::fmt::Display for ElsePlacement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OwnLine => write!(f, "ownLine"),
+            Self::SameLine => write!(f, "sameLine"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ElsePlacement {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Self::from_wire(&value).ok_or_else(|| {
+            serde::de::Error::custom(format!("unknown annotation placement: {value:?}"))
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ColonSpacing {
@@ -100,7 +148,7 @@ pub struct FormatOptions {
     pub align_member_colons: bool,
     pub annotation_placement: AnnotationPlacement,
     pub default_placement: AnnotationPlacement,
-    pub else_placement: AnnotationPlacement,
+    pub else_placement: ElsePlacement,
 }
 
 impl Default for FormatOptions {
@@ -113,7 +161,7 @@ impl Default for FormatOptions {
             align_member_colons: false,
             annotation_placement: AnnotationPlacement::default(),
             default_placement: AnnotationPlacement::default(),
-            else_placement: AnnotationPlacement::default(),
+            else_placement: ElsePlacement::default(),
         }
     }
 }
@@ -311,7 +359,7 @@ struct Formatter<'a> {
     align_member_colons: bool,
     annotation_placement: AnnotationPlacement,
     default_placement: AnnotationPlacement,
-    else_placement: AnnotationPlacement,
+    else_placement: ElsePlacement,
     colon_align_col: Option<usize>,
     // Source-ordered comments; the sweep emits each just before the next node past it.
     comments: Vec<Node<'a>>,
