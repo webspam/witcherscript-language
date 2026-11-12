@@ -20,18 +20,11 @@ impl Backend {
             if !self.config.load().inlay_hints {
                 break 'body Ok(None);
             }
-            let snap = self.snapshot();
-            let Some(document_arc) = snap.documents.get(&uri).cloned() else {
+            let Some(document_arc) = self.latest_parsed_document(&uri) else {
                 break 'body Ok(None);
             };
             let document = document_arc.as_ref();
-            let target = self.pending_target_for(&uri).unwrap_or(0);
-            if target > document.parse_version {
-                break 'body Err(ResponseError::new(
-                    ErrorCode::CONTENT_MODIFIED,
-                    "document edited while computing inlay hints",
-                ));
-            }
+            let snap = self.snapshot();
             let handles = self.db_handles_for_with_snapshot(&uri, &snap);
             let db = handles.db();
             let version = self.state_version.load(Ordering::Acquire);
