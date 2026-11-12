@@ -80,7 +80,7 @@ async fn pull_diagnostics_returns_full_then_unchanged_then_full_after_edit() {
 
     client.change_full(&uri, 2, "class Foo {}\n").await;
     let third = client
-        .request_when_ready::<DocumentDiagnosticRequest>(request(Some(stable_id)))
+        .pull_diagnostics_report(request(Some(stable_id)))
         .await;
     match third {
         DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) => {

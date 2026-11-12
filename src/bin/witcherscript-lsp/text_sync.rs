@@ -69,7 +69,6 @@ impl Backend {
             return;
         };
 
-        let mut prior_tree_valid = true;
         for change in params.content_changes {
             trace!(
                 op = "did_change",
@@ -86,10 +85,13 @@ impl Backend {
                 apply_content_change(&source, &line_index, range, &change.text)
             {
                 match edit {
-                    Some(edit) if prior_tree_valid => prior_tree.edit(&edit),
+                    Some(edit) => {
+                        if let Some(tree) = prior_tree.as_mut() {
+                            tree.edit(&edit);
+                        }
+                    }
                     // A None edit means full-document replace; drop the prior tree.
-                    None => prior_tree_valid = false,
-                    _ => {}
+                    None => prior_tree = None,
                 }
                 line_index = LineIndex::new(&next);
                 source = next;
@@ -99,13 +101,7 @@ impl Backend {
             }
         }
 
-        if prior_tree_valid {
-            self.enqueue_edit(uri.clone(), source, line_index, prior_tree);
-        } else {
-            // Full-document replace: prior tree is invalid; bypass the queue and re-parse from scratch.
-            self.pending_edits.lock().remove(&uri);
-            self.update_open_document(uri.clone(), source);
-        }
+        self.enqueue_edit(uri.clone(), source, line_index, prior_tree);
         trace!(
             op = "did_change",
             uri = %uri,

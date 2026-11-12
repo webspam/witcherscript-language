@@ -51,26 +51,65 @@ fn publishing_an_older_parse_keeps_the_newer_document() {
 }
 
 #[test]
-fn full_replace_drops_the_queued_edit_it_supersedes() {
+fn full_replace_is_queued_after_the_incremental_edit_it_supersedes() {
     let backend = make_backend();
     backend.edit_writer_spawned.store(true, Ordering::Release);
     let uri: Url = "file:///full_replace.ws".parse().unwrap();
     backend._did_open(open_params(&uri, "function Foo() {}\n"));
     backend._did_change(change_params(&uri, 2, (0, 9), (0, 12), "Bar"));
-    assert!(
-        backend.pending_target_for(&uri).is_some(),
-        "the incremental edit must still be queued for this test to exercise the race",
-    );
+    let incremental_target = backend
+        .pending_target_for(&uri)
+        .expect("the incremental edit is queued");
 
     backend._did_change(full_replace_params(&uri, 3, "function Baz() {}\n"));
 
-    assert!(
-        backend.pending_target_for(&uri).is_none(),
-        "the writer must not be left holding an edit the full replace superseded",
+    let queued = backend
+        .clone_pending_for(&uri)
+        .expect("the full replace goes through the queue");
+    assert_eq!(
+        queued.source, "function Baz() {}\n",
+        "the queue holds the full replace text, replacing the incremental edit",
     );
+    assert!(
+        queued.tree.is_none(),
+        "a full replace carries no prior tree, so the writer parses it from scratch",
+    );
+    assert!(
+        queued.target_parse_version > incremental_target,
+        "the full replace must publish after the incremental edit it supersedes",
+    );
+}
+
+#[test]
+fn incremental_edit_after_a_queued_full_replace_applies_to_the_replaced_text() {
+    let backend = make_backend();
+    backend.edit_writer_spawned.store(true, Ordering::Release);
+    let uri: Url = "file:///chained.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "function Foo() {}\n"));
+    backend._did_change(full_replace_params(&uri, 2, "function Baz() {}\n"));
+
+    backend._did_change(change_params(&uri, 3, (0, 9), (0, 12), "Qux"));
+
+    let queued = backend
+        .clone_pending_for(&uri)
+        .expect("the chained edit is queued");
+    assert_eq!(
+        queued.source, "function Qux() {}\n",
+        "the next incremental edit must chain onto the queued full replace, not the published text",
+    );
+}
+
+#[test]
+fn full_replace_without_the_writer_publishes_immediately() {
+    let backend = make_backend();
+    let uri: Url = "file:///sync_full_replace.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "function Foo() {}\n"));
+
+    backend._did_change(full_replace_params(&uri, 2, "function Baz() {}\n"));
+
     assert_eq!(
         published_document(&backend, &uri).source,
         "function Baz() {}\n",
-        "the full replace text is what the snapshot holds",
+        "the synchronous path parses a tree-less edit from scratch and publishes it",
     );
 }

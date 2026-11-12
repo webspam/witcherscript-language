@@ -16,14 +16,14 @@ use crate::backend::Backend;
 pub(crate) struct PendingEdit {
     pub source: String,
     pub line_index: LineIndex,
-    pub tree: Tree,
+    pub tree: Option<Tree>,
     pub target_parse_version: u64,
 }
 
 impl Backend {
     // Returns the latest known (source, line_index, tree) for `uri`: from pending if an edit is
     // queued but not yet processed, otherwise from the published Compilation. None if neither has it.
-    pub(crate) fn latest_edit_state(&self, uri: &Url) -> Option<(String, LineIndex, Tree)> {
+    pub(crate) fn latest_edit_state(&self, uri: &Url) -> Option<(String, LineIndex, Option<Tree>)> {
         if let Some(pending) = self.pending_edits.lock().get(uri) {
             return Some((
                 pending.source.clone(),
@@ -32,9 +32,13 @@ impl Backend {
             ));
         }
         let snap = self.snapshot();
-        snap.documents
-            .get(uri)
-            .map(|doc| (doc.source.clone(), doc.line_index.clone(), doc.tree.clone()))
+        snap.documents.get(uri).map(|doc| {
+            (
+                doc.source.clone(),
+                doc.line_index.clone(),
+                Some(doc.tree.clone()),
+            )
+        })
     }
 
     // A queued edit holds the latest source but an edited-not-reparsed tree, so reparse it.
@@ -49,7 +53,7 @@ impl Backend {
             error!(uri = %uri, error = %err, "failed to load WitcherScript grammar");
             return None;
         }
-        match parse_document_with_prior(&mut parser, edit.source, Some(&edit.tree)) {
+        match parse_document_with_prior(&mut parser, edit.source, edit.tree.as_ref()) {
             Ok(document) => Some(Arc::new(document)),
             Err(err) => {
                 error!(uri = %uri, error = %err, "failed to parse queued edit for formatting");
@@ -58,7 +62,13 @@ impl Backend {
         }
     }
 
-    pub(crate) fn enqueue_edit(&self, uri: Url, source: String, line_index: LineIndex, tree: Tree) {
+    pub(crate) fn enqueue_edit(
+        &self,
+        uri: Url,
+        source: String,
+        line_index: LineIndex,
+        tree: Option<Tree>,
+    ) {
         let target_parse_version = allocate_parse_version();
         let edit = PendingEdit {
             source,
@@ -168,7 +178,7 @@ impl Backend {
             error!(uri = %uri, error = %err, "failed to load WitcherScript grammar");
             return None;
         }
-        let parsed = parse_document_with_prior(&mut parser, edit.source, Some(&edit.tree));
+        let parsed = parse_document_with_prior(&mut parser, edit.source, edit.tree.as_ref());
         let mut document = match parsed {
             Ok(document) => document,
             Err(err) => {
