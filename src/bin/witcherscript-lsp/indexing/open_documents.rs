@@ -249,15 +249,6 @@ impl Backend {
             trace!(op = "update_open_document", uri = %uri, "bytes unchanged; reused parse");
             return false;
         }
-        self.reparse_open_document(uri, text, prior_tree)
-    }
-
-    pub(crate) fn reparse_open_document(
-        &self,
-        uri: Url,
-        text: String,
-        prior_tree: Option<Tree>,
-    ) -> bool {
         let started_at = Instant::now();
         let bytes = text.len();
         let had_prior_tree = prior_tree.is_some();
