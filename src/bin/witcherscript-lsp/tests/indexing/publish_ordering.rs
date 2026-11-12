@@ -74,3 +74,23 @@ fn full_replace_drops_the_queued_edit_it_supersedes() {
         "the full replace text is what the snapshot holds",
     );
 }
+
+#[test]
+fn full_replace_back_to_the_published_text_outranks_the_queued_edit() {
+    let backend = make_backend();
+    backend.edit_writer_spawned.store(true, Ordering::Release);
+    let uri: Url = "file:///revert.ws".parse().unwrap();
+    backend._did_open(open_params(&uri, "function Foo() {}\n"));
+    backend._did_change(change_params(&uri, 2, (0, 9), (0, 12), "Bar"));
+    let queued_target = backend
+        .pending_target_for(&uri)
+        .expect("the incremental edit is queued");
+
+    backend._did_change(full_replace_params(&uri, 3, "function Foo() {}\n"));
+
+    assert!(
+        published_document(&backend, &uri).parse_version > queued_target,
+        "a revert to the published text must still publish a version newer than the queued edit, \
+         so a writer already holding that edit cannot overwrite it",
+    );
+}

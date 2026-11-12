@@ -104,7 +104,7 @@ impl Backend {
         } else {
             // Full-document replace: prior tree is invalid; bypass the queue and re-parse from scratch.
             self.pending_edits.lock().remove(&uri);
-            self.update_open_document(uri.clone(), source);
+            self.reparse_open_document(uri.clone(), source, None);
         }
         trace!(
             op = "did_change",
