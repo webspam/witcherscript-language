@@ -16,6 +16,13 @@ use crate::file_scope::{FileScope, classify_file_scope};
 
 use super::helpers::{index_open_document, reindex_into, remove_document_all_spellings};
 
+fn holds_newer_document(compilation: &Compilation, uri: &Url, document: &ParsedDocument) -> bool {
+    compilation
+        .documents
+        .get(uri)
+        .is_some_and(|published| published.parse_version > document.parse_version)
+}
+
 // index_open_document updates the target in place, keeping its diff baseline so an unchanged reopen evicts nothing.
 fn route_document_to_index(
     builder: &mut CompilationBuilder,
@@ -299,7 +306,12 @@ impl Backend {
         let scope = self.file_scope_of(uri);
         let mut ws_changed: Vec<ObservedKey> = Vec::new();
         let mut loose_changed: Vec<ObservedKey> = Vec::new();
+        let mut superseded = false;
         self.publish_compilation(|builder| {
+            if holds_newer_document(&builder.base, uri, document) {
+                superseded = true;
+                return;
+            }
             let (ws, loose) = route_document_to_index(builder, uri, scope, document.as_ref());
             ws_changed.extend(ws);
             loose_changed.extend(loose);
@@ -307,6 +319,14 @@ impl Backend {
                 .documents_mut()
                 .insert(uri.clone(), document.clone());
         });
+        if superseded {
+            debug!(
+                uri = %uri,
+                parse_version = document.parse_version,
+                "skipped publishing a document older than the one already published",
+            );
+            return;
+        }
         let mut invalidated = self.invalidated_workspace(&ws_changed);
         invalidated.extend(self.invalidated_loose(&loose_changed));
         self.evict_cache_entries(&invalidated);
