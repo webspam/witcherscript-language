@@ -45,7 +45,7 @@ impl Backend {
     pub(crate) fn latest_parsed_document(&self, uri: &Url) -> Option<Arc<ParsedDocument>> {
         let _tree_guard = self.tree_pipeline.lock();
         match self.clone_pending_for(uri) {
-            Some(edit) => self.parse_pending_edit(uri, edit),
+            Some(edit) => self.process_pending_edit(uri, edit),
             None => self.snapshot().documents.get(uri).cloned(),
         }
     }
@@ -66,7 +66,9 @@ impl Backend {
         };
         if !self.edit_writer_spawned.load(Ordering::Acquire) {
             trace!(op = "enqueue_edit", uri = %uri, path = "sync", target_parse_version, "enter");
-            self.process_pending_edit(uri, edit);
+            if let Some(document) = self.process_pending_edit(&uri, edit) {
+                self.publish_parsed_edit(&uri, &document);
+            }
             return;
         }
         self.pending_edits.lock().insert(uri.clone(), edit);
@@ -126,7 +128,7 @@ impl Backend {
                             continue;
                         };
                         let processed_target = edit.target_parse_version;
-                        let parsed = backend.parse_pending_edit(&uri, edit);
+                        let parsed = backend.process_pending_edit(&uri, edit);
                         drop(tree_guard);
                         if let Some(document) = parsed {
                             backend.publish_parsed_edit(&uri, &document);
@@ -151,16 +153,10 @@ impl Backend {
         self.pending_edits.lock().get(uri).cloned()
     }
 
-    pub(crate) fn process_pending_edit(&self, uri: Url, edit: PendingEdit) {
-        if let Some(document) = self.parse_pending_edit(&uri, edit) {
-            self.publish_parsed_edit(&uri, &document);
-        }
-    }
-
-    fn parse_pending_edit(&self, uri: &Url, edit: PendingEdit) -> Option<Arc<ParsedDocument>> {
+    fn process_pending_edit(&self, uri: &Url, edit: PendingEdit) -> Option<Arc<ParsedDocument>> {
         let parse_at = Instant::now();
         let bytes = edit.source.len();
-        trace!(op = "parse_pending_edit", uri = %uri, bytes, "start");
+        trace!(op = "process_pending_edit", uri = %uri, bytes, "start");
         let mut parser = Parser::new();
         if let Err(err) = parser.set_language(&tree_sitter_witcherscript::language()) {
             error!(uri = %uri, error = %err, "failed to load WitcherScript grammar");
@@ -176,7 +172,7 @@ impl Backend {
         };
         document.parse_version = edit.target_parse_version;
         debug!(
-            op = "parse_pending_edit",
+            op = "process_pending_edit",
             uri = %uri,
             bytes,
             parse_us = parse_at.elapsed().as_micros(),
