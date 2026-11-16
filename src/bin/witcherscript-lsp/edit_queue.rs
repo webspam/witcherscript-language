@@ -44,21 +44,9 @@ impl Backend {
     // A queued edit holds the latest source but an edited-not-reparsed tree, so reparse it.
     pub(crate) fn latest_parsed_document(&self, uri: &Url) -> Option<Arc<ParsedDocument>> {
         let _tree_guard = self.tree_pipeline.lock();
-        let pending = self.pending_edits.lock().get(uri).cloned();
-        let Some(edit) = pending else {
-            return self.snapshot().documents.get(uri).cloned();
-        };
-        let mut parser = Parser::new();
-        if let Err(err) = parser.set_language(&tree_sitter_witcherscript::language()) {
-            error!(uri = %uri, error = %err, "failed to load WitcherScript grammar");
-            return None;
-        }
-        match parse_document_with_prior(&mut parser, edit.source, edit.tree.as_ref()) {
-            Ok(document) => Some(Arc::new(document)),
-            Err(err) => {
-                error!(uri = %uri, error = %err, "failed to parse queued edit for formatting");
-                None
-            }
+        match self.clone_pending_for(uri) {
+            Some(edit) => self.parse_pending_edit(uri, edit),
+            None => self.snapshot().documents.get(uri).cloned(),
         }
     }
 
@@ -172,7 +160,7 @@ impl Backend {
     fn parse_pending_edit(&self, uri: &Url, edit: PendingEdit) -> Option<Arc<ParsedDocument>> {
         let parse_at = Instant::now();
         let bytes = edit.source.len();
-        trace!(op = "process_pending_edit", uri = %uri, bytes, "start");
+        trace!(op = "parse_pending_edit", uri = %uri, bytes, "start");
         let mut parser = Parser::new();
         if let Err(err) = parser.set_language(&tree_sitter_witcherscript::language()) {
             error!(uri = %uri, error = %err, "failed to load WitcherScript grammar");
@@ -188,7 +176,7 @@ impl Backend {
         };
         document.parse_version = edit.target_parse_version;
         debug!(
-            op = "process_pending_edit",
+            op = "parse_pending_edit",
             uri = %uri,
             bytes,
             parse_us = parse_at.elapsed().as_micros(),
@@ -200,10 +188,10 @@ impl Backend {
     fn publish_parsed_edit(&self, uri: &Url, document: &Arc<ParsedDocument>) {
         let publish_at = Instant::now();
         let parse_version = document.parse_version;
-        trace!(op = "process_pending_edit", uri = %uri, parse_version, "publishing");
+        trace!(op = "publish_parsed_edit", uri = %uri, parse_version, "publishing");
         self.publish_open_document_indices(uri, document);
         debug!(
-            op = "process_pending_edit",
+            op = "publish_parsed_edit",
             uri = %uri,
             parse_version,
             publish_us = publish_at.elapsed().as_micros(),
