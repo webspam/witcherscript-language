@@ -5,7 +5,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use arc_swap::ArcSwap;
 use async_lsp::ClientSocket;
 use async_lsp::router::Router;
-use lsp_types::{DidOpenTextDocumentParams, TextDocumentItem, Url};
+use lsp_types::{
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, Position, Range,
+    TextDocumentContentChangeEvent, TextDocumentItem, Url, VersionedTextDocumentIdentifier,
+};
 
 use crate::backend::Backend;
 use crate::config::{Config, DiagnosticsScope};
@@ -61,6 +64,35 @@ pub(crate) fn make_backend_with(scope: DiagnosticsScope) -> Backend {
         ..Config::default()
     }));
     Backend::new(client, config)
+}
+
+pub(crate) fn change_params(
+    uri: &Url,
+    version: i32,
+    start: (u32, u32),
+    end: (u32, u32),
+    text: &str,
+) -> DidChangeTextDocumentParams {
+    DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier {
+            uri: uri.clone(),
+            version,
+        },
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: Some(Range {
+                start: Position {
+                    line: start.0,
+                    character: start.1,
+                },
+                end: Position {
+                    line: end.0,
+                    character: end.1,
+                },
+            }),
+            range_length: None,
+            text: text.to_string(),
+        }],
+    }
 }
 
 pub(crate) fn open_params(uri: &Url, text: &str) -> DidOpenTextDocumentParams {

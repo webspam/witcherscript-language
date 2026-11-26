@@ -338,16 +338,35 @@ impl LspClient {
     }
 
     pub(crate) async fn pull_diagnostics(&mut self, uri: &Url) -> Vec<Diagnostic> {
+        let report = self
+            .pull_diagnostics_report(DocumentDiagnosticParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                identifier: None,
+                previous_result_id: None,
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+            })
+            .await;
+        match report {
+            DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) => {
+                full.full_document_diagnostic_report.items
+            }
+            DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Unchanged(_)) => {
+                panic!("pull_diagnostics requested without previous_result_id must return Full")
+            }
+            DocumentDiagnosticReportResult::Partial(_) => {
+                panic!("server returned a partial report unexpectedly")
+            }
+        }
+    }
+
+    pub(crate) async fn pull_diagnostics_report(
+        &mut self,
+        params: DocumentDiagnosticParams,
+    ) -> DocumentDiagnosticReportResult {
         // A real client re-pulls on CONTENT_MODIFIED (mid-edit) and on a retriggerable
         // ServerCancelled (base scripts still indexing), so the harness must too.
-        let params = serde_json::to_value(DocumentDiagnosticParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            identifier: None,
-            previous_result_id: None,
-            work_done_progress_params: WorkDoneProgressParams::default(),
-            partial_result_params: PartialResultParams::default(),
-        })
-        .expect("serialize diagnostic params");
+        let params = serde_json::to_value(params).expect("serialize diagnostic params");
 
         for _ in 0..PULL_RETRY_LIMIT {
             let v = self
@@ -363,20 +382,8 @@ impl LspClient {
                 }
                 panic!("pull_diagnostics returned error: {err}");
             }
-            let report: DocumentDiagnosticReportResult =
-                serde_json::from_value(v.get("result").cloned().unwrap_or(Value::Null))
-                    .expect("decode diagnostic report");
-            return match report {
-                DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(full)) => {
-                    full.full_document_diagnostic_report.items
-                }
-                DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Unchanged(_)) => {
-                    panic!("pull_diagnostics requested without previous_result_id must return Full")
-                }
-                DocumentDiagnosticReportResult::Partial(_) => {
-                    panic!("server returned a partial report unexpectedly")
-                }
-            };
+            return serde_json::from_value(v.get("result").cloned().unwrap_or(Value::Null))
+                .expect("decode diagnostic report");
         }
         panic!("pull_diagnostics kept returning a retryable error");
     }

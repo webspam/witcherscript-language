@@ -16,14 +16,14 @@ use crate::backend::Backend;
 pub(crate) struct PendingEdit {
     pub source: String,
     pub line_index: LineIndex,
-    pub tree: Tree,
+    pub tree: Option<Tree>,
     pub target_parse_version: u64,
 }
 
 impl Backend {
     // Returns the latest known (source, line_index, tree) for `uri`: from pending if an edit is
     // queued but not yet processed, otherwise from the published Compilation. None if neither has it.
-    pub(crate) fn latest_edit_state(&self, uri: &Url) -> Option<(String, LineIndex, Tree)> {
+    pub(crate) fn latest_edit_state(&self, uri: &Url) -> Option<(String, LineIndex, Option<Tree>)> {
         if let Some(pending) = self.pending_edits.lock().get(uri) {
             return Some((
                 pending.source.clone(),
@@ -32,33 +32,31 @@ impl Backend {
             ));
         }
         let snap = self.snapshot();
-        snap.documents
-            .get(uri)
-            .map(|doc| (doc.source.clone(), doc.line_index.clone(), doc.tree.clone()))
+        snap.documents.get(uri).map(|doc| {
+            (
+                doc.source.clone(),
+                doc.line_index.clone(),
+                Some(doc.tree.clone()),
+            )
+        })
     }
 
     // A queued edit holds the latest source but an edited-not-reparsed tree, so reparse it.
     pub(crate) fn latest_parsed_document(&self, uri: &Url) -> Option<Arc<ParsedDocument>> {
         let _tree_guard = self.tree_pipeline.lock();
-        let pending = self.pending_edits.lock().get(uri).cloned();
-        let Some(edit) = pending else {
-            return self.snapshot().documents.get(uri).cloned();
-        };
-        let mut parser = Parser::new();
-        if let Err(err) = parser.set_language(&tree_sitter_witcherscript::language()) {
-            error!(uri = %uri, error = %err, "failed to load WitcherScript grammar");
-            return None;
-        }
-        match parse_document_with_prior(&mut parser, edit.source, Some(&edit.tree)) {
-            Ok(document) => Some(Arc::new(document)),
-            Err(err) => {
-                error!(uri = %uri, error = %err, "failed to parse queued edit for formatting");
-                None
-            }
+        match self.clone_pending_for(uri) {
+            Some(edit) => self.parse_pending_edit(uri, edit),
+            None => self.snapshot().documents.get(uri).cloned(),
         }
     }
 
-    pub(crate) fn enqueue_edit(&self, uri: Url, source: String, line_index: LineIndex, tree: Tree) {
+    pub(crate) fn enqueue_edit(
+        &self,
+        uri: Url,
+        source: String,
+        line_index: LineIndex,
+        tree: Option<Tree>,
+    ) {
         let target_parse_version = allocate_parse_version();
         let edit = PendingEdit {
             source,
@@ -68,7 +66,9 @@ impl Backend {
         };
         if !self.edit_writer_spawned.load(Ordering::Acquire) {
             trace!(op = "enqueue_edit", uri = %uri, path = "sync", target_parse_version, "enter");
-            self.process_pending_edit(uri, edit);
+            if let Some(document) = self.parse_pending_edit(&uri, edit) {
+                self.publish_parsed_edit(&uri, &document);
+            }
             return;
         }
         self.pending_edits.lock().insert(uri.clone(), edit);
@@ -128,8 +128,11 @@ impl Backend {
                             continue;
                         };
                         let processed_target = edit.target_parse_version;
-                        backend.process_pending_edit(uri.clone(), edit);
+                        let parsed = backend.parse_pending_edit(&uri, edit);
                         drop(tree_guard);
+                        if let Some(document) = parsed {
+                            backend.publish_parsed_edit(&uri, &document);
+                        }
                         let mut pending = backend.pending_edits.lock();
                         if let Some(current) = pending.get(&uri)
                             && current.target_parse_version == processed_target
@@ -150,43 +153,45 @@ impl Backend {
         self.pending_edits.lock().get(uri).cloned()
     }
 
-    pub(crate) fn process_pending_edit(&self, uri: Url, edit: PendingEdit) {
-        let started_at = Instant::now();
-        let bytes = edit.source.len();
-        trace!(op = "process_pending_edit", uri = %uri, bytes, "start");
+    fn parse_pending_edit(&self, uri: &Url, edit: PendingEdit) -> Option<Arc<ParsedDocument>> {
         let parse_at = Instant::now();
+        let bytes = edit.source.len();
+        trace!(op = "parse_pending_edit", uri = %uri, bytes, "start");
         let mut parser = Parser::new();
         if let Err(err) = parser.set_language(&tree_sitter_witcherscript::language()) {
             error!(uri = %uri, error = %err, "failed to load WitcherScript grammar");
-            return;
+            return None;
         }
-        let parsed = parse_document_with_prior(&mut parser, edit.source, Some(&edit.tree));
-        let parse_us = parse_at.elapsed().as_micros();
+        let parsed = parse_document_with_prior(&mut parser, edit.source, edit.tree.as_ref());
         let mut document = match parsed {
             Ok(document) => document,
             Err(err) => {
                 error!(uri = %uri, error = %err, "failed to parse document");
-                return;
+                return None;
             }
         };
         document.parse_version = edit.target_parse_version;
-        let parse_version = document.parse_version;
-        let document: Arc<ParsedDocument> = Arc::new(document);
-
-        let publish_at = Instant::now();
-        trace!(op = "process_pending_edit", uri = %uri, parse_version, "publishing");
-        self.publish_open_document_indices(&uri, &document);
-        let publish_us = publish_at.elapsed().as_micros();
-        trace!(op = "process_pending_edit", uri = %uri, parse_version, "published");
-
-        debug!(
-            op = "process_pending_edit",
+        trace!(
+            op = "parse_pending_edit",
             uri = %uri,
             bytes,
-            parse_us,
-            publish_us,
-            elapsed_us = started_at.elapsed().as_micros(),
-            "complete",
+            parsed_us = parse_at.elapsed().as_micros(),
+            "parsed",
+        );
+        Some(Arc::new(document))
+    }
+
+    fn publish_parsed_edit(&self, uri: &Url, document: &Arc<ParsedDocument>) {
+        let publish_at = Instant::now();
+        let parse_version = document.parse_version;
+        trace!(op = "publish_parsed_edit", uri = %uri, parse_version, "publishing");
+        self.publish_open_document_indices(uri, document);
+        debug!(
+            op = "publish_parsed_edit",
+            uri = %uri,
+            parse_version,
+            publish_us = publish_at.elapsed().as_micros(),
+            "published",
         );
     }
 }

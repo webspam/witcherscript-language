@@ -148,6 +148,9 @@ mod watched_files;
 mod concurrent_doc_ops;
 
 #[cfg(test)]
+mod publish_ordering;
+
+#[cfg(test)]
 mod code_lens;
 
 #[cfg(test)]

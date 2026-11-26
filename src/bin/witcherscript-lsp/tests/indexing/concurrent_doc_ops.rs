@@ -5,18 +5,17 @@ use std::sync::atomic::Ordering;
 use async_lsp::ErrorCode;
 use lsp_types::{
     CompletionContext, CompletionItem, CompletionParams, CompletionResponse, CompletionTextEdit,
-    CompletionTriggerKind, DidChangeTextDocumentParams, DocumentDiagnosticParams,
-    DocumentDiagnosticReport, DocumentDiagnosticReportResult, DocumentFormattingParams,
-    FormattingOptions, PartialResultParams, Position, Range, SemanticTokensParams,
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentPositionParams, Url,
-    VersionedTextDocumentIdentifier, WorkDoneProgressParams, WorkspaceDiagnosticParams,
+    CompletionTriggerKind, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportResult, DocumentFormattingParams, FormattingOptions,
+    PartialResultParams, Position, SemanticTokensParams, TextDocumentIdentifier,
+    TextDocumentPositionParams, Url, WorkDoneProgressParams, WorkspaceDiagnosticParams,
     WorkspaceDiagnosticReportResult,
 };
 use witcherscript_language::semantic_tokens::collect_semantic_tokens;
 
 use crate::backend::Backend;
 use crate::config::DiagnosticsScope;
-use crate::tests::support::{make_backend, make_backend_with, open_params};
+use crate::tests::support::{change_params, make_backend, make_backend_with, open_params};
 
 fn workspace_scope_backend_indexing_pending() -> Backend {
     make_backend_with(DiagnosticsScope::Workspace)
@@ -26,35 +25,6 @@ fn make_workspace_backend() -> Backend {
     let backend = workspace_scope_backend_indexing_pending();
     backend.initial_index_done.store(true, Ordering::Release);
     backend
-}
-
-fn change_params(
-    uri: &Url,
-    version: i32,
-    start: (u32, u32),
-    end: (u32, u32),
-    text: &str,
-) -> DidChangeTextDocumentParams {
-    DidChangeTextDocumentParams {
-        text_document: VersionedTextDocumentIdentifier {
-            uri: uri.clone(),
-            version,
-        },
-        content_changes: vec![TextDocumentContentChangeEvent {
-            range: Some(Range {
-                start: Position {
-                    line: start.0,
-                    character: start.1,
-                },
-                end: Position {
-                    line: end.0,
-                    character: end.1,
-                },
-            }),
-            range_length: None,
-            text: text.to_string(),
-        }],
-    }
 }
 
 #[test]
